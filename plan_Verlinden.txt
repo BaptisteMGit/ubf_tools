@@ -1,0 +1,58 @@
+1) Test avec une réplique contenue dans la librairie 
+
+	a) Simulation de donnée à chaque point de grille
+	b) Simulation d'un signal depuis un point de grille inconnu 
+	c) Calcul des surfaces d'ambiguité 
+
+
+2) Test avec une source différente (signal non contenu dans la librairie de réplique) 
+
+
+1) a) 
+	Utilisation du principe de réciprocité : et calcul des fonctions de transferts pour un ensemble de profils autour du récepteur. 
+	Interpolation des points de grille traversés par le profile : à chaque point de grille on associe une matrice mat_G de fonctions de transfert correspondant 
+	à chacun des récepteurs considéré et chacune des fréquences simulées
+	Pour chaque point de grille : calcul des signaux large bande (série temporelle par synthèse de fourier) reçus par chacun des récèpteurs et calcul du vecteur 
+	d'intercorrélation 
+
+Dans un xarray on stocke donc : 
+
+rcv_id = [0, 1]
+transfert_fct(x, y, f, rcv_id)
+
+def populate_grid(ds, src_spectrum):
+    ds = get_transfert_fct(ds, src_spectrum)
+    ds = get_intercor(ds) 
+    return ds 
+
+def get_transfert_fct(ds, src_spectrum):
+    # Dummy version (time consuming) 
+    
+    return ds 
+
+received_signal(x, y, rcv_id, t) 
+intercor(x, y, tau)
+
+xr.Dataset(
+    data_vars=dict(
+        rcv_names=(["rcv_id"], rcv_names),
+        transfert_fct=(["x", "y", "freq", "rcv_id"], transfert_fct),
+    ),
+    coords=dict(
+        x=grid_x,
+	y=grid_y,
+        rcv_id=np.arrange(0, len(rcv_names)),
+        freq=freq,
+	
+    ),
+    attrs=dict(
+    description="Source localisation (Verlinden) simulation",
+    
+),
+)
+
+
+
+
+
+

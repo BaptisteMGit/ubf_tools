@@ -1,0 +1,751 @@
+import os
+import warnings
+import numpy as np
+import matplotlib.pyplot as plt
+
+from cst import SAND_PROPERTIES
+from propa.kraken_toolbox.utils import align_var_description
+
+
+class KrakenMedium:
+    def __init__(
+        self,
+        ssp_interpolation_method="C_linear",
+        z_ssp=[0.0, 100.0],
+        c_p=[1500.0, 1500.0],
+        c_s=0.0,
+        rho=1.0,
+        a_p=0.0,
+        a_s=0.0,
+        nmesh=0,
+        sigma=0.0,
+    ):
+        self.interpolation_method_ = ssp_interpolation_method
+
+        self.z_ssp_ = np.array(z_ssp)  # Depth (m)
+        self.cp_ssp_ = np.array(c_p)  # Compression waves celerity (m/s)
+        self.cs_ssp_ = np.array(c_s)  # Shear waves celerity (m/s)
+        self.rho_ = np.array(rho)  # Density (g/cm3)
+        self.ap_ = np.array(
+            a_p
+        )  # Compressional wave attenuation (defined in KrakenAttenuation)
+        self.as_ = np.array(
+            a_s
+        )  # Shear wave attenuation (defined in KrakenAttenuation)
+
+        self.nmesh_ = nmesh  # Number of mesh points to use initially, should be about 10 per vertical wavelenght (0 let KRAKEN decide)
+        self.sigma_ = sigma  # RMS roughness at the surface
+
+        self.interp_code = None
+        self.available_interpolation_methods = [
+            "C_linear",
+            "N2_linear",
+            "cubic_spline",
+            "analytic",
+        ]
+
+        self.set_interp_code()
+        # self.write_lines()
+
+    def set_interp_code(self):
+        if self.interpolation_method_ == "C_linear":
+            self.interp_code = "C"
+        elif self.interpolation_method_ == "N2_linear":
+            self.interp_code = "N"
+        elif self.interpolation_method_ == "cubic_spline":
+            self.interp_code = "S"
+        elif (
+            self.interpolation_method_ == "analytic"
+        ):  # Not recommended -> needs to "modify the analytic formulas in PROFIL.FOR in recompile and link"
+            self.interp_code = "A"
+            warnings.warn(
+                "'analytic' interpolation method is not recommended, you need to modify the analytic formulas in PROFIL.FOR in recompile and link (see KRAKEN doc)"
+            )
+
+        else:
+            raise ValueError(
+                f"Unknown interpolation method '{self.interpolation_method_}'. Please pick one of the following: {self.available_interpolation_methods}"
+            )
+
+    def write_lines(self):
+        # Medim info
+        medium_info = align_var_description(
+            f"{self.nmesh_} {self.sigma_} {self.z_ssp_.max():.3f}",
+            "Number of mesh points, RMS surface roughness, Max depth (units: m)",
+        )
+
+        # SSP bloc
+        # Check variables size consistency
+        cp_check = (self.z_ssp_.size == self.cp_ssp_.size) or (self.cp_ssp_.size == 1)
+        cs_check = (self.z_ssp_.size == self.cs_ssp_.size) or (self.cs_ssp_.size == 1)
+        rho_check = (self.z_ssp_.size == self.rho_.size) or (self.rho_.size == 1)
+        ap_check = (self.z_ssp_.size == self.ap_.size) or (self.ap_.size == 1)
+        as_check = (self.z_ssp_.size == self.as_.size) or (self.as_.size == 1)
+
+        if not cp_check:
+            raise ValueError(
+                "Inconsistent SSP data: 'z_ssp', 'c_p' must have the same size"
+            )
+        if not cs_check:
+            raise ValueError(
+                "Inconsistent SSP data: 'z_ssp', 'c_s' must have the same size"
+            )
+
+        if not rho_check:
+            raise ValueError(
+                "Inconsistent SSP data: 'z_ssp' and 'rho' must have the same size or 'rho' must be a scalar"
+            )
+        if not ap_check:
+            raise ValueError(
+                "Inconsistent SSP data: 'z_ssp' and 'a_p' must have the same size or 'a_p' must be a scalar"
+            )
+        if not as_check:
+            raise ValueError(
+                "Inconsistent SSP data: 'z_ssp' and 'a_s' must have the same size or 'a_s' must be a scalar"
+            )
+
+        if self.rho_.size == 1 and (self.as_.size != 1 or self.ap_.size != 1):
+            self.rho_ = np.ones(self.z_ssp_.size) * self.rho_
+        if self.ap_.size == 1 and (self.rho_.size != 1 or self.as_.size != 1):
+            self.ap_ = np.ones(self.z_ssp_.size) * self.ap_
+        if self.as_.size == 1 and (self.rho_.size != 1 or self.ap_.size != 1):
+            self.as_ = np.ones(self.z_ssp_.size) * self.as_
+        if self.rho_.size == 1 and self.ap_.size == 1 and self.as_.size == 1:
+            scalar_flag = True
+
+        # Write SSP bloc
+        ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S- wave attenuation"
+        if not scalar_flag:
+            ssp_bloc = [
+                align_var_description(
+                    f"{self.z_ssp_[0]:.3f} {self.cp_ssp_[0]:.3f} {self.cs_ssp_[0]:.3f} {self.rho_[0]:.3f} {self.ap_[0]:.3f} {self.as_[0]:.3f}",
+                    ssp_desc,
+                )
+            ]
+        else:
+            ssp_bloc = [
+                align_var_description(
+                    f"{self.z_ssp_[0]:.3f} {self.cp_ssp_[0]:.3f} {self.cs_ssp_:.3f} {self.rho_:.3f} {self.ap_:.3f} {self.as_:.3f}",
+                    ssp_desc,
+                )
+            ]
+
+        for i in range(1, self.z_ssp_.size):
+            if not scalar_flag:
+                ssp_bloc.append(
+                    f"{self.z_ssp_[i]:.3} {self.cp_ssp_[i]:.3f} {self.cs_ssp_[i]:.3f} {self.ap_[i]:.3f} {self.as_[i]:.3f}\n"
+                )
+            else:
+                ssp_bloc.append(f"{self.z_ssp_[i]:.3f} {self.cp_ssp_[i]:.3f} / \n")
+
+        self.lines = [medium_info] + ssp_bloc
+
+    def set_default(self):
+        self.interpolation_method_ = "C_linear"
+        self.set_interp_code()
+        self.z_ssp = np.array([0.0, 100.0])
+        self.cp_ssp = np.array([1500.0, 1500.0])
+        self.cs_ssp = np.array([0.0, 0.0])
+        self.rho = np.array([1.0, 1.0])
+        self.ap_ = np.array([0.0, 0.0])
+        self.as_ = np.array([0.0, 0.0])
+        self.nmesh_ = 0
+        self.sigma_ = 0.0
+
+    def plot_medium(self):
+        self.plot_spp()
+
+    def plot_spp(self):
+        plt.figure(figsize=(10, 8))
+        plt.plot(self.cp_ssp_, self.z_ssp_, label="C-wave celerity")
+        plt.gca().invert_yaxis()
+        plt.xlabel("Celerity (m/s)")
+        plt.ylabel("Depth (m)")
+        plt.legend()
+
+
+class KrakenTopHalfspace:
+    def __init__(
+        self,
+        boundary_condition="vacuum",
+        halfspace_properties=None,
+        twersky_scatter_properties=None,
+    ):
+        self.boundary_condition_ = boundary_condition
+        self.halfspace_properties_ = halfspace_properties
+        self.twersky_scatter_properties_ = twersky_scatter_properties
+
+        self.boundary_code = None
+        self.available_boundary_conditions = [
+            "vacuum",
+            "acousto_elastic",
+            "perfectly_rigid",
+            "reflection_coefficient",
+            "soft_boss_Twersky_scatter",
+            "hard_boss_Twersky_scatter",
+            "soft_boss_Twersky_scatter_amplitude_only",
+            "hard_boss_Twersky_scatter_amplitude_only",
+        ]
+
+        self.set_boundary_code()
+
+    def set_boundary_code(self):
+        if self.boundary_condition_ == "vacuum":
+            self.boundary_code = "V"
+        elif self.boundary_condition_ == "acousto_elastic":
+            self.boundary_code = "A"
+            self.set_halfspace_properties()
+        elif self.boundary_condition_ == "perfectly_rigid":
+            self.boundary_code = "R"
+        elif self.boundary_condition_ == "reflection_coefficient":
+            self.boundary_code = "F"
+            warnings.warn(
+                "reflection_coefficient' boundary condition requires top reflection coefficient to be provided in a separeted .'TRC' file"
+            )
+        elif self.boundary_condition_ == "soft_boss_Twersky_scatter":
+            self.boundary_code = "S"
+            self.set_twersky_scatter()
+        elif self.boundary_condition_ == "hard_boss_Twersky_scatter":
+            self.boundary_code = "H"
+            self.set_twersky_scatter()
+        elif self.boundary_condition_ == "soft_boss_Twersky_scatter_amplitude_only":
+            self.boundary_code = "T"
+            self.set_twersky_scatter()
+        elif self.boundary_condition_ == "hard_boss_Twersky_scatter_amplitude_only":
+            self.boundary_code = "I"
+            self.set_twersky_scatter()
+        else:
+            raise ValueError(
+                f"Unknown interpolation method '{self.boundary_condition_}'. Please pick one of the following: {self.available_boundary_conditions}"
+            )
+
+    def set_halfspace_properties(self):
+        if self.halfspace_properties_ is None:
+            raise ValueError(
+                "You need to provide top halfspace properties when using 'acousto_elastic' boundary condition"
+            )
+        else:
+            self.z_top_halfspace = self.halfspace_properties_["z"]  # Depth (units: m)
+            self.cp_top_halfspace = self.halfspace_properties_[
+                "c_p"
+            ]  # Compression waves celerity (units: m/s)
+            self.cs_top_halfspace = self.halfspace_properties_[
+                "c_s"
+            ]  # Shear waves celerity (units: m/s)
+            self.rho_top_halfspace = self.halfspace_properties_[
+                "rho"
+            ]  # Density (units: g/cm3)
+            self.ap_top_halfspace = self.halfspace_properties_[
+                "a_p"
+            ]  # Top compressional wave attenuation (units: self.units)
+            self.as_top_halfspace = self.halfspace_properties_[
+                "a_s"
+            ]  # Top shear wave attenuation (units: self.units)
+
+    def set_twersky_scatter(self):
+        if self.twersky_scatter_properties_ is None:
+            raise ValueError(
+                "You need to provide Twersky scatter properties when using 'soft_boss_Twersky_scatter', 'hard_boss_Twersky_scatter', 'soft_boss_Twersky_scatter_amplitude_only', 'hard_boss_Twersky_scatter_amplitude_only' boundary condition"
+            )
+        else:
+            self.bumden = self.twersky_scatter_properties_[
+                "bumden"
+            ]  # Bump density in ridges/km
+            self.eta = self.twersky_scatter_properties_[
+                "eta"
+            ]  # Principal radius 1 of bump
+            self.xi = self.twersky_scatter_properties_[
+                "xi"
+            ]  # Principal radius 2 of bump
+
+    def write_lines(
+        self,
+        kraken_medium,
+        kraken_attenuation,
+        slow_rootfinder=False,
+        broadband_run=False,
+    ):
+        desc = "SSP interpolation, Top boundary condition, Attenuation units, Volume attenuation"
+        if slow_rootfinder:
+            slow_rootfinder_code = "."
+            desc += ", Slow rootfinder"
+        else:
+            slow_rootfinder_code = " "
+
+        if broadband_run:
+            broadband_code = "B"
+            desc += ", Broadband run"
+        else:
+            broadband_code = ""
+
+        # Top halfspace info
+        top_halfspace_info = align_var_description(
+            f"'{kraken_medium.interp_code}{self.boundary_code}{kraken_attenuation.units_code}{kraken_attenuation.thorp_code}{slow_rootfinder_code}{broadband_code}'",
+            desc,
+        )
+
+        self.lines = [top_halfspace_info]
+
+    def set_default(self):
+        self.boundary_condition_ = "vacuum"
+        self.set_boundary_code()
+
+
+class KrakenBottomHalfspace:
+    def __init__(
+        self,
+        boundary_condition="acousto_elastic",
+        sigma=0.0,
+        halfspace_properties=SAND_PROPERTIES,
+    ):
+        self.boundary_condition_ = boundary_condition
+        self.sigma_ = sigma
+        self.halfspace_properties_ = halfspace_properties
+
+        self.boundary_code = None
+        self.available_boundary_conditions = [
+            "vacuum",
+            "acousto_elastic",
+            "perfectly_rigid",
+            "reflection_coefficient",
+            "precalculated_reflection_coefficient",
+        ]
+
+        self.set_boundary_code()
+
+    def set_boundary_code(self):
+        if self.boundary_condition_ == "vacuum":
+            self.boundary_code = "V"
+        elif self.boundary_condition_ == "acousto_elastic":
+            self.boundary_code = "A"
+            self.set_halfspace_properties()
+        elif self.boundary_condition_ == "perfectly_rigid":
+            self.boundary_code = "R"
+        elif self.boundary_condition_ == "reflection_coefficient":
+            self.boundary_code = "F"
+            warnings.warn(
+                "reflection_coefficient' boundary condition requires bottom reflection coefficient to be provided in a separeted .'TRC' file"
+            )
+        elif self.boundary_condition_ == "precalculated_reflection_coefficient":
+            self.boundary_code = "P"
+            warnings.warn(
+                "precalculated_reflection_coefficient' boundary condition requires bottom reflection coefficient to precalculated by BOUNCE"
+            )
+        else:
+            raise ValueError(
+                f"Unknown interpolation method '{self.boundary_condition_}'. Please pick one of the following: {self.available_boundary_conditions}"
+            )
+
+    def set_halfspace_properties(self):
+        if self.halfspace_properties_ is None:
+            raise ValueError(
+                "You need to provide top halfspace properties when using 'acousto_elastic' boundary condition"
+            )
+        else:
+            self.cp_top_halfspace = self.halfspace_properties_[
+                "c_p"
+            ]  # Compression waves celerity (units: m/s)
+            self.cs_top_halfspace = self.halfspace_properties_[
+                "c_s"
+            ]  # Shear waves celerity (units: m/s)
+            self.rho_top_halfspace = self.halfspace_properties_[
+                "rho"
+            ]  # Density (units: g/cm3)
+            self.ap_top_halfspace = self.halfspace_properties_[
+                "a_p"
+            ]  # Top compressional wave attenuation (units: self.units)
+            self.as_top_halfspace = self.halfspace_properties_[
+                "a_s"
+            ]  # Top shear wave attenuation (units: self.units)
+
+            self.use_halfspace_properties = True
+
+    def write_lines(self, kraken_medium):
+        # Bottom halfspace info
+        bottom_halfspace_info = align_var_description(
+            f"'{self.boundary_code}' {self.sigma_}",
+            "Type of bottom boundary condition, Interfacial roughness",
+        )
+        self.lines = [bottom_halfspace_info]
+
+        # TODO : Add Half space properties
+        if self.use_halfspace_properties:
+            ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S- wave attenuation"
+            half_space_prop = align_var_description(
+                f"{kraken_medium.z_ssp_.max():.3f} {self.cp_top_halfspace:.3f} {self.cs_top_halfspace:.3f} {self.rho_top_halfspace:.3f} {self.ap_top_halfspace:.3f} {self.as_top_halfspace:.3f}",
+                ssp_desc,
+            )
+            self.lines.append(half_space_prop)
+
+    def set_default(self):
+        self.boundary_condition_ = "acousto_elastic"
+        self.set_boundary_code()
+
+
+class KrakenAttenuation:
+    def __init__(self, units="dB_per_wavelength", use_volume_attenuation=False):
+        self.units_ = units
+        self.volume_attenuation_ = use_volume_attenuation
+        self.units_code = None
+
+        self.available_units = [
+            "neper_per_m",
+            "dB_per_kmhz",
+            "dB_per_m",
+            "dB_per_wavelength",
+            "quality_factor",
+            "thorp",
+        ]
+        self.set_units_code()
+        self.set_thorp_code()
+
+    def set_units_code(self):
+        if self.units_ == "nepers_per_m":
+            self.units_code = "N"
+        elif self.units_ == "dB_per_kmhz":
+            self.units_code = "F"
+        elif self.units_ == "dB_per_m":
+            self.units_code = "M"
+        elif self.units_ == "dB_per_wavelength":
+            self.units_code = "W"
+        elif self.units_ == "quality_factor":
+            self.units_code = "Q"
+        elif self.units_ == "thorp":
+            self.units_code = "T"
+        else:
+            raise ValueError(
+                f"Unknown interpolation method '{self.units_}'. Please pick one of the following: {self.available_units}"
+            )
+
+    def set_thorp_code(self):
+        if self.volume_attenuation_:
+            self.thorp_code = "T"
+        else:
+            self.thorp_code = " "
+
+    def set_default(self):
+        self.units_ = "dB_per_wavelength"
+        self.set_units_code()
+        self.volume_attenuation_ = False
+        self.set_thorp_code()
+
+
+class KrakenField:
+    def __init__(
+        self,
+        phase_speed_limits=[0.0, 20000],
+        src_depth=[5],
+        n_rcv_z=1000,
+        rcv_z_min=0.0,
+        rcv_z_max=1000.0,
+        rcv_r_max=0.0,
+    ):
+        self.phase_speed_limits_ = np.array(phase_speed_limits)
+
+        self.src_depth_ = np.array(src_depth)
+        if self.src_depth_.size == 1:
+            self.src_depth_ = np.array([src_depth])
+
+        self.n_rcv_z_ = n_rcv_z
+        self.rcv_depth_min_ = rcv_z_min
+        self.rcv_depth_max_ = rcv_z_max
+        self.rcv_range_max_ = rcv_r_max
+
+    def write_lines(self):
+        self.lines = []
+        self.lines.append(
+            align_var_description(
+                f"{self.phase_speed_limits_[0]} {self.phase_speed_limits_[1]}",
+                "Phase speed limits (min, max) (m/s)",
+            )
+        )
+        self.lines.append(
+            align_var_description(f"{self.rcv_range_max_}", "Maximum range (km)")
+        )
+        self.lines.append(
+            align_var_description(
+                f"{self.src_depth_.size}", "Number of source depth (m)"
+            )
+        )
+        self.lines.append(
+            align_var_description(
+                "".join([str(src_d) + " " for src_d in self.src_depth_]),
+                "Source depths (m)",
+            )
+        )
+        self.lines.append(
+            align_var_description(f"{self.n_rcv_z_}", "Number of receiver depths (m)")
+        )
+        self.lines.append(
+            align_var_description(
+                f"{self.rcv_depth_min_} {self.rcv_depth_max_} /",
+                "Minimum and maximum receiver depths (m)",
+            )
+        )
+
+
+class KrakenEnv:
+    def __init__(
+        self,
+        title="",
+        env_root="",
+        env_filename="",
+        freq=50.0,
+        kraken_top_hs=KrakenTopHalfspace(),
+        kraken_medium=KrakenMedium(),
+        kraken_attenuation=KrakenAttenuation(),
+        kraken_bottom_hs=KrakenBottomHalfspace(),
+        kraken_field=KrakenField(),
+        nmedia=1,
+    ):
+        self.simulation_title = title
+
+        # Env file info
+        self.root = env_root
+        self.filename = env_filename
+        self.env_fpath = os.path.join(self.root, self.filename + ".env")
+        # Flp file info
+        self.flp_fpath = os.path.join(self.root, self.filename + ".flp")
+        # Shd file info
+        self.shd_fpath = os.path.join(self.root, self.filename + ".shd")
+
+        self.freq = np.array(freq)
+        self.freq = np.unique(self.freq)
+        self.freq.sort()
+        if self.freq.size > 1:
+            self.broadband_run = True
+            self.nominal_frequency = float(self.freq[0])
+        else:
+            self.broadband_run = False
+            self.nominal_frequency = float(self.freq)
+
+        self.top_hs = kraken_top_hs
+        self.medium = kraken_medium
+        self.att = kraken_attenuation
+        self.bottom_hs = kraken_bottom_hs
+        self.field = kraken_field
+
+        self.nmedia = nmedia
+
+    def write_env(self):
+        # Write top halfspace lines
+        self.top_hs.write_lines(
+            kraken_medium=self.medium,
+            kraken_attenuation=self.att,
+            broadband_run=self.broadband_run,
+            slow_rootfinder=False,
+        )
+        # Write medium lines
+        self.medium.write_lines()
+        # Write bottom halfspace lines
+        self.bottom_hs.write_lines(kraken_medium=self.medium)
+        # Write field lines
+        self.field.write_lines()
+
+        # Write env lines
+        self.env_lines = []
+        # Bloc 1
+        self.env_lines.append(f"'{self.simulation_title}'\n")
+        self.env_lines.append(
+            align_var_description(f"{self.nominal_frequency}", "Nominal frequency (Hz)")
+        )
+        self.env_lines.append(
+            align_var_description(f"{self.nmedia}", "Number of media")
+        )
+        # Bloc 2
+        self.env_lines += self.top_hs.lines
+        # Bloc 3
+        self.env_lines += self.medium.lines
+        # Bloc 4
+        self.env_lines += self.bottom_hs.lines
+        # Bloc 5
+        self.env_lines += self.field.lines
+        # Bloc 6
+        self.env_lines.append(
+            align_var_description(f"{self.freq.size}", "Number of frequencies")
+        )
+        self.env_lines.append(
+            align_var_description(
+                " ".join([str(f) for f in self.freq]), "Frequencies (Hz)"
+            )
+        )
+
+        # Write lines to .env file
+        with open(self.env_fpath, "w") as f_out:
+            f_out.writelines(self.env_lines)
+
+
+class KrakenFlp:
+    def __init__(
+        self,
+        env,
+        src_type="point_source",
+        mode_theory="adiabatic",
+        mode_addition="coherent",
+        nb_modes=9999,
+        n_profiles=1,
+        profiles_ranges=0.0,
+        src_depth=[5],
+        n_rcv_z=1000,
+        rcv_z_min=0.0,
+        rcv_z_max=1000.0,
+        n_rcv_r=1001,
+        rcv_r_min=0.0,
+        rcv_r_max=50.0,
+        rcv_dist_offset=0.0,
+    ):
+        self.env = env
+        self.title_ = self.env.simulation_title
+        self.src_type_ = src_type
+        self.mode_theory_ = mode_theory
+        self.mode_addition_ = mode_addition
+        self.nb_modes_ = nb_modes
+        self.n_profiles_ = n_profiles
+        self.profiles_ranges_ = np.array(profiles_ranges)
+        if self.profiles_ranges_.size == 1:
+            self.profiles_ranges_ = np.array([profiles_ranges])
+
+        self.src_z_ = np.array(src_depth)
+        if self.src_z_.size == 1:
+            self.src_z_ = np.array([src_depth])
+
+        # Receiver depth info
+        self.n_rcv_z_ = n_rcv_z
+        self.rcv_z_min_ = rcv_z_min
+        self.rcv_z_max_ = rcv_z_max
+        # Receiver range info
+        self.n_rcv_r_ = n_rcv_r
+        self.rcv_r_min_ = rcv_r_min
+        self.rcv_r_max_ = rcv_r_max
+        self.rcv_dist_offset_ = rcv_dist_offset
+
+        self.set_codes()
+        # self.write_lines()
+
+    # TODO : add decorator to uptdate attributes on change
+
+    def set_codes(self):
+        # source type
+        if self.src_type_ == "point_source":
+            self.src_code = "R"
+        elif self.src_type_ == "line_source":
+            self.src_code = "X"
+        else:
+            raise ValueError(
+                f"Unknown mode theory method '{self.src_type_}'. Please pick one of the following: 'point_source', 'line_source'"
+            )
+
+        # mode theory
+        if self.mode_theory_ == "coupled":
+            self.th_code = "C"
+        elif self.mode_theory_ == "adiabatic":
+            self.th_code = "A"
+        else:
+            raise ValueError(
+                f"Unknown mode theory method '{self.mode_theory_}'. Please pick one of the following: 'coupled', 'adiabatic'"
+            )
+
+        # addition mode
+        if self.mode_addition_ == "coherent":
+            self.add_code = "C"
+        elif self.mode_addition_ == "incoherent":
+            self.add_code = "I"
+        else:
+            raise ValueError(
+                f"Unknown addition mode '{self.mode_addition_}'. Please pick one of the following: 'coherent', 'incoherent'"
+            )
+
+    def write_lines(self):
+        self.lines = []
+        self.lines.append(f"'{self.title_}'\n")
+        self.lines.append(
+            align_var_description(
+                f"'{self.src_code}{self.th_code} {self.add_code}'",
+                "Source type, Mode theory, Mode addition",
+            )
+        )
+        self.lines.append(align_var_description(f"{self.nb_modes_}", "Number of modes"))
+        self.lines.append(
+            align_var_description(f"{self.n_profiles_}", "Number of profiles")
+        )
+        self.lines.append(
+            align_var_description(
+                " ".join([str(r) for r in self.profiles_ranges_]) + " /",
+                "Profile ranges (km)",
+            )
+        )
+        self.lines.append(
+            align_var_description(f"{self.n_rcv_r_}", "Number of receiver ranges")
+        )
+        self.lines.append(
+            align_var_description(
+                f"{self.rcv_r_min_} {self.rcv_r_max_} /", "Receiver ranges (km)"
+            )
+        )
+
+        self.lines.append(
+            align_var_description(f"{self.src_z_.size}", "Number of source depth (m)")
+        )
+        self.lines.append(
+            align_var_description(
+                "".join([str(src_d) + " " for src_d in self.src_z_]) + " /",
+                "Source depths (m)",
+            )
+        )
+        self.lines.append(
+            align_var_description(f"{self.n_rcv_z_}", "Number of receiver depths (m)")
+        )
+        self.lines.append(
+            align_var_description(
+                f"{self.rcv_z_min_} {self.rcv_z_max_} /",
+                "Receiver depths (m)",
+            )
+        )
+        self.lines.append(
+            align_var_description(
+                f"{self.n_rcv_z_}", "Number of receiver range-displacements"
+            )
+        )
+        self.lines.append(
+            align_var_description(
+                f"{self.rcv_dist_offset_} /", "Receiver displacements (m)"
+            )
+        )
+
+    def write_flp(self):
+        self.write_lines()
+
+        with open(self.env.flp_fpath, "w") as f_out:
+            f_out.writelines(self.lines)
+
+
+if __name__ == "__main__":
+    top_hs = KrakenTopHalfspace()
+
+    z_ssp = np.array([0.0, 100.0, 1000.0])
+    cp_ssp = np.array([1500.0, 1550.0, 1512.0])
+    medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
+
+    bott_hs_properties = SAND_PROPERTIES
+    bott_hs_properties["z"] = z_ssp.max()
+    bott_hs = KrakenBottomHalfspace(halfspace_properties=bott_hs_properties)
+
+    att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
+    field = KrakenField(src_depth=50)
+
+    env = KrakenEnv(
+        title="Test de la classe KrakenEnv",
+        env_root=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\testPyAT",
+        env_filename="test_kraken_env",
+        freq=[10, 50, 16, 25, 20, 21, 62, 85, 93, 714, 16, 25, 20, 21, 62],
+        kraken_top_hs=top_hs,
+        kraken_medium=medium,
+        kraken_attenuation=att,
+        kraken_bottom_hs=bott_hs,
+        kraken_field=field,
+    )
+
+    env.write_env()
+
+    flp = KrakenFlp(env=env, src_depth=50)
+    flp.write_flp()

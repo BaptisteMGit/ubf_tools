@@ -1,0 +1,2 @@
+HTTP.NETRC=C:\Users\username\_netrc
+HTTP.COOKIEJAR=C:\Users\username\.cookies

@@ -314,7 +314,8 @@ def build_ambiguity_surf(ds, detection_metric):
                     .isel(src_trajectory_time=i_ship)
                     .values
                 )
-                diff = np.abs(lib) - np.abs(event)
+                # diff = np.abs(lib) - np.abs(event)
+                diff = lib - event
                 amb_surf = np.sum(diff**2, axis=2)
                 # amb_surf = np.sum(amb_surf, axis=2)
                 ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
@@ -407,7 +408,10 @@ def init_grid_around_event_src_traj(x_event_t, y_event_t, Lx, Ly, dx, dy):
 
 
 if __name__ == "__main__":
-    # Define environment
+    detection_metric = (
+        "intercorr0"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
+    )
+
     env_fname = "verlinden_1_test_case"
     env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
 
@@ -427,6 +431,7 @@ if __name__ == "__main__":
     library_src = init_library_src(dt, f0, fmax, depth)
     z_src = 5
 
+    # Define environment
     kraken_env, kraken_flp = verlinden_test_case_env(
         env_root=env_root,
         env_filename=env_fname,
@@ -476,8 +481,9 @@ if __name__ == "__main__":
         interp_src_pos_on_grid=False,
     )
 
-    detection_metric = (
-        "hilbert_env_intercorr0"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
-    )
     ds = build_ambiguity_surf(ds, detection_metric)
-    ds.to_netcdf(os.path.join(kraken_env.root, kraken_env.filename + ".nc"))
+    ds.to_netcdf(
+        os.path.join(
+            kraken_env.root, kraken_env.filename + "_" + detection_metric + ".nc"
+        )
+    )

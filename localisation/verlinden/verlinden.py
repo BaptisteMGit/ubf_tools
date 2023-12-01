@@ -7,7 +7,7 @@ import scipy.signal as signal
 from tqdm import tqdm
 
 from cst import BAR_FORMAT
-from utils import mult_along_axis
+from misc import mult_along_axis
 from signals import ship_noise, ship_spectrum
 from localisation.verlinden.AcousticComponent import AcousticSource
 from localisation.verlinden.RHUM_RHUM_env import (
@@ -19,12 +19,10 @@ from propa.kraken_toolbox.post_process import postprocess
 from propa.kraken_toolbox.utils import runkraken, runfield, waveguide_cutoff_freq
 from propa.kraken_toolbox.plot_utils import plotshd
 
-fs_kraken = 8 * 50
-f0 = 0.5
-fmax = 50
 
-
-def populate_grid(kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs):
+def populate_grid(
+    library_src, z_src, kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs
+):
     # Write env and flp files
     kraken_env.write_env()
     kraken_flp.write_flp()
@@ -55,8 +53,8 @@ def populate_grid(kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs):
         ),
         attrs=dict(
             title="Verlinden simulation with simple environment",
-            dx=grid_x.diff[0],
-            dy=grid_y.diff[0],
+            dx=np.diff(grid_x)[0],
+            dy=np.diff(grid_y)[0],
         ),
     )
 
@@ -71,9 +69,6 @@ def populate_grid(kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs):
             "x",
             "y",
             "r_from_obs",
-            "x_ship",
-            "y_ship",
-            "r_obs_ship",
         ],
         "": ["idx_obs"],
     }
@@ -88,7 +83,15 @@ def populate_grid(kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs):
     ds["y"].attrs["long_name"] = "y"
     ds["idx_obs"].attrs["long_name"] = "Receiver index"
 
-    library_src = event_src
+    # Build OBS pairs
+    obs_pairs = []
+    for i in ds.idx_obs.values:
+        for j in range(i + 1, ds.idx_obs.values[-1] + 1):
+            obs_pairs.append((i, j))
+    ds.coords["idx_obs_pairs"] = np.arange(len(obs_pairs))
+    ds.coords["idx_obs_in_pair"] = np.arange(2)
+    ds["obs_pairs"] = (["idx_obs_pairs", "idx_obs_in_pair"], obs_pairs)
+
     signal_library_dim = ["idx_obs", "y", "x", "library_signal_time"]
 
     for i_obs in tqdm(
@@ -101,7 +104,7 @@ def populate_grid(kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs):
             source=library_src,
             # rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
             rcv_range=rr_from_obs_flat,
-            rcv_depth=[z_ship],
+            rcv_depth=[z_src],
         )
         if i_obs == 0:
             ds["library_signal_time"] = t_obs
@@ -164,4 +167,312 @@ def populate_grid(kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs):
 
     ds["library_corr"] = (library_corr_dim, library_corr)
 
-    ds.to_netcdf(populated_ds_path)
+    ds.to_netcdf(
+        os.path.join(kraken_env.root, kraken_env.filename + "_populated" ".nc")
+    )
+
+    return ds
+
+
+def add_event_to_dataset(
+    library_dataset,
+    event_src,
+    event_t,
+    x_event_t,
+    y_event_t,
+    z_event,
+    interp_src_pos_on_grid=False,
+):
+    ds = library_dataset
+
+    r_event_t = [
+        np.sqrt(
+            (x_event_t - ds.x_obs.sel(idx_obs=i_obs).values) ** 2
+            + (y_event_t - ds.y_obs.sel(idx_obs=i_obs).values) ** 2
+        )
+        for i_obs in range(ds.dims["idx_obs"])
+    ]
+
+    ds.coords["event_signal_time"] = []
+    ds.coords["src_trajectory_time"] = event_t
+
+    ds["x_ship"] = (["src_trajectory_time"], x_event_t)
+    ds["y_ship"] = (["src_trajectory_time"], y_event_t)
+    ds["r_obs_ship"] = (["idx_obs", "src_trajectory_time"], np.array(r_event_t))
+
+    ds["event_signal_time"].attrs["units"] = "s"
+    ds["src_trajectory_time"].attrs["units"] = "s"
+
+    ds["x_ship"].attrs["long_name"] = "x_ship"
+    ds["y_ship"].attrs["long_name"] = "y_ship"
+    ds["r_obs_ship"].attrs["long_name"] = "Range from receiver to source"
+    ds["event_signal_time"].attrs["units"] = "Time"
+    ds["src_trajectory_time"].attrs["long_name"] = "Time"
+
+    if interp_src_pos_on_grid:
+        ds["x_ship"] = ds.x.sel(x=ds.x_ship, method="nearest")
+        ds["y_ship"] = ds.y.sel(y=ds.y_ship, method="nearest")
+        ds["r_obs_ship"].values = [
+            np.sqrt(
+                (ds.x_ship - ds.x_obs.sel(idx_obs=i_obs)) ** 2
+                + (ds.y_ship - ds.y_obs.sel(idx_obs=i_obs)) ** 2
+            )
+            for i_obs in range(ds.dims["idx_obs"])
+        ]
+        ds.attrs["source_positions"] = "Interpolated on grid"
+        ds.attrs["src_pos"] = "on_grid"
+    else:
+        ds.attrs["source_positions"] = "Not interpolated on grid"
+        ds.attrs["src_pos"] = "not_on_grid"
+
+    signal_event_dim = ["idx_obs", "src_trajectory_time", "event_signal_time"]
+
+    # Derive received signal for successive positions of the ship
+    for i_obs in tqdm(
+        range(ds.dims["idx_obs"]),
+        bar_format=BAR_FORMAT,
+        desc="Derive received signal for successive positions of the ship",
+    ):
+        t_obs, s_obs, Pos = postprocess(
+            shd_fpath=kraken_env.shd_fpath,
+            source=event_src,
+            rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
+            rcv_depth=[z_event],
+        )
+        if i_obs == 0:
+            ds["event_signal_time"] = t_obs
+            rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
+
+        rcv_signal_event[i_obs, :] = s_obs[:, 0, :].T
+
+        # Free memory
+        del t_obs, s_obs, Pos
+
+    ds["rcv_signal_event"] = (
+        ["idx_obs", "src_trajectory_time", "event_signal_time"],
+        rcv_signal_event,
+    )
+    ds.coords["event_corr_lags"] = signal.correlation_lags(
+        ds.dims["event_signal_time"], ds.dims["event_signal_time"]
+    )
+    ds["event_corr_lags"].attrs["units"] = "s"
+    ds["event_corr_lags"].attrs["long_name"] = "Correlation lags"
+
+    # Derive cross_correlation vector for each ship position
+    event_corr_dim = ["idx_obs_pairs", "src_trajectory_time", "event_corr_lags"]
+    event_corr = np.empty(tuple(ds.dims[d] for d in event_corr_dim))
+
+    for i_ship in tqdm(
+        range(ds.dims["src_trajectory_time"]),
+        bar_format=BAR_FORMAT,
+        desc="Derive correlation vector for each ship position",
+    ):
+        for i_pair, rcv_pair in enumerate(ds.obs_pairs):
+            s0 = ds.rcv_signal_event.sel(idx_obs=rcv_pair[0]).isel(
+                src_trajectory_time=i_ship
+            )
+            s1 = ds.rcv_signal_event.sel(idx_obs=rcv_pair[1]).isel(
+                src_trajectory_time=i_ship
+            )
+            corr_01 = signal.correlate(s0, s1)
+            corr_01 /= np.max(corr_01)
+
+            event_corr[i_pair, i_ship, :] = corr_01
+
+            del s0, s1, corr_01
+
+    ds["event_corr"] = (event_corr_dim, event_corr)
+
+    return ds
+
+
+def build_ambiguity_surf(ds, detection_metric):
+    ambiguity_surface_dim = ["idx_obs_pairs", "src_trajectory_time", "y", "x"]
+    ambiguity_surface = np.empty(tuple(ds.dims[d] for d in ambiguity_surface_dim))
+
+    for i_ship in tqdm(
+        range(ds.dims["src_trajectory_time"]),
+        bar_format=BAR_FORMAT,
+        desc="Build ambiguity surface",
+    ):
+        for i_pair in ds.idx_obs_pairs:
+            if detection_metric == "intercorr0":
+                amb_surf = mult_along_axis(
+                    ds.library_corr.sel(idx_obs_pairs=i_pair),
+                    ds.event_corr.sel(idx_obs_pairs=i_pair).isel(
+                        src_trajectory_time=i_ship
+                    ),
+                    axis=2,
+                )
+                amb_surf = np.sum(amb_surf, axis=2)
+                ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
+
+            elif detection_metric == "lstsquares":
+                lib = ds.library_corr.sel(idx_obs_pairs=i_pair).values
+                event = (
+                    ds.event_corr.sel(idx_obs_pairs=i_pair)
+                    .isel(src_trajectory_time=i_ship)
+                    .values
+                )
+                diff = np.abs(lib) - np.abs(event)
+                amb_surf = np.sum(diff**2, axis=2)
+                # amb_surf = np.sum(amb_surf, axis=2)
+                ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
+
+            elif detection_metric == "hibert_env_intercorr0":
+                lib_env = np.abs(
+                    signal.hilbert(ds.library_corr.sel(idx_obs_pairs=i_pair))
+                )
+                event_env = np.abs(
+                    signal.hilbert(
+                        ds.event_corr.sel(idx_obs_pairs=i_pair).isel(
+                            src_trajectory_time=i_ship
+                        )
+                    )
+                )
+                amb_surf = mult_along_axis(
+                    lib_env,
+                    event_env,
+                    axis=2,
+                )
+                amb_surf = np.sum(amb_surf, axis=2)
+                ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
+
+            del amb_surf
+
+    ds["ambiguity_surface"] = (
+        ambiguity_surface_dim,
+        ambiguity_surface,
+    )
+
+    # Derive src position
+    detected_pos_dim = ["idx_obs_pairs", "src_trajectory_time"]
+    if detection_metric in ["intercorr0", "hibert_env_intercorr0"]:
+        ds["detected_pos_x"] = ds.x.isel(
+            x=ds.ambiguity_surface.argmax(dim=["x", "y"])["x"]
+        )
+        ds["detected_pos_y"] = ds.y.isel(
+            y=ds.ambiguity_surface.argmax(dim=["x", "y"])["y"]
+        )
+
+    elif detection_metric == "lstsquares":
+        ds["detected_pos_x"] = ds.x.isel(
+            x=ds.ambiguity_surface.argmin(dim=["x", "y"])["x"]
+        )
+        ds["detected_pos_y"] = ds.y.isel(
+            y=ds.ambiguity_surface.argmin(dim=["x", "y"])["y"]
+        )
+
+    return ds
+
+
+def init_library_src(dt, f0, fmax, depth):
+    library_src_sig, t_library_src_sig = ship_noise()
+    fs = 1 / (t_library_src_sig[1] - t_library_src_sig[0])
+    nmax = int(fs * dt)
+    library_src_sig = library_src_sig[0:nmax]
+    t_library_src_sig = t_library_src_sig[0:nmax]
+
+    library_src = AcousticSource(signal=library_src_sig, time=t_library_src_sig)
+    library_src.set_kraken_freq(
+        fmin=max(f0, waveguide_cutoff_freq(max_depth=depth) + 1), fmax=fmax, df=1
+    )
+    return library_src
+
+
+def init_event_src_traj(x_begin, y_begin, x_end, y_end, v, dt):
+    Dtot = np.sqrt((x_begin - x_end) ** 2 + (y_begin - y_end) ** 2)
+
+    vx = v * (x_end - x_begin) / Dtot
+    vy = v * (y_end - y_begin) / Dtot
+
+    Ttot = Dtot / v + 3
+    t = np.arange(0, Ttot - dt, dt)
+
+    x_t = x_begin + vx * t
+    y_t = y_begin + vy * t
+
+    return x_t, y_t, t
+
+
+def init_grid_around_event_src_traj(x_event_t, y_event_t, Lx, Ly, dx, dy):
+    grid_x = np.arange(
+        -Lx / 2 + min(x_event_t), Lx / 2 + max(x_event_t), dx, dtype=np.float32
+    )
+    grid_y = np.arange(
+        -Ly / 2 + min(y_event_t), Ly / 2 + max(y_event_t), dy, dtype=np.float32
+    )
+    return grid_x, grid_y
+
+
+if __name__ == "__main__":
+    # Define environment
+    env_fname = "verlinden_1_test_case"
+    env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
+
+    dx = 100  # m
+    dy = 100  # m
+    v_ship = 50 / 3.6  # m/s
+    dt = (
+        min(dx, dy) / v_ship
+    )  # Minimum time spent by the source in a single grid box (s)
+    depth = 150  # Depth m
+
+    print(f"dx = {dx} m, dy = {dy} m, dt = {dt} s")
+
+    f0 = 0.5
+    fmax = 50
+
+    library_src = init_library_src(dt, f0, fmax, depth)
+    z_src = 5
+
+    kraken_env, kraken_flp = verlinden_test_case_env(
+        env_root=env_root,
+        env_filename=env_fname,
+        title=env_fname,
+        freq=library_src.kraken_freq,
+    )
+    # Define ship trajecory
+    x_ship_begin = -20000
+    y_ship_begin = 15000
+    x_ship_end = 9000
+    y_ship_end = 5000
+
+    x_ship_t, y_ship_t, t_ship = init_event_src_traj(
+        x_ship_begin, y_ship_begin, x_ship_end, y_ship_end, v_ship, dt
+    )
+
+    # TODO : remove
+    x_ship_t = x_ship_t[0:10]
+    y_ship_t = y_ship_t[0:10]
+    t_ship = t_ship[0:10]
+
+    # Grid around the ship trajectory
+    Lx = 15 * 1e3  # m
+    Ly = 15 * 1e3  # m
+    grid_x, grid_y = init_grid_around_event_src_traj(x_ship_t, y_ship_t, Lx, Ly, dx, dy)
+
+    # OBS positions
+    x_obs = [0, 500]
+    y_obs = [0, 0]
+
+    ds_library = populate_grid(
+        library_src, z_src, kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs
+    )
+
+    event_src = library_src
+    ds = add_event_to_dataset(
+        library_dataset=ds_library,
+        event_src=event_src,
+        event_t=t_ship,
+        x_event_t=x_ship_t,
+        y_event_t=y_ship_t,
+        z_event=z_src,
+        interp_src_pos_on_grid=False,
+    )
+
+    detection_metric = (
+        "lstsquares"  # "intercorr0", "lstsquares", "hibert_env_intercorr0"
+    )
+    ds = build_ambiguity_surf(ds, detection_metric)
+    ds.to_netcdf(os.path.join(kraken_env.root, kraken_env.filename + ".nc"))

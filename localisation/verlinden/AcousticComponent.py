@@ -46,6 +46,10 @@ class AcousticSource:
         self.min_freq = np.min(self.energetic_freq)
         self.max_freq = np.max(self.energetic_freq)
 
+    def set_kraken_freq(self, fmin, fmax, df):
+        """Set kraken frequency vector"""
+        self.kraken_freq = np.arange(fmin, fmax, df)
+
     def plot_spectrum(self, ax=None):
         """Plot source spectrum"""
         if ax is None:

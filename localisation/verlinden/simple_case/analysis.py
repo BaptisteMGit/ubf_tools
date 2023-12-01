@@ -7,9 +7,7 @@ import scipy.signal as signal
 from propa.kraken_toolbox.plot_utils import plotshd
 
 
-root = (
-    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\simple_case"
-)
+root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
 # env_fname = "verlinden_1_ssp"
 env_fname = "verlinden_1_test_case"
 
@@ -17,7 +15,7 @@ nc_path = os.path.join(root, env_fname + ".nc")
 ds = xr.open_dataset(nc_path)
 
 # Image folder
-root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation\verlinden\simple_case\isotropic\range_independent"
+root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation\verlinden\test_case\isotropic\range_independent"
 root_img = os.path.join(root_img, ds.src_pos, f"dx{ds.dx}m_dy{ds.dy}m")
 if not os.path.exists(root_img):
     os.makedirs(root_img)
@@ -42,8 +40,8 @@ ds.ambiguity_surface.isel(idx_obs_pairs=0, src_trajectory_time=0).plot.hist(bins
 x_offset = 5000
 y_offset = 5000
 
-dx = 50  # m
-dy = 50  # m
+dx = 10  # m
+dy = 10  # m
 Lx = 100 * 1e3  # m
 Ly = 80 * 1e3  # m
 grid_x = np.arange(-Lx / 2, Lx / 2, dx, dtype=np.float32)
@@ -64,31 +62,33 @@ rr_obs = np.array(
 delta_rr = rr_obs[0, ...] - rr_obs[1, ...]
 delta_rr_ship = ds.r_obs_ship.sel(idx_obs=0) - ds.r_obs_ship.sel(idx_obs=1)
 
-amb_surf = 10 * np.log10(ds.ambiguity_surface)
+amb_surf = -10 * np.log10(ds.ambiguity_surface)
 
 for i in range(n_instant_to_plot):
     plt.figure(figsize=(10, 8))
 
     amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).plot(
-        x="x", y="y", zorder=0, clim=[0, 1], cmap="jet"
+        x="x", y="y", zorder=0, vmin=0, vmax=10, cmap="jet"
     )
+
+    # plt.gca().get_images()[0].clim([0, 20])
     # ds.ambiguity_surface.isel(idx_obs_pairs=0, src_trajectory_time=i).plot(
     #     x="x", y="y", zorder=0, clim=[-1, 1]
     # )
     condition = np.abs(delta_rr - delta_rr_ship.isel(src_trajectory_time=i).values) < 10
-    plt.plot(
-        xx[condition],
-        yy[condition],
-        "k",
-        linestyle="--",
-        label=r"$ || \overrightarrow{O_0M} || - || \overrightarrow{O_1M} || =  \Delta_i|| \overrightarrow{O_iX_{ship}} ||$",
-        zorder=1,
-    )
+    # plt.plot(
+    #     xx[condition],
+    #     yy[condition],
+    #     "k",
+    #     linestyle="--",
+    #     label=r"$ || \overrightarrow{O_0M} || - || \overrightarrow{O_1M} || =  \Delta_i|| \overrightarrow{O_iX_{ship}} ||$",
+    #     zorder=1,
+    # )
 
     plt.scatter(
         ds.x_ship.isel(src_trajectory_time=i),
         ds.y_ship.isel(src_trajectory_time=i),
-        color="red",
+        color="k",
         marker="+",
         s=90,
         label=r"$X_{ship}$",
@@ -100,7 +100,7 @@ for i in range(n_instant_to_plot):
         ds.detected_pos_y.isel(idx_obs_pairs=0, src_trajectory_time=i),
         marker="o",
         facecolors="none",
-        edgecolors="blue",
+        edgecolors="black",
         s=120,
         linewidths=2.2,
         label="Estimated position",

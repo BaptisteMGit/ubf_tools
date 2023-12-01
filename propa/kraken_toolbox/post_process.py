@@ -2,7 +2,7 @@ import numpy as np
 import time
 
 from cst import C0, RHO_W
-from utils import mult_along_axis
+from misc import mult_along_axis
 from propa.kraken_toolbox.utils import runkraken
 from propa.kraken_toolbox.read_shd import readshd
 

@@ -319,7 +319,7 @@ def build_ambiguity_surf(ds, detection_metric):
                 # amb_surf = np.sum(amb_surf, axis=2)
                 ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
 
-            elif detection_metric == "hibert_env_intercorr0":
+            elif detection_metric == "hilbert_env_intercorr0":
                 lib_env = np.abs(
                     signal.hilbert(ds.library_corr.sel(idx_obs_pairs=i_pair))
                 )
@@ -346,8 +346,7 @@ def build_ambiguity_surf(ds, detection_metric):
     )
 
     # Derive src position
-    detected_pos_dim = ["idx_obs_pairs", "src_trajectory_time"]
-    if detection_metric in ["intercorr0", "hibert_env_intercorr0"]:
+    if detection_metric in ["intercorr0", "hilbert_env_intercorr0"]:
         ds["detected_pos_x"] = ds.x.isel(
             x=ds.ambiguity_surface.argmax(dim=["x", "y"])["x"]
         )
@@ -362,6 +361,8 @@ def build_ambiguity_surf(ds, detection_metric):
         ds["detected_pos_y"] = ds.y.isel(
             y=ds.ambiguity_surface.argmin(dim=["x", "y"])["y"]
         )
+
+    ds.attrs["detection_metric"] = detection_metric
 
     return ds
 
@@ -442,10 +443,11 @@ if __name__ == "__main__":
         x_ship_begin, y_ship_begin, x_ship_end, y_ship_end, v_ship, dt
     )
 
-    # TODO : remove
-    x_ship_t = x_ship_t[0:10]
-    y_ship_t = y_ship_t[0:10]
-    t_ship = t_ship[0:10]
+    # # TODO : remove
+    nmax_ship = 50
+    x_ship_t = x_ship_t[0:nmax_ship]
+    y_ship_t = y_ship_t[0:nmax_ship]
+    t_ship = t_ship[0:nmax_ship]
 
     # Grid around the ship trajectory
     Lx = 15 * 1e3  # m
@@ -456,8 +458,11 @@ if __name__ == "__main__":
     x_obs = [0, 500]
     y_obs = [0, 0]
 
-    ds_library = populate_grid(
-        library_src, z_src, kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs
+    # ds_library = populate_grid(
+    #     library_src, z_src, kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs
+    # )
+    ds_library = xr.open_dataset(
+        os.path.join(kraken_env.root, kraken_env.filename + "_populated" ".nc")
     )
 
     event_src = library_src
@@ -472,7 +477,7 @@ if __name__ == "__main__":
     )
 
     detection_metric = (
-        "lstsquares"  # "intercorr0", "lstsquares", "hibert_env_intercorr0"
+        "hilbert_env_intercorr0"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
     )
     ds = build_ambiguity_surf(ds, detection_metric)
     ds.to_netcdf(os.path.join(kraken_env.root, kraken_env.filename + ".nc"))

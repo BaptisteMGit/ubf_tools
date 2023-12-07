@@ -134,6 +134,7 @@ def populate_grid(
     library_corr = np.empty(tuple(ds.dims[d] for d in library_corr_dim))
 
     # Could be way faster with a FFT based approach
+    ns = ds.dims["library_signal_time"]
     for i_pair in tqdm(
         range(ds.dims["idx_obs_pairs"]),
         bar_format=BAR_FORMAT,
@@ -159,7 +160,32 @@ def populate_grid(
                     idx_obs=rcv_pair[1], x=ds.x.isel(x=i_x), y=ds.y.isel(y=i_y)
                 )
                 corr_01 = signal.correlate(s0, s1)
-                corr_01 /= np.max(corr_01)
+                n0 = corr_01.shape[0] // 2
+                autocorr0 = signal.correlate(s0, s0)
+                autocorr1 = signal.correlate(s1, s1)
+                corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
+
+                # # Plot autocorrelation
+                # plt.figure()
+                # plt.plot(
+                #     signal.correlation_lags(len(s0), len(s0)),
+                #     autocorr0,
+                #     label="autocorr",
+                # )
+                # # plt.plot(t_obs, s0, label="s0")
+                # plt.legend()
+
+                # plt.figure()
+                # plt.plot(
+                #     signal.correlation_lags(len(s0), len(s0)),
+                #     autocorr0,
+                #     label="autocorr",
+                # )
+                # # plt.plot(t_obs, s1, label="s1")
+                # plt.legend()
+                # plt.show()
+
+                # corr_01 /= np.max(corr_01)
 
                 library_corr[i_pair, i_y, i_x, :] = corr_01
 
@@ -274,8 +300,12 @@ def add_event_to_dataset(
             s1 = ds.rcv_signal_event.sel(idx_obs=rcv_pair[1]).isel(
                 src_trajectory_time=i_ship
             )
+
             corr_01 = signal.correlate(s0, s1)
-            corr_01 /= np.max(corr_01)
+            n0 = corr_01.shape[0] // 2
+            autocorr0 = signal.correlate(s0, s0)
+            autocorr1 = signal.correlate(s1, s1)
+            corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
 
             event_corr[i_pair, i_ship, :] = corr_01
 
@@ -304,7 +334,18 @@ def build_ambiguity_surf(ds, detection_metric):
                     ),
                     axis=2,
                 )
-                amb_surf = np.sum(amb_surf, axis=2)
+                autocorr_lib = np.sum(
+                    ds.library_corr.sel(idx_obs_pairs=i_pair).values ** 2, axis=2
+                )
+                autocorr_event = np.sum(
+                    ds.event_corr.sel(idx_obs_pairs=i_pair)
+                    .isel(src_trajectory_time=i_ship)
+                    .values
+                    ** 2
+                )
+                norm = np.sqrt(autocorr_lib * autocorr_event)
+                amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
+                amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
                 ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
 
             elif detection_metric == "lstsquares":
@@ -314,11 +355,15 @@ def build_ambiguity_surf(ds, detection_metric):
                     .isel(src_trajectory_time=i_ship)
                     .values
                 )
-                # diff = np.abs(lib) - np.abs(event)
                 diff = lib - event
-                amb_surf = np.sum(diff**2, axis=2)
-                # amb_surf = np.sum(amb_surf, axis=2)
-                ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
+                amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
+                amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
+                amb_surf = (
+                    1 - amb_surf
+                )  # Revert order so that diff = 0 corrspond to maximum of ambiguity surface
+                ambiguity_surface[i_pair, i_ship, ...] = (
+                    amb_surf - np.min(amb_surf)
+                ) / np.max(amb_surf)
 
             elif detection_metric == "hilbert_env_intercorr0":
                 lib_env = np.abs(
@@ -347,21 +392,24 @@ def build_ambiguity_surf(ds, detection_metric):
     )
 
     # Derive src position
-    if detection_metric in ["intercorr0", "hilbert_env_intercorr0"]:
-        ds["detected_pos_x"] = ds.x.isel(
-            x=ds.ambiguity_surface.argmax(dim=["x", "y"])["x"]
-        )
-        ds["detected_pos_y"] = ds.y.isel(
-            y=ds.ambiguity_surface.argmax(dim=["x", "y"])["y"]
-        )
+    ds["detected_pos_x"] = ds.x.isel(x=ds.ambiguity_surface.argmax(dim=["x", "y"])["x"])
+    ds["detected_pos_y"] = ds.y.isel(y=ds.ambiguity_surface.argmax(dim=["x", "y"])["y"])
 
-    elif detection_metric == "lstsquares":
-        ds["detected_pos_x"] = ds.x.isel(
-            x=ds.ambiguity_surface.argmin(dim=["x", "y"])["x"]
-        )
-        ds["detected_pos_y"] = ds.y.isel(
-            y=ds.ambiguity_surface.argmin(dim=["x", "y"])["y"]
-        )
+    # if detection_metric in ["intercorr0", "hilbert_env_intercorr0"]:
+    #     ds["detected_pos_x"] = ds.x.isel(
+    #         x=ds.ambiguity_surface.argmax(dim=["x", "y"])["x"]
+    #     )
+    #     ds["detected_pos_y"] = ds.y.isel(
+    #         y=ds.ambiguity_surface.argmax(dim=["x", "y"])["y"]
+    #     )
+
+    # elif detection_metric == "lstsquares":
+    #     ds["detected_pos_x"] = ds.x.isel(
+    #         x=ds.ambiguity_surface.argmin(dim=["x", "y"])["x"]
+    #     )
+    #     ds["detected_pos_y"] = ds.y.isel(
+    #         y=ds.ambiguity_surface.argmin(dim=["x", "y"])["y"]
+    #     )
 
     ds.attrs["detection_metric"] = detection_metric
 
@@ -409,7 +457,7 @@ def init_grid_around_event_src_traj(x_event_t, y_event_t, Lx, Ly, dx, dy):
 
 if __name__ == "__main__":
     detection_metric = (
-        "intercorr0"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
+        "lstsquares"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
     )
 
     env_fname = "verlinden_1_test_case"

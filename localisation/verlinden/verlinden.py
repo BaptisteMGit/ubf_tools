@@ -21,7 +21,15 @@ from propa.kraken_toolbox.plot_utils import plotshd
 
 
 def populate_grid(
-    library_src, z_src, kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs
+    library_src,
+    z_src,
+    kraken_env,
+    kraken_flp,
+    grid_x,
+    grid_y,
+    x_obs,
+    y_obs,
+    snr_dB=None,
 ):
     # Write env and flp files
     kraken_env.write_env()
@@ -116,6 +124,12 @@ def populate_grid(
         )
         rcv_signal_library[i_obs, :] = s_obs
 
+        if snr_dB is not None:
+            # Add noise to received signal
+            rcv_signal_library[i_obs, :] = add_noise_to_signal(
+                rcv_signal_library[i_obs, :], snr_dB=snr_dB
+            )
+
         # Free memory
         del s_obs, rr_from_obs_flat
 
@@ -192,9 +206,18 @@ def populate_grid(
                 del s0, s1, corr_01
 
     ds["library_corr"] = (library_corr_dim, library_corr)
+    if snr_dB is None:
+        ds.attrs["snr_dB"] = "noiseless"
+        snr_tag = "_noiseless"
+    else:
+        ds.attrs["snr_dB"] = snr_dB
+        snr_tag = f"_snr{snr_dB}dB"
 
     ds.to_netcdf(
-        os.path.join(kraken_env.root, kraken_env.filename + "_populated" ".nc")
+        os.path.join(
+            kraken_env.root,
+            kraken_env.filename + "_populated" + snr_tag + ".nc",
+        )
     )
 
     return ds
@@ -208,6 +231,7 @@ def add_event_to_dataset(
     y_event_t,
     z_event,
     interp_src_pos_on_grid=False,
+    snr_dB=None,
 ):
     ds = library_dataset
 
@@ -271,6 +295,12 @@ def add_event_to_dataset(
 
         rcv_signal_event[i_obs, :] = s_obs[:, 0, :].T
 
+        if snr_dB is not None:
+            # Add noise to received signal
+            rcv_signal_event[i_obs, :] = add_noise_to_signal(
+                rcv_signal_event[i_obs, :], snr_dB
+            )
+
         # Free memory
         del t_obs, s_obs, Pos
 
@@ -316,6 +346,20 @@ def add_event_to_dataset(
     return ds
 
 
+def add_noise_to_signal(sig, snr_dB):
+    # Add noise to signal assuming sig is an array with either 1D (like event signal (t)) or 3D (like library signal (x, y, t)) shape
+    if snr_dB is not None:
+        # First simple implementation : same noise level for all positions
+        # TODO : This need to be improved to take into account the propagation loss
+        P_sig = 1 / sig.shape[-1] * np.sum(sig**2, axis=-1)
+        sigma_noise = np.sqrt(P_sig * 10 ** (-snr_dB / 10))
+        # Generate gaussian noise
+        noise = np.random.normal(0, sigma_noise.mean(), sig.shape)
+        sig += noise
+
+    return sig
+
+
 def build_ambiguity_surf(ds, detection_metric):
     ambiguity_surface_dim = ["idx_obs_pairs", "src_trajectory_time", "y", "x"]
     ambiguity_surface = np.empty(tuple(ds.dims[d] for d in ambiguity_surface_dim))
@@ -326,35 +370,27 @@ def build_ambiguity_surf(ds, detection_metric):
         desc="Build ambiguity surface",
     ):
         for i_pair in ds.idx_obs_pairs:
+            lib_data = ds.library_corr.sel(idx_obs_pairs=i_pair)
+            event_vector = ds.event_corr.sel(idx_obs_pairs=i_pair).isel(
+                src_trajectory_time=i_ship
+            )
+
             if detection_metric == "intercorr0":
                 amb_surf = mult_along_axis(
-                    ds.library_corr.sel(idx_obs_pairs=i_pair),
-                    ds.event_corr.sel(idx_obs_pairs=i_pair).isel(
-                        src_trajectory_time=i_ship
-                    ),
+                    lib_data,
+                    event_vector,
                     axis=2,
                 )
-                autocorr_lib = np.sum(
-                    ds.library_corr.sel(idx_obs_pairs=i_pair).values ** 2, axis=2
-                )
-                autocorr_event = np.sum(
-                    ds.event_corr.sel(idx_obs_pairs=i_pair)
-                    .isel(src_trajectory_time=i_ship)
-                    .values
-                    ** 2
-                )
+                autocorr_lib = np.sum(lib_data.values**2, axis=2)
+                autocorr_event = np.sum(event_vector.values**2)
                 norm = np.sqrt(autocorr_lib * autocorr_event)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
                 ambiguity_surface[i_pair, i_ship, ...] = amb_surf
 
             elif detection_metric == "lstsquares":
-                lib = ds.library_corr.sel(idx_obs_pairs=i_pair).values
-                event = (
-                    ds.event_corr.sel(idx_obs_pairs=i_pair)
-                    .isel(src_trajectory_time=i_ship)
-                    .values
-                )
+                lib = lib_data.values
+                event = event_vector.values
                 diff = lib - event
                 amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
                 amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
@@ -364,16 +400,8 @@ def build_ambiguity_surf(ds, detection_metric):
                 ambiguity_surface[i_pair, i_ship, ...] = amb_surf
 
             elif detection_metric == "hilbert_env_intercorr0":
-                lib_env = np.abs(
-                    signal.hilbert(ds.library_corr.sel(idx_obs_pairs=i_pair))
-                )
-                event_env = np.abs(
-                    signal.hilbert(
-                        ds.event_corr.sel(idx_obs_pairs=i_pair).isel(
-                            src_trajectory_time=i_ship
-                        )
-                    )
-                )
+                lib_env = np.abs(signal.hilbert(lib_data))
+                event_env = np.abs(signal.hilbert(event_vector))
                 amb_surf = mult_along_axis(
                     lib_env,
                     event_env,
@@ -446,120 +474,142 @@ if __name__ == "__main__":
     # detection_metric = (
     #     "lstsquares"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
     # )
+    for snr in [None, -10, -5, -1, 0, 1, 5, 10, 20]:
+        if snr is None:
+            snr_tag = "_noiseless"
+        else:
+            snr_tag = f"_snr{snr}dB"
 
-    for detection_metric in ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]:
-        env_fname = "verlinden_1_test_case"
-        env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
+        for detection_metric in ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]:
+            env_fname = "verlinden_1_test_case"
+            env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
 
-        dx = 100  # m
-        dy = 100  # m
-        v_ship = 50 / 3.6  # m/s
-        dt = (
-            min(dx, dy) / v_ship
-        )  # Minimum time spent by the source in a single grid box (s)
-        depth = 150  # Depth m
+            dx = 100  # m
+            dy = 100  # m
+            v_ship = 50 / 3.6  # m/s
+            dt = (
+                min(dx, dy) / v_ship
+            )  # Minimum time spent by the source in a single grid box (s)
+            depth = 150  # Depth m
+            # snr = 5  # dB
 
-        print(f"dx = {dx} m, dy = {dy} m, dt = {dt} s")
+            print(f"dx = {dx} m, dy = {dy} m, dt = {dt} s")
 
-        f0 = 0.5
-        fmax = 50
+            f0 = 0.5
+            fmax = 50
 
-        library_src = init_library_src(dt, f0, fmax, depth)
+            library_src = init_library_src(dt, f0, fmax, depth)
 
-        # Spectrogram of the library source
-        # library_src_sig, t_library_src_sig = ship_noise()
-        # fs = 1 / (t_library_src_sig[1] - t_library_src_sig[0])
-        # library_src_disp = AcousticSource(
-        #     signal=library_src_sig, time=t_library_src_sig
-        # )
+            # Spectrogram of the library source
+            # library_src_sig, t_library_src_sig = ship_noise()
+            # fs = 1 / (t_library_src_sig[1] - t_library_src_sig[0])
+            # library_src_disp = AcousticSource(
+            #     signal=library_src_sig, time=t_library_src_sig
+            # )
 
-        # Nt_w = 512 * 16  # window size
-        # overlap_window = 3 / 4
+            # Nt_w = 512 * 16  # window size
+            # overlap_window = 3 / 4
 
-        # f_, t_ref, Sxx = signal.spectrogram(
-        #     library_src_disp.signal,
-        #     fs=library_src_disp.fs,
-        #     window="hamming",
-        #     nperseg=Nt_w,
-        #     noverlap=int(Nt_w * overlap_window),
-        #     nfft=Nt_w,
-        #     mode="complex",
-        # )
+            # f_, t_ref, Sxx = signal.spectrogram(
+            #     library_src_disp.signal,
+            #     fs=library_src_disp.fs,
+            #     window="hamming",
+            #     nperseg=Nt_w,
+            #     noverlap=int(Nt_w * overlap_window),
+            #     nfft=Nt_w,
+            #     mode="complex",
+            # )
 
-        # # Plot the spectrogram
-        # plt.figure()
-        # h = plt.pcolormesh(
-        #     t_ref, f_, 20 * np.log10(np.abs(Sxx)), shading="gouraud", cmap="jet"
-        # )
-        # plt.colorbar(label="PSD [dB/Hz]")
-        # plt.ylim([0, library_src_disp.fs / 2])
-        # plt.clim(
-        #     vmin=np.max(20 * np.log10(np.abs(Sxx))) - 80,
-        #     vmax=np.max(20 * np.log10(np.abs(Sxx))),
-        # )
-        # plt.xlabel("Time (s)")
-        # plt.ylabel("Frequency (Hz)")
-        # plt.title("Spectrogram")
+            # # Plot the spectrogram
+            # plt.figure()
+            # h = plt.pcolormesh(
+            #     t_ref, f_, 20 * np.log10(np.abs(Sxx)), shading="gouraud", cmap="jet"
+            # )
+            # plt.colorbar(label="PSD [dB/Hz]")
+            # plt.ylim([0, library_src_disp.fs / 2])
+            # plt.clim(
+            #     vmin=np.max(20 * np.log10(np.abs(Sxx))) - 80,
+            #     vmax=np.max(20 * np.log10(np.abs(Sxx))),
+            # )
+            # plt.xlabel("Time (s)")
+            # plt.ylabel("Frequency (Hz)")
+            # plt.title("Spectrogram")
 
-        # plt.show()
+            # plt.show()
 
-        z_src = 5
+            z_src = 5
 
-        # Define environment
-        kraken_env, kraken_flp = verlinden_test_case_env(
-            env_root=env_root,
-            env_filename=env_fname,
-            title=env_fname,
-            freq=library_src.kraken_freq,
-        )
-        # Define ship trajecory
-        x_ship_begin = -20000
-        y_ship_begin = 15000
-        x_ship_end = 9000
-        y_ship_end = 5000
-
-        x_ship_t, y_ship_t, t_ship = init_event_src_traj(
-            x_ship_begin, y_ship_begin, x_ship_end, y_ship_end, v_ship, dt
-        )
-
-        # # TODO : remove
-        nmax_ship = 50
-        x_ship_t = x_ship_t[0:nmax_ship]
-        y_ship_t = y_ship_t[0:nmax_ship]
-        t_ship = t_ship[0:nmax_ship]
-
-        # Grid around the ship trajectory
-        Lx = 15 * 1e3  # m
-        Ly = 15 * 1e3  # m
-        grid_x, grid_y = init_grid_around_event_src_traj(
-            x_ship_t, y_ship_t, Lx, Ly, dx, dy
-        )
-
-        # OBS positions
-        x_obs = [0, 500]
-        y_obs = [0, 0]
-
-        # ds_library = populate_grid(
-        #     library_src, z_src, kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs
-        # )
-        ds_library = xr.open_dataset(
-            os.path.join(kraken_env.root, kraken_env.filename + "_populated" ".nc")
-        )
-
-        event_src = library_src
-        ds = add_event_to_dataset(
-            library_dataset=ds_library,
-            event_src=event_src,
-            event_t=t_ship,
-            x_event_t=x_ship_t,
-            y_event_t=y_ship_t,
-            z_event=z_src,
-            interp_src_pos_on_grid=True,
-        )
-
-        ds = build_ambiguity_surf(ds, detection_metric)
-        ds.to_netcdf(
-            os.path.join(
-                kraken_env.root, kraken_env.filename + "_" + detection_metric + ".nc"
+            # Define environment
+            kraken_env, kraken_flp = verlinden_test_case_env(
+                env_root=env_root,
+                env_filename=env_fname,
+                title=env_fname,
+                freq=library_src.kraken_freq,
             )
-        )
+            # Define ship trajecory
+            x_ship_begin = -20000
+            y_ship_begin = 15000
+            x_ship_end = 9000
+            y_ship_end = 5000
+
+            x_ship_t, y_ship_t, t_ship = init_event_src_traj(
+                x_ship_begin, y_ship_begin, x_ship_end, y_ship_end, v_ship, dt
+            )
+
+            # # TODO : remove
+            nmax_ship = 100
+            nmax_ship = min(nmax_ship, len(x_ship_t))
+            x_ship_t = x_ship_t[0:nmax_ship]
+            y_ship_t = y_ship_t[0:nmax_ship]
+            t_ship = t_ship[0:nmax_ship]
+
+            # Grid around the ship trajectory
+            Lx = 15 * 1e3  # m
+            Ly = 15 * 1e3  # m
+            grid_x, grid_y = init_grid_around_event_src_traj(
+                x_ship_t, y_ship_t, Lx, Ly, dx, dy
+            )
+
+            # OBS positions
+            x_obs = [0, 500]
+            y_obs = [0, 0]
+
+            populated_path = os.path.join(
+                kraken_env.root, kraken_env.filename + "_populated" + snr_tag + ".nc"
+            )
+
+            if os.path.exists(populated_path):
+                ds_library = xr.open_dataset(populated_path)
+            else:
+                ds_library = populate_grid(
+                    library_src,
+                    z_src,
+                    kraken_env,
+                    kraken_flp,
+                    grid_x,
+                    grid_y,
+                    x_obs,
+                    y_obs,
+                    snr_dB=snr,
+                )
+
+            event_src = library_src
+            ds = add_event_to_dataset(
+                library_dataset=ds_library,
+                event_src=event_src,
+                event_t=t_ship,
+                x_event_t=x_ship_t,
+                y_event_t=y_ship_t,
+                z_event=z_src,
+                interp_src_pos_on_grid=True,
+                snr_dB=snr,
+            )
+
+            ds = build_ambiguity_surf(ds, detection_metric)
+            # ds.attrs["snr_dB"] = snr
+            ds.to_netcdf(
+                os.path.join(
+                    kraken_env.root,
+                    kraken_env.filename + "_" + detection_metric + snr_tag + ".nc",
+                )
+            )

@@ -370,7 +370,7 @@ class KrakenBottomHalfspace:
 
         # TODO : Add Half space properties
         if self.use_halfspace_properties:
-            ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S- wave attenuation"
+            ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S-wave attenuation"
             half_space_prop = align_var_description(
                 f"{kraken_medium.z_ssp_.max():.3f} {self.cp_top_halfspace:.3f} {self.cs_top_halfspace:.3f} {self.rho_top_halfspace:.3f} {self.ap_top_halfspace:.3f} {self.as_top_halfspace:.3f}",
                 ssp_desc,

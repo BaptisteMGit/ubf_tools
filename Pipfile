@@ -10,6 +10,7 @@ xarray = "*"
 scipy = "*"
 tqdm = "*"
 arlpy = "*"
+moviepy = "*"
 
 [dev-packages]
 ipykernel = "*"

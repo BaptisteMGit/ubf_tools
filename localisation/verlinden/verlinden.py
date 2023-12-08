@@ -346,7 +346,7 @@ def build_ambiguity_surf(ds, detection_metric):
                 norm = np.sqrt(autocorr_lib * autocorr_event)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
-                ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
+                ambiguity_surface[i_pair, i_ship, ...] = amb_surf
 
             elif detection_metric == "lstsquares":
                 lib = ds.library_corr.sel(idx_obs_pairs=i_pair).values
@@ -360,10 +360,8 @@ def build_ambiguity_surf(ds, detection_metric):
                 amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
                 amb_surf = (
                     1 - amb_surf
-                )  # Revert order so that diff = 0 corrspond to maximum of ambiguity surface
-                ambiguity_surface[i_pair, i_ship, ...] = (
-                    amb_surf - np.min(amb_surf)
-                ) / np.max(amb_surf)
+                )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface
+                ambiguity_surface[i_pair, i_ship, ...] = amb_surf
 
             elif detection_metric == "hilbert_env_intercorr0":
                 lib_env = np.abs(
@@ -381,8 +379,13 @@ def build_ambiguity_surf(ds, detection_metric):
                     event_env,
                     axis=2,
                 )
-                amb_surf = np.sum(amb_surf, axis=2)
-                ambiguity_surface[i_pair, i_ship, ...] = amb_surf / np.max(amb_surf)
+
+                autocorr_lib = np.sum(lib_env**2, axis=2)
+                autocorr_event = np.sum(event_env**2)
+                norm = np.sqrt(autocorr_lib * autocorr_event)
+                amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
+                amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
+                ambiguity_surface[i_pair, i_ship, ...] = amb_surf
 
             del amb_surf
 
@@ -394,22 +397,6 @@ def build_ambiguity_surf(ds, detection_metric):
     # Derive src position
     ds["detected_pos_x"] = ds.x.isel(x=ds.ambiguity_surface.argmax(dim=["x", "y"])["x"])
     ds["detected_pos_y"] = ds.y.isel(y=ds.ambiguity_surface.argmax(dim=["x", "y"])["y"])
-
-    # if detection_metric in ["intercorr0", "hilbert_env_intercorr0"]:
-    #     ds["detected_pos_x"] = ds.x.isel(
-    #         x=ds.ambiguity_surface.argmax(dim=["x", "y"])["x"]
-    #     )
-    #     ds["detected_pos_y"] = ds.y.isel(
-    #         y=ds.ambiguity_surface.argmax(dim=["x", "y"])["y"]
-    #     )
-
-    # elif detection_metric == "lstsquares":
-    #     ds["detected_pos_x"] = ds.x.isel(
-    #         x=ds.ambiguity_surface.argmin(dim=["x", "y"])["x"]
-    #     )
-    #     ds["detected_pos_y"] = ds.y.isel(
-    #         y=ds.ambiguity_surface.argmin(dim=["x", "y"])["y"]
-    #     )
 
     ds.attrs["detection_metric"] = detection_metric
 
@@ -456,82 +443,123 @@ def init_grid_around_event_src_traj(x_event_t, y_event_t, Lx, Ly, dx, dy):
 
 
 if __name__ == "__main__":
-    detection_metric = (
-        "lstsquares"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
-    )
-
-    env_fname = "verlinden_1_test_case"
-    env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
-
-    dx = 100  # m
-    dy = 100  # m
-    v_ship = 50 / 3.6  # m/s
-    dt = (
-        min(dx, dy) / v_ship
-    )  # Minimum time spent by the source in a single grid box (s)
-    depth = 150  # Depth m
-
-    print(f"dx = {dx} m, dy = {dy} m, dt = {dt} s")
-
-    f0 = 0.5
-    fmax = 50
-
-    library_src = init_library_src(dt, f0, fmax, depth)
-    z_src = 5
-
-    # Define environment
-    kraken_env, kraken_flp = verlinden_test_case_env(
-        env_root=env_root,
-        env_filename=env_fname,
-        title=env_fname,
-        freq=library_src.kraken_freq,
-    )
-    # Define ship trajecory
-    x_ship_begin = -20000
-    y_ship_begin = 15000
-    x_ship_end = 9000
-    y_ship_end = 5000
-
-    x_ship_t, y_ship_t, t_ship = init_event_src_traj(
-        x_ship_begin, y_ship_begin, x_ship_end, y_ship_end, v_ship, dt
-    )
-
-    # # TODO : remove
-    nmax_ship = 50
-    x_ship_t = x_ship_t[0:nmax_ship]
-    y_ship_t = y_ship_t[0:nmax_ship]
-    t_ship = t_ship[0:nmax_ship]
-
-    # Grid around the ship trajectory
-    Lx = 15 * 1e3  # m
-    Ly = 15 * 1e3  # m
-    grid_x, grid_y = init_grid_around_event_src_traj(x_ship_t, y_ship_t, Lx, Ly, dx, dy)
-
-    # OBS positions
-    x_obs = [0, 500]
-    y_obs = [0, 0]
-
-    # ds_library = populate_grid(
-    #     library_src, z_src, kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs
+    # detection_metric = (
+    #     "lstsquares"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
     # )
-    ds_library = xr.open_dataset(
-        os.path.join(kraken_env.root, kraken_env.filename + "_populated" ".nc")
-    )
 
-    event_src = library_src
-    ds = add_event_to_dataset(
-        library_dataset=ds_library,
-        event_src=event_src,
-        event_t=t_ship,
-        x_event_t=x_ship_t,
-        y_event_t=y_ship_t,
-        z_event=z_src,
-        interp_src_pos_on_grid=False,
-    )
+    for detection_metric in ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]:
+        env_fname = "verlinden_1_test_case"
+        env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
 
-    ds = build_ambiguity_surf(ds, detection_metric)
-    ds.to_netcdf(
-        os.path.join(
-            kraken_env.root, kraken_env.filename + "_" + detection_metric + ".nc"
+        dx = 100  # m
+        dy = 100  # m
+        v_ship = 50 / 3.6  # m/s
+        dt = (
+            min(dx, dy) / v_ship
+        )  # Minimum time spent by the source in a single grid box (s)
+        depth = 150  # Depth m
+
+        print(f"dx = {dx} m, dy = {dy} m, dt = {dt} s")
+
+        f0 = 0.5
+        fmax = 50
+
+        library_src = init_library_src(dt, f0, fmax, depth)
+
+        # Spectrogram of the library source
+        # library_src_sig, t_library_src_sig = ship_noise()
+        # fs = 1 / (t_library_src_sig[1] - t_library_src_sig[0])
+        # library_src_disp = AcousticSource(
+        #     signal=library_src_sig, time=t_library_src_sig
+        # )
+
+        # Nt_w = 512 * 16  # window size
+        # overlap_window = 3 / 4
+
+        # f_, t_ref, Sxx = signal.spectrogram(
+        #     library_src_disp.signal,
+        #     fs=library_src_disp.fs,
+        #     window="hamming",
+        #     nperseg=Nt_w,
+        #     noverlap=int(Nt_w * overlap_window),
+        #     nfft=Nt_w,
+        #     mode="complex",
+        # )
+
+        # # Plot the spectrogram
+        # plt.figure()
+        # h = plt.pcolormesh(
+        #     t_ref, f_, 20 * np.log10(np.abs(Sxx)), shading="gouraud", cmap="jet"
+        # )
+        # plt.colorbar(label="PSD [dB/Hz]")
+        # plt.ylim([0, library_src_disp.fs / 2])
+        # plt.clim(
+        #     vmin=np.max(20 * np.log10(np.abs(Sxx))) - 80,
+        #     vmax=np.max(20 * np.log10(np.abs(Sxx))),
+        # )
+        # plt.xlabel("Time (s)")
+        # plt.ylabel("Frequency (Hz)")
+        # plt.title("Spectrogram")
+
+        # plt.show()
+
+        z_src = 5
+
+        # Define environment
+        kraken_env, kraken_flp = verlinden_test_case_env(
+            env_root=env_root,
+            env_filename=env_fname,
+            title=env_fname,
+            freq=library_src.kraken_freq,
         )
-    )
+        # Define ship trajecory
+        x_ship_begin = -20000
+        y_ship_begin = 15000
+        x_ship_end = 9000
+        y_ship_end = 5000
+
+        x_ship_t, y_ship_t, t_ship = init_event_src_traj(
+            x_ship_begin, y_ship_begin, x_ship_end, y_ship_end, v_ship, dt
+        )
+
+        # # TODO : remove
+        nmax_ship = 50
+        x_ship_t = x_ship_t[0:nmax_ship]
+        y_ship_t = y_ship_t[0:nmax_ship]
+        t_ship = t_ship[0:nmax_ship]
+
+        # Grid around the ship trajectory
+        Lx = 15 * 1e3  # m
+        Ly = 15 * 1e3  # m
+        grid_x, grid_y = init_grid_around_event_src_traj(
+            x_ship_t, y_ship_t, Lx, Ly, dx, dy
+        )
+
+        # OBS positions
+        x_obs = [0, 500]
+        y_obs = [0, 0]
+
+        # ds_library = populate_grid(
+        #     library_src, z_src, kraken_env, kraken_flp, grid_x, grid_y, x_obs, y_obs
+        # )
+        ds_library = xr.open_dataset(
+            os.path.join(kraken_env.root, kraken_env.filename + "_populated" ".nc")
+        )
+
+        event_src = library_src
+        ds = add_event_to_dataset(
+            library_dataset=ds_library,
+            event_src=event_src,
+            event_t=t_ship,
+            x_event_t=x_ship_t,
+            y_event_t=y_ship_t,
+            z_event=z_src,
+            interp_src_pos_on_grid=True,
+        )
+
+        ds = build_ambiguity_surf(ds, detection_metric)
+        ds.to_netcdf(
+            os.path.join(
+                kraken_env.root, kraken_env.filename + "_" + detection_metric + ".nc"
+            )
+        )

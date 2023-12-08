@@ -153,15 +153,84 @@ class KrakenMedium:
         self.sigma_ = 0.0
 
     def plot_medium(self):
-        self.plot_spp()
+        fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
+        axs[0].set_ylabel("Depth [m]")
+        self.plot_spp(ax=axs[0])
+        self.plot_attenuation(ax=axs[1])
+        self.plot_density(ax=axs[2])
+        plt.suptitle("Medium properties")
+        plt.tight_layout()
+        plt.show()
 
-    def plot_spp(self):
-        plt.figure(figsize=(10, 8))
-        plt.plot(self.cp_ssp_, self.z_ssp_, label="C-wave celerity")
-        plt.gca().invert_yaxis()
-        plt.xlabel("Celerity (m/s)")
-        plt.ylabel("Depth (m)")
-        plt.legend()
+    def plot_spp(self, ax=None):
+        if ax is None:
+            plt.figure(figsize=(10, 8))
+            ax = plt.gca()
+            ax.set_ylabel("Depth [m]")
+        ax.invert_yaxis()
+        col1 = "red"
+        ax.plot(self.cp_ssp_, self.z_ssp_, color=col1)
+        ax.tick_params(axis="x", labelcolor=col1)
+        ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]", color=col1)
+        # ax.set_title("Sound speed profile")
+
+        if self.cs_ssp_.size == 1:
+            cs = np.ones(self.z_ssp_.size) * self.cs_ssp_
+        else:
+            cs = self.cs_ssp_
+        ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
+        col2 = "blue"
+        ax_bis.plot(cs, self.z_ssp_, color=col2)
+        ax_bis.tick_params(axis="x", labelcolor=col2)
+        ax_bis.set_xlabel("S-wave celerity " + r"[$m.s^{-1}$]", color=col2)
+
+    def plot_attenuation(self, ax=None):
+        if ax is None:
+            plt.figure(figsize=(10, 8))
+            ax = plt.gca()
+            ax.set_ylabel("Depth [m]")
+
+        if self.ap_.size == 1:
+            ap = np.ones(self.z_ssp_.size) * self.ap_
+        else:
+            ap = self.ap_
+
+        ax.invert_yaxis()
+        col1 = "red"
+        ax.plot(ap, self.z_ssp_, color=col1)
+        ax.tick_params(axis="x", labelcolor=col1)
+        ax.set_xlabel("C-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col1)
+        # ax.set_title("Attenuation profile")
+
+        if self.as_.size == 1:
+            as_ = np.ones(self.z_ssp_.size) * self.as_
+        else:
+            as_ = self.as_
+
+        ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
+        col2 = "blue"
+        ax_bis.plot(as_, self.z_ssp_, color=col2)
+        ax_bis.tick_params(axis="x", labelcolor=col2)
+        ax_bis.set_xlabel("S-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col2)
+
+        # ax.plot(as_, self.z_ssp_, label="S-wave")
+
+    def plot_density(self, ax=None):
+        if ax is None:
+            plt.figure(figsize=(10, 8))
+            ax = plt.gca()
+            ax.set_ylabel("Depth [m]")
+
+        if self.rho_.size == 1:
+            rho = np.ones(self.z_ssp_.size) * self.rho_
+        else:
+            rho = self.rho_
+        ax.plot(rho, self.z_ssp_, label="Density", color="blue")
+        ax.invert_yaxis()
+        ax.tick_params(axis="x", labelcolor="blue")
+        ax.set_xlabel("Density " + r"[$g.cm^{-3}$]", color="blue")
+
+        # ax.set_title("Density")
 
 
 class KrakenTopHalfspace:
@@ -574,6 +643,11 @@ class KrakenEnv:
         with open(self.env_fpath, "w") as f_out:
             f_out.writelines(self.env_lines)
 
+    def plot_env(self):
+        self.medium.plot_medium()
+
+        # pass
+
 
 class KrakenFlp:
     def __init__(
@@ -722,9 +796,12 @@ class KrakenFlp:
 if __name__ == "__main__":
     top_hs = KrakenTopHalfspace()
 
-    z_ssp = np.array([0.0, 100.0, 1000.0])
-    cp_ssp = np.array([1500.0, 1550.0, 1512.0])
+    z_ssp = np.array([0.0, 100.0, 500, 600, 700, 1000.0])
+    cp_ssp = np.array([1500.0, 1550.0, 1540.0, 1532.0, 1522.0, 1512.0])
     medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
+
+    medium.plot_medium()
+    plt.show()
 
     bott_hs_properties = SAND_PROPERTIES
     bott_hs_properties["z"] = z_ssp.max()

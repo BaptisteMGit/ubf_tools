@@ -7,12 +7,38 @@ from propa.kraken_toolbox.utils import runkraken
 from propa.kraken_toolbox.read_shd import readshd
 
 
-def postprocess(shd_fpath, source, rcv_range, rcv_depth):
+def postprocess(
+    shd_fpath, source, rcv_range, rcv_depth, domain="time", apply_delay=True, delay=None
+):
+    if domain == "time":
+        return postprocess_timedomain(
+            shd_fpath,
+            source,
+            rcv_range,
+            rcv_depth,
+            apply_delay=apply_delay,
+            delay=delay,
+        )
+    elif domain == "freq":
+        return postprocess_ir(
+            shd_fpath, source, rcv_range, rcv_depth, apply_delay=apply_delay
+        )
+
+
+def postprocess_ir(
+    shd_fpath, source, rcv_range, rcv_depth, apply_delay=True, delay=None
+):
+    pass
+
+
+def postprocess_timedomain(
+    shd_fpath, source, rcv_range, rcv_depth, apply_delay=True, delay=None
+):
     """Post process Kraken run to derive time serie of the received signal through Fourier synthesis."""
 
     # Get frequencies
-    positive_fft_freq = source.freq[source.freq > 0]
-    positive_source_spectrum = source.spectrum[source.freq > 0]
+    positive_fft_freq = source.freq[(source.freq >= 0)]
+    positive_source_spectrum = source.spectrum[(source.freq >= 0)]
 
     _, _, freqVec, _, _, _, field_pos, _ = readshd(filename=shd_fpath, freq=0)
     # Receiver position in the grid
@@ -24,7 +50,9 @@ def postprocess(shd_fpath, source, rcv_range, rcv_depth):
     ]
     rr, zz = np.meshgrid(rcv_pos_idx_r, rcv_pos_idx_z)
 
-    """ Quicker implementation with """
+    """ Quicker implementation - Kraken run for a limited number of frequencies compare to the source spectrum
+    The pressure field only needs to be loaded for the frequencies used by Kraken. Each frequency of the source spectrum is then
+    asssoicated to the closest frequency used by Kraken."""
     # nf0
     nf_arr = [
         len(positive_fft_freq[positive_fft_freq <= (freqVec[0] + freqVec[1]) / 2])
@@ -57,33 +85,110 @@ def postprocess(shd_fpath, source, rcv_range, rcv_depth):
         # Load pressure field
         _, _, _, _, _, _, _, pressure = readshd(filename=shd_fpath, freq=f_k)
 
-        # Potential velocity field for freq f <-> spatial transfert function
+        # Spatial transfert function
         p_f = np.squeeze(pressure, axis=(0, 1))
         pf_array[prev_n:next_n, ...] = np.tile(p_f[zz, rr], (nf_arr[ifk], 1, 1))
         prev_n = next_n
 
-    # pressure field given by field.exe is the transmission loss pressure field : p/p0(r=1) with p0(r) = exp(ik0r)/(4*pi*r))
-    norm_factor = (
-        RHO_W / np.pi * np.exp(1j * (2 * np.pi * positive_fft_freq / C0 - np.pi / 2))
-    )
-    received_signal_f = mult_along_axis(
+    # TODO : check with Bazile
+    # # pressure field given by field.exe is the transmission loss pressure field : p/p0(r=1) with p0(r) = exp(ik0r)/(4*pi*r))
+    # norm_factor = (
+    #     RHO_W / np.pi * np.exp(1j * (2 * np.pi * positive_fft_freq / C0 - np.pi / 2))
+    # )
+    # norm_factor = np.exp(1j * 3 * np.pi / 4) / (4 * np.pi)
+    norm_factor = 1
+
+    transmited_field_f = mult_along_axis(
         pf_array, positive_source_spectrum * norm_factor, axis=0
     )
 
-    # Apply corresponding delay to the signal
-    for ir, rcv_r in enumerate(rcv_range):
-        delay = np.exp(-1j * 2 * np.pi * rcv_r / C0 * positive_fft_freq)
-        received_signal_f[..., ir] = mult_along_axis(
-            received_signal_f[..., ir], delay, axis=0
-        )
+    # # Apply corresponding delay to the signal
+    if apply_delay:
+        for ir, rcv_r in enumerate(rcv_range):  # TODO: remove loop for efficiency
+            if delay is None:
+                tau = rcv_r / C0
+            else:
+                tau = delay[ir]
+
+            delay_f = np.exp(1j * 2 * np.pi * tau * positive_fft_freq)
+
+            transmited_field_f[..., ir] = mult_along_axis(
+                transmited_field_f[..., ir], delay_f, axis=0
+            )
+
+    # Interpolate phase and magnitude for better frequency resolution with limited CPU cost
+    # interp_impulse_response()
 
     # real inverse FFT to exploit conjugate symmetry of the transfert function (see Jensen et al. 2000 p.612-613)
-    received_signal_t = np.fft.irfft(received_signal_f, axis=0, n=source.ns)
+    nfft_inv = (
+        4 * source.nfft
+    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    received_signal_t = np.fft.irfft(transmited_field_f, axis=0, n=nfft_inv)
+    transmited_field_t = np.real(received_signal_t)
 
-    transmited_field = np.real(received_signal_t)
-    time_vector = np.arange(0, transmited_field.shape[0] / source.fs, 1 / source.fs)
+    T_tot = 1 / source.spectrum_df
+    dt = T_tot / received_signal_t.shape[0]
+    time_vector = np.arange(0, T_tot, dt)
 
-    return time_vector, transmited_field, field_pos
+    return (
+        time_vector,
+        transmited_field_t,
+        field_pos,
+    )
+
+
+def interp_impulse_response():
+    # # Plot received spectrum
+    # import matplotlib.pyplot as plt
+
+    # print(positive_fft_freq.shape, transmited_field_f.shape)
+    # plt.figure()
+    # plt.vlines(freqVec, ymin=-0.01, ymax=0.01, color="k", linestyle="--")
+    # plt.plot(positive_fft_freq, np.real(transmited_field_f[:, 0, 0]), label="real")
+    # plt.plot(positive_fft_freq, np.imag(transmited_field_f[:, 0, 0]), label="imag")
+    # plt.xlabel("Frequency (Hz)")
+    # plt.show()
+
+    # # from scipy import interpolate
+    # f_interp = np.arange(positive_fft_freq.min(), positive_fft_freq.max(), 0.1)
+    # interp_phases = np.interp(
+    #     f_interp,
+    #     positive_fft_freq,
+    #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
+    # )
+
+    # # phase_interpolator = interpolate.interp1d(
+    # #     positive_fft_freq,
+    # #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
+    # #     kind="cubic",
+    # # )
+    # # interp_phases = phase_interpolator(f_interp)
+    # wraped_phases = (interp_phases + np.pi) % (2 * np.pi) - np.pi
+
+    # plt.figure()
+    # plt.plot(
+    #     positive_fft_freq,
+    #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
+    #     label="original",
+    # )
+    # plt.plot(f_interp, interp_phases, label="interp")
+    # plt.ylabel("Phase (°)")
+    # plt.xlabel("Frequency (Hz)")
+    # plt.legend()
+
+    # plt.figure()
+    # plt.xlabel("Frequency (Hz)")
+    # plt.ylabel("Phase (rads)")
+    # plt.plot(
+    #     positive_fft_freq,
+    #     np.angle(transmited_field_f[:, 0, 0]),
+    #     label="original",
+    #     marker="+",
+    # )
+    # plt.plot(f_interp, wraped_phases, label="interp", marker="+")
+    # plt.show()
+
+    pass
 
 
 def process_broadband(fname, source, max_depth):

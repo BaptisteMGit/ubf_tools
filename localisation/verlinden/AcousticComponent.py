@@ -1,11 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.signal as signal
 
 
 class AcousticSource:
     """Acoustic source class. The source is defined by the signal recorded 1m away from the source."""
 
-    def __init__(self, signal, time, z_src=5, kraken_freq=None):
+    def __init__(
+        self, signal, time, z_src=5, signal_type="determinist", kraken_freq=None
+    ):
         self.signal = signal  # Source signal
         self.time = time  # Time vector
         self.z_src = z_src  # Source depth (m)
@@ -25,18 +28,29 @@ class AcousticSource:
         self.get_spectrum()
 
     def get_spectrum(self, nfft=None):
-        """Source spectrum derived from time serie"""
+        """Derive spectrum from source signal"""
+
+        self.psd_freq, self.psd = signal.welch(
+            self.signal, fs=self.fs, window="hamming", scaling="spectrum"
+        )
+
         if nfft is None:
             nfft = self.ns
-        self.spectrum = np.fft.rfft(self.signal, n=nfft)
-        self.freq = np.fft.rfftfreq(nfft, 1 / self.fs)
+            self.nfft = 2 ** int(np.log2(nfft) + 1)
+            # self.nfft = 2**11
+
+        self.spectrum = np.fft.rfft(
+            self.signal,
+            n=self.nfft,
+        )
+        self.freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
         self.spectrum_df = self.freq[1] - self.freq[0]
         self.analyse_spectrum()
 
     def analyse_spectrum(self):
         """Analyse source spectrum to derive frequency bounds of the energetic domain"""
 
-        # TODO: might need to update this cretiria depending on the source spectrum considered
+        # TODO: might need to update this criteria depending on the source spectrum considered
         # Another simple criteria could be the bandwith B = 1 / T
 
         min_energy = 0.01 * np.max(np.abs(self.spectrum))
@@ -50,18 +64,26 @@ class AcousticSource:
         """Set kraken frequency vector"""
         self.kraken_freq = np.arange(fmin, fmax, df)
 
-    def plot_spectrum(self, ax=None):
-        """Plot source spectrum"""
+    def plot_psd(self, ax=None):
+        """Plot source psd"""
+        if ax is None:
+            plt.figure()
+            ax = plt.gca()
+
+        ax.semilogy(self.psd_freq, self.psd)
+        ax.set_xlabel("Frequency (Hz)")
+        ax.set_ylabel("PSD (Pa²/Hz))")
+        ax.set_title("Source spectrum")
+
+    def plot_spectrum_magnitude(self, ax=None):
+        """Plot source psd"""
         if ax is None:
             plt.figure()
             ax = plt.gca()
 
         ax.plot(self.freq, np.abs(self.spectrum))
-        ax.vlines(
-            [self.min_freq, self.max_freq], 0, np.max(np.abs(self.spectrum)), "r", "--"
-        )
         ax.set_xlabel("Frequency (Hz)")
-        ax.set_ylabel("|FFT(s(t))|")
+        ax.set_ylabel("|RFFT(S)|")
         ax.set_title("Source spectrum")
 
     def plot_signal(self, ax=None):
@@ -79,12 +101,13 @@ class AcousticSource:
         """Display source signal and spectrum"""
         if ax_signal is not None and ax_spectrum is not None:
             self.plot_signal(ax=ax_signal)
-            self.plot_spectrum(ax=ax_spectrum)
+            self.plot_psd(ax=ax_spectrum)
             plt.tight_layout()
         else:
-            fig, ax = plt.subplots(1, 2, figsize=(10, 8))
+            fig, ax = plt.subplots(1, 3, figsize=(10, 8))
             self.plot_signal(ax=ax[0])
-            self.plot_spectrum(ax=ax[1])
+            self.plot_psd(ax=ax[1])
+            self.plot_spectrum_magnitude(ax=ax[2])
             plt.tight_layout()
 
 

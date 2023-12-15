@@ -15,9 +15,62 @@ from localisation.verlinden.utils import plot_localisation_moviepy
 root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
 # env_fname = "verlinden_1_ssp"
 
+
+def plot_received_signal(xr_dataset, n_instant_to_plot=None):
+    """Plot received signal for each receiver pair and each source position."""
+
+    if n_instant_to_plot is None:
+        n_instant_to_plot = xr_dataset.dims["src_trajectory_time"]
+    else:
+        n_instant_to_plot = min(
+            n_instant_to_plot, xr_dataset.dims["src_trajectory_time"]
+        )
+
+    fig, axes = plt.subplots(
+        n_instant_to_plot,
+        xr_dataset.dims["idx_obs"],
+        sharex=True,
+        sharey=True,
+    )
+
+    axes = np.reshape(axes, (n_instant_to_plot, xr_dataset.dims["idx_obs"]))
+
+    for i_ship in range(n_instant_to_plot):
+        for i_obs in range(xr_dataset.dims["idx_obs"]):
+            xr_dataset.rcv_signal_event.isel(
+                src_trajectory_time=i_ship, idx_obs=i_obs
+            ).plot(ax=axes[i_ship, i_obs], label=f"event - obs {i_obs}")
+
+            xr_dataset.rcv_signal_library.sel(
+                x=xr_dataset.x_ship.isel(src_trajectory_time=i_ship),
+                y=xr_dataset.y_ship.isel(src_trajectory_time=i_ship),
+                method="nearest",
+            ).isel(idx_obs=i_obs).plot(
+                ax=axes[i_ship, i_obs], label=f"library - obs {i_obs}"
+            )
+
+            axes[i_ship, i_obs].set_xlabel("")
+            axes[i_ship, i_obs].set_ylabel("")
+            axes[i_ship, i_obs].set_title(
+                f"x_ship = {xr_dataset.x_ship.isel(src_trajectory_time=i_ship).values.round(0)}m, y_ship = {xr_dataset.y_ship.isel(src_trajectory_time=i_ship).values.round(0)}m",
+            )
+
+            # axes[i_ship, i_obs].set_ylim([-0.005, 0.005])
+
+    for ax, col in zip(axes[0], [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
+        ax.set_title(col)
+
+    plt.tight_layout()
+    fig.supylabel("Received signal")
+    fig.supxlabel("Time (s)")
+    axes[-1, 0].legend()
+    axes[-1, 1].legend()
+    plt.show()
+
+
 snr = 5
 detection_metric = "lstsquares"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
-for snr in [None, 1, 5, 10, 20]:
+for snr in [None, -10, -5, -1, 0, 1, 5, 10, 20]:
     if snr is None:
         snr_tag = "_noiseless"
     else:
@@ -38,7 +91,7 @@ for snr in [None, 1, 5, 10, 20]:
             ds.src_pos,
             f"dx{int(ds.dx)}m_dy{int(ds.dy)}m",
             ds.detection_metric,
-            snr_tag,
+            snr_tag[1:],
         )
         if not os.path.exists(root_img):
             os.makedirs(root_img)
@@ -46,7 +99,7 @@ for snr in [None, 1, 5, 10, 20]:
         img_basepath = os.path.join(root_img, env_fname + "_")
 
         # n_instant_to_plot = ds.dims["src_trajectory_time"]
-        n_instant_to_plot = 2
+        n_instant_to_plot = 10
         n_instant_to_plot = min(n_instant_to_plot, ds.dims["src_trajectory_time"])
 
         # # Plot one TL profile
@@ -119,6 +172,9 @@ for snr in [None, 1, 5, 10, 20]:
         #     f"Linear array beampattern \n ({f} Hz, {ns} sensors, d = {d} m)",
         # )
         # plt.show()
+
+        # Plot received signal
+        plot_received_signal(ds)
 
         for i in range(n_instant_to_plot):
             plt.figure(figsize=(10, 8))
@@ -289,39 +345,6 @@ for snr in [None, 1, 5, 10, 20]:
         plt.savefig(img_basepath + f"pos_error.png")
         plt.close()
 
-        # Plot received signal
-        # fig, axes = plt.subplots(
-        #     n_instant_to_plot,
-        #     ds.dims["idx_obs"],
-        #     sharex=True,
-        #     sharey=True,
-        # )
-
-        # axes = np.reshape(axes, (n_instant_to_plot, ds.dims["idx_obs"]))
-        # for ax, col in zip(axes[0], [f"Receiver {i}" for i in ds.idx_obs]):
-        #     ax.set_title(col)
-
-        # for i_ship in range(n_instant_to_plot):
-        #     for i_obs in range(ds.dims["idx_obs"]):
-        #         ds.rcv_signal_event.isel(src_trajectory_time=i_ship, idx_obs=i_obs).plot(
-        #             ax=axes[i_ship, i_obs], label="event"
-        #         )
-
-        #         ds.rcv_signal_library.sel(
-        #             x=ds.x_ship.isel(src_trajectory_time=i_ship),
-        #             y=ds.y_ship.isel(src_trajectory_time=i_ship),
-        #             method="nearest",
-        #         ).isel(idx_obs=i_obs).plot(ax=axes[i_ship, i_obs], label="library")
-
-        #         axes[i_ship, i_obs].set_xlabel("")
-        #         axes[i_ship, i_obs].set_ylabel("")
-        #         axes[i_ship, i_obs].set_title("")
-        #         # axes[i_ship, i_obs].set_ylim([-0.005, 0.005])
-
-        # fig.supylabel("Received signal")
-        # fig.supxlabel("Time (s)")
-        # plt.legend()
-        # plt.tight_layout()
         # plt.savefig(img_basepath + f"rcv_signal.png")
 
         # plt.close()
@@ -339,6 +362,7 @@ for snr in [None, 1, 5, 10, 20]:
             ds.dims["idx_obs_pairs"],
             sharex=True,
             sharey=True,
+            figsize=(10, 8),
         )
         axes = np.reshape(
             axes, (n_instant_to_plot, ds.dims["idx_obs_pairs"])

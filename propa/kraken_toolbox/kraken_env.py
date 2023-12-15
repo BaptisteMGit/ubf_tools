@@ -200,7 +200,6 @@ class KrakenMedium:
         ax.plot(ap, self.z_ssp_, color=col1)
         ax.tick_params(axis="x", labelcolor=col1)
         ax.set_xlabel("C-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col1)
-        # ax.set_title("Attenuation profile")
 
         if self.as_.size == 1:
             as_ = np.ones(self.z_ssp_.size) * self.as_
@@ -212,8 +211,6 @@ class KrakenMedium:
         ax_bis.plot(as_, self.z_ssp_, color=col2)
         ax_bis.tick_params(axis="x", labelcolor=col2)
         ax_bis.set_xlabel("S-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col2)
-
-        # ax.plot(as_, self.z_ssp_, label="S-wave")
 
     def plot_density(self, ax=None):
         if ax is None:
@@ -229,8 +226,6 @@ class KrakenMedium:
         ax.invert_yaxis()
         ax.tick_params(axis="x", labelcolor="blue")
         ax.set_xlabel("Density " + r"[$g.cm^{-3}$]", color="blue")
-
-        # ax.set_title("Density")
 
 
 class KrakenTopHalfspace:
@@ -449,6 +444,82 @@ class KrakenBottomHalfspace:
     def set_default(self):
         self.boundary_condition_ = "acousto_elastic"
         self.set_boundary_code()
+
+    def plot_bottom_halfspace(self):
+        fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
+        axs[0].set_ylabel("Depth [m]")
+        self.plot_spp(ax=axs[0])
+        self.plot_attenuation(ax=axs[1])
+        self.plot_density(ax=axs[2])
+        plt.suptitle("Medium properties")
+        plt.tight_layout()
+        plt.show()
+
+    def plot_spp(self, ax=None):
+        if ax is None:
+            plt.figure(figsize=(10, 8))
+            ax = plt.gca()
+            ax.set_ylabel("Depth [m]")
+        ax.invert_yaxis()
+        col1 = "red"
+        ax.plot(self.cp_ssp_, self.z_ssp_, color=col1)
+        ax.tick_params(axis="x", labelcolor=col1)
+        ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]", color=col1)
+        # ax.set_title("Sound speed profile")
+
+        if self.cs_ssp_.size == 1:
+            cs = np.ones(self.z_ssp_.size) * self.cs_ssp_
+        else:
+            cs = self.cs_ssp_
+        ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
+        col2 = "blue"
+        ax_bis.plot(cs, self.z_ssp_, color=col2)
+        ax_bis.tick_params(axis="x", labelcolor=col2)
+        ax_bis.set_xlabel("S-wave celerity " + r"[$m.s^{-1}$]", color=col2)
+
+    def plot_attenuation(self, ax=None):
+        if ax is None:
+            plt.figure(figsize=(10, 8))
+            ax = plt.gca()
+            ax.set_ylabel("Depth [m]")
+
+        if self.ap_.size == 1:
+            ap = np.ones(self.z_ssp_.size) * self.ap_
+        else:
+            ap = self.ap_
+
+        ax.invert_yaxis()
+        col1 = "red"
+        ax.plot(ap, self.z_ssp_, color=col1)
+        ax.tick_params(axis="x", labelcolor=col1)
+        ax.set_xlabel("C-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col1)
+        # ax.set_title("Attenuation profile")
+
+        if self.as_.size == 1:
+            as_ = np.ones(self.z_ssp_.size) * self.as_
+        else:
+            as_ = self.as_
+
+        ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
+        col2 = "blue"
+        ax_bis.plot(as_, self.z_ssp_, color=col2)
+        ax_bis.tick_params(axis="x", labelcolor=col2)
+        ax_bis.set_xlabel("S-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col2)
+
+    def plot_density(self, ax=None):
+        if ax is None:
+            plt.figure(figsize=(10, 8))
+            ax = plt.gca()
+            ax.set_ylabel("Depth [m]")
+
+        if self.rho_.size == 1:
+            rho = np.ones(self.z_ssp_.size) * self.rho_
+        else:
+            rho = self.rho_
+        ax.plot(rho, self.z_ssp_, label="Density", color="blue")
+        ax.invert_yaxis()
+        ax.tick_params(axis="x", labelcolor="blue")
+        ax.set_xlabel("Density " + r"[$g.cm^{-3}$]", color="blue")
 
 
 class KrakenAttenuation:
@@ -684,14 +755,14 @@ class KrakenFlp:
             self.src_z_ = np.array([src_depth])
 
         # Receiver depth info
-        self.n_rcv_z_ = n_rcv_z
-        self.rcv_z_min_ = rcv_z_min
-        self.rcv_z_max_ = rcv_z_max
+        self.n_rcv_z_ = int(n_rcv_z)
+        self.rcv_z_min_ = int(rcv_z_min)
+        self.rcv_z_max_ = int(rcv_z_max)
         # Receiver range info
-        self.n_rcv_r_ = n_rcv_r
-        self.rcv_r_min_ = rcv_r_min
-        self.rcv_r_max_ = rcv_r_max
-        self.rcv_dist_offset_ = rcv_dist_offset
+        self.n_rcv_r_ = int(n_rcv_r)
+        self.rcv_r_min_ = int(rcv_r_min)
+        self.rcv_r_max_ = int(rcv_r_max)
+        self.rcv_dist_offset_ = int(rcv_dist_offset)
 
         self.set_codes()
         # self.write_lines()

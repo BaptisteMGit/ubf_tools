@@ -6,7 +6,7 @@ import scipy.signal as signal
 
 from tqdm import tqdm
 
-from cst import BAR_FORMAT
+from cst import BAR_FORMAT, C0
 from misc import mult_along_axis
 from signals import ship_noise, ship_spectrum
 from localisation.verlinden.AcousticComponent import AcousticSource
@@ -91,6 +91,19 @@ def populate_grid(
     ds["y"].attrs["long_name"] = "y"
     ds["idx_obs"].attrs["long_name"] = "Receiver index"
 
+    # ds["r0_r1"] = ds.r_from_obs.isel(idx_obs=0) - ds.r_from_obs.isel(idx_obs=1)
+    delta_tau = ds.r_from_obs.isel(idx_obs=1) / C0 - ds.r_from_obs.isel(idx_obs=0) / C0
+
+    ds["relative_delay_obs"] = xr.zeros_like(ds.r_from_obs)
+    ds["relative_delay_obs"].loc[{"idx_obs": 0}] = xr.where(
+        delta_tau > 0, 0, delta_tau
+    ).values
+    ds["relative_delay_obs"].loc[{"idx_obs": 1}] = xr.where(
+        delta_tau > 0, delta_tau, 0
+    ).values
+
+    # ds["delay_obs"] =
+
     # Build OBS pairs
     obs_pairs = []
     for i in ds.idx_obs.values:
@@ -106,22 +119,31 @@ def populate_grid(
         ds.idx_obs, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
     ):
         rr_from_obs_flat = ds.r_from_obs.sel(idx_obs=i_obs).values.flatten()
-
+        relative_delay_obs_flat = ds.relative_delay_obs.values.flatten()
         t_obs, s_obs, Pos = postprocess(
             shd_fpath=kraken_env.shd_fpath,
             source=library_src,
-            # rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
             rcv_range=rr_from_obs_flat,
             rcv_depth=[z_src],
+            apply_delay=True,
+            delay=None,
         )
         if i_obs == 0:
             ds["library_signal_time"] = t_obs
             rcv_signal_library = np.empty(tuple(ds.dims[d] for d in signal_library_dim))
 
+        # Time domain signal
         s_obs = s_obs[:, 0, :].T
         s_obs = s_obs.reshape(
             ds.dims["y"], ds.dims["x"], ds.dims["library_signal_time"]
         )
+
+        # # Frequency domain signal
+        # s_obs_f = s_obs_f[:, 0, :].T
+        # s_obs_f = s_obs_f.reshape(
+        #     ds.dims["y"], ds.dims["x"], ds.dims["library_signal_time"]
+        # )
+
         rcv_signal_library[i_obs, :] = s_obs
 
         if snr_dB is not None:
@@ -283,11 +305,17 @@ def add_event_to_dataset(
         bar_format=BAR_FORMAT,
         desc="Derive received signal for successive positions of the ship",
     ):
+        # delay_ship = ds.delay_obs.sel(
+        #     x=ds.x_ship, y=ds.y_ship, method="nearest"
+        # ).values.flatten()
+
         t_obs, s_obs, Pos = postprocess(
             shd_fpath=kraken_env.shd_fpath,
             source=event_src,
             rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
             rcv_depth=[z_event],
+            apply_delay=True,
+            delay=None,
         )
         if i_obs == 0:
             ds["event_signal_time"] = t_obs
@@ -438,6 +466,10 @@ def init_library_src(dt, f0, fmax, depth):
     library_src_sig = library_src_sig[0:nmax]
     t_library_src_sig = t_library_src_sig[0:nmax]
 
+    from signals import pulse
+
+    library_src_sig, t_library_src_sig = pulse(T=5, f=50, fs=500)
+
     library_src = AcousticSource(signal=library_src_sig, time=t_library_src_sig)
     library_src.set_kraken_freq(
         fmin=max(f0, waveguide_cutoff_freq(max_depth=depth) + 1), fmax=fmax, df=1
@@ -500,6 +532,8 @@ if __name__ == "__main__":
 
             library_src = init_library_src(dt, f0, fmax, depth)
 
+            library_src.display_source()
+            # plt.show()
             # Spectrogram of the library source
             # library_src_sig, t_library_src_sig = ship_noise()
             # fs = 1 / (t_library_src_sig[1] - t_library_src_sig[0])
@@ -547,31 +581,39 @@ if __name__ == "__main__":
                 freq=library_src.kraken_freq,
             )
             # Define ship trajecory
-            x_ship_begin = -20000
-            y_ship_begin = 15000
-            x_ship_end = 9000
-            y_ship_end = 5000
+            x_ship_begin = -5000
+            y_ship_begin = 2000
+            x_ship_end = 5000
+            y_ship_end = 2000
+            # x_ship_begin = -2000
+            # y_ship_begin = 0
+            # x_ship_end = 900
+            # y_ship_end = 0
 
             x_ship_t, y_ship_t, t_ship = init_event_src_traj(
                 x_ship_begin, y_ship_begin, x_ship_end, y_ship_end, v_ship, dt
             )
 
             # # TODO : remove
-            nmax_ship = 100
+            nmax_ship = 4
             nmax_ship = min(nmax_ship, len(x_ship_t))
-            x_ship_t = x_ship_t[0:nmax_ship]
-            y_ship_t = y_ship_t[0:nmax_ship]
+            # x_ship_t = x_ship_t[0:nmax_ship]
+            # y_ship_t = y_ship_t[0:nmax_ship]
+            x_ship_t = np.array([1500, 3000, 4500, 6000]) + 10000
+            y_ship_t = [0, 0, 0, 0]
             t_ship = t_ship[0:nmax_ship]
+            Lx = 5 * 1e3  # m
+            Ly = 5 * 1e3  # m
 
             # Grid around the ship trajectory
-            Lx = 15 * 1e3  # m
-            Ly = 15 * 1e3  # m
+            # Lx = 15 * 1e3  # m
+            # Ly = 15 * 1e3  # m
             grid_x, grid_y = init_grid_around_event_src_traj(
                 x_ship_t, y_ship_t, Lx, Ly, dx, dy
             )
 
             # OBS positions
-            x_obs = [0, 500]
+            x_obs = [0, 1500]
             y_obs = [0, 0]
 
             populated_path = os.path.join(

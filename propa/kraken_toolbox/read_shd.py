@@ -146,7 +146,7 @@ def readshd_bin(filename, xs=None, ys=None, freq=None):
             freq_idx = np.array([0])
         read_freq = freqVec[freq_idx]
 
-        for ifreq in freq_idx:
+        for idx_f_pressure, ifreq in enumerate(freq_idx):
             for itheta in range(Ntheta):
                 for isz in range(Nsz):
                     for irz in range(Nrcvrs_per_range):
@@ -165,7 +165,7 @@ def readshd_bin(filename, xs=None, ys=None, freq=None):
                             )
 
                         temp = np.fromfile(fid, dtype=np.float32, count=2 * Nrr)
-                        pressure[ifreq, itheta, isz, irz, :] = (
+                        pressure[idx_f_pressure, itheta, isz, irz, :] = (
                             temp[0::2] + 1j * temp[1::2]
                         )
         # Get rid of the useless first dimension in case of single frequency (mainly for coherence with other functions plotshd ...)

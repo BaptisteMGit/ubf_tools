@@ -15,7 +15,7 @@ from localisation.verlinden.RHUM_RHUM_env import (
     rhum_rum_isotropic_env,
     verlinden_test_case_env,
 )
-from propa.kraken_toolbox.post_process import postprocess
+from propa.kraken_toolbox.post_process import postprocess_received_signal
 from propa.kraken_toolbox.utils import runkraken, runfield, waveguide_cutoff_freq
 from propa.kraken_toolbox.plot_utils import plotshd
 
@@ -120,7 +120,7 @@ def populate_grid(
     ):
         rr_from_obs_flat = ds.r_from_obs.sel(idx_obs=i_obs).values.flatten()
         relative_delay_obs_flat = ds.relative_delay_obs.values.flatten()
-        t_obs, s_obs, Pos = postprocess(
+        t_obs, s_obs, Pos = postprocess_received_signal(
             shd_fpath=kraken_env.shd_fpath,
             source=library_src,
             rcv_range=rr_from_obs_flat,
@@ -309,7 +309,7 @@ def add_event_to_dataset(
         #     x=ds.x_ship, y=ds.y_ship, method="nearest"
         # ).values.flatten()
 
-        t_obs, s_obs, Pos = postprocess(
+        t_obs, s_obs, Pos = postprocess_received_signal(
             shd_fpath=kraken_env.shd_fpath,
             source=event_src,
             rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,

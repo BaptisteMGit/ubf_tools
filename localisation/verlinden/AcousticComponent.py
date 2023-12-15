@@ -18,9 +18,9 @@ class AcousticSource:
 
         self.ns = len(signal)  # Number of samples
         self.fs = 1 / (time[1] - time[0])  # Sampling frequency
-        self.freq = None  # Frequency vector
-        self.spectrum = None  # Source spectrum
-        self.spectrum_df = None  # Source spectrum frequency resolution
+        self.positive_freq = None  # Frequency vector
+        self.positive_spectrum = None  # Source spectrum
+        self.df = None  # Source spectrum frequency resolution
 
         self.energetic_freq = None  # Energetic frequency domain
         self.min_freq = None  # Minimum frequency of the energetic domain
@@ -35,16 +35,15 @@ class AcousticSource:
         )
 
         if nfft is None:
-            nfft = self.ns
-            self.nfft = 2 ** int(np.log2(nfft) + 1)
-            # self.nfft = 2**11
+            self.nfft = 2 ** int(np.log2(self.ns) + 1)  # Next power of 2
 
-        self.spectrum = np.fft.rfft(
+        # Real FFT
+        self.positive_spectrum = np.fft.rfft(
             self.signal,
             n=self.nfft,
         )
-        self.freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
-        self.spectrum_df = self.freq[1] - self.freq[0]
+        self.positive_freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
+        self.df = self.positive_freq[1] - self.positive_freq[0]
         self.analyse_spectrum()
 
     def analyse_spectrum(self):
@@ -53,10 +52,10 @@ class AcousticSource:
         # TODO: might need to update this criteria depending on the source spectrum considered
         # Another simple criteria could be the bandwith B = 1 / T
 
-        min_energy = 0.01 * np.max(np.abs(self.spectrum))
-        idx_energetic_freq = np.abs(self.spectrum) >= min_energy
-        self.energetic_freq = self.freq[idx_energetic_freq]
-        self.energetic_spectrum = self.spectrum[idx_energetic_freq]
+        min_energy = 0.01 * np.max(np.abs(self.positive_spectrum))
+        idx_energetic_freq = np.abs(self.positive_spectrum) >= min_energy
+        self.energetic_freq = self.positive_freq[idx_energetic_freq]
+        self.energetic_spectrum = self.positive_spectrum[idx_energetic_freq]
         self.min_freq = np.min(self.energetic_freq)
         self.max_freq = np.max(self.energetic_freq)
 
@@ -81,7 +80,7 @@ class AcousticSource:
             plt.figure()
             ax = plt.gca()
 
-        ax.plot(self.freq, np.abs(self.spectrum))
+        ax.plot(self.positive_freq, np.abs(self.positive_spectrum))
         ax.set_xlabel("Frequency (Hz)")
         ax.set_ylabel("|RFFT(S)|")
         ax.set_title("Source spectrum")
@@ -109,50 +108,3 @@ class AcousticSource:
             self.plot_psd(ax=ax[1])
             self.plot_spectrum_magnitude(ax=ax[2])
             plt.tight_layout()
-
-
-class Receiver:
-    n_rcv = 0
-
-    def __init__(self, name, pos):
-        self.__class__.n_rcv += 1
-        self.name = name
-        self.position = pos
-        self.idx = self.n_rcv - 1
-
-
-class ReceiverArray:
-    def __init__(self, receiver_names, receiver_positions):
-        self.type = "unspecified"
-        self.receiver_names = receiver_names
-        self.receiver_positions = np.array(receiver_positions)
-        self.create_receivers()
-
-    def create_receivers(self):
-        self.receivers = []
-        for i_r, rcv_name in enumerate(self.receiver_names):
-            rcv_i = Receiver(rcv_name, self.receiver_positions[i_r])
-            self.receivers.append(rcv_i)
-        self.n_rcv = self.receivers[0].n_rcv
-
-    def plot_array(self, fig=None):
-        if fig is None:
-            plt.figure()
-
-        for rcv in self.receivers:
-            plt.plot(rcv.position[0], rcv.position[1], "o", label=rcv.name)
-        plt.legend(self.receiver_names)
-
-
-class LinearReceiverArray(ReceiverArray):
-    def __init__(self, receiver_names, receiver_positions):
-        super().__init__(receiver_names, receiver_positions)
-
-        # For the moment only two elements array is supported
-        if self.n_rcv != 2:
-            raise ValueError("Only two elements array is supported")
-
-        self.type = "linear"
-        self.array_length = np.linalg.norm(
-            self.receiver_positions[0] - self.receiver_positions[-1]
-        )

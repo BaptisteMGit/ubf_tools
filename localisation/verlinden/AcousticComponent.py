@@ -6,9 +6,7 @@ import scipy.signal as signal
 class AcousticSource:
     """Acoustic source class. The source is defined by the signal recorded 1m away from the source."""
 
-    def __init__(
-        self, signal, time, z_src=5, signal_type="determinist", kraken_freq=None
-    ):
+    def __init__(self, signal, time, z_src=5, kraken_freq=None):
         self.signal = signal  # Source signal
         self.time = time  # Time vector
         self.z_src = z_src  # Source depth (m)
@@ -103,7 +101,7 @@ class AcousticSource:
             self.plot_psd(ax=ax_spectrum)
             plt.tight_layout()
         else:
-            fig, ax = plt.subplots(1, 3, figsize=(10, 8))
+            __, ax = plt.subplots(1, 3, figsize=(10, 8))
             self.plot_signal(ax=ax[0])
             self.plot_psd(ax=ax[1])
             self.plot_spectrum_magnitude(ax=ax[2])

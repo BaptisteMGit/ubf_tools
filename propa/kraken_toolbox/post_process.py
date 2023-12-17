@@ -105,7 +105,7 @@ def postprocess_received_signal(
 
 
 def interp_frequency_domain_ir(pf_p, f_p, f):
-    unwrapped_phase = np.unwrap(np.angle(pf_p, axis=0))
+    unwrapped_phase = np.unwrap(np.angle(pf_p), axis=0)
     magnitude = np.abs(pf_p)
 
     interpolated_pf = np.empty_like(pf_p)

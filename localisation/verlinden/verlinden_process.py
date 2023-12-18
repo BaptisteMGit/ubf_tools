@@ -102,8 +102,6 @@ def populate_grid(
         delta_tau > 0, delta_tau, 0
     ).values
 
-    # ds["delay_obs"] =
-
     # Build OBS pairs
     obs_pairs = []
     for i in ds.idx_obs.values:
@@ -119,7 +117,8 @@ def populate_grid(
         ds.idx_obs, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
     ):
         rr_from_obs_flat = ds.r_from_obs.sel(idx_obs=i_obs).values.flatten()
-        relative_delay_obs_flat = ds.relative_delay_obs.values.flatten()
+        relative_delay_obs_flat = ds.relative_delay_obs.values.flatten()  # TODO
+
         t_obs, s_obs, Pos = postprocess_received_signal(
             shd_fpath=kraken_env.shd_fpath,
             source=library_src,

@@ -170,7 +170,7 @@ def verlinden_test_case_env(
 
     att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
 
-    n_rcv_z = default_nb_rcv_z(max(freq), max_depth)
+    n_rcv_z = default_nb_rcv_z(max(freq), max_depth, n_per_l=15)
     # n_rcv_z = 1001
     field = KrakenField(
         src_depth=src_depth,

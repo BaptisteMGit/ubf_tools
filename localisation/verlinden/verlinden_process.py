@@ -19,6 +19,12 @@ from propa.kraken_toolbox.post_process import postprocess_received_signal
 from propa.kraken_toolbox.utils import runkraken, runfield, waveguide_cutoff_freq
 from propa.kraken_toolbox.plot_utils import plotshd
 
+from localisation.verlinden.verlinden_path import (
+    VERLINDEN_OUTPUT_FOLDER,
+    VERLINDEN_ANALYSIS_FOLDER,
+    VERLINDEN_POPULATED_FOLDER,
+)
+
 
 def populate_grid(
     library_src,
@@ -229,17 +235,23 @@ def populate_grid(
     ds["library_corr"] = (library_corr_dim, library_corr)
     if snr_dB is None:
         ds.attrs["snr_dB"] = "noiseless"
-        snr_tag = "_noiseless"
+        snr_tag = "noiseless"
     else:
         ds.attrs["snr_dB"] = snr_dB
-        snr_tag = f"_snr{snr_dB}dB"
+        snr_tag = f"snr{snr_dB}dB"
 
-    ds.to_netcdf(
-        os.path.join(
-            kraken_env.root,
-            kraken_env.filename + "_populated" + snr_tag + ".nc",
-        )
+    # Build path to save populated dataset
+    ds.attrs["fullpath_populated"] = os.path.join(
+        VERLINDEN_POPULATED_FOLDER,
+        kraken_env.filename,
+        library_src.name,
+        f"populated_{snr_tag}.nc",
     )
+
+    if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
+        os.makedirs(os.path.dirname(ds.fullpath_populated))
+
+    ds.to_netcdf(ds.fullpath_populated)
 
     return ds
 
@@ -471,7 +483,10 @@ def init_library_src(dt, depth, sig_type="pulse"):
         library_src_sig, t_library_src_sig = pulse(T=1, f=50, fs=200)
 
     library_src = AcousticSource(
-        signal=library_src_sig, time=t_library_src_sig, waveguide_depth=depth
+        signal=library_src_sig,
+        time=t_library_src_sig,
+        name=sig_type,
+        waveguide_depth=depth,
     )
 
     return library_src
@@ -555,14 +570,24 @@ def verlinden_main(
 
     for snr_i in snr:
         if snr_i is None:
-            snr_tag = "_noiseless"
+            snr_tag = "noiseless"
         else:
-            snr_tag = f"_snr{snr_i}dB"
-        for det_metric in detection_metric:
-            populated_path = os.path.join(
-                kraken_env.root, kraken_env.filename + "_populated" + snr_tag + ".nc"
-            )
+            snr_tag = f"snr{snr_i}dB"
 
+        # populated_path = os.path.join(
+        #     VERLINDEN_POPULATED_FOLDER,
+        #     kraken_env.filename,
+        #     f"populated_{snr_tag}.nc",
+        # )
+
+        populated_path = os.path.join(
+            VERLINDEN_POPULATED_FOLDER,
+            kraken_env.filename,
+            src_info["src_signal_type"],
+            f"populated_{snr_tag}.nc",
+        )
+
+        for det_metric in detection_metric:
             if os.path.exists(populated_path):
                 ds_library = xr.open_dataset(populated_path)
             else:
@@ -592,21 +617,41 @@ def verlinden_main(
             )
 
             ds = build_ambiguity_surf(ds, det_metric)
-            ds.to_netcdf(
-                os.path.join(
-                    kraken_env.root,
-                    kraken_env.filename + "_" + det_metric + snr_tag + ".nc",
-                )
+
+            # Build path to save dataset and corresponding path to save analysis results produced later on
+            ds.attrs["fullpath_output"] = os.path.join(
+                VERLINDEN_OUTPUT_FOLDER,
+                kraken_env.filename,
+                library_src.name,
+                ds.src_pos,
+                det_metric,
+                f"output_{det_metric}_{snr_tag}.nc",
             )
+            ds.attrs["fullpath_analysis"] = os.path.join(
+                VERLINDEN_ANALYSIS_FOLDER,
+                kraken_env.filename,
+                library_src.name,
+                ds.src_pos,
+                det_metric,
+                snr_tag,
+            )
+
+            if not os.path.exists(os.path.dirname(ds.fullpath_output)):
+                os.makedirs(os.path.dirname(ds.fullpath_output))
+
+            if not os.path.exists(ds.fullpath_analysis):
+                os.makedirs(ds.fullpath_analysis)
+
+            ds.to_netcdf(ds.fullpath_output)
 
 
 if __name__ == "__main__":
     v_ship = 50 / 3.6  # m/s
     src_info = dict(
-        x_pos=[-7200, -2700],
-        y_pos=[2000, 2000],
+        x_pos=[-1000, 2500],
+        y_pos=[3000, -5000],
         v_src=v_ship,
-        nmax_ship=20,
+        nmax_ship=100,
         src_signal_type="pulse",
         z_src=5,
         on_grid=False,
@@ -624,8 +669,8 @@ if __name__ == "__main__":
         y_obs=[0, 0],
     )
 
-    snr = [-20, -10, -5, 0]
-    detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
+    snr = [-10]
+    detection_metric = ["intercorr0"]
 
     depth = 150  # Depth m
     env_fname = "verlinden_1_test_case"

@@ -8,9 +8,12 @@ from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 class AcousticSource:
     """Acoustic source class. The source is defined by the signal recorded 1m away from the source."""
 
-    def __init__(self, signal, time, waveguide_depth=100, z_src=5, kraken_freq=None):
+    def __init__(
+        self, signal, time, name="", waveguide_depth=100, z_src=5, kraken_freq=None
+    ):
         self.signal = signal  # Source signal
         self.time = time  # Time vector
+        self.name = name  # Source name
         self.waveguide_depth = waveguide_depth  # Waveguide depth (m)
         self.z_src = z_src  # Source depth (m)
         self.kraken_freq = (

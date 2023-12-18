@@ -2,13 +2,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.signal as signal
 
+from propa.kraken_toolbox.utils import waveguide_cutoff_freq
+
 
 class AcousticSource:
     """Acoustic source class. The source is defined by the signal recorded 1m away from the source."""
 
-    def __init__(self, signal, time, z_src=5, kraken_freq=None):
+    def __init__(self, signal, time, waveguide_depth=100, z_src=5, kraken_freq=None):
         self.signal = signal  # Source signal
         self.time = time  # Time vector
+        self.waveguide_depth = waveguide_depth  # Waveguide depth (m)
         self.z_src = z_src  # Source depth (m)
         self.kraken_freq = (
             kraken_freq  # Use limited number of frequencies for kraken run
@@ -33,15 +36,31 @@ class AcousticSource:
         )
 
         if nfft is None:
-            self.nfft = 2 ** int(np.log2(self.ns) + 1)  # Next power of 2
+            # self.nfft = 2 ** int(np.log2(self.ns) + 1)  # Next power of 2
+            self.nfft = 2**14
+
+        max_nfreq_kraken = 1000  # Maximum number of frequencies allowed for kraken run
+        self.positive_freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
+        self.kraken_freq = self.positive_freq[
+            self.positive_freq > waveguide_cutoff_freq(max_depth=self.waveguide_depth)
+        ]
+
+        # Ensure that the number of frequencies is not too large for kraken run
+        while self.kraken_freq.size > max_nfreq_kraken:
+            self.nfft = self.nfft // 2  # Previous power of 2
+            self.positive_freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
+            self.kraken_freq = self.positive_freq[
+                self.positive_freq
+                > waveguide_cutoff_freq(max_depth=self.waveguide_depth)
+            ]
 
         # Real FFT
         self.positive_spectrum = np.fft.rfft(
             self.signal,
             n=self.nfft,
         )
-        self.positive_freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
         self.df = self.positive_freq[1] - self.positive_freq[0]
+
         self.analyse_spectrum()
 
     def analyse_spectrum(self):

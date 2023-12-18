@@ -14,12 +14,14 @@ from localisation.verlinden.directivity_pattern import (
 )
 
 from localisation.verlinden.utils import plot_localisation_moviepy
+from localisation.verlinden.verlinden_path import (
+    VERLINDEN_OUTPUT_FOLDER,
+    VERLINDEN_ANALYSIS_FOLDER,
+    VERLINDEN_POPULATED_FOLDER,
+)
 
-root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
-# env_fname = "verlinden_1_ssp"
 
-
-def plot_received_signal(xr_dataset, n_instant_to_plot=None):
+def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
     """Plot received signal for each receiver pair and each source position."""
 
     if n_instant_to_plot is None:
@@ -68,7 +70,8 @@ def plot_received_signal(xr_dataset, n_instant_to_plot=None):
     fig.supxlabel("Time (s)")
     axes[-1, 0].legend()
     axes[-1, 1].legend()
-    plt.show()
+    plt.savefig(img_basepath + "received_signals.png")
+    plt.close()
 
 
 def get_ambiguity_surface(ds):
@@ -80,12 +83,16 @@ def get_ambiguity_surface(ds):
     return amb_surf
 
 
-def plot_ambiguity_surface_dist(ds):
+def plot_ambiguity_surface_dist(ds, img_basepath):
     """Plot ambiguity surface distribution."""
     amb_surf = get_ambiguity_surface(ds)
+
     plt.figure(figsize=(10, 8))
     amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=0).plot.hist(bins=10000)
+    plt.scatter(amb_surf.max(), 1, marker="o", color="red", label="Max")
+    plt.ylabel("Number of points")
     plt.xlabel("Ambiguity surface [dB]")
+    plt.legend()
     plt.savefig(img_basepath + f"ambiguity_surface_dist.png")
     plt.close()
 
@@ -123,6 +130,7 @@ def get_grid_arrays(ds, grid_info={}):
 
 def plot_ambiguity_surface(
     ds,
+    img_basepath,
     nb_instant_to_plot=10,
     plot_beampattern=False,
     plot_hyperbol=False,
@@ -207,14 +215,14 @@ def plot_ambiguity_surface(
 
             plt.xlim(
                 [
-                    min(ds.x.min(), ds.x_obs.min()) - x_offset,
-                    max(ds.x.max(), ds.x_obs.max()) + x_offset,
+                    min(ds.x.min(), ds.x_obs.min()) - plot_info["x_offset"],
+                    max(ds.x.max(), ds.x_obs.max()) + plot_info["x_offset"],
                 ]
             )
             plt.ylim(
                 [
-                    min(ds.y.min(), ds.y_obs.min()) - y_offset,
-                    max(ds.y.max(), ds.y_obs.max()) + y_offset,
+                    min(ds.y.min(), ds.y_obs.min()) - plot_info["y_offset"],
+                    max(ds.y.max(), ds.y_obs.max()) + plot_info["y_offset"],
                 ]
             )
 
@@ -346,7 +354,7 @@ def plot_localisation_moviepy(
     plt.close(fig)
 
 
-def plot_ship_trajectory(ds):
+def plot_ship_trajectory(ds, img_basepath):
     """Plot ship trajectory."""
 
     plt.figure(figsize=(10, 8))
@@ -397,7 +405,7 @@ def get_pos_error_metrics(pos_error):
     return pos_error_metrics
 
 
-def plot_pos_error(ds):
+def plot_pos_error(ds, img_basepath):
     """Plot position error."""
 
     pos_error = get_pos_error(ds)
@@ -420,7 +428,7 @@ def plot_pos_error(ds):
     plt.close()
 
 
-def plot_correlation(ds, nb_instant_to_plot=10):
+def plot_correlation(ds, img_basepath, nb_instant_to_plot=10):
     """Plot correlation for receiver couple."""
 
     fig, axes = plt.subplots(
@@ -449,88 +457,97 @@ def plot_correlation(ds, nb_instant_to_plot=10):
             axes[i_ship, i_obs_pair].set_xlabel("")
             axes[i_ship, i_obs_pair].set_ylabel("")
             axes[i_ship, i_obs_pair].set_title("")
-            axes[i_ship, i_obs_pair].set_ylim([-1, 1])
+            # axes[i_ship, i_obs_pair].set_ylim([-1, 1])
 
     plt.savefig(img_basepath + f"signal_corr.png")
     plt.legend()
     plt.close()
 
 
-def analysis_main(grid_info={}):
-    global_log = []
-    snr = 5
-    detection_metric = (
-        "lstsquares"  # "intercorr0", "lstsquares", "hilbert_env_intercorr0"
-    )
+def analysis_main(
+    snr_list, detection_metric_list, plot_info={}, simulation_info={}, grid_info={}
+):
+    global_header_log = "Detection metric, SNR, median, mean, std, rmse, max, min"
+    global_log = [global_header_log]
 
-    # snr = [-20, -10, -5, 0]
-    # detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
-    for snr in [-20, -10, -5, 0]:
+    for snr in snr_list:
         if snr is None:
             snr_tag = "_noiseless"
         else:
             snr_tag = f"_snr{snr}dB"
 
-        for detection_metric in ["intercorr0", "hilbert_env_intercorr0"]:
+        for detection_metric in detection_metric_list:
             env_fname = "verlinden_1_test_case"
 
-            nc_path = os.path.join(
-                root, env_fname + "_" + detection_metric + snr_tag + ".nc"
+            output_nc_path = os.path.join(
+                VERLINDEN_OUTPUT_FOLDER,
+                env_fname,
+                simulation_info["src_type"],
+                simulation_info["src_pos"],
+                detection_metric,
+                f"output_{detection_metric}{snr_tag}.nc",
             )
-            ds = xr.open_dataset(nc_path)
+            ds = xr.open_dataset(output_nc_path)
 
             # Image folder
-            root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation\verlinden\test_case\isotropic\range_independent"
-            root_img = os.path.join(
-                root_img,
-                ds.src_pos,
-                f"dx{int(ds.dx)}m_dy{int(ds.dy)}m",
-                ds.detection_metric,
-                snr_tag[1:],
-            )
-            if not os.path.exists(root_img):
-                os.makedirs(root_img)
-
+            root_img = ds.fullpath_analysis
             img_basepath = os.path.join(root_img, env_fname + "_")
 
-            # n_instant_to_plot = ds.dims["src_trajectory_time"]
-            n_instant_to_plot = 20
-            n_instant_to_plot = min(n_instant_to_plot, ds.dims["src_trajectory_time"])
-
-            # Plot one TL profile
-            shd_fpath = os.path.join(root, env_fname + ".shd")
-            for f in [10, 15, 20, 25, 40, 45]:
-                plotshd(shd_fpath, freq=f, units="km")
-            plt.show()
-
-            # Plot ambiguity surface distribution
-            plot_ambiguity_surface_dist(ds)
-
-            # Plot received signal
-            plot_received_signal(ds)
-
-            # Plot ambiguity surface
-            plot_ambiguity_surface(ds, nb_instant_to_plot=n_instant_to_plot)
-
-            # Create video
-            plot_localisation_moviepy(
-                ds=ds,
-                nb_frames=n_instant_to_plot,
-                anim_filename=img_basepath + "ambiguity_surf.mp4",
-                plot_hyperbol=False,
-                grid_info=grid_info,
-                fps_sec=5,
-                cmap="jet",
+            n_instant_to_plot = min(
+                simulation_info["n_instant_to_plot"], ds.dims["src_trajectory_time"]
             )
 
+            # Plot one TL profile
+            if plot_info["plot_one_tl_profile"]:
+                shd_fpath = os.path.join(
+                    simulation_info["simulation_folder"], env_fname + ".shd"
+                )
+                for f in plot_info["tl_freq_to_plot"]:
+                    plotshd(shd_fpath, freq=f, units="km")
+                plt.savefig(img_basepath + f"tl_profile_{f}Hz.png")
+                plt.close()
+
+            # Plot ambiguity surface distribution
+            if plot_info["plot_ambiguity_surface_dist"]:
+                plot_ambiguity_surface_dist(ds, img_basepath)
+
+            # Plot received signal
+            if plot_info["plot_received_signal"]:
+                plot_received_signal(
+                    ds, img_basepath, simulation_info["n_rcv_signals_to_plot"]
+                )
+
+            # Plot ambiguity surface
+            if plot_info["plot_ambiguity_surface"]:
+                plot_ambiguity_surface(
+                    ds, img_basepath, nb_instant_to_plot=n_instant_to_plot
+                )
+
+            # Create video
+            if plot_info["plot_video"]:
+                plot_localisation_moviepy(
+                    ds=ds,
+                    nb_frames=n_instant_to_plot,
+                    anim_filename=img_basepath + "ambiguity_surf.mp4",
+                    plot_hyperbol=False,
+                    grid_info=grid_info,
+                    fps_sec=5,
+                    cmap="jet",
+                )
+
             # Plot ship trajectory
-            plot_ship_trajectory(ds)
+            if plot_info["plot_ship_trajectory"]:
+                plot_ship_trajectory(ds, img_basepath)
 
             # Plot detection error
-            plot_pos_error(ds)
+            if plot_info["plot_pos_error"]:
+                plot_pos_error(ds, img_basepath)
 
             # Plot correlation
-            plot_correlation(ds)
+            if plot_info["plot_correlation"]:
+                plot_correlation(
+                    ds, img_basepath, simulation_info["n_rcv_signals_to_plot"]
+                )
 
             pos_error = get_pos_error(ds)
             pos_error_metrics = get_pos_error_metrics(pos_error)
@@ -538,8 +555,11 @@ def analysis_main(grid_info={}):
             amb_surf = get_ambiguity_surface(ds)
             amb_dynamic_range = (amb_surf.max() - amb_surf.min()).round(2).values
 
+            global_line = f"{detection_metric}, {snr}, {pos_error_metrics['median']}, {pos_error_metrics['mean']}, {pos_error_metrics['std']}, {pos_error_metrics['rmse']}, {pos_error_metrics['max']}, {pos_error_metrics['min']}"
+            global_log.append(global_line)
+
             # Write report in txt file
-            lines = [
+            local_log = [
                 f"Detection metric: {detection_metric}",
                 f"SNR: {ds.attrs['snr_dB']}dB",
                 f"Number of sensors: {ds.dims['idx_obs']}",
@@ -553,9 +573,50 @@ def analysis_main(grid_info={}):
                 f"Position rmse: {pos_error_metrics['rmse']}m",
             ]
 
-            global_line = f"{detection_metric}, {snr}, {pos_error_metrics['median']}, {pos_error_metrics['mean']}, {pos_error_metrics['std']}, {pos_error_metrics['rmse']}, {pos_error_metrics['max']}, {pos_error_metrics['min']}"
-            global_log.append(global_line)
+            local_report_fpath = os.path.join(root_img, "loc_report.txt")
+            with open(local_report_fpath, "w") as f:
+                f.writelines("\n".join(local_log))
 
-            report_fpath = os.path.join(root_img, "loc_report.txt")
-            with open(report_fpath, "w") as f:
-                f.writelines("\n".join(lines))
+    global_report_fpath = os.path.join(VERLINDEN_ANALYSIS_FOLDER, "loc_report.txt")
+    with open(global_report_fpath, "w") as f:
+        f.writelines("\n".join(global_log))
+
+
+if __name__ == "__main__":
+    snr = [-10]
+    detection_metric = ["intercorr0"]
+
+    grid_info = {
+        "Lx": 5 * 1e3,
+        "Ly": 5 * 1e3,
+        "dx": 10,
+        "dy": 10,
+    }
+    simulation_info = {
+        "simulation_folder": r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case",
+        "src_pos": "not_on_grid",
+        "n_instant_to_plot": 10,
+        "n_rcv_signals_to_plot": 2,
+        "src_type": "pulse",
+    }
+
+    plot_info = {
+        "plot_video": False,
+        "plot_one_tl_profile": False,
+        "plot_ambiguity_surface_dist": False,
+        "plot_received_signal": False,
+        "plot_ambiguity_surface": False,
+        "plot_ship_trajectory": False,
+        "plot_pos_error": False,
+        "plot_correlation": True,
+        "tl_freq_to_plot": [20],
+        "x_offset": 1000,
+        "y_offset": 1000,
+    }
+    analysis_main(
+        snr,
+        detection_metric,
+        simulation_info=simulation_info,
+        grid_info=grid_info,
+        plot_info=plot_info,
+    )

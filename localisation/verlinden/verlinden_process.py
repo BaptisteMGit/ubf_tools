@@ -669,8 +669,8 @@ if __name__ == "__main__":
         y_obs=[0, 0],
     )
 
-    snr = [-10]
-    detection_metric = ["intercorr0"]
+    snr = [None]
+    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     depth = 150  # Depth m
     env_fname = "verlinden_1_test_case"

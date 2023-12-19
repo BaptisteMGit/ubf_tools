@@ -1,6 +1,7 @@
 import os
 import io
 import numpy as np
+import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
 import scipy.signal as signal
@@ -8,9 +9,8 @@ import moviepy.editor as mpy
 
 from PIL import Image
 from propa.kraken_toolbox.plot_utils import plotshd
-from localisation.verlinden.directivity_pattern import (
-    linear_beampattern,
-    plot_beampattern,
+from localisation.verlinden.verlinden_analysis_report import (
+    plot_localisation_performance,
 )
 
 from localisation.verlinden.utils import plot_localisation_moviepy
@@ -467,7 +467,7 @@ def plot_correlation(ds, img_basepath, nb_instant_to_plot=10):
 def analysis_main(
     snr_list, detection_metric_list, plot_info={}, simulation_info={}, grid_info={}
 ):
-    global_header_log = "Detection metric, SNR, median, mean, std, rmse, max, min"
+    global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN"
     global_log = [global_header_log]
 
     for snr in snr_list:
@@ -577,14 +577,29 @@ def analysis_main(
             with open(local_report_fpath, "w") as f:
                 f.writelines("\n".join(local_log))
 
-    global_report_fpath = os.path.join(VERLINDEN_ANALYSIS_FOLDER, "loc_report.txt")
+    # Write global report in txt file
+    global_report_fpath = os.path.join(
+        VERLINDEN_ANALYSIS_FOLDER,
+        env_fname,
+        simulation_info["src_type"],
+        simulation_info["src_pos"],
+        "global_report.txt",
+    )
     with open(global_report_fpath, "w") as f:
         f.writelines("\n".join(global_log))
 
+    # Analysis global report
+    perf_metrics = ["RMSE", "STD"]
+    plot_localisation_performance(
+        data=pd.read_csv(global_report_fpath, sep=","),
+        metrics_to_plot=perf_metrics,
+        img_path=os.path.dirname(global_report_fpath),
+    )
+
 
 if __name__ == "__main__":
-    snr = [-10]
-    detection_metric = ["intercorr0"]
+    snr = [None, -10, -5, 0, 5]
+    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {
         "Lx": 5 * 1e3,
@@ -608,7 +623,7 @@ if __name__ == "__main__":
         "plot_ambiguity_surface": False,
         "plot_ship_trajectory": False,
         "plot_pos_error": False,
-        "plot_correlation": True,
+        "plot_correlation": False,
         "tl_freq_to_plot": [20],
         "x_offset": 1000,
         "y_offset": 1000,

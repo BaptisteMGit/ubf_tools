@@ -168,7 +168,7 @@ def readshd_bin(filename, xs=None, ys=None, freq=None):
                         pressure[idx_f_pressure, itheta, isz, irz, :] = (
                             temp[0::2] + 1j * temp[1::2]
                         )
-        # Get rid of the useless first dimension in case of single frequency (mainly for coherence with other functions plotshd ...)
+        # Get rid of the useless first dimension in case of single frequency (mainly for coherence with other functions like plotshd ...)
         if nread_freq == 1:
             pressure = pressure[0, ...]
 

@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from cst import BAR_FORMAT, C0
 from misc import mult_along_axis
-from signals import ship_noise, ship_spectrum, pulse
+from signals import ship_noise, pulse, pulse_train
 from localisation.verlinden.AcousticComponent import AcousticSource
 from localisation.verlinden.RHUM_RHUM_env import (
     isotropic_ideal_env,
@@ -480,7 +480,14 @@ def init_library_src(dt, depth, sig_type="pulse"):
         t_library_src_sig = t_library_src_sig[0:nmax]
 
     elif sig_type == "pulse":
-        library_src_sig, t_library_src_sig = pulse(T=1, f=50, fs=200)
+        library_src_sig, t_library_src_sig = pulse(T=dt, f=50, fs=200)
+
+    elif sig_type == "pulse_train":
+        library_src_sig, t_library_src_sig = pulse_train(T=dt, f=50, fs=200)
+
+    if sig_type in ["ship", "pulse_train"]:
+        # Apply hanning window
+        library_src_sig *= np.hanning(len(library_src_sig))
 
     library_src = AcousticSource(
         signal=library_src_sig,
@@ -649,10 +656,10 @@ if __name__ == "__main__":
     v_ship = 50 / 3.6  # m/s
     src_info = dict(
         x_pos=[-1000, 2500],
-        y_pos=[3000, -5000],
+        y_pos=[3000, 2000],
         v_src=v_ship,
         nmax_ship=100,
-        src_signal_type="pulse",
+        src_signal_type="pulse_train",
         z_src=5,
         on_grid=False,
     )
@@ -669,7 +676,7 @@ if __name__ == "__main__":
         y_obs=[0, 0],
     )
 
-    snr = [None]
+    snr = [-5, 0, 5, 10]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     depth = 150  # Depth m

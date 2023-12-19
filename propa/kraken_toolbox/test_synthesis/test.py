@@ -7,7 +7,8 @@ from localisation.verlinden.AcousticComponent import AcousticSource
 from propa.kraken_toolbox.plot_utils import plotshd
 from propa.kraken_toolbox.post_process import (
     fourier_synthesis_kraken,
-    postprocess,
+    postprocess_received_signal,
+    postprocess_ir,
     process_broadband,
 )
 from propa.kraken_toolbox.utils import runkraken
@@ -20,21 +21,25 @@ if __name__ == "__main__":
     """
 
     working_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test_synthesis"
-    # template_env = "MunkK"
-    template_env = "CalibSynthesis"
+    template_env = "verlinden_1_test_case"
+    # template_env = "CalibSynthesis_bis"
+
+    # template_env = "CalibSynthesis"
+
     os.chdir(working_dir)
 
     # Define the pulse
-    s, t = pulse(T=1, f=50, fs=500)
+    fc = 50
+    s, t = pulse(T=1, f=fc, fs=200)
 
     # Boat signal generated with the code from Samuel Pinson
-    data = np.loadtxt(
-        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test_synthesis\sig_samuel.txt",
-        skiprows=1,
-        usecols=[0, 1],
-        dtype=np.float64,
-        delimiter=",",
-    )
+    # data = np.loadtxt(
+    #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test_synthesis\sig_samuel.txt",
+    #     skiprows=1,
+    #     usecols=[0, 1],
+    #     dtype=np.float64,
+    #     delimiter=",",
+    # )
 
     # tmax = 10 * 60
     # t, s = data[:, 0], data[:, 1]
@@ -46,7 +51,18 @@ if __name__ == "__main__":
     # t -= t.min()
     # s = s[idx_cpa - nt // 2 : idx_cpa + nt // 2]
     source = AcousticSource(s, t)
+    print(source.df)
 
+    print(f"Signal duration {source.time[-1]} s")
+    print(f"Signal sampling frequency {source.fs} Hz")
+    print(f"Signal number of samples {source.ns}")
+    print(f"deltaf = fs / nfft = {source.fs / source.nfft} Hz")
+    print(f"Signal spectrum df {source.df} Hz")
+    print(f"df = 1 / T = {1 / source.time[-1]} Hz")
+    print(f"T_tot = 1 / df = {1 / source.df} s")
+
+    # source.display_source()
+    # plt.show()
     # source.display_source()
     # harmonic = [5, 10, 15, 20, 25, 30]
     # f_vrec = []
@@ -59,25 +75,76 @@ if __name__ == "__main__":
     # plt.show()
 
     # Receiver position
-    rcv_range = [5000, 15000, 20000, 30000]
-    rcv_depth = [20]
+    rcv_range = np.array([1500, 2500, 30000])
+    # rcv_range = np.arange(1000, 30000, 10)
+    rcv_depth = [3]
 
-    # process_broadband(fname=template_env, source=source, max_depth=100)
+    # process_broadband(fname=template_env, source=source, max_depth=150)
 
-    time_vector, s_at_rcv_pos, Pos = postprocess(
+    delay = list([rcv_range[0] / 1500]) * len(rcv_range)
+
+    runkraken(template_env)
+
+    # source.positive_spectrum[:] = 1
+    propagating_freq, pressure_field, field_pos = postprocess_ir(
         shd_fpath=os.path.join(working_dir, template_env + ".shd"),
         source=source,
         rcv_range=rcv_range,
         rcv_depth=rcv_depth,
     )
 
-    # Plot received signal
-    fig, ax = plt.subplots(1 + len(rcv_range), 1, sharex=True)
-    source.plot_signal(ax=ax[0])
-    ax[0].set_ylabel("")
+    nfft_inv = (
+        4 * source.nfft
+    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    received_signal_t = np.fft.irfft(pressure_field, axis=0, n=nfft_inv)
+    transmited_field_t = np.real(received_signal_t)
+
+    T_tot = 1 / source.df
+    dt = T_tot / received_signal_t.shape[0]
+    time_vector = np.arange(0, T_tot, dt)
+    s_at_rcv_pos = transmited_field_t
+    # plt.figure()
+    # plt.plot(time_vector, transmited_field_t[:, 50, 10])
+    # plt.show()
+
+    # plt.figure()
+    # plt.plot(propagating_freq, np.abs(pressure_field[:, 0, 0]))
+    # plt.show()
+
+    # time_vector, s_at_rcv_pos, Pos = postprocess_received_signal(
+    #     shd_fpath=os.path.join(working_dir, template_env + ".shd"),
+    #     source=source,
+    #     rcv_range=rcv_range,
+    #     rcv_depth=rcv_depth,
+    #     apply_delay=True,
+    # )
+
+    # # Plot pressure field
+    # list_r_idx = [np.argmin(np.abs(Pos["r"]["r"] - r)) for r in rcv_range]
+    # plotshd(os.path.join(working_dir, template_env + ".shd"), 50)
+    # plt.scatter(
+    #     Pos["r"]["r"][list_r_idx],
+    #     rcv_depth * len(rcv_range),
+    #     marker="+",
+    #     color="red",
+    #     s=5,
+    #     label="Receiver position",
+    # )
+    # plt.legend()
+    # plt.show()
+
+    # rcv = AcousticSource(s_at_rcv_pos[:, 0, 0], time_vector)
+    # rcv.display_source()
+
+    # # Plot received signal
+    fig, ax = plt.subplots(1 + len(rcv_range), 1, sharex=True, sharey=True)
+    # source.plot_signal(ax=ax[0])
+    # ax[0].set_ylabel("")
 
     for ir, rcv_r in enumerate(rcv_range):
         ax[ir + 1].plot(time_vector, s_at_rcv_pos[:, 0, ir])
+
+        # ax[ir + 1].axvline()
         # ax[ir + 1].set_xlabel("Time (s)")
         # ax[ir + 1].set_ylabel("Pressure (Pa)")
         # ax[ir + 1].set_title("Transmitted signal - r = {} m".format(rcv_r))
@@ -98,13 +165,6 @@ if __name__ == "__main__":
     # plt.pcolormesh(t, f, Sxx)
     # plt.xlabel("Time (s)")
     # plt.ylabel("Frequency (Hz)")
-
-    # # Plot pressure field
-    # plotshd(template_env + ".shd", 30)
-    # plt.scatter(30000, 20, marker=">", color="red", s=50, label="Receiver position")
-    # plt.legend()
-
-    # plt.show()
 
     # Doppler
 

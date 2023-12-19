@@ -137,6 +137,7 @@ venv.bak/
 *.shd
 *.flp
 *.mod
+field.exe.stackdump
 
 # Picture folder 
 img/

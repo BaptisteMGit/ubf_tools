@@ -68,7 +68,7 @@ def plot_beampattern(theta, beampattern, title):
     """Plot directivity pattern."""
 
     # Derive knots positions
-    knots, knots_values = directivity_knots(
+    knots = directivity_knots(
         theta,
         beampattern,
         n_sensors,

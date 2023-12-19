@@ -123,36 +123,57 @@ def readshd_bin(filename, xs=None, ys=None, freq=None):
     else:
         Nrcvrs_per_range = Nrz
 
-    pressure = np.zeros((Ntheta, Nsz, Nrcvrs_per_range, Nrr), dtype=complex)
+    if freq is None:
+        nread_freq = 1
+    else:
+        freq = np.array(freq)  # Ensure freq is a np array
+        freq = np.reshape(
+            freq, (freq.size,)
+        )  # Ensure freq as one dimension (to avoid issue when freq is given as a scalar)
+        nread_freq = freq.size
+
+    pressure = np.zeros((nread_freq, Ntheta, Nsz, Nrcvrs_per_range, Nrr), dtype=complex)
 
     if xs is None or ys is None:
         if freq is not None:
-            freqdiff = np.abs(freqVec - freq)
-            ifreq = np.argmin(freqdiff)
+            # Old version (prior 15/12/2023)
+            # freqdiff = np.abs(freqVec - freq)
+            # freq_idx = np.argmin(freqdiff)
+
+            # Updated version to handle multiple frequencies reading at the same time
+            freq_idx = np.array([np.argmin(np.abs(freqVec - f)) for f in freq])
         else:
-            ifreq = 0
-        read_freq = freqVec[ifreq]
+            freq_idx = np.array([0])
+        read_freq = freqVec[freq_idx]
 
-        for itheta in range(Ntheta):
-            for isz in range(Nsz):
-                for irz in range(Nrcvrs_per_range):
-                    recnum = (
-                        10
-                        + ifreq * Ntheta * Nsz * Nrcvrs_per_range
-                        + itheta * Nsz * Nrcvrs_per_range
-                        + isz * Nrcvrs_per_range
-                        + irz
-                    )
-
-                    status = fid.seek(recnum * 4 * recl)
-                    if status == -1:
-                        raise ValueError(
-                            "Seek to specified record failed in readshd_bin"
+        for idx_f_pressure, ifreq in enumerate(freq_idx):
+            for itheta in range(Ntheta):
+                for isz in range(Nsz):
+                    for irz in range(Nrcvrs_per_range):
+                        recnum = (
+                            10
+                            + ifreq * Ntheta * Nsz * Nrcvrs_per_range
+                            + itheta * Nsz * Nrcvrs_per_range
+                            + isz * Nrcvrs_per_range
+                            + irz
                         )
 
-                    temp = np.fromfile(fid, dtype=np.float32, count=2 * Nrr)
-                    pressure[itheta, isz, irz, :] = temp[0::2] + 1j * temp[1::2]
+                        status = fid.seek(recnum * 4 * recl)
+                        if status == -1:
+                            raise ValueError(
+                                "Seek to specified record failed in readshd_bin"
+                            )
+
+                        temp = np.fromfile(fid, dtype=np.float32, count=2 * Nrr)
+                        pressure[idx_f_pressure, itheta, isz, irz, :] = (
+                            temp[0::2] + 1j * temp[1::2]
+                        )
+        # Get rid of the useless first dimension in case of single frequency (mainly for coherence with other functions like plotshd ...)
+        if nread_freq == 1:
+            pressure = pressure[0, ...]
+
     else:
+        # TODO: this part of the function is inherited from the MATLAB function from AT and might not work anymore
         read_freq = None
         xdiff = np.abs(Pos["s"]["x"] - xs * 1000)
         idxX = np.argmin(xdiff)

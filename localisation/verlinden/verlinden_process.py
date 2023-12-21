@@ -97,16 +97,9 @@ def populate_grid(
     ds["y"].attrs["long_name"] = "y"
     ds["idx_obs"].attrs["long_name"] = "Receiver index"
 
-    # ds["r0_r1"] = ds.r_from_obs.isel(idx_obs=0) - ds.r_from_obs.isel(idx_obs=1)
-    delta_tau = ds.r_from_obs.isel(idx_obs=1) / C0 - ds.r_from_obs.isel(idx_obs=0) / C0
-
-    ds["relative_delay_obs"] = xr.zeros_like(ds.r_from_obs)
-    ds["relative_delay_obs"].loc[{"idx_obs": 0}] = xr.where(
-        delta_tau > 0, 0, delta_tau
-    ).values
-    ds["relative_delay_obs"].loc[{"idx_obs": 1}] = xr.where(
-        delta_tau > 0, delta_tau, 0
-    ).values
+    # TODO : need to be changed in case of multiple receivers couples
+    ds["delay_obs"] = ds.r_from_obs / C0
+    delay_to_apply = ds.delay_obs.min(dim="idx_obs").values.flatten()
 
     # Build OBS pairs
     obs_pairs = []
@@ -123,7 +116,6 @@ def populate_grid(
         ds.idx_obs, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
     ):
         rr_from_obs_flat = ds.r_from_obs.sel(idx_obs=i_obs).values.flatten()
-        relative_delay_obs_flat = ds.relative_delay_obs.values.flatten()  # TODO
 
         t_obs, s_obs, Pos = postprocess_received_signal(
             shd_fpath=kraken_env.shd_fpath,
@@ -131,7 +123,7 @@ def populate_grid(
             rcv_range=rr_from_obs_flat,
             rcv_depth=[z_src],
             apply_delay=True,
-            delay=None,
+            delay=delay_to_apply,
         )
         if i_obs == 0:
             ds["library_signal_time"] = t_obs
@@ -311,9 +303,11 @@ def add_event_to_dataset(
         bar_format=BAR_FORMAT,
         desc="Derive received signal for successive positions of the ship",
     ):
-        # delay_ship = ds.delay_obs.sel(
-        #     x=ds.x_ship, y=ds.y_ship, method="nearest"
-        # ).values.flatten()
+        delay_to_apply_ship = (
+            ds.delay_obs.min(dim="idx_obs")
+            .sel(x=ds.x_ship, y=ds.y_ship, method="nearest")
+            .values.flatten()
+        )
 
         t_obs, s_obs, Pos = postprocess_received_signal(
             shd_fpath=kraken_env.shd_fpath,
@@ -321,7 +315,7 @@ def add_event_to_dataset(
             rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
             rcv_depth=[z_event],
             apply_delay=True,
-            delay=None,
+            delay=delay_to_apply_ship,
         )
         if i_obs == 0:
             ds["event_signal_time"] = t_obs

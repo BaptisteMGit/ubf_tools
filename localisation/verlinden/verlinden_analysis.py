@@ -135,6 +135,7 @@ def plot_ambiguity_surface(
     plot_beampattern=False,
     plot_hyperbol=False,
     grid_info={},
+    plot_info={},
 ):
     """Plot ambiguity surface for each source position."""
 
@@ -491,7 +492,10 @@ def analysis_main(
 
             # Image folder
             root_img = ds.fullpath_analysis
-            img_basepath = os.path.join(root_img, env_fname + "_")
+            now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+            img_basepath = os.path.join(root_img, now, env_fname + "_")
+            if not os.path.exists(os.path.dirname(img_basepath)):
+                os.makedirs(os.path.dirname(img_basepath))
 
             n_instant_to_plot = min(
                 simulation_info["n_instant_to_plot"], ds.dims["src_trajectory_time"]
@@ -520,7 +524,10 @@ def analysis_main(
             # Plot ambiguity surface
             if plot_info["plot_ambiguity_surface"]:
                 plot_ambiguity_surface(
-                    ds, img_basepath, nb_instant_to_plot=n_instant_to_plot
+                    ds,
+                    img_basepath,
+                    nb_instant_to_plot=n_instant_to_plot,
+                    plot_info=plot_info,
                 )
 
             # Create video
@@ -598,7 +605,7 @@ def analysis_main(
 
 
 if __name__ == "__main__":
-    snr = [None, -10, -5, 0, 5]
+    snr = [-5, 0, 5, 10]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {
@@ -615,6 +622,20 @@ if __name__ == "__main__":
         "src_type": "pulse",
     }
 
+    # plot_info = {
+    #     "plot_video": False,
+    #     "plot_one_tl_profile": True,
+    #     "plot_ambiguity_surface_dist": True,
+    #     "plot_received_signal": True,
+    #     "plot_ambiguity_surface": True,
+    #     "plot_ship_trajectory": True,
+    #     "plot_pos_error": True,
+    #     "plot_correlation": True,
+    #     "tl_freq_to_plot": [20],
+    #     "x_offset": 1000,
+    #     "y_offset": 1000,
+    # }
+
     plot_info = {
         "plot_video": False,
         "plot_one_tl_profile": False,
@@ -628,6 +649,7 @@ if __name__ == "__main__":
         "x_offset": 1000,
         "y_offset": 1000,
     }
+
     analysis_main(
         snr,
         detection_metric,

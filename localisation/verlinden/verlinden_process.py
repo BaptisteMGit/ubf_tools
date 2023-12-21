@@ -127,6 +127,9 @@ def populate_grid(
         )
         if i_obs == 0:
             ds["library_signal_time"] = t_obs
+            ds["library_signal_time"].attrs["units"] = "s"
+            ds["library_signal_time"].attrs["long_name"] = "Time"
+
             rcv_signal_library = np.empty(tuple(ds.dims[d] for d in signal_library_dim))
 
         # Time domain signal
@@ -433,6 +436,8 @@ def build_ambiguity_surf(ds, detection_metric):
             elif detection_metric == "lstsquares":
                 lib = lib_data.values
                 event = event_vector.values
+                del lib_data, event_vector
+
                 diff = lib - event
                 amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
                 amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
@@ -444,6 +449,8 @@ def build_ambiguity_surf(ds, detection_metric):
             elif detection_metric == "hilbert_env_intercorr0":
                 lib_env = np.abs(signal.hilbert(lib_data))
                 event_env = np.abs(signal.hilbert(event_vector))
+                del lib_data, event_vector
+
                 amb_surf = mult_along_axis(
                     lib_env,
                     event_env,
@@ -452,6 +459,8 @@ def build_ambiguity_surf(ds, detection_metric):
 
                 autocorr_lib = np.sum(lib_env**2, axis=2)
                 autocorr_event = np.sum(event_env**2)
+                del lib_env, event_env
+
                 norm = np.sqrt(autocorr_lib * autocorr_event)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
@@ -582,12 +591,6 @@ def verlinden_main(
             snr_tag = "noiseless"
         else:
             snr_tag = f"snr{snr_i}dB"
-
-        # populated_path = os.path.join(
-        #     VERLINDEN_POPULATED_FOLDER,
-        #     kraken_env.filename,
-        #     f"populated_{snr_tag}.nc",
-        # )
 
         populated_path = os.path.join(
             VERLINDEN_POPULATED_FOLDER,

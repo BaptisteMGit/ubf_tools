@@ -143,12 +143,6 @@ def populate_grid(
             ds.dims["y"], ds.dims["x"], ds.dims["library_signal_time"]
         )
 
-        # # Frequency domain signal
-        # s_obs_f = s_obs_f[:, 0, :].T
-        # s_obs_f = s_obs_f.reshape(
-        #     ds.dims["y"], ds.dims["x"], ds.dims["library_signal_time"]
-        # )
-
         rcv_signal_library[i_obs, :] = s_obs
 
         if snr_dB is not None:
@@ -387,15 +381,29 @@ def add_event_to_dataset(
 
 
 def add_noise_to_signal(sig, snr_dB):
-    # Add noise to signal assuming sig is an array with either 1D (like event signal (t)) or 3D (like library signal (x, y, t)) shape
+    # Add noise to signal assuming sig is either a 1D (like event signal (t)) or a 3D (like library signal (x, y, t)) array
     if snr_dB is not None:
         # First simple implementation : same noise level for all positions
         # TODO : This need to be improved to take into account the propagation loss
-        P_sig = 1 / sig.shape[-1] * np.sum(sig**2, axis=-1)
-        sigma_noise = np.sqrt(P_sig * 10 ** (-snr_dB / 10))
-        # Generate gaussian noise
-        noise = np.random.normal(0, sigma_noise.mean(), sig.shape)
-        sig += noise
+
+        P_sig = (
+            1 / sig.shape[-1] * np.sum(sig**2, axis=-1)
+        )  # Signal power for each position
+        sigma_noise = np.sqrt(
+            P_sig * 10 ** (-snr_dB / 10)
+        )  # Noise level for each position
+
+        if sig.ndim == 1:  # 1D array (event signal)
+            # Generate gaussian noise
+            noise = np.random.normal(0, sigma_noise, sig.size)
+            sig += noise
+
+        elif sig.ndim == 3:  # 3D array (library signal)
+            # Generate gaussian noise
+            for i_x in range(sig.shape[0]):
+                for i_y in range(sig.shape[1]):
+                    noise = np.random.normal(0, sigma_noise[i_x, i_y], sig.shape[-1])
+                    sig[i_x, i_y, :] += noise
 
     return sig
 
@@ -676,7 +684,7 @@ if __name__ == "__main__":
         y_obs=[0, 0],
     )
 
-    snr = [-5, 0, 5, 10]
+    snr = [0]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     depth = 150  # Depth m

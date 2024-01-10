@@ -31,47 +31,56 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
             n_instant_to_plot, xr_dataset.dims["src_trajectory_time"]
         )
 
-    fig, axes = plt.subplots(
-        n_instant_to_plot,
-        xr_dataset.dims["idx_obs"],
-        sharex=True,
-        sharey=True,
-    )
+    # fig, axes = plt.subplots(
+    #     n_instant_to_plot,
+    #     xr_dataset.dims["idx_obs"],
+    #     sharex=True,
+    #     sharey=True,
+    # )
 
-    axes = np.reshape(axes, (n_instant_to_plot, xr_dataset.dims["idx_obs"]))
+    # axes = np.reshape(axes, (n_instant_to_plot, xr_dataset.dims["idx_obs"]))
 
     for i_ship in range(n_instant_to_plot):
-        for i_obs in range(xr_dataset.dims["idx_obs"]):
-            xr_dataset.rcv_signal_event.isel(
-                src_trajectory_time=i_ship, idx_obs=i_obs
-            ).plot(ax=axes[i_ship, i_obs], label=f"event - obs {i_obs}")
+        fig, axes = plt.subplots(
+            xr_dataset.dims["idx_obs"],
+            1,
+            figsize=(16, 8),
+            sharey=True,
+        )
 
+        for i_obs in range(xr_dataset.dims["idx_obs"]):
             xr_dataset.rcv_signal_library.sel(
                 x=xr_dataset.x_ship.isel(src_trajectory_time=i_ship),
                 y=xr_dataset.y_ship.isel(src_trajectory_time=i_ship),
                 method="nearest",
-            ).isel(idx_obs=i_obs).plot(
-                ax=axes[i_ship, i_obs], label=f"library - obs {i_obs}"
-            )
+            ).isel(idx_obs=i_obs).plot(ax=axes[i_obs], label=f"library - obs {i_obs}")
 
-            axes[i_ship, i_obs].set_xlabel("")
-            axes[i_ship, i_obs].set_ylabel("")
-            axes[i_ship, i_obs].set_title(
-                f"x_ship = {xr_dataset.x_ship.isel(src_trajectory_time=i_ship).values.round(0)}m, y_ship = {xr_dataset.y_ship.isel(src_trajectory_time=i_ship).values.round(0)}m",
-            )
+            xr_dataset.rcv_signal_event.isel(
+                src_trajectory_time=i_ship, idx_obs=i_obs
+            ).plot(ax=axes[i_obs], label=f"event - obs {i_obs}")
+
+            axes[i_obs].set_xlabel("")
+            axes[i_obs].set_ylabel("")
+            # axes[i_ship, i_obs].set_title(
+            #     r"$x_{ship}$"
+            #     + f" = {xr_dataset.x_ship.isel(src_trajectory_time=i_ship).values.round(0)}m, "
+            #     + r"$y_{ship}$"
+            #     + f" = {xr_dataset.y_ship.isel(src_trajectory_time=i_ship).values.round(0)}m",
+            # )
 
             # axes[i_ship, i_obs].set_ylim([-0.005, 0.005])
 
-    for ax, col in zip(axes[0], [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
-        ax.set_title(col)
+        for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
+            ax.set_title(col)
 
-    plt.tight_layout()
-    fig.supylabel("Received signal")
-    fig.supxlabel("Time (s)")
-    axes[-1, 0].legend()
-    axes[-1, 1].legend()
-    plt.savefig(img_basepath + "received_signals.png")
-    plt.close()
+        fig.supylabel("Received signal")
+        fig.supxlabel("Time (s)")
+        plt.legend()
+        # axes[-1, 0].legend()
+        # axes[-1, 1].legend()
+        plt.tight_layout()
+        plt.savefig(img_basepath + f"received_signals_{i_ship}.png")
+        plt.close()
 
 
 def get_ambiguity_surface(ds):
@@ -143,6 +152,7 @@ def plot_ambiguity_surface(
 
     for i in range(nb_instant_to_plot):
         plt.figure(figsize=(10, 8))
+
         vmin = (
             amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).quantile(0.25).values
         )
@@ -471,6 +481,8 @@ def analysis_main(
     global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN"
     global_log = [global_header_log]
 
+    now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+
     for snr in snr_list:
         if snr is None:
             snr_tag = "_noiseless"
@@ -492,7 +504,6 @@ def analysis_main(
 
             # Image folder
             root_img = ds.fullpath_analysis
-            now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
             img_basepath = os.path.join(root_img, now, env_fname + "_")
             if not os.path.exists(os.path.dirname(img_basepath)):
                 os.makedirs(os.path.dirname(img_basepath))
@@ -605,7 +616,7 @@ def analysis_main(
 
 
 if __name__ == "__main__":
-    snr = [-5, 0, 5, 10]
+    snr = [-5, 5, 10]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {
@@ -618,8 +629,8 @@ if __name__ == "__main__":
         "simulation_folder": r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case",
         "src_pos": "not_on_grid",
         "n_instant_to_plot": 10,
-        "n_rcv_signals_to_plot": 2,
-        "src_type": "pulse",
+        "n_rcv_signals_to_plot": 3,
+        "src_type": "pulse_train",
     }
 
     # plot_info = {
@@ -640,7 +651,7 @@ if __name__ == "__main__":
         "plot_video": False,
         "plot_one_tl_profile": False,
         "plot_ambiguity_surface_dist": False,
-        "plot_received_signal": False,
+        "plot_received_signal": True,
         "plot_ambiguity_surface": False,
         "plot_ship_trajectory": False,
         "plot_pos_error": False,

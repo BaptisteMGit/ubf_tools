@@ -33,7 +33,7 @@ def ideal_waveguide_propa():
     window = "hanning"
 
     # Receiver position
-    rcv_range = np.array([10000, 13000])
+    rcv_range = np.array([40000, 45000])
     rcv_depth = [5]
     delays = rcv_range / 1500
 

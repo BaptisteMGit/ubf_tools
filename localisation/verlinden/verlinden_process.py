@@ -390,12 +390,13 @@ def add_noise_to_signal(sig, snr_dB):
             P_sig * 10 ** (-snr_dB / 10)
         )  # Noise level for each position
 
-        if sig.ndim == 1:  # 1D array (event signal)
+        if sig.ndim == 2:  # 2D array (event signal) (pos, time)
             # Generate gaussian noise
-            noise = np.random.normal(0, sigma_noise, sig.size)
-            sig += noise
+            for i_ship in range(sig.shape[0]):
+                noise = np.random.normal(0, sigma_noise[i_ship], sig.shape[-1])
+                sig[i_ship, :] += noise
 
-        elif sig.ndim == 3:  # 3D array (library signal)
+        elif sig.ndim == 3:  # 3D array (library signal) -> (x, y, time)
             # Generate gaussian noise
             for i_x in range(sig.shape[0]):
                 for i_y in range(sig.shape[1]):
@@ -484,11 +485,7 @@ def build_ambiguity_surf(ds, detection_metric):
 
 def init_library_src(dt, depth, sig_type="pulse"):
     if sig_type == "ship":
-        library_src_sig, t_library_src_sig = ship_noise()
-        fs = 1 / (t_library_src_sig[1] - t_library_src_sig[0])
-        nmax = int(fs * dt)
-        library_src_sig = library_src_sig[0:nmax]
-        t_library_src_sig = t_library_src_sig[0:nmax]
+        library_src_sig, t_library_src_sig = ship_noise(T=dt)
 
     elif sig_type == "pulse":
         library_src_sig, t_library_src_sig = pulse(T=dt, f=50, fs=200)

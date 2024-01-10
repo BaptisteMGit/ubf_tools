@@ -18,35 +18,42 @@ figsize = (16, 8)
 
 
 def ideal_waveguide_propa():
-    working_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test_synthesis"
-    template_env = "CalibSynthesis"
+    # working_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test_synthesis"
+    # template_env = "CalibSynthesis"
+
+    working_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
+    template_env = "verlinden_1_test_case"
+    max_depth = 150
 
     os.chdir(working_dir)
 
-    T = 1
+    T = 7.2
     fc = 50
     fs = 200
     window = "hanning"
 
     # Receiver position
     rcv_range = np.array([10000, 13000])
-    rcv_depth = [20]
+    rcv_depth = [5]
     delays = rcv_range / 1500
 
     # Need to reprocess kraken for differents frequency content of the source
 
     delay = list([rcv_range[0] / 1500]) * len(rcv_range)
 
-    for src in ["pulse", "pulse_train", "ship"]:
+    for src in ["pulse_train", "pulse", "ship"]:
         if src == "pulse":
             s, t = pulse(T=T, f=fc, fs=fs, t0=0.5 * T)
         elif src == "pulse_train":
-            s, t = pulse_train(T=T, f=fc, fs=fs, interpulse_delay=0.1)
+            # s, t = pulse_train(T=T, f=fc, fs=fs, interpulse_delay=0.1)
+            s, t = pulse_train(T=T, f=fc, fs=fs)
         elif src == "ship":
             s, t = ship_noise(T=T)
 
-        source = AcousticSource(s, t, name="source", waveguide_depth=100, window=window)
-        process_broadband(fname=template_env, source=source, max_depth=100)
+        source = AcousticSource(
+            s, t, name="source", waveguide_depth=max_depth, window=window
+        )
+        process_broadband(fname=template_env, source=source, max_depth=max_depth)
 
         for apply_delay in [True, False]:
             time_vector, s_at_rcv_pos, Pos = postprocess_received_signal(
@@ -112,9 +119,9 @@ def noisy_signal_verlinden_process(ds_library):
 
 
 if __name__ == "__main__":
-    # ideal_waveguide_propa()
+    ideal_waveguide_propa()
 
     ds_library = xr.open_dataset(
-        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_populated_library\verlinden_1_test_case\pulse_train\populated_snr0dB.nc"
+        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_populated_library\verlinden_1_test_case\pulse_train\populated_snr1dB.nc"
     )
     noisy_signal_verlinden_process(ds_library)

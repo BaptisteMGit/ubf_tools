@@ -546,7 +546,13 @@ def verlinden_main(
         min(grid_info["dx"], grid_info["dy"]) / src_info["v_src"]
     )  # Minimum time spent by the source in a single grid box (s)
 
-    print(f"dx = {grid_info['dx']} m, dy = {grid_info['dy']} m, dt = {dt} s")
+    print(f"### Starting Verlinden simulation process ... ###")
+    print(
+        f"    -> Grid properties: dx = {grid_info['dx']} m, dy = {grid_info['dy']} m, dt = {dt} s"
+    )
+    print(
+        f"    -> Source (event) properties:\n \tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n \tLast position {src_info['x_pos'][1], src_info['y_pos'][1]}\n \tNumber of positions {src_info['nmax_ship']}\n \tSource speed {src_info['v_src']}\n \tSource type {src_info['src_signal_type']}"
+    )
 
     library_src = init_library_src(dt, depth_max, sig_type=src_info["src_signal_type"])
 
@@ -586,8 +592,11 @@ def verlinden_main(
     for snr_i in snr:
         if snr_i is None:
             snr_tag = "noiseless"
+            snr_msg = "Performing localisation process without noise"
         else:
             snr_tag = f"snr{snr_i}dB"
+            snr_msg = f"Performing localisation process with additive gaussian white noise SNR = {snr_i}dB"
+        print("## " + snr_msg + " ##")
 
         populated_path = os.path.join(
             VERLINDEN_POPULATED_FOLDER,
@@ -597,6 +606,9 @@ def verlinden_main(
         )
 
         for det_metric in detection_metric:
+            det_msg = f"Detection metric: {det_metric}"
+            print("# " + det_msg + " #")
+
             if os.path.exists(populated_path):
                 ds_library = xr.open_dataset(populated_path)
             else:
@@ -652,6 +664,8 @@ def verlinden_main(
                 os.makedirs(ds.fullpath_analysis)
 
             ds.to_netcdf(ds.fullpath_output)
+
+    print(f"### Verlinden simulation process done ###")
 
 
 if __name__ == "__main__":

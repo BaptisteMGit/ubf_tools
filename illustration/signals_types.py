@@ -8,16 +8,14 @@ img_path = (
     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\generation_signaux"
 )
 
-T = 8
+T = 7.2
 fc = 50
 fs = 200
 
 sig = {}
 time = {}
 sig["pulse"], time["pulse"] = pulse(T=T, f=fc, fs=fs, t0=0.5 * T)
-sig["pulse_train"], time["pulse_train"] = pulse_train(
-    T=T, f=fc, fs=fs, interpulse_delay=2
-)
+sig["pulse_train"], time["pulse_train"] = pulse_train(T=T, f=fc, fs=fs)
 sig["ship"], time["ship"] = ship_noise(T=T)
 
 

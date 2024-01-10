@@ -31,15 +31,6 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
             n_instant_to_plot, xr_dataset.dims["src_trajectory_time"]
         )
 
-    # fig, axes = plt.subplots(
-    #     n_instant_to_plot,
-    #     xr_dataset.dims["idx_obs"],
-    #     sharex=True,
-    #     sharey=True,
-    # )
-
-    # axes = np.reshape(axes, (n_instant_to_plot, xr_dataset.dims["idx_obs"]))
-
     for i_ship in range(n_instant_to_plot):
         fig, axes = plt.subplots(
             xr_dataset.dims["idx_obs"],
@@ -61,14 +52,6 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
 
             axes[i_obs].set_xlabel("")
             axes[i_obs].set_ylabel("")
-            # axes[i_ship, i_obs].set_title(
-            #     r"$x_{ship}$"
-            #     + f" = {xr_dataset.x_ship.isel(src_trajectory_time=i_ship).values.round(0)}m, "
-            #     + r"$y_{ship}$"
-            #     + f" = {xr_dataset.y_ship.isel(src_trajectory_time=i_ship).values.round(0)}m",
-            # )
-
-            # axes[i_ship, i_obs].set_ylim([-0.005, 0.005])
 
         for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
             ax.set_title(col)
@@ -76,8 +59,6 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
         fig.supylabel("Received signal")
         fig.supxlabel("Time (s)")
         plt.legend()
-        # axes[-1, 0].legend()
-        # axes[-1, 1].legend()
         plt.tight_layout()
         plt.savefig(img_basepath + f"received_signals_{i_ship}.png")
         plt.close()
@@ -439,7 +420,7 @@ def plot_pos_error(ds, img_basepath):
     plt.close()
 
 
-def plot_correlation(ds, img_basepath, nb_instant_to_plot=10):
+def plot_correlation(ds, img_basepath, det_metric="intercorr0", nb_instant_to_plot=10):
     """Plot correlation for receiver couple."""
 
     fig, axes = plt.subplots(
@@ -447,7 +428,7 @@ def plot_correlation(ds, img_basepath, nb_instant_to_plot=10):
         ds.dims["idx_obs_pairs"],
         sharex=True,
         sharey=True,
-        figsize=(10, 8),
+        figsize=(16, 8),
     )
     axes = np.reshape(
         axes, (nb_instant_to_plot, ds.dims["idx_obs_pairs"])
@@ -455,23 +436,33 @@ def plot_correlation(ds, img_basepath, nb_instant_to_plot=10):
 
     for i_ship in range(nb_instant_to_plot):
         for i_obs_pair in range(ds.dims["idx_obs_pairs"]):
-            ds.event_corr.isel(
+            event_vect = ds.event_corr.isel(
                 src_trajectory_time=i_ship, idx_obs_pairs=i_obs_pair
-            ).plot(ax=axes[i_ship, i_obs_pair], label="event")
-            ds.library_corr.sel(
+            )
+            lib_vect = ds.library_corr.sel(
                 x=ds.x_ship.isel(src_trajectory_time=i_ship),
                 y=ds.y_ship.isel(src_trajectory_time=i_ship),
                 method="nearest",
-            ).isel(idx_obs_pairs=i_obs_pair).plot(
-                ax=axes[i_ship, i_obs_pair], label="lib at ship pos"
-            )
+            ).isel(idx_obs_pairs=i_obs_pair)
+
+            if det_metric == "hilbert_env_intercorr0":
+                event_vect.values = np.abs(signal.hilbert(event_vect))
+                lib_vect.values = np.abs(signal.hilbert(lib_vect))
+                ylabel = r"$|\mathcal{H}[R_{12}(\tau)]|$"
+            else:
+                ylabel = r"$R_{12}(\tau)$"
+
+            event_vect.plot(ax=axes[i_ship, i_obs_pair], label="event")
+            lib_vect.plot(ax=axes[i_ship, i_obs_pair], label="lib at ship pos")
             axes[i_ship, i_obs_pair].set_xlabel("")
             axes[i_ship, i_obs_pair].set_ylabel("")
-            axes[i_ship, i_obs_pair].set_title("")
-            # axes[i_ship, i_obs_pair].set_ylim([-1, 1])
+            axes[i_ship, i_obs_pair].set_title(f"Source pos n°{i_ship}")
 
-    plt.savefig(img_basepath + f"signal_corr.png")
+    fig.supxlabel(r"$\tau (s)$")
+    fig.supylabel(ylabel)
     plt.legend()
+    plt.tight_layout()
+    plt.savefig(img_basepath + f"signal_corr.png")
     plt.close()
 
 
@@ -564,7 +555,10 @@ def analysis_main(
             # Plot correlation
             if plot_info["plot_correlation"]:
                 plot_correlation(
-                    ds, img_basepath, simulation_info["n_rcv_signals_to_plot"]
+                    ds,
+                    img_basepath,
+                    detection_metric,
+                    simulation_info["n_rcv_signals_to_plot"],
                 )
 
             pos_error = get_pos_error(ds)
@@ -616,7 +610,7 @@ def analysis_main(
 
 
 if __name__ == "__main__":
-    snr = [-5, 5, 10]
+    snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {
@@ -630,7 +624,7 @@ if __name__ == "__main__":
         "src_pos": "not_on_grid",
         "n_instant_to_plot": 10,
         "n_rcv_signals_to_plot": 3,
-        "src_type": "pulse_train",
+        "src_type": "ship",
     }
 
     # plot_info = {
@@ -649,13 +643,13 @@ if __name__ == "__main__":
 
     plot_info = {
         "plot_video": False,
-        "plot_one_tl_profile": False,
-        "plot_ambiguity_surface_dist": False,
+        "plot_one_tl_profile": True,
+        "plot_ambiguity_surface_dist": True,
         "plot_received_signal": True,
-        "plot_ambiguity_surface": False,
-        "plot_ship_trajectory": False,
-        "plot_pos_error": False,
-        "plot_correlation": False,
+        "plot_ambiguity_surface": True,
+        "plot_ship_trajectory": True,
+        "plot_pos_error": True,
+        "plot_correlation": True,
         "tl_freq_to_plot": [20],
         "x_offset": 1000,
         "y_offset": 1000,

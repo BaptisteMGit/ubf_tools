@@ -41,25 +41,44 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
         )
 
         for i_obs in range(xr_dataset.dims["idx_obs"]):
-            xr_dataset.rcv_signal_library.sel(
+            lib_sig = xr_dataset.rcv_signal_library.sel(
                 x=xr_dataset.x_ship.isel(src_trajectory_time=i_ship),
                 y=xr_dataset.y_ship.isel(src_trajectory_time=i_ship),
                 method="nearest",
-            ).isel(idx_obs=i_obs).plot(ax=axes[i_obs], label=f"library - obs {i_obs}")
-
-            xr_dataset.rcv_signal_event.isel(
+            ).isel(idx_obs=i_obs)
+            event_sig = xr_dataset.rcv_signal_event.isel(
                 src_trajectory_time=i_ship, idx_obs=i_obs
-            ).plot(ax=axes[i_obs], label=f"event - obs {i_obs}")
+            )
+            # Plot the signal with the smallest std on top
+            if event_sig.std() <= lib_sig.std():
+                lib_zorder = 1
+                event_zorder = 2
+            else:
+                event_zorder = 1
+                lib_zorder = 2
+
+            lib_sig.plot(
+                ax=axes[i_obs],
+                label=f"library - obs {i_obs}",
+                color=LIBRARY_COLOR,
+                zorder=lib_zorder,
+            )
+            event_sig.plot(
+                ax=axes[i_obs],
+                label=f"event - obs {i_obs}",
+                color=EVENT_COLOR,
+                zorder=event_zorder,
+            )
 
             axes[i_obs].set_xlabel("")
             axes[i_obs].set_ylabel("")
+            axes[i_obs].legend(loc="upper right")
 
         for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
             ax.set_title(col)
 
         fig.supylabel("Received signal")
         fig.supxlabel("Time (s)")
-        plt.legend()
         plt.tight_layout()
         plt.savefig(img_basepath + f"received_signals_{i_ship}.png")
         plt.close()
@@ -83,7 +102,7 @@ def plot_ambiguity_surface_dist(ds, img_basepath):
     plt.scatter(amb_surf.max(), 1, marker="o", color="red", label="Max")
     plt.ylabel("Number of points")
     plt.xlabel("Ambiguity surface [dB]")
-    plt.legend()
+    plt.legend(loc="upper right")
     plt.savefig(img_basepath + f"ambiguity_surface_dist.png")
     plt.close()
 
@@ -373,7 +392,7 @@ def plot_ship_trajectory(ds, img_basepath):
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
     plt.grid(True)
-    plt.legend()
+    plt.legend(loc="upper right")
     plt.tight_layout()
     plt.savefig(img_basepath + f"estimated_pos.png")
     plt.close()
@@ -415,7 +434,7 @@ def plot_pos_error(ds, img_basepath):
         )
 
     plt.ylabel("Position error [m]")
-    plt.legend()
+    plt.legend(loc="upper right")
     plt.tight_layout()
     plt.savefig(img_basepath + f"pos_error.png")
     plt.close()
@@ -453,15 +472,33 @@ def plot_correlation(ds, img_basepath, det_metric="intercorr0", nb_instant_to_pl
             else:
                 ylabel = r"$R_{12}(\tau)$"
 
-            event_vect.plot(ax=axes[i_ship, i_obs_pair], label="event")
-            lib_vect.plot(ax=axes[i_ship, i_obs_pair], label="lib at ship pos")
+            # Plot the signal with the smallest std on top
+            if event_vect.std() <= lib_vect.std():
+                lib_zorder = 1
+                event_zorder = 2
+            else:
+                event_zorder = 1
+                lib_zorder = 2
+
+            event_vect.plot(
+                ax=axes[i_ship, i_obs_pair],
+                label="event",
+                color=EVENT_COLOR,
+                zorder=event_zorder,
+            )
+            lib_vect.plot(
+                ax=axes[i_ship, i_obs_pair],
+                label="lib at ship pos",
+                color=LIBRARY_COLOR,
+                zorder=lib_zorder,
+            )
             axes[i_ship, i_obs_pair].set_xlabel("")
             axes[i_ship, i_obs_pair].set_ylabel("")
             axes[i_ship, i_obs_pair].set_title(f"Source pos n°{i_ship}")
+            axes[i_ship, i_obs_pair].legend(loc="upper right")
 
     fig.supxlabel(r"$\tau (s)$")
     fig.supylabel(ylabel)
-    plt.legend()
     plt.tight_layout()
     plt.savefig(img_basepath + f"signal_corr.png")
     plt.close()
@@ -612,8 +649,11 @@ def analysis_main(
 
 if __name__ == "__main__":
     # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
-    snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
-    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
+    # snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
+    snr = [-30]
+    detection_metric = ["intercorr0"]
+
+    # detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {
         "Lx": 5 * 1e3,

@@ -4,7 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 
-# Load globl report
+# Load global report
 path_global_report = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation\verlinden_process_analysis\verlinden_1_test_case\pulse\not_on_grid\global_report.txt"
 data = pd.read_csv(path_global_report, sep=",")
 
@@ -47,28 +47,33 @@ def plot_localisation_performance(data, metrics_to_plot, img_path):
 
     # Créer un graphique à barres groupées pour chaque métrique
     for metric in metrics_to_plot:
-        plt.bar(
-            positions - bar_width,
-            data[data["Detection metric"] == "intercorr0"][metric],
-            width=bar_width,
-            label=f"intercorr0 - {metric}",
-        )
-        plt.bar(
-            positions,
-            data[data["Detection metric"] == "lstsquares"][metric],
-            width=bar_width,
-            label=f"lstsquares - {metric}",
-        )
-        plt.bar(
-            positions + bar_width,
-            data[data["Detection metric"] == "hilbert_env_intercorr0"][metric],
-            width=bar_width,
-            label=f"hilbert_env_intercorr0 - {metric}",
-        )
+        if not data[data["Detection metric"] == "intercorr0"][metric].empty:
+            plt.bar(
+                positions - bar_width,
+                data[data["Detection metric"] == "intercorr0"][metric],
+                width=bar_width,
+                label=f"intercorr0 - {metric}",
+            )
+
+        if not data[data["Detection metric"] == "lstsquares"][metric].empty:
+            plt.bar(
+                positions,
+                data[data["Detection metric"] == "lstsquares"][metric],
+                width=bar_width,
+                label=f"lstsquares - {metric}",
+            )
+
+        if not data[data["Detection metric"] == "hilbert_env_intercorr0"][metric].empty:
+            plt.bar(
+                positions + bar_width,
+                data[data["Detection metric"] == "hilbert_env_intercorr0"][metric],
+                width=bar_width,
+                label=f"hilbert_env_intercorr0 - {metric}",
+            )
 
     plt.xlabel("SNR")
     plt.ylabel("m")
-    plt.title("Localisation performance for each detection metric")
+    plt.title("Verlinden process localisation performance")
     plt.xticks(positions, sorted(data["SNR"].unique()))
     plt.legend(ncol=2)
     plt.tight_layout()

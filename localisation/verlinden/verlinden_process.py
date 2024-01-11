@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from cst import BAR_FORMAT, C0
 from misc import mult_along_axis
-from signals import ship_noise, ship_spectrum, pulse
+from signals import ship_noise, pulse, pulse_train
 from localisation.verlinden.AcousticComponent import AcousticSource
 from localisation.verlinden.RHUM_RHUM_env import (
     isotropic_ideal_env,
@@ -35,7 +35,6 @@ def populate_grid(
     grid_y,
     x_obs,
     y_obs,
-    snr_dB=None,
 ):
     # Write env and flp files
     kraken_env.write_env()
@@ -97,16 +96,9 @@ def populate_grid(
     ds["y"].attrs["long_name"] = "y"
     ds["idx_obs"].attrs["long_name"] = "Receiver index"
 
-    # ds["r0_r1"] = ds.r_from_obs.isel(idx_obs=0) - ds.r_from_obs.isel(idx_obs=1)
-    delta_tau = ds.r_from_obs.isel(idx_obs=1) / C0 - ds.r_from_obs.isel(idx_obs=0) / C0
-
-    ds["relative_delay_obs"] = xr.zeros_like(ds.r_from_obs)
-    ds["relative_delay_obs"].loc[{"idx_obs": 0}] = xr.where(
-        delta_tau > 0, 0, delta_tau
-    ).values
-    ds["relative_delay_obs"].loc[{"idx_obs": 1}] = xr.where(
-        delta_tau > 0, delta_tau, 0
-    ).values
+    # TODO : need to be changed in case of multiple receivers couples
+    ds["delay_obs"] = ds.r_from_obs / C0
+    delay_to_apply = ds.delay_obs.min(dim="idx_obs").values.flatten()
 
     # Build OBS pairs
     obs_pairs = []
@@ -123,7 +115,6 @@ def populate_grid(
         ds.idx_obs, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
     ):
         rr_from_obs_flat = ds.r_from_obs.sel(idx_obs=i_obs).values.flatten()
-        relative_delay_obs_flat = ds.relative_delay_obs.values.flatten()  # TODO
 
         t_obs, s_obs, Pos = postprocess_received_signal(
             shd_fpath=kraken_env.shd_fpath,
@@ -131,10 +122,13 @@ def populate_grid(
             rcv_range=rr_from_obs_flat,
             rcv_depth=[z_src],
             apply_delay=True,
-            delay=None,
+            delay=delay_to_apply,
         )
         if i_obs == 0:
-            ds["library_signal_time"] = t_obs
+            ds["library_signal_time"] = t_obs.astype(np.float32)
+            ds["library_signal_time"].attrs["units"] = "s"
+            ds["library_signal_time"].attrs["long_name"] = "Time"
+
             rcv_signal_library = np.empty(tuple(ds.dims[d] for d in signal_library_dim))
 
         # Time domain signal
@@ -143,27 +137,47 @@ def populate_grid(
             ds.dims["y"], ds.dims["x"], ds.dims["library_signal_time"]
         )
 
-        # # Frequency domain signal
-        # s_obs_f = s_obs_f[:, 0, :].T
-        # s_obs_f = s_obs_f.reshape(
-        #     ds.dims["y"], ds.dims["x"], ds.dims["library_signal_time"]
-        # )
-
         rcv_signal_library[i_obs, :] = s_obs
-
-        if snr_dB is not None:
-            # Add noise to received signal
-            rcv_signal_library[i_obs, :] = add_noise_to_signal(
-                rcv_signal_library[i_obs, :], snr_dB=snr_dB
-            )
 
         # Free memory
         del s_obs, rr_from_obs_flat
 
     ds["rcv_signal_library"] = (
         signal_library_dim,
-        rcv_signal_library,
+        rcv_signal_library.astype(np.float32),
     )
+
+    ds.attrs["fullpath_populated"] = get_populated_path(
+        ds.x.values, ds.y.values, kraken_env, library_src.name
+    )
+
+    if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
+        os.makedirs(os.path.dirname(ds.fullpath_populated))
+
+    ds.to_netcdf(ds.fullpath_populated)
+
+    return ds
+
+
+def add_noise_to_dataset(library_dataset, snr_dB):
+    ds = library_dataset
+    for i_obs in tqdm(
+        ds.idx_obs, bar_format=BAR_FORMAT, desc="Add noise to received signal"
+    ):
+        if snr_dB is not None:
+            # Add noise to received signal
+            ds.rcv_signal_library.loc[dict(idx_obs=i_obs)] = add_noise_to_signal(
+                ds.rcv_signal_library.sel(idx_obs=i_obs).values, snr_dB=snr_dB
+            )
+            ds.attrs["snr_dB"] = snr_dB
+        else:
+            ds.attrs["snr_dB"] = "Noiseless"
+
+    return ds
+
+
+def add_correlation_to_dataset(library_dataset):
+    ds = library_dataset
     ds.coords["library_corr_lags"] = signal.correlation_lags(
         ds.dims["library_signal_time"], ds.dims["library_signal_time"]
     )
@@ -174,7 +188,7 @@ def populate_grid(
     library_corr_dim = ["idx_obs_pairs", "y", "x", "library_corr_lags"]
     library_corr = np.empty(tuple(ds.dims[d] for d in library_corr_dim))
 
-    # Could be way faster with a FFT based approach
+    # May be way faster with a FFT based approach
     ns = ds.dims["library_signal_time"]
     for i_pair in tqdm(
         range(ds.dims["idx_obs_pairs"]),
@@ -206,52 +220,36 @@ def populate_grid(
                 autocorr1 = signal.correlate(s1, s1)
                 corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
 
-                # # Plot autocorrelation
-                # plt.figure()
-                # plt.plot(
-                #     signal.correlation_lags(len(s0), len(s0)),
-                #     autocorr0,
-                #     label="autocorr",
-                # )
-                # # plt.plot(t_obs, s0, label="s0")
-                # plt.legend()
-
-                # plt.figure()
-                # plt.plot(
-                #     signal.correlation_lags(len(s0), len(s0)),
-                #     autocorr0,
-                #     label="autocorr",
-                # )
-                # # plt.plot(t_obs, s1, label="s1")
-                # plt.legend()
-                # plt.show()
-
-                # corr_01 /= np.max(corr_01)
-
                 library_corr[i_pair, i_y, i_x, :] = corr_01
 
                 del s0, s1, corr_01
 
-    ds["library_corr"] = (library_corr_dim, library_corr)
-    if snr_dB is None:
-        ds.attrs["snr_dB"] = "noiseless"
-        snr_tag = "noiseless"
-    else:
-        ds.attrs["snr_dB"] = snr_dB
-        snr_tag = f"snr{snr_dB}dB"
+    ds["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
+    # if snr_dB is None:
+    #     ds.attrs["snr_dB"] = "noiseless"
+    #     snr_tag = "noiseless"
+    # else:
+    #     ds.attrs["snr_dB"] = snr_dB
+    #     snr_tag = f"snr{snr_dB}dB"
 
     # Build path to save populated dataset
-    ds.attrs["fullpath_populated"] = os.path.join(
-        VERLINDEN_POPULATED_FOLDER,
-        kraken_env.filename,
-        library_src.name,
-        f"populated_{snr_tag}.nc",
-    )
 
-    if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
-        os.makedirs(os.path.dirname(ds.fullpath_populated))
+    # ds.attrs["fullpath_populated"] = os.path.join(
+    #     VERLINDEN_POPULATED_FOLDER,
+    #     kraken_env.filename,
+    #     library_src.name,
+    #     f"populated_{snr_tag}.nc",
+    # )
 
-    ds.to_netcdf(ds.fullpath_populated)
+    # ds.attrs["fullpath_populated"] = os.path.join(
+    #     VERLINDEN_POPULATED_FOLDER,
+    #     kraken_env.filename,
+    #     f"populated_{library_src.name}.nc",
+    # )
+    # if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
+    #     os.makedirs(os.path.dirname(ds.fullpath_populated))
+
+    # ds.to_netcdf(ds.fullpath_populated)
 
     return ds
 
@@ -278,11 +276,14 @@ def add_event_to_dataset(
     ]
 
     ds.coords["event_signal_time"] = []
-    ds.coords["src_trajectory_time"] = event_t
+    ds.coords["src_trajectory_time"] = event_t.astype(np.float32)
 
-    ds["x_ship"] = (["src_trajectory_time"], x_event_t)
-    ds["y_ship"] = (["src_trajectory_time"], y_event_t)
-    ds["r_obs_ship"] = (["idx_obs", "src_trajectory_time"], np.array(r_event_t))
+    ds["x_ship"] = (["src_trajectory_time"], x_event_t.astype(np.float32))
+    ds["y_ship"] = (["src_trajectory_time"], y_event_t.astype(np.float32))
+    ds["r_obs_ship"] = (
+        ["idx_obs", "src_trajectory_time"],
+        np.array(r_event_t).astype(np.float32),
+    )
 
     ds["event_signal_time"].attrs["units"] = "s"
     ds["src_trajectory_time"].attrs["units"] = "s"
@@ -317,9 +318,11 @@ def add_event_to_dataset(
         bar_format=BAR_FORMAT,
         desc="Derive received signal for successive positions of the ship",
     ):
-        # delay_ship = ds.delay_obs.sel(
-        #     x=ds.x_ship, y=ds.y_ship, method="nearest"
-        # ).values.flatten()
+        delay_to_apply_ship = (
+            ds.delay_obs.min(dim="idx_obs")
+            .sel(x=ds.x_ship, y=ds.y_ship, method="nearest")
+            .values.flatten()
+        )
 
         t_obs, s_obs, Pos = postprocess_received_signal(
             shd_fpath=kraken_env.shd_fpath,
@@ -327,27 +330,47 @@ def add_event_to_dataset(
             rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
             rcv_depth=[z_event],
             apply_delay=True,
-            delay=None,
+            delay=delay_to_apply_ship,
         )
         if i_obs == 0:
-            ds["event_signal_time"] = t_obs
+            ds["event_signal_time"] = t_obs.astype(np.float32)
             rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
 
         rcv_signal_event[i_obs, :] = s_obs[:, 0, :].T
-
-        if snr_dB is not None:
-            # Add noise to received signal
-            rcv_signal_event[i_obs, :] = add_noise_to_signal(
-                rcv_signal_event[i_obs, :], snr_dB
-            )
 
         # Free memory
         del t_obs, s_obs, Pos
 
     ds["rcv_signal_event"] = (
         ["idx_obs", "src_trajectory_time", "event_signal_time"],
-        rcv_signal_event,
+        rcv_signal_event.astype(np.float32),
     )
+
+    ds = add_noise_to_event(ds, snr_dB=snr_dB)
+    ds = add_event_correlation(ds)
+
+    return ds
+
+
+def add_noise_to_event(library_dataset, snr_dB):
+    ds = library_dataset
+    for i_obs in tqdm(
+        ds.idx_obs, bar_format=BAR_FORMAT, desc="Add noise to event signal"
+    ):
+        if snr_dB is not None:
+            # Add noise to received signal
+            ds.rcv_signal_event.loc[dict(idx_obs=i_obs)] = add_noise_to_signal(
+                ds.rcv_signal_event.sel(idx_obs=i_obs).values, snr_dB
+            )
+            ds.attrs["snr_dB"] = snr_dB
+        else:
+            ds.attrs["snr_dB"] = "Noiseless"
+
+    return ds
+
+
+def add_event_correlation(library_dataset):
+    ds = library_dataset
     ds.coords["event_corr_lags"] = signal.correlation_lags(
         ds.dims["event_signal_time"], ds.dims["event_signal_time"]
     )
@@ -381,21 +404,36 @@ def add_event_to_dataset(
 
             del s0, s1, corr_01
 
-    ds["event_corr"] = (event_corr_dim, event_corr)
+    ds["event_corr"] = (event_corr_dim, event_corr.astype(np.float32))
 
     return ds
 
 
 def add_noise_to_signal(sig, snr_dB):
-    # Add noise to signal assuming sig is an array with either 1D (like event signal (t)) or 3D (like library signal (x, y, t)) shape
+    # Add noise to signal assuming sig is either a 1D (like event signal (t)) or a 3D (like library signal (x, y, t)) array
     if snr_dB is not None:
         # First simple implementation : same noise level for all positions
         # TODO : This need to be improved to take into account the propagation loss
-        P_sig = 1 / sig.shape[-1] * np.sum(sig**2, axis=-1)
-        sigma_noise = np.sqrt(P_sig * 10 ** (-snr_dB / 10))
-        # Generate gaussian noise
-        noise = np.random.normal(0, sigma_noise.mean(), sig.shape)
-        sig += noise
+
+        P_sig = (
+            1 / sig.shape[-1] * np.sum(sig**2, axis=-1)
+        )  # Signal power for each position
+        sigma_noise = np.sqrt(
+            P_sig * 10 ** (-snr_dB / 10)
+        )  # Noise level for each position
+
+        if sig.ndim == 2:  # 2D array (event signal) (pos, time)
+            # Generate gaussian noise
+            for i_ship in range(sig.shape[0]):
+                noise = np.random.normal(0, sigma_noise[i_ship], sig.shape[-1])
+                sig[i_ship, :] += noise
+
+        elif sig.ndim == 3:  # 3D array (library signal) -> (x, y, time)
+            # Generate gaussian noise
+            for i_x in range(sig.shape[0]):
+                for i_y in range(sig.shape[1]):
+                    noise = np.random.normal(0, sigma_noise[i_x, i_y], sig.shape[-1])
+                    sig[i_x, i_y, :] += noise
 
     return sig
 
@@ -423,6 +461,8 @@ def build_ambiguity_surf(ds, detection_metric):
                 )
                 autocorr_lib = np.sum(lib_data.values**2, axis=2)
                 autocorr_event = np.sum(event_vector.values**2)
+                del lib_data, event_vector
+
                 norm = np.sqrt(autocorr_lib * autocorr_event)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
@@ -431,6 +471,8 @@ def build_ambiguity_surf(ds, detection_metric):
             elif detection_metric == "lstsquares":
                 lib = lib_data.values
                 event = event_vector.values
+                del lib_data, event_vector
+
                 diff = lib - event
                 amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
                 amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
@@ -442,6 +484,8 @@ def build_ambiguity_surf(ds, detection_metric):
             elif detection_metric == "hilbert_env_intercorr0":
                 lib_env = np.abs(signal.hilbert(lib_data))
                 event_env = np.abs(signal.hilbert(event_vector))
+                del lib_data, event_vector
+
                 amb_surf = mult_along_axis(
                     lib_env,
                     event_env,
@@ -450,6 +494,8 @@ def build_ambiguity_surf(ds, detection_metric):
 
                 autocorr_lib = np.sum(lib_env**2, axis=2)
                 autocorr_event = np.sum(event_env**2)
+                del lib_env, event_env
+
                 norm = np.sqrt(autocorr_lib * autocorr_event)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
@@ -473,14 +519,17 @@ def build_ambiguity_surf(ds, detection_metric):
 
 def init_library_src(dt, depth, sig_type="pulse"):
     if sig_type == "ship":
-        library_src_sig, t_library_src_sig = ship_noise()
-        fs = 1 / (t_library_src_sig[1] - t_library_src_sig[0])
-        nmax = int(fs * dt)
-        library_src_sig = library_src_sig[0:nmax]
-        t_library_src_sig = t_library_src_sig[0:nmax]
+        library_src_sig, t_library_src_sig = ship_noise(T=dt)
 
     elif sig_type == "pulse":
-        library_src_sig, t_library_src_sig = pulse(T=1, f=50, fs=200)
+        library_src_sig, t_library_src_sig = pulse(T=dt, f=50, fs=200)
+
+    elif sig_type == "pulse_train":
+        library_src_sig, t_library_src_sig = pulse_train(T=dt, f=50, fs=200)
+
+    if sig_type in ["ship", "pulse_train"]:
+        # Apply hanning window
+        library_src_sig *= np.hanning(len(library_src_sig))
 
     library_src = AcousticSource(
         signal=library_src_sig,
@@ -517,6 +566,18 @@ def init_grid_around_event_src_traj(x_event_t, y_event_t, Lx, Ly, dx, dy):
     return grid_x, grid_y
 
 
+def get_populated_path(grid_x, grid_y, kraken_env, src_signal_type):
+    area_label = "_".join(
+        [str(v) for v in [min(grid_x), max(grid_x), min(grid_y), max(grid_y)]]
+    )
+    populated_path = os.path.join(
+        VERLINDEN_POPULATED_FOLDER,
+        kraken_env.filename,
+        f"populated_{area_label}_{src_signal_type}.nc",
+    )
+    return populated_path
+
+
 def verlinden_main(
     env_root,
     env_fname,
@@ -531,7 +592,13 @@ def verlinden_main(
         min(grid_info["dx"], grid_info["dy"]) / src_info["v_src"]
     )  # Minimum time spent by the source in a single grid box (s)
 
-    print(f"dx = {grid_info['dx']} m, dy = {grid_info['dy']} m, dt = {dt} s")
+    print(f"### Starting Verlinden simulation process ... ###")
+    print(
+        f"    -> Grid properties: dx = {grid_info['dx']} m, dy = {grid_info['dy']} m, dt = {dt} s"
+    )
+    print(
+        f"    -> Source (event) properties:\n \tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n \tLast position = {src_info['x_pos'][1], src_info['y_pos'][1]}\n \tNumber of positions = {src_info['nmax_ship']}\n \tSource speed = {src_info['v_src']}m.s-1\n \tSignal type = {src_info['src_signal_type']}"
+    )
 
     library_src = init_library_src(dt, depth_max, sig_type=src_info["src_signal_type"])
 
@@ -571,26 +638,25 @@ def verlinden_main(
     for snr_i in snr:
         if snr_i is None:
             snr_tag = "noiseless"
+            snr_msg = "Performing localisation process without noise"
         else:
             snr_tag = f"snr{snr_i}dB"
+            snr_msg = f"Performing localisation process with additive gaussian white noise SNR = {snr_i}dB"
+        print("## " + snr_msg + " ##")
 
-        # populated_path = os.path.join(
-        #     VERLINDEN_POPULATED_FOLDER,
-        #     kraken_env.filename,
-        #     f"populated_{snr_tag}.nc",
-        # )
-
-        populated_path = os.path.join(
-            VERLINDEN_POPULATED_FOLDER,
-            kraken_env.filename,
-            src_info["src_signal_type"],
-            f"populated_{snr_tag}.nc",
+        populated_path = get_populated_path(
+            grid_x, grid_y, kraken_env, src_info["src_signal_type"]
         )
 
+        complete_dataset_loaded = False
+        event_in_dataset = False
         for det_metric in detection_metric:
-            if os.path.exists(populated_path):
+            det_msg = f"Detection metric: {det_metric}"
+            print("# " + det_msg + " #")
+
+            if os.path.exists(populated_path) and not complete_dataset_loaded:
                 ds_library = xr.open_dataset(populated_path)
-            else:
+            elif not os.path.exists(populated_path):
                 ds_library = populate_grid(
                     library_src,
                     src_info["z_src"],
@@ -600,21 +666,33 @@ def verlinden_main(
                     grid_y,
                     obs_info["x_obs"],
                     obs_info["y_obs"],
-                    snr_dB=snr_i,
                 )
 
+            # 10/01/2024 No more 1 save/snr to save memory
+            if not complete_dataset_loaded:
+                # Add noise to dataset
+                ds_library = add_noise_to_dataset(ds_library, snr_dB=snr_i)
+
+                # Derive correlation vector for the entire grid
+                ds_library = add_correlation_to_dataset(ds_library)
+
+                # Switch flag to avoid redundancy
+                complete_dataset_loaded = True
+
             event_src = library_src
-            ds = add_event_to_dataset(
-                library_dataset=ds_library,
-                kraken_env=kraken_env,
-                event_src=event_src,
-                event_t=t_ship,
-                x_event_t=x_ship_t,
-                y_event_t=y_ship_t,
-                z_event=src_info["z_src"],
-                interp_src_pos_on_grid=src_info["on_grid"],
-                snr_dB=snr_i,
-            )
+            if not event_in_dataset:
+                ds = add_event_to_dataset(
+                    library_dataset=ds_library,
+                    kraken_env=kraken_env,
+                    event_src=event_src,
+                    event_t=t_ship,
+                    x_event_t=x_ship_t,
+                    y_event_t=y_ship_t,
+                    z_event=src_info["z_src"],
+                    interp_src_pos_on_grid=src_info["on_grid"],
+                    snr_dB=snr_i,
+                )
+                event_in_dataset = True
 
             ds = build_ambiguity_surf(ds, det_metric)
 
@@ -644,15 +722,18 @@ def verlinden_main(
 
             ds.to_netcdf(ds.fullpath_output)
 
+        ds = ds.drop_vars("event_signal_time")
+    print(f"### Verlinden simulation process done ###")
+
 
 if __name__ == "__main__":
     v_ship = 50 / 3.6  # m/s
     src_info = dict(
         x_pos=[-1000, 2500],
-        y_pos=[3000, -5000],
+        y_pos=[3000, 2000],
         v_src=v_ship,
         nmax_ship=100,
-        src_signal_type="pulse",
+        src_signal_type="pulse_train",
         z_src=5,
         on_grid=False,
     )
@@ -669,8 +750,9 @@ if __name__ == "__main__":
         y_obs=[0, 0],
     )
 
-    snr = [None]
-    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
+    snr = [-30, 0]
+    detection_metric = ["intercorr0"]
+    # detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     depth = 150  # Depth m
     env_fname = "verlinden_1_test_case"

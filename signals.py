@@ -2,17 +2,41 @@ import numpy as np
 import scipy.io as sio
 
 
-def pulse(T, f, fs):
+def pulse(T, f, fs, t0=0):
     """Generate pulse defined in Jensen et al. (2000)"""
     t = np.arange(0, T, 1 / fs)
     s = np.zeros(len(t))
-    idx_tpulse = np.logical_and(0 < t, t < 4 / f)
+    idx_tpulse = np.logical_and(0 < t - t0, t - t0 < 4 / f)
     t_pulse = t[idx_tpulse]
     omega = 2 * np.pi * f
     s[idx_tpulse] = (
         1 / 2 * np.sin(omega * t_pulse) * (1 - np.cos(1 / 4 * omega * t_pulse))
     )
     return s, t
+
+
+def pulse_train(T, f, fs, interpulse_delay=None):
+    """Generate train of pulses"""
+    pulse_duration = 4 / f
+    if interpulse_delay is None:
+        interpulse_delay = 0.5 * pulse_duration
+
+    omega = 2 * np.pi * f
+    t_train = np.arange(0, T, 1 / fs)
+    s_train = np.zeros(len(t_train))
+    nb_motif = int(np.ceil(T / (interpulse_delay + pulse_duration)))
+    for i in range(nb_motif):
+        t_pulse = t_train - i * (interpulse_delay + pulse_duration)
+        s_pulse = np.zeros(len(t_pulse))
+
+        idx_tpulse = np.logical_and(0 < t_pulse, t_pulse < pulse_duration)
+        t_pulse = t_pulse[idx_tpulse]
+        s_pulse[idx_tpulse] = (
+            1 / 2 * np.sin(omega * t_pulse) * (1 - np.cos(1 / 4 * omega * t_pulse))
+        )
+        s_train += s_pulse
+
+    return s_train, t_train
 
 
 def sine_wave(f0, fs, T, A, phi):
@@ -26,12 +50,21 @@ def sine_wave(f0, fs, T, A, phi):
     return y, t
 
 
-def ship_noise():
+def ship_noise(T):
     fpath = r"C:\Users\baptiste.menetrier\Desktop\ressource\ShipNoise_obs_SamuelPinson\ship_source_signal.mat"
     ship_d = sio.loadmat(fpath)
     t = ship_d["t"].squeeze()
-    y = ship_d["sig_s_t"].squeeze()
-    return y, t
+    s = ship_d["sig_s_t"].squeeze()
+
+    # Normalize to 1
+    s /= np.max(np.abs(s))
+
+    fs = 1 / (t[1] - t[0])
+    nmax = int(fs * T)
+    s = s[0:nmax]
+    t = t[0:nmax]
+
+    return s, t
 
 
 def ship_spectrum(f):

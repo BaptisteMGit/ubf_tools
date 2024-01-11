@@ -147,11 +147,10 @@ def populate_grid(
         rcv_signal_library.astype(np.float32),
     )
 
-    ds.attrs["fullpath_populated"] = os.path.join(
-        VERLINDEN_POPULATED_FOLDER,
-        kraken_env.filename,
-        f"populated_{library_src.name}.nc",
+    ds.attrs["fullpath_populated"] = get_populated_path(
+        ds.x.values, ds.y.values, kraken_env, library_src.name
     )
+
     if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
         os.makedirs(os.path.dirname(ds.fullpath_populated))
 
@@ -567,6 +566,18 @@ def init_grid_around_event_src_traj(x_event_t, y_event_t, Lx, Ly, dx, dy):
     return grid_x, grid_y
 
 
+def get_populated_path(grid_x, grid_y, kraken_env, src_signal_type):
+    area_label = "_".join(
+        [str(v) for v in [min(grid_x), max(grid_x), min(grid_y), max(grid_y)]]
+    )
+    populated_path = os.path.join(
+        VERLINDEN_POPULATED_FOLDER,
+        kraken_env.filename,
+        f"populated_{area_label}_{src_signal_type}.nc",
+    )
+    return populated_path
+
+
 def verlinden_main(
     env_root,
     env_fname,
@@ -633,13 +644,8 @@ def verlinden_main(
             snr_msg = f"Performing localisation process with additive gaussian white noise SNR = {snr_i}dB"
         print("## " + snr_msg + " ##")
 
-        area_label = "_".join(
-            [str(v) for v in [min(grid_x), max(grid_x), min(grid_y), max(grid_y)]]
-        )
-        populated_path = os.path.join(
-            VERLINDEN_POPULATED_FOLDER,
-            kraken_env.filename,
-            f"populated_{area_label}_{src_info['src_signal_type']}.nc",
+        populated_path = get_populated_path(
+            grid_x, grid_y, kraken_env, src_info["src_signal_type"]
         )
 
         complete_dataset_loaded = False
@@ -660,7 +666,6 @@ def verlinden_main(
                     grid_y,
                     obs_info["x_obs"],
                     obs_info["y_obs"],
-                    snr_dB=snr_i,
                 )
 
             # 10/01/2024 No more 1 save/snr to save memory

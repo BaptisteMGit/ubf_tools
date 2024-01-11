@@ -35,7 +35,6 @@ def populate_grid(
     grid_y,
     x_obs,
     y_obs,
-    snr_dB=None,
 ):
     # Write env and flp files
     kraken_env.write_env()
@@ -139,11 +138,6 @@ def populate_grid(
         )
 
         rcv_signal_library[i_obs, :] = s_obs
-        # if snr_dB is not None:
-        #     # Add noise to received signal
-        #     rcv_signal_library[i_obs, :] = add_noise_to_signal(
-        #         rcv_signal_library[i_obs, :], snr_dB=snr_dB
-        #     )
 
         # Free memory
         del s_obs, rr_from_obs_flat
@@ -173,8 +167,8 @@ def add_noise_to_dataset(library_dataset, snr_dB):
     ):
         if snr_dB is not None:
             # Add noise to received signal
-            ds.rcv_signal_library.isel(idx_obs=i_obs).values = add_noise_to_signal(
-                ds.rcv_signal_library.isel(idx_obs=i_obs).values, snr_dB=snr_dB
+            ds.rcv_signal_library.loc[dict(idx_obs=i_obs)] = add_noise_to_signal(
+                ds.rcv_signal_library.sel(idx_obs=i_obs).values, snr_dB=snr_dB
             )
             ds.attrs["snr_dB"] = snr_dB
         else:
@@ -366,8 +360,8 @@ def add_noise_to_event(library_dataset, snr_dB):
     ):
         if snr_dB is not None:
             # Add noise to received signal
-            ds.rcv_signal_event.isel(idx_obs=i_obs).values = add_noise_to_signal(
-                ds.rcv_signal_event.isel(idx_obs=i_obs).values, snr_dB
+            ds.rcv_signal_event.loc[dict(idx_obs=i_obs)] = add_noise_to_signal(
+                ds.rcv_signal_event.sel(idx_obs=i_obs).values, snr_dB
             )
             ds.attrs["snr_dB"] = snr_dB
         else:
@@ -639,10 +633,13 @@ def verlinden_main(
             snr_msg = f"Performing localisation process with additive gaussian white noise SNR = {snr_i}dB"
         print("## " + snr_msg + " ##")
 
+        area_label = "_".join(
+            [str(v) for v in [min(grid_x), max(grid_x), min(grid_y), max(grid_y)]]
+        )
         populated_path = os.path.join(
             VERLINDEN_POPULATED_FOLDER,
             kraken_env.filename,
-            f"populated_{src_info['src_signal_type']}.nc",
+            f"populated_{area_label}_{src_info['src_signal_type']}.nc",
         )
 
         complete_dataset_loaded = False
@@ -748,8 +745,9 @@ if __name__ == "__main__":
         y_obs=[0, 0],
     )
 
-    snr = [0]
-    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
+    snr = [-30, 0]
+    detection_metric = ["intercorr0"]
+    # detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     depth = 150  # Depth m
     env_fname = "verlinden_1_test_case"

@@ -12,7 +12,7 @@ from propa.kraken_toolbox.post_process import (
     process_broadband,
 )
 from propa.kraken_toolbox.utils import runkraken
-from signals import pulse
+from signals import pulse, pulse_train, ship_noise
 
 
 if __name__ == "__main__":
@@ -21,17 +21,27 @@ if __name__ == "__main__":
     """
 
     working_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test_synthesis"
-    template_env = "verlinden_1_test_case"
+    # template_env = "verlinden_1_test_case"
     # template_env = "CalibSynthesis_bis"
 
-    # template_env = "CalibSynthesis"
+    template_env = "CalibSynthesis"
 
     os.chdir(working_dir)
 
     # Define the pulse
     fc = 50
+    T = 10
     s, t = pulse(T=1, f=fc, fs=200)
+    # s, t = pulse_train(T=T, f=fc, fs=200, interpulse_delay=0.1)
 
+    # s, t = ship_noise(T=T)
+    # fs = 1 / (t[1] - t[0])
+    # nmax = int(fs * T)
+    # s = s[0:nmax]
+    # t = t[0:nmax]
+
+    window = np.hanning(s.size)
+    s *= window
     # Boat signal generated with the code from Samuel Pinson
     # data = np.loadtxt(
     #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test_synthesis\sig_samuel.txt",
@@ -75,34 +85,35 @@ if __name__ == "__main__":
     # plt.show()
 
     # Receiver position
-    rcv_range = np.array([1500, 2500, 30000])
+    rcv_range = np.array([10000, 13000])
     # rcv_range = np.arange(1000, 30000, 10)
-    rcv_depth = [3]
+    rcv_depth = [20]
 
-    # process_broadband(fname=template_env, source=source, max_depth=150)
+    # process_broadband(fname=template_env, source=source, max_depth=100)
 
     delay = list([rcv_range[0] / 1500]) * len(rcv_range)
 
-    runkraken(template_env)
+    # runkraken(template_env)
 
     # source.positive_spectrum[:] = 1
-    propagating_freq, pressure_field, field_pos = postprocess_ir(
-        shd_fpath=os.path.join(working_dir, template_env + ".shd"),
-        source=source,
-        rcv_range=rcv_range,
-        rcv_depth=rcv_depth,
-    )
+    # propagating_freq, pressure_field, field_pos = postprocess_ir(
+    #     shd_fpath=os.path.join(working_dir, template_env + ".shd"),
+    #     source=source,
+    #     rcv_range=rcv_range,
+    #     rcv_depth=rcv_depth,
+    # )
 
-    nfft_inv = (
-        4 * source.nfft
-    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
-    received_signal_t = np.fft.irfft(pressure_field, axis=0, n=nfft_inv)
-    transmited_field_t = np.real(received_signal_t)
+    # nfft_inv = (
+    #     4 * source.nfft
+    # )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    # received_signal_t = np.fft.irfft(pressure_field, axis=0, n=nfft_inv)
+    # transmited_field_t = np.real(received_signal_t)
 
-    T_tot = 1 / source.df
-    dt = T_tot / received_signal_t.shape[0]
-    time_vector = np.arange(0, T_tot, dt)
-    s_at_rcv_pos = transmited_field_t
+    # T_tot = 1 / source.df
+    # dt = T_tot / received_signal_t.shape[0]
+    # time_vector = np.arange(0, T_tot, dt)
+    # s_at_rcv_pos = transmited_field_t
+
     # plt.figure()
     # plt.plot(time_vector, transmited_field_t[:, 50, 10])
     # plt.show()
@@ -111,13 +122,14 @@ if __name__ == "__main__":
     # plt.plot(propagating_freq, np.abs(pressure_field[:, 0, 0]))
     # plt.show()
 
-    # time_vector, s_at_rcv_pos, Pos = postprocess_received_signal(
-    #     shd_fpath=os.path.join(working_dir, template_env + ".shd"),
-    #     source=source,
-    #     rcv_range=rcv_range,
-    #     rcv_depth=rcv_depth,
-    #     apply_delay=True,
-    # )
+    time_vector, s_at_rcv_pos, Pos = postprocess_received_signal(
+        shd_fpath=os.path.join(working_dir, template_env + ".shd"),
+        source=source,
+        rcv_range=rcv_range,
+        rcv_depth=rcv_depth,
+        apply_delay=True,
+        delay=delay,
+    )
 
     # # Plot pressure field
     # list_r_idx = [np.argmin(np.abs(Pos["r"]["r"] - r)) for r in rcv_range]
@@ -136,26 +148,54 @@ if __name__ == "__main__":
     # rcv = AcousticSource(s_at_rcv_pos[:, 0, 0], time_vector)
     # rcv.display_source()
 
-    # # Plot received signal
-    fig, ax = plt.subplots(1 + len(rcv_range), 1, sharex=True, sharey=True)
-    # source.plot_signal(ax=ax[0])
-    # ax[0].set_ylabel("")
+    # Illustrate delay
+    delays = rcv_range / 1500
 
-    for ir, rcv_r in enumerate(rcv_range):
-        ax[ir + 1].plot(time_vector, s_at_rcv_pos[:, 0, ir])
-
-        # ax[ir + 1].axvline()
-        # ax[ir + 1].set_xlabel("Time (s)")
-        # ax[ir + 1].set_ylabel("Pressure (Pa)")
-        # ax[ir + 1].set_title("Transmitted signal - r = {} m".format(rcv_r))
-    plt.tight_layout()
-    fig.supxlabel("Reduced time  t - r/c0 (s)")
-    fig.supylabel("Pressure (Pa)")
-
-    src_energy = np.sum(np.abs(source.signal) ** 2)
-    rcv_energy = np.sum(np.abs(s_at_rcv_pos[:, 0, 0]) ** 2)
-    print(f"Energy ratio: {rcv_energy/src_energy}")
+    th = 0.5 * 1e-8
+    end_s2 = np.where(np.abs(s_at_rcv_pos[:, 0, 1]) > th)[0].max()
+    plt.figure(figsize=(16, 10))
+    plt.plot(time_vector, s_at_rcv_pos[:, 0, 0], color="b", label=r"$s_1(t)$")
+    plt.plot(time_vector, s_at_rcv_pos[:, 0, 1], color="r", label=r"$s_2(t)$")
+    # plt.axhline(th, color="k", linestyle="--")
+    # plt.axvline(delays[0], label=r"$\tau_1$", color="b", linestyle="--")
+    # plt.axvline(delays[1], label=r"$\tau_2$", color="r", linestyle="--")
+    plt.axvline(
+        delays[1] - delays[0],
+        label=r"$\Delta \tau = \tau_2 - \tau_1$",
+        color="r",
+        linestyle="--",
+    )
+    plt.axvline(
+        time_vector[end_s2],
+        label=r"$t_{max}= \Delta \tau + \tau_{s_2}$",
+        color="k",
+        linestyle="--",
+    )
+    plt.legend()
+    plt.xlabel("Time (s)")
+    plt.ylabel("Received signal")
     plt.show()
+
+    # # Plot received signal
+    # fig, ax = plt.subplots(1 + len(rcv_range), 1, sharex=True, sharey=True)
+    # # source.plot_signal(ax=ax[0])
+    # # ax[0].set_ylabel("")
+
+    # for ir, rcv_r in enumerate(rcv_range):
+    #     ax[ir + 1].plot(time_vector, s_at_rcv_pos[:, 0, ir])
+
+    #     # ax[ir + 1].axvline()
+    #     # ax[ir + 1].set_xlabel("Time (s)")
+    #     # ax[ir + 1].set_ylabel("Pressure (Pa)")
+    #     # ax[ir + 1].set_title("Transmitted signal - r = {} m".format(rcv_r))
+    # plt.tight_layout()
+    # fig.supxlabel("Reduced time  t - r/c0 (s)")
+    # fig.supylabel("Pressure (Pa)")
+
+    # src_energy = np.sum(np.abs(source.signal) ** 2)
+    # rcv_energy = np.sum(np.abs(s_at_rcv_pos[:, 0, 0]) ** 2)
+    # print(f"Energy ratio: {rcv_energy/src_energy}")
+    # plt.show()
 
     # # Plot spectrogram of the received signal
     # plt.figure()
@@ -210,7 +250,7 @@ if __name__ == "__main__":
 
     # r_ship_t = np.sqrt((x_ship_t - x_obs) ** 2 + (y_ship_t - y_obs) ** 2)
 
-    # # process_broadband(fname=template_env, source=source, max_depth=1000)
+    # process_broadband(fname=template_env, source=source, max_depth=1000)
 
     # # Plot pressure field
     # plotshd(template_env + ".shd", 30)

@@ -1,4 +1,6 @@
 import io
+import os
+import shutil
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -125,29 +127,43 @@ def plot_animation_moviepy(
     plt.close(fig)
 
 
+def delete_folders(root_dir, folder_name_pattern):
+    for current_folder, subfolders, files in os.walk(root_dir, topdown=False):
+        for folder in subfolders:
+            if folder_name_pattern in folder:
+                folder_path = os.path.join(current_folder, folder)
+                print(f"Deleting folder: {folder_path}")
+                shutil.rmtree(folder_path)
+
+
 if __name__ == "__main__":
-    # Test plot_animation_moviepy
-    import os
-    import xarray as xr
+    # Test delete folders
+    root_directory = "/path/to/your/directory"
+    folder_pattern = "pattern_to_match"
+    delete_folders(root_directory, folder_pattern)
 
-    path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case\verlinden_1_test_case.nc"
-    ds = xr.open_dataset(path)
+    # # Test plot_animation_moviepy
+    # import os
+    # import xarray as xr
 
-    root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation\verlinden\test_case\isotropic\range_independent"
-    root_img = os.path.join(root_img, ds.src_pos, f"dx{ds.dx}m_dy{ds.dy}m")
+    # path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case\verlinden_1_test_case.nc"
+    # ds = xr.open_dataset(path)
 
-    # n = ds.dims["src_trajectory_time"]
-    n = 30
-    var_to_plot = ds.ambiguity_surface.isel(
-        idx_obs_pairs=0, src_trajectory_time=slice(0, n)
-    )
-    var_to_plot = -10 * np.log10(var_to_plot)
+    # root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation\verlinden\test_case\isotropic\range_independent"
+    # root_img = os.path.join(root_img, ds.src_pos, f"dx{ds.dx}m_dy{ds.dy}m")
 
-    plot_animation_moviepy(
-        var_to_plot=var_to_plot,
-        time_label="src_trajectory_time",
-        nb_frames=n,
-        anim_filename=os.path.join(root_img, "ambiguity_surf.mp4"),
-        fps_sec=5,
-        cmap="jet",
-    )
+    # # n = ds.dims["src_trajectory_time"]
+    # n = 30
+    # var_to_plot = ds.ambiguity_surface.isel(
+    #     idx_obs_pairs=0, src_trajectory_time=slice(0, n)
+    # )
+    # var_to_plot = -10 * np.log10(var_to_plot)
+
+    # plot_animation_moviepy(
+    #     var_to_plot=var_to_plot,
+    #     time_label="src_trajectory_time",
+    #     nb_frames=n,
+    #     anim_filename=os.path.join(root_img, "ambiguity_surf.mp4"),
+    #     fps_sec=5,
+    #     cmap="jet",
+    # )

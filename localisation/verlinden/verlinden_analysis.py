@@ -8,6 +8,7 @@ import scipy.signal as signal
 import moviepy.editor as mpy
 
 from PIL import Image
+from cst import LIBRARY_COLOR, EVENT_COLOR
 from propa.kraken_toolbox.plot_utils import plotshd
 from localisation.verlinden.verlinden_analysis_report import (
     plot_localisation_performance,
@@ -31,47 +32,56 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
             n_instant_to_plot, xr_dataset.dims["src_trajectory_time"]
         )
 
-    fig, axes = plt.subplots(
-        n_instant_to_plot,
-        xr_dataset.dims["idx_obs"],
-        sharex=True,
-        sharey=True,
-    )
-
-    axes = np.reshape(axes, (n_instant_to_plot, xr_dataset.dims["idx_obs"]))
-
     for i_ship in range(n_instant_to_plot):
-        for i_obs in range(xr_dataset.dims["idx_obs"]):
-            xr_dataset.rcv_signal_event.isel(
-                src_trajectory_time=i_ship, idx_obs=i_obs
-            ).plot(ax=axes[i_ship, i_obs], label=f"event - obs {i_obs}")
+        fig, axes = plt.subplots(
+            xr_dataset.dims["idx_obs"],
+            1,
+            figsize=(16, 8),
+            sharey=True,
+        )
 
-            xr_dataset.rcv_signal_library.sel(
+        for i_obs in range(xr_dataset.dims["idx_obs"]):
+            lib_sig = xr_dataset.rcv_signal_library.sel(
                 x=xr_dataset.x_ship.isel(src_trajectory_time=i_ship),
                 y=xr_dataset.y_ship.isel(src_trajectory_time=i_ship),
                 method="nearest",
-            ).isel(idx_obs=i_obs).plot(
-                ax=axes[i_ship, i_obs], label=f"library - obs {i_obs}"
+            ).isel(idx_obs=i_obs)
+            event_sig = xr_dataset.rcv_signal_event.isel(
+                src_trajectory_time=i_ship, idx_obs=i_obs
+            )
+            # Plot the signal with the smallest std on top
+            if event_sig.std() <= lib_sig.std():
+                lib_zorder = 1
+                event_zorder = 2
+            else:
+                event_zorder = 1
+                lib_zorder = 2
+
+            lib_sig.plot(
+                ax=axes[i_obs],
+                label=f"library - obs {i_obs}",
+                color=LIBRARY_COLOR,
+                zorder=lib_zorder,
+            )
+            event_sig.plot(
+                ax=axes[i_obs],
+                label=f"event - obs {i_obs}",
+                color=EVENT_COLOR,
+                zorder=event_zorder,
             )
 
-            axes[i_ship, i_obs].set_xlabel("")
-            axes[i_ship, i_obs].set_ylabel("")
-            axes[i_ship, i_obs].set_title(
-                f"x_ship = {xr_dataset.x_ship.isel(src_trajectory_time=i_ship).values.round(0)}m, y_ship = {xr_dataset.y_ship.isel(src_trajectory_time=i_ship).values.round(0)}m",
-            )
+            axes[i_obs].set_xlabel("")
+            axes[i_obs].set_ylabel("")
+            axes[i_obs].legend(loc="upper right")
 
-            # axes[i_ship, i_obs].set_ylim([-0.005, 0.005])
+        for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
+            ax.set_title(col)
 
-    for ax, col in zip(axes[0], [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
-        ax.set_title(col)
-
-    plt.tight_layout()
-    fig.supylabel("Received signal")
-    fig.supxlabel("Time (s)")
-    axes[-1, 0].legend()
-    axes[-1, 1].legend()
-    plt.savefig(img_basepath + "received_signals.png")
-    plt.close()
+        fig.supylabel("Received signal")
+        fig.supxlabel("Time (s)")
+        plt.tight_layout()
+        plt.savefig(img_basepath + f"received_signals_{i_ship}.png")
+        plt.close()
 
 
 def get_ambiguity_surface(ds):
@@ -92,7 +102,7 @@ def plot_ambiguity_surface_dist(ds, img_basepath):
     plt.scatter(amb_surf.max(), 1, marker="o", color="red", label="Max")
     plt.ylabel("Number of points")
     plt.xlabel("Ambiguity surface [dB]")
-    plt.legend()
+    plt.legend(loc="upper right")
     plt.savefig(img_basepath + f"ambiguity_surface_dist.png")
     plt.close()
 
@@ -135,6 +145,7 @@ def plot_ambiguity_surface(
     plot_beampattern=False,
     plot_hyperbol=False,
     grid_info={},
+    plot_info={},
 ):
     """Plot ambiguity surface for each source position."""
 
@@ -142,12 +153,13 @@ def plot_ambiguity_surface(
 
     for i in range(nb_instant_to_plot):
         plt.figure(figsize=(10, 8))
-        vmin = (
-            amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).quantile(0.25).values
-        )
 
+        vmin = (
+            amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).quantile(0.35).values
+        )
+        vmax = amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).max()
         amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).plot(
-            x="x", y="y", zorder=0, vmin=vmin, vmax=0, cmap="jet"
+            x="x", y="y", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
         )
 
         # if plot_beampattern:
@@ -380,7 +392,7 @@ def plot_ship_trajectory(ds, img_basepath):
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
     plt.grid(True)
-    plt.legend()
+    plt.legend(loc="upper right")
     plt.tight_layout()
     plt.savefig(img_basepath + f"estimated_pos.png")
     plt.close()
@@ -422,13 +434,13 @@ def plot_pos_error(ds, img_basepath):
         )
 
     plt.ylabel("Position error [m]")
-    plt.legend()
+    plt.legend(loc="upper right")
     plt.tight_layout()
     plt.savefig(img_basepath + f"pos_error.png")
     plt.close()
 
 
-def plot_correlation(ds, img_basepath, nb_instant_to_plot=10):
+def plot_correlation(ds, img_basepath, det_metric="intercorr0", nb_instant_to_plot=10):
     """Plot correlation for receiver couple."""
 
     fig, axes = plt.subplots(
@@ -436,7 +448,7 @@ def plot_correlation(ds, img_basepath, nb_instant_to_plot=10):
         ds.dims["idx_obs_pairs"],
         sharex=True,
         sharey=True,
-        figsize=(10, 8),
+        figsize=(16, 8),
     )
     axes = np.reshape(
         axes, (nb_instant_to_plot, ds.dims["idx_obs_pairs"])
@@ -444,23 +456,51 @@ def plot_correlation(ds, img_basepath, nb_instant_to_plot=10):
 
     for i_ship in range(nb_instant_to_plot):
         for i_obs_pair in range(ds.dims["idx_obs_pairs"]):
-            ds.event_corr.isel(
+            event_vect = ds.event_corr.isel(
                 src_trajectory_time=i_ship, idx_obs_pairs=i_obs_pair
-            ).plot(ax=axes[i_ship, i_obs_pair], label="event")
-            ds.library_corr.sel(
+            )
+            lib_vect = ds.library_corr.sel(
                 x=ds.x_ship.isel(src_trajectory_time=i_ship),
                 y=ds.y_ship.isel(src_trajectory_time=i_ship),
                 method="nearest",
-            ).isel(idx_obs_pairs=i_obs_pair).plot(
-                ax=axes[i_ship, i_obs_pair], label="lib at ship pos"
+            ).isel(idx_obs_pairs=i_obs_pair)
+
+            if det_metric == "hilbert_env_intercorr0":
+                event_vect.values = np.abs(signal.hilbert(event_vect))
+                lib_vect.values = np.abs(signal.hilbert(lib_vect))
+                ylabel = r"$|\mathcal{H}[R_{12}(\tau)]|$"
+            else:
+                ylabel = r"$R_{12}(\tau)$"
+
+            # Plot the signal with the smallest std on top
+            if event_vect.std() <= lib_vect.std():
+                lib_zorder = 1
+                event_zorder = 2
+            else:
+                event_zorder = 1
+                lib_zorder = 2
+
+            event_vect.plot(
+                ax=axes[i_ship, i_obs_pair],
+                label="event",
+                color=EVENT_COLOR,
+                zorder=event_zorder,
+            )
+            lib_vect.plot(
+                ax=axes[i_ship, i_obs_pair],
+                label="lib at ship pos",
+                color=LIBRARY_COLOR,
+                zorder=lib_zorder,
             )
             axes[i_ship, i_obs_pair].set_xlabel("")
             axes[i_ship, i_obs_pair].set_ylabel("")
-            axes[i_ship, i_obs_pair].set_title("")
-            # axes[i_ship, i_obs_pair].set_ylim([-1, 1])
+            axes[i_ship, i_obs_pair].set_title(f"Source pos n°{i_ship}")
+            axes[i_ship, i_obs_pair].legend(loc="upper right")
 
+    fig.supxlabel(r"$\tau (s)$")
+    fig.supylabel(ylabel)
+    plt.tight_layout()
     plt.savefig(img_basepath + f"signal_corr.png")
-    plt.legend()
     plt.close()
 
 
@@ -469,6 +509,8 @@ def analysis_main(
 ):
     global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN"
     global_log = [global_header_log]
+
+    now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 
     for snr in snr_list:
         if snr is None:
@@ -491,7 +533,9 @@ def analysis_main(
 
             # Image folder
             root_img = ds.fullpath_analysis
-            img_basepath = os.path.join(root_img, env_fname + "_")
+            img_basepath = os.path.join(root_img, now, env_fname + "_")
+            if not os.path.exists(os.path.dirname(img_basepath)):
+                os.makedirs(os.path.dirname(img_basepath))
 
             n_instant_to_plot = min(
                 simulation_info["n_instant_to_plot"], ds.dims["src_trajectory_time"]
@@ -520,7 +564,10 @@ def analysis_main(
             # Plot ambiguity surface
             if plot_info["plot_ambiguity_surface"]:
                 plot_ambiguity_surface(
-                    ds, img_basepath, nb_instant_to_plot=n_instant_to_plot
+                    ds,
+                    img_basepath,
+                    nb_instant_to_plot=n_instant_to_plot,
+                    plot_info=plot_info,
                 )
 
             # Create video
@@ -546,7 +593,10 @@ def analysis_main(
             # Plot correlation
             if plot_info["plot_correlation"]:
                 plot_correlation(
-                    ds, img_basepath, simulation_info["n_rcv_signals_to_plot"]
+                    ds,
+                    img_basepath,
+                    detection_metric,
+                    simulation_info["n_rcv_signals_to_plot"],
                 )
 
             pos_error = get_pos_error(ds)
@@ -592,13 +642,18 @@ def analysis_main(
     perf_metrics = ["RMSE", "STD"]
     plot_localisation_performance(
         data=pd.read_csv(global_report_fpath, sep=","),
+        detection_metric_list=detection_metric_list,
         metrics_to_plot=perf_metrics,
         img_path=os.path.dirname(global_report_fpath),
     )
 
 
 if __name__ == "__main__":
-    snr = [None, -10, -5, 0, 5]
+    # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
+    # snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
+    # snr = [5, -10, 20, -20, None]
+    # detection_metric = ["intercorr0"]
+    snr = [-20, -10, -5, 0, 5, 10, 20, None]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {
@@ -611,23 +666,38 @@ if __name__ == "__main__":
         "simulation_folder": r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case",
         "src_pos": "not_on_grid",
         "n_instant_to_plot": 10,
-        "n_rcv_signals_to_plot": 2,
-        "src_type": "pulse",
+        "n_rcv_signals_to_plot": 3,
+        "src_type": "pulse_train",
     }
+
+    # plot_info = {
+    #     "plot_video": False,
+    #     "plot_one_tl_profile": True,
+    #     "plot_ambiguity_surface_dist": True,
+    #     "plot_received_signal": True,
+    #     "plot_ambiguity_surface": True,
+    #     "plot_ship_trajectory": True,
+    #     "plot_pos_error": True,
+    #     "plot_correlation": True,
+    #     "tl_freq_to_plot": [20],
+    #     "x_offset": 1000,
+    #     "y_offset": 1000,
+    # }
 
     plot_info = {
         "plot_video": False,
-        "plot_one_tl_profile": False,
-        "plot_ambiguity_surface_dist": False,
-        "plot_received_signal": False,
-        "plot_ambiguity_surface": False,
-        "plot_ship_trajectory": False,
-        "plot_pos_error": False,
-        "plot_correlation": False,
+        "plot_one_tl_profile": True,
+        "plot_ambiguity_surface_dist": True,
+        "plot_received_signal": True,
+        "plot_ambiguity_surface": True,
+        "plot_ship_trajectory": True,
+        "plot_pos_error": True,
+        "plot_correlation": True,
         "tl_freq_to_plot": [20],
         "x_offset": 1000,
         "y_offset": 1000,
     }
+
     analysis_main(
         snr,
         detection_metric,

@@ -9,7 +9,15 @@ class AcousticSource:
     """Acoustic source class. The source is defined by the signal recorded 1m away from the source."""
 
     def __init__(
-        self, signal, time, name="", waveguide_depth=100, z_src=5, kraken_freq=None
+        self,
+        signal,
+        time,
+        name="",
+        waveguide_depth=100,
+        z_src=5,
+        kraken_freq=None,
+        window=None,
+        nfft=None,
     ):
         self.signal = signal  # Source signal
         self.time = time  # Time vector
@@ -19,6 +27,10 @@ class AcousticSource:
         self.kraken_freq = (
             kraken_freq  # Use limited number of frequencies for kraken run
         )
+        self.window = window  # Apply window to source signal
+        self.nfft = nfft  # Number of points for FFT
+        if self.window is not None:
+            self.apply_window()
 
         self.ns = len(signal)  # Number of samples
         self.fs = 1 / (time[1] - time[0])  # Sampling frequency
@@ -31,14 +43,27 @@ class AcousticSource:
         self.max_freq = None  # Maximum frequency of the energetic domain
         self.get_spectrum()
 
-    def get_spectrum(self, nfft=None):
+    def apply_window(self):
+        """Apply window to source signal"""
+        if self.window == "hamming":
+            win = np.hamming(self.signal.size)
+        elif self.window == "hanning":
+            win = np.hanning(self.signal.size)
+        elif self.window == "blackman":
+            win = np.blackman(self.signal.size)
+        else:
+            raise ValueError("Unknown window type")
+
+        self.signal *= win
+
+    def get_spectrum(self):
         """Derive spectrum from source signal"""
 
         self.psd_freq, self.psd = signal.welch(
             self.signal, fs=self.fs, window="hamming", scaling="spectrum"
         )
 
-        if nfft is None:
+        if self.nfft is None:
             # self.nfft = 2 ** int(np.log2(self.ns) + 1)  # Next power of 2
             self.nfft = 2**12
 
@@ -116,15 +141,18 @@ class AcousticSource:
         ax.set_ylabel("Amplitude")
         ax.set_title("Source signal")
 
-    def display_source(self, ax_signal=None, ax_spectrum=None):
+    def display_source(self, ax_signal=None, ax_spectrum=None, ax_psd=None):
         """Display source signal and spectrum"""
         if ax_signal is not None and ax_spectrum is not None:
             self.plot_signal(ax=ax_signal)
-            self.plot_psd(ax=ax_spectrum)
+            self.plot_psd(ax=ax_psd)
+            self.plot_spectrum_magnitude(ax=ax_spectrum)
+            plt.suptitle(self.name)
             plt.tight_layout()
         else:
             __, ax = plt.subplots(1, 3, figsize=(10, 8))
             self.plot_signal(ax=ax[0])
             self.plot_psd(ax=ax[1])
             self.plot_spectrum_magnitude(ax=ax[2])
+            plt.suptitle(self.name)
             plt.tight_layout()

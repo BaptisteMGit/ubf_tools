@@ -8,6 +8,7 @@ import scipy.signal as signal
 import moviepy.editor as mpy
 
 from PIL import Image
+from cst import LIBRARY_COLOR, EVENT_COLOR
 from propa.kraken_toolbox.plot_utils import plotshd
 from localisation.verlinden.verlinden_analysis_report import (
     plot_localisation_performance,
@@ -610,7 +611,8 @@ def analysis_main(
 
 
 if __name__ == "__main__":
-    snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
+    # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
+    snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {

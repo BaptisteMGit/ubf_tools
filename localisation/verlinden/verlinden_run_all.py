@@ -2,9 +2,10 @@ from localisation.verlinden.verlinden_process import verlinden_main
 from verlinden_analysis import analysis_main
 
 if __name__ == "__main__":
-    snr = [-5, 0, 5, 10]
+    # snr = [-5, -1, 1, 5, 10, 20]
+    snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
-    src_signal_type = ["pulse"]
+    src_signal_type = ["ship"]
 
     grid_info = dict(
         Lx=10 * 1e3,
@@ -26,8 +27,8 @@ if __name__ == "__main__":
     for src_stype in src_signal_type:
         # Define the parameters
         src_info = dict(
-            x_pos=[-17000, -15000],
-            y_pos=[46000, 44000],
+            x_pos=[-15000, -13000],
+            y_pos=[40000, 38000],
             v_src=v_ship,
             nmax_ship=30,
             src_signal_type=src_stype,
@@ -57,7 +58,7 @@ if __name__ == "__main__":
 
         plot_info = {
             "plot_video": False,
-            "plot_one_tl_profile": True,
+            "plot_one_tl_profile": False,
             "plot_ambiguity_surface_dist": True,
             "plot_received_signal": True,
             "plot_ambiguity_surface": True,
@@ -70,6 +71,7 @@ if __name__ == "__main__":
         }
 
         # Analyse the results
+        snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
         analysis_main(
             snr,
             detection_metric,

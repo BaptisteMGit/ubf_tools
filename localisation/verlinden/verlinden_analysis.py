@@ -155,11 +155,11 @@ def plot_ambiguity_surface(
         plt.figure(figsize=(10, 8))
 
         vmin = (
-            amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).quantile(0.25).values
+            amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).quantile(0.35).values
         )
-
+        vmax = amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).max()
         amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).plot(
-            x="x", y="y", zorder=0, vmin=vmin, vmax=0, cmap="jet"
+            x="x", y="y", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
         )
 
         # if plot_beampattern:
@@ -642,6 +642,7 @@ def analysis_main(
     perf_metrics = ["RMSE", "STD"]
     plot_localisation_performance(
         data=pd.read_csv(global_report_fpath, sep=","),
+        detection_metric_list=detection_metric_list,
         metrics_to_plot=perf_metrics,
         img_path=os.path.dirname(global_report_fpath),
     )
@@ -650,10 +651,10 @@ def analysis_main(
 if __name__ == "__main__":
     # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
     # snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
-    snr = [-30]
-    detection_metric = ["intercorr0"]
-
-    # detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
+    # snr = [5, -10, 20, -20, None]
+    # detection_metric = ["intercorr0"]
+    snr = [-20, -10, -5, 0, 5, 10, 20, None]
+    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {
         "Lx": 5 * 1e3,
@@ -666,7 +667,7 @@ if __name__ == "__main__":
         "src_pos": "not_on_grid",
         "n_instant_to_plot": 10,
         "n_rcv_signals_to_plot": 3,
-        "src_type": "ship",
+        "src_type": "pulse_train",
     }
 
     # plot_info = {

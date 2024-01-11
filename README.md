@@ -3,7 +3,7 @@
 ## Kraken toolbox 
 Toolbox dedicated to underwater acoustics propagation modeling with normal mode program KRAKEN. 
 Included functions : 
-  - Configure simulation (few classes dedicated)
+  - Configure simulation (few dedicated classes)
   - Write .env and .flp files needed to run kraken.exe and field.exe
   - Run kraken
   - Post process kraken results to synthesise propagated time series

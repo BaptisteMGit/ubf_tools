@@ -126,7 +126,7 @@ def populate_grid(
             delay=delay_to_apply,
         )
         if i_obs == 0:
-            ds["library_signal_time"] = t_obs
+            ds["library_signal_time"] = t_obs.astype(np.float32)
             ds["library_signal_time"].attrs["units"] = "s"
             ds["library_signal_time"].attrs["long_name"] = "Time"
 
@@ -139,20 +139,52 @@ def populate_grid(
         )
 
         rcv_signal_library[i_obs, :] = s_obs
-
-        if snr_dB is not None:
-            # Add noise to received signal
-            rcv_signal_library[i_obs, :] = add_noise_to_signal(
-                rcv_signal_library[i_obs, :], snr_dB=snr_dB
-            )
+        # if snr_dB is not None:
+        #     # Add noise to received signal
+        #     rcv_signal_library[i_obs, :] = add_noise_to_signal(
+        #         rcv_signal_library[i_obs, :], snr_dB=snr_dB
+        #     )
 
         # Free memory
         del s_obs, rr_from_obs_flat
 
     ds["rcv_signal_library"] = (
         signal_library_dim,
-        rcv_signal_library,
+        rcv_signal_library.astype(np.float32),
     )
+
+    ds.attrs["fullpath_populated"] = os.path.join(
+        VERLINDEN_POPULATED_FOLDER,
+        kraken_env.filename,
+        f"populated_{library_src.name}.nc",
+    )
+    if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
+        os.makedirs(os.path.dirname(ds.fullpath_populated))
+
+    ds.to_netcdf(ds.fullpath_populated)
+
+    return ds
+
+
+def add_noise_to_dataset(library_dataset, snr_dB):
+    ds = library_dataset
+    for i_obs in tqdm(
+        ds.idx_obs, bar_format=BAR_FORMAT, desc="Add noise to received signal"
+    ):
+        if snr_dB is not None:
+            # Add noise to received signal
+            ds.rcv_signal_library.isel(idx_obs=i_obs).values = add_noise_to_signal(
+                ds.rcv_signal_library.isel(idx_obs=i_obs).values, snr_dB=snr_dB
+            )
+            ds.attrs["snr_dB"] = snr_dB
+        else:
+            ds.attrs["snr_dB"] = "Noiseless"
+
+    return ds
+
+
+def add_correlation_to_dataset(library_dataset):
+    ds = library_dataset
     ds.coords["library_corr_lags"] = signal.correlation_lags(
         ds.dims["library_signal_time"], ds.dims["library_signal_time"]
     )
@@ -163,7 +195,7 @@ def populate_grid(
     library_corr_dim = ["idx_obs_pairs", "y", "x", "library_corr_lags"]
     library_corr = np.empty(tuple(ds.dims[d] for d in library_corr_dim))
 
-    # Could be way faster with a FFT based approach
+    # May be way faster with a FFT based approach
     ns = ds.dims["library_signal_time"]
     for i_pair in tqdm(
         range(ds.dims["idx_obs_pairs"]),
@@ -195,52 +227,36 @@ def populate_grid(
                 autocorr1 = signal.correlate(s1, s1)
                 corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
 
-                # # Plot autocorrelation
-                # plt.figure()
-                # plt.plot(
-                #     signal.correlation_lags(len(s0), len(s0)),
-                #     autocorr0,
-                #     label="autocorr",
-                # )
-                # # plt.plot(t_obs, s0, label="s0")
-                # plt.legend()
-
-                # plt.figure()
-                # plt.plot(
-                #     signal.correlation_lags(len(s0), len(s0)),
-                #     autocorr0,
-                #     label="autocorr",
-                # )
-                # # plt.plot(t_obs, s1, label="s1")
-                # plt.legend()
-                # plt.show()
-
-                # corr_01 /= np.max(corr_01)
-
                 library_corr[i_pair, i_y, i_x, :] = corr_01
 
                 del s0, s1, corr_01
 
-    ds["library_corr"] = (library_corr_dim, library_corr)
-    if snr_dB is None:
-        ds.attrs["snr_dB"] = "noiseless"
-        snr_tag = "noiseless"
-    else:
-        ds.attrs["snr_dB"] = snr_dB
-        snr_tag = f"snr{snr_dB}dB"
+    ds["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
+    # if snr_dB is None:
+    #     ds.attrs["snr_dB"] = "noiseless"
+    #     snr_tag = "noiseless"
+    # else:
+    #     ds.attrs["snr_dB"] = snr_dB
+    #     snr_tag = f"snr{snr_dB}dB"
 
     # Build path to save populated dataset
-    ds.attrs["fullpath_populated"] = os.path.join(
-        VERLINDEN_POPULATED_FOLDER,
-        kraken_env.filename,
-        library_src.name,
-        f"populated_{snr_tag}.nc",
-    )
 
-    if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
-        os.makedirs(os.path.dirname(ds.fullpath_populated))
+    # ds.attrs["fullpath_populated"] = os.path.join(
+    #     VERLINDEN_POPULATED_FOLDER,
+    #     kraken_env.filename,
+    #     library_src.name,
+    #     f"populated_{snr_tag}.nc",
+    # )
 
-    ds.to_netcdf(ds.fullpath_populated)
+    # ds.attrs["fullpath_populated"] = os.path.join(
+    #     VERLINDEN_POPULATED_FOLDER,
+    #     kraken_env.filename,
+    #     f"populated_{library_src.name}.nc",
+    # )
+    # if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
+    #     os.makedirs(os.path.dirname(ds.fullpath_populated))
+
+    # ds.to_netcdf(ds.fullpath_populated)
 
     return ds
 
@@ -267,11 +283,14 @@ def add_event_to_dataset(
     ]
 
     ds.coords["event_signal_time"] = []
-    ds.coords["src_trajectory_time"] = event_t
+    ds.coords["src_trajectory_time"] = event_t.astype(np.float32)
 
-    ds["x_ship"] = (["src_trajectory_time"], x_event_t)
-    ds["y_ship"] = (["src_trajectory_time"], y_event_t)
-    ds["r_obs_ship"] = (["idx_obs", "src_trajectory_time"], np.array(r_event_t))
+    ds["x_ship"] = (["src_trajectory_time"], x_event_t.astype(np.float32))
+    ds["y_ship"] = (["src_trajectory_time"], y_event_t.astype(np.float32))
+    ds["r_obs_ship"] = (
+        ["idx_obs", "src_trajectory_time"],
+        np.array(r_event_t).astype(np.float32),
+    )
 
     ds["event_signal_time"].attrs["units"] = "s"
     ds["src_trajectory_time"].attrs["units"] = "s"
@@ -321,24 +340,44 @@ def add_event_to_dataset(
             delay=delay_to_apply_ship,
         )
         if i_obs == 0:
-            ds["event_signal_time"] = t_obs
+            ds["event_signal_time"] = t_obs.astype(np.float32)
             rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
 
         rcv_signal_event[i_obs, :] = s_obs[:, 0, :].T
-
-        if snr_dB is not None:
-            # Add noise to received signal
-            rcv_signal_event[i_obs, :] = add_noise_to_signal(
-                rcv_signal_event[i_obs, :], snr_dB
-            )
 
         # Free memory
         del t_obs, s_obs, Pos
 
     ds["rcv_signal_event"] = (
         ["idx_obs", "src_trajectory_time", "event_signal_time"],
-        rcv_signal_event,
+        rcv_signal_event.astype(np.float32),
     )
+
+    ds = add_noise_to_event(ds, snr_dB=snr_dB)
+    ds = add_event_correlation(ds)
+
+    return ds
+
+
+def add_noise_to_event(library_dataset, snr_dB):
+    ds = library_dataset
+    for i_obs in tqdm(
+        ds.idx_obs, bar_format=BAR_FORMAT, desc="Add noise to event signal"
+    ):
+        if snr_dB is not None:
+            # Add noise to received signal
+            ds.rcv_signal_event.isel(idx_obs=i_obs).values = add_noise_to_signal(
+                ds.rcv_signal_event.isel(idx_obs=i_obs).values, snr_dB
+            )
+            ds.attrs["snr_dB"] = snr_dB
+        else:
+            ds.attrs["snr_dB"] = "Noiseless"
+
+    return ds
+
+
+def add_event_correlation(library_dataset):
+    ds = library_dataset
     ds.coords["event_corr_lags"] = signal.correlation_lags(
         ds.dims["event_signal_time"], ds.dims["event_signal_time"]
     )
@@ -372,7 +411,7 @@ def add_event_to_dataset(
 
             del s0, s1, corr_01
 
-    ds["event_corr"] = (event_corr_dim, event_corr)
+    ds["event_corr"] = (event_corr_dim, event_corr.astype(np.float32))
 
     return ds
 
@@ -429,6 +468,8 @@ def build_ambiguity_surf(ds, detection_metric):
                 )
                 autocorr_lib = np.sum(lib_data.values**2, axis=2)
                 autocorr_event = np.sum(event_vector.values**2)
+                del lib_data, event_vector
+
                 norm = np.sqrt(autocorr_lib * autocorr_event)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
@@ -551,7 +592,7 @@ def verlinden_main(
         f"    -> Grid properties: dx = {grid_info['dx']} m, dy = {grid_info['dy']} m, dt = {dt} s"
     )
     print(
-        f"    -> Source (event) properties:\n \tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n \tLast position {src_info['x_pos'][1], src_info['y_pos'][1]}\n \tNumber of positions {src_info['nmax_ship']}\n \tSource speed {src_info['v_src']}\n \tSource type {src_info['src_signal_type']}"
+        f"    -> Source (event) properties:\n \tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n \tLast position = {src_info['x_pos'][1], src_info['y_pos'][1]}\n \tNumber of positions = {src_info['nmax_ship']}\n \tSource speed = {src_info['v_src']}m.s-1\n \tSignal type = {src_info['src_signal_type']}"
     )
 
     library_src = init_library_src(dt, depth_max, sig_type=src_info["src_signal_type"])
@@ -601,17 +642,18 @@ def verlinden_main(
         populated_path = os.path.join(
             VERLINDEN_POPULATED_FOLDER,
             kraken_env.filename,
-            src_info["src_signal_type"],
-            f"populated_{snr_tag}.nc",
+            f"populated_{src_info['src_signal_type']}.nc",
         )
 
+        complete_dataset_loaded = False
+        event_in_dataset = False
         for det_metric in detection_metric:
             det_msg = f"Detection metric: {det_metric}"
             print("# " + det_msg + " #")
 
-            if os.path.exists(populated_path):
+            if os.path.exists(populated_path) and not complete_dataset_loaded:
                 ds_library = xr.open_dataset(populated_path)
-            else:
+            elif not os.path.exists(populated_path):
                 ds_library = populate_grid(
                     library_src,
                     src_info["z_src"],
@@ -624,18 +666,31 @@ def verlinden_main(
                     snr_dB=snr_i,
                 )
 
+            # 10/01/2024 No more 1 save/snr to save memory
+            if not complete_dataset_loaded:
+                # Add noise to dataset
+                ds_library = add_noise_to_dataset(ds_library, snr_dB=snr_i)
+
+                # Derive correlation vector for the entire grid
+                ds_library = add_correlation_to_dataset(ds_library)
+
+                # Switch flag to avoid redundancy
+                complete_dataset_loaded = True
+
             event_src = library_src
-            ds = add_event_to_dataset(
-                library_dataset=ds_library,
-                kraken_env=kraken_env,
-                event_src=event_src,
-                event_t=t_ship,
-                x_event_t=x_ship_t,
-                y_event_t=y_ship_t,
-                z_event=src_info["z_src"],
-                interp_src_pos_on_grid=src_info["on_grid"],
-                snr_dB=snr_i,
-            )
+            if not event_in_dataset:
+                ds = add_event_to_dataset(
+                    library_dataset=ds_library,
+                    kraken_env=kraken_env,
+                    event_src=event_src,
+                    event_t=t_ship,
+                    x_event_t=x_ship_t,
+                    y_event_t=y_ship_t,
+                    z_event=src_info["z_src"],
+                    interp_src_pos_on_grid=src_info["on_grid"],
+                    snr_dB=snr_i,
+                )
+                event_in_dataset = True
 
             ds = build_ambiguity_surf(ds, det_metric)
 
@@ -665,6 +720,7 @@ def verlinden_main(
 
             ds.to_netcdf(ds.fullpath_output)
 
+        ds = ds.drop_vars("event_signal_time")
     print(f"### Verlinden simulation process done ###")
 
 

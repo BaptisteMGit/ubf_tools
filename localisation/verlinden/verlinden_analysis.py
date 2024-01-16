@@ -8,7 +8,15 @@ import scipy.signal as signal
 import moviepy.editor as mpy
 
 from PIL import Image
-from cst import LIBRARY_COLOR, EVENT_COLOR
+from cst import (
+    LIBRARY_COLOR,
+    EVENT_COLOR,
+    LABEL_FONTSIZE,
+    TICKS_FONTSIZE,
+    TITLE_FONTSIZE,
+    LEGEND_FONTSIZE,
+    SUPLABEL_FONTSIZE,
+)
 from propa.kraken_toolbox.plot_utils import plotshd
 from localisation.verlinden.verlinden_analysis_report import (
     plot_localisation_performance,
@@ -73,12 +81,13 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
             axes[i_obs].set_xlabel("")
             axes[i_obs].set_ylabel("")
             axes[i_obs].legend(loc="upper right")
+            axes[i_obs].tick_params(labelsize=TICKS_FONTSIZE)
 
         for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
-            ax.set_title(col)
+            ax.set_title(col, fontsize=TITLE_FONTSIZE)
 
-        fig.supylabel("Received signal")
-        fig.supxlabel("Time (s)")
+        fig.supylabel("Received signal", fontsize=SUPLABEL_FONTSIZE)
+        fig.supxlabel("Time [s]", fontsize=SUPLABEL_FONTSIZE)
         plt.tight_layout()
         plt.savefig(img_basepath + f"received_signals_{i_ship}.png")
         plt.close()
@@ -97,11 +106,13 @@ def plot_ambiguity_surface_dist(ds, img_basepath):
     """Plot ambiguity surface distribution."""
     amb_surf = get_ambiguity_surface(ds)
 
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(16, 10))
     amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=0).plot.hist(bins=10000)
     plt.scatter(amb_surf.max(), 1, marker="o", color="red", label="Max")
-    plt.ylabel("Number of points")
-    plt.xlabel("Ambiguity surface [dB]")
+    plt.ylabel("Number of points", fontsize=LABEL_FONTSIZE)
+    plt.xlabel("Ambiguity surface [dB]", fontsize=LABEL_FONTSIZE)
+    plt.yticks(fontsize=TICKS_FONTSIZE)
+    plt.xticks(fontsize=TICKS_FONTSIZE)
     plt.legend(loc="upper right")
     plt.savefig(img_basepath + f"ambiguity_surface_dist.png")
     plt.close()
@@ -161,6 +172,13 @@ def plot_ambiguity_surface(
         amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).plot(
             x="x", y="y", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
         )
+        ax = plt.gca()
+        for item in (
+            [ax.xaxis.label, ax.yaxis.label]
+            + ax.get_xticklabels()
+            + ax.get_yticklabels()
+        ):
+            item.set_fontsize(20)
 
         # if plot_beampattern:
         #     # bp_offset = np.sqrt(
@@ -238,8 +256,10 @@ def plot_ambiguity_surface(
                 ]
             )
 
+        plt.yticks(fontsize=TICKS_FONTSIZE)
+        plt.xticks(fontsize=TICKS_FONTSIZE)
+        plt.legend(ncol=2, loc="upper right", fontsize=LEGEND_FONTSIZE)
         plt.tight_layout()
-        plt.legend(ncol=2, loc="upper right")
         plt.savefig(img_basepath + f"ambiguity_surface_{i}.png")
         plt.close()
 
@@ -389,10 +409,10 @@ def plot_ship_trajectory(ds, img_basepath):
             label="Estimated position",
         )
 
-    plt.xlabel("x [m]")
-    plt.ylabel("y [m]")
+    plt.xlabel("x [m]", fontsize=LABEL_FONTSIZE)
+    plt.ylabel("y [m]", fontsize=LABEL_FONTSIZE)
     plt.grid(True)
-    plt.legend(loc="upper right")
+    plt.legend(loc="upper right", fontsize=LEGEND_FONTSIZE)
     plt.tight_layout()
     plt.savefig(img_basepath + f"estimated_pos.png")
     plt.close()
@@ -424,17 +444,21 @@ def plot_pos_error(ds, img_basepath):
 
     plt.figure(figsize=(10, 8))
     for i_pair in ds.idx_obs_pairs:
-        pos_error.sel(idx_obs_pairs=i_pair).plot(label=f"obs pair {i_pair}")
+        pos_error.sel(idx_obs_pairs=i_pair).plot(label=f"obs pair {i_pair.values}")
 
         plt.axhline(
             pos_error.median(),
             color="red",
             linestyle="--",
-            label=f"median error for obs pair {i_pair} = {pos_error.median().round(0).values}m",
+            label=f"Median error for obs pair {i_pair.values} = {pos_error.median().round(0).values}m",
         )
 
-    plt.ylabel("Position error [m]")
-    plt.legend(loc="upper right")
+    plt.ylabel("Position error [m]", fontsize=LABEL_FONTSIZE)
+    plt.gca().xaxis.label.set_fontsize(LABEL_FONTSIZE)
+
+    plt.legend(loc="upper right", fontsize=LEGEND_FONTSIZE)
+    plt.xticks(fontsize=TICKS_FONTSIZE)
+    plt.yticks(fontsize=TICKS_FONTSIZE)
     plt.tight_layout()
     plt.savefig(img_basepath + f"pos_error.png")
     plt.close()
@@ -494,11 +518,15 @@ def plot_correlation(ds, img_basepath, det_metric="intercorr0", nb_instant_to_pl
             )
             axes[i_ship, i_obs_pair].set_xlabel("")
             axes[i_ship, i_obs_pair].set_ylabel("")
-            axes[i_ship, i_obs_pair].set_title(f"Source pos n°{i_ship}")
-            axes[i_ship, i_obs_pair].legend(loc="upper right")
+            axes[i_ship, i_obs_pair].set_title(
+                f"Source pos n°{i_ship}", fontsize=TITLE_FONTSIZE
+            )
+            axes[i_ship, i_obs_pair].legend(loc="upper right", fontsize=LEGEND_FONTSIZE)
+            axes[i_ship, i_obs_pair].tick_params(labelsize=TICKS_FONTSIZE)
 
-    fig.supxlabel(r"$\tau (s)$")
-    fig.supylabel(ylabel)
+    fig.supxlabel(r"$\tau (s)$", fontsize=SUPLABEL_FONTSIZE)
+    fig.supylabel(ylabel, fontsize=SUPLABEL_FONTSIZE)
+
     plt.tight_layout()
     plt.savefig(img_basepath + f"signal_corr.png")
     plt.close()
@@ -653,8 +681,8 @@ if __name__ == "__main__":
     # snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
     # snr = [5, -10, 20, -20, None]
     # detection_metric = ["intercorr0"]
-    snr = [-20, -10, -5, 0, 5, 10, 20, None]
-    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
+    snr = [None]
+    detection_metric = ["intercorr0"]
 
     grid_info = {
         "Lx": 5 * 1e3,
@@ -667,7 +695,7 @@ if __name__ == "__main__":
         "src_pos": "not_on_grid",
         "n_instant_to_plot": 10,
         "n_rcv_signals_to_plot": 3,
-        "src_type": "pulse_train",
+        "src_type": "ship",
     }
 
     # plot_info = {

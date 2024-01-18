@@ -9,15 +9,15 @@ img_path = (
 )
 
 T = 7.2
-fc = 50
+fc = 25
 fs = 200
 
 sig = {}
 time = {}
-sig["pulse"], time["pulse"] = pulse(T=T, f=fc, fs=fs, t0=0.5 * T)
+# sig["pulse"], time["pulse"] = pulse(T=T, f=fc, fs=fs, t0=0.5 * T)
+sig["pulse"], time["pulse"] = pulse(T=T, f=fc, fs=fs)
 sig["pulse_train"], time["pulse_train"] = pulse_train(T=T, f=fc, fs=fs)
 sig["ship"], time["ship"] = ship_noise(T=T)
-
 
 depth = 150  # Verlinden test case
 window = "hanning"

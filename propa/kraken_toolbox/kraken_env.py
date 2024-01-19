@@ -366,6 +366,7 @@ class KrakenBottomHalfspace:
         self.sigma_ = sigma
         self.halfspace_properties_ = halfspace_properties
 
+        # Boundary code
         self.boundary_code = None
         self.available_boundary_conditions = [
             "vacuum",
@@ -374,8 +375,10 @@ class KrakenBottomHalfspace:
             "reflection_coefficient",
             "precalculated_reflection_coefficient",
         ]
-
         self.set_boundary_code()
+
+        # Bathymetry code
+        self.bathymetry_code = ""
 
     def set_boundary_code(self):
         if self.boundary_condition_ == "vacuum":
@@ -397,8 +400,14 @@ class KrakenBottomHalfspace:
             )
         else:
             raise ValueError(
-                f"Unknown interpolation method '{self.boundary_condition_}'. Please pick one of the following: {self.available_boundary_conditions}"
+                f"Unknown boundary condition '{self.boundary_condition_}'. Please pick one of the following: {self.available_boundary_conditions}"
             )
+
+    def set_bathymetry_code(self, use_bathymetry):
+        if not use_bathymetry:
+            self.bathymetry_code = ""  # Don't use bathymetry
+        else:
+            self.bathymetry_code = "~"  # Use bathymetry
 
     def set_halfspace_properties(self):
         if self.halfspace_properties_ is None:
@@ -424,15 +433,17 @@ class KrakenBottomHalfspace:
 
             self.use_halfspace_properties = True
 
-    def write_lines(self, kraken_medium):
+    def write_lines(self, kraken_medium, use_bathymetry=False):
+        # Get bathymetry code
+        self.set_bathymetry_code(use_bathymetry)
+
         # Bottom halfspace info
         bottom_halfspace_info = align_var_description(
-            f"'{self.boundary_code}' {self.sigma_}",
+            f"'{self.boundary_code+self.bathymetry_code}' {self.sigma_}",
             "Type of bottom boundary condition, Interfacial roughness",
         )
         self.lines = [bottom_halfspace_info]
 
-        # TODO : Add Half space properties
         if self.use_halfspace_properties:
             ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S-wave attenuation"
             half_space_prop = align_var_description(
@@ -442,8 +453,13 @@ class KrakenBottomHalfspace:
             self.lines.append(half_space_prop)
 
     def set_default(self):
+        self.halfspace_properties_ = SAND_PROPERTIES
         self.boundary_condition_ = "acousto_elastic"
         self.set_boundary_code()
+        self.sigma_ = 0.0
+        self.bathymetry_code = ""
+
+    """ Associated plotting tools to represent medium properties """
 
     def plot_bottom_halfspace(self):
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
@@ -637,6 +653,7 @@ class KrakenEnv:
         kraken_bottom_hs=KrakenBottomHalfspace(),
         kraken_field=KrakenField(),
         nmedia=1,
+        bty_file="",
     ):
         self.simulation_title = title
 
@@ -649,9 +666,11 @@ class KrakenEnv:
         # Shd file info
         self.shd_fpath = os.path.join(self.root, self.filename + ".shd")
 
+        # List of ordered frequencies
         self.freq = np.array(freq)
         self.freq = np.unique(self.freq)
         self.freq.sort()
+
         if self.freq.size > 1:
             self.broadband_run = True
             self.nominal_frequency = float(self.freq[0])
@@ -667,6 +686,13 @@ class KrakenEnv:
 
         self.nmedia = nmedia
 
+        # Bathymetry file for range dependent bottom
+        self.bty_file = bty_file
+        if self.bty_file != "" and os.path.exists(self.bty_file):
+            self.use_bathymetry = True
+        else:
+            self.use_bathymetry = False
+
     def write_env(self):
         # Write top halfspace lines
         self.top_hs.write_lines(
@@ -678,7 +704,9 @@ class KrakenEnv:
         # Write medium lines
         self.medium.write_lines()
         # Write bottom halfspace lines
-        self.bottom_hs.write_lines(kraken_medium=self.medium)
+        self.bottom_hs.write_lines(
+            kraken_medium=self.medium, use_bathymetry=self.use_bathymetry
+        )
         # Write field lines
         self.field.write_lines()
 
@@ -876,21 +904,24 @@ if __name__ == "__main__":
 
     bott_hs_properties = SAND_PROPERTIES
     bott_hs_properties["z"] = z_ssp.max()
-    bott_hs = KrakenBottomHalfspace(halfspace_properties=bott_hs_properties)
+    bott_hs = KrakenBottomHalfspace(
+        halfspace_properties=bott_hs_properties,
+    )
 
     att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
     field = KrakenField(src_depth=50)
 
     env = KrakenEnv(
         title="Test de la classe KrakenEnv",
-        env_root=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\testPyAT",
-        env_filename="test_kraken_env",
+        env_root=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd",
+        env_filename="test_kraken_rd",
         freq=[10, 50, 16, 25, 20, 21, 62, 85, 93, 714, 16, 25, 20, 21, 62],
         kraken_top_hs=top_hs,
         kraken_medium=medium,
         kraken_attenuation=att,
         kraken_bottom_hs=bott_hs,
         kraken_field=field,
+        bty_file=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd\stepK.bty",
     )
 
     env.write_env()

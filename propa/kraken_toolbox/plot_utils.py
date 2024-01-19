@@ -6,7 +6,7 @@ from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import get_component
 
 
-def plotmode(filename, freq, modes):
+def plotmode(filename, freq=0, modes=None):
     """Plot modes produced by KRAKEN from a '.mod' binary file.
     Usage: plotmode(filename, freq, modes)
 
@@ -39,8 +39,8 @@ def plotmode(filename, freq, modes):
         plt.ylabel("Depth (m)")
         plt.title([Modes["title"], f'Freq = {Modes["freqVec"][freq_index]} Hz'])
 
-    Nplots = min(len(modes), 10)
-    iskip = len(modes) // Nplots
+    Nplots = min(Modes["nb_selected_modes"], 10)
+    iskip = Modes["nb_selected_modes"] // Nplots
 
     fig, ax = plt.subplots(1, Nplots, figsize=(15, 5), sharey=True)
     for iplot in range(Nplots):
@@ -52,7 +52,7 @@ def plotmode(filename, freq, modes):
         else:
             ax[iplot].plot(np.real(phi[:, imode - 1]), Modes["z"], "k")
             ax[iplot].plot(np.imag(phi[:, imode - 1]), Modes["z"], "b--")
-        ax[iplot].set_xlabel(f"Mode {modes[imode - 1]}")
+        ax[iplot].set_xlabel(f"Mode {Modes['selected_modes'][imode - 1]}")
 
     ax[0].set_ylabel("Depth (m)")
     ax[0].invert_yaxis()
@@ -84,7 +84,7 @@ def plotshd(filename, freq=None, m=None, n=None, p=None, units="m"):
         plt.figure()
         plt.subplot(m, n, p)
     else:
-        plt.figure()
+        plt.figure(figsize=(16, 8))
 
     # Calculate caxis limits
     tlt = np.abs(pressure).astype(float)
@@ -101,10 +101,10 @@ def plotshd(filename, freq=None, m=None, n=None, p=None, units="m"):
     tlmax = 10 * round(tlmax / 10)
     tlmin = tlmax - 50
 
-    xlab = "Range (m)"
+    xlab = "Range [m]"
     if units == "km":
         Pos["r"]["r"] = Pos["r"]["r"] / 1000.0
-        xlab = "Range (km)"
+        xlab = "Range [km]"
 
     # Plot the data
     tej = plt.get_cmap("jet", 256).reversed()
@@ -114,16 +114,16 @@ def plotshd(filename, freq=None, m=None, n=None, p=None, units="m"):
     plt.gca().tick_params(direction="out")
 
     cbar = plt.colorbar()
-    cbar.set_label("TL (dB)")
+    cbar.set_label("TL [dB]")
     cbar.ax.invert_yaxis()
 
-    plt.xlabel(xlab)
-    plt.ylabel("Depth (m)")
+    plt.xlabel(xlab, fontsize=20)
+    plt.ylabel("Depth [m]", fontsize=20)
     plt.title(
         PlotTitle.replace("_", " ")
         + f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
     )
-    plt.scatter(0, Pos["s"]["z"][0], marker="<", c="k", s=50)
+    plt.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
 
     # If a subplot is created, return a handle to the figure
     if m is not None and n is not None and p is not None:

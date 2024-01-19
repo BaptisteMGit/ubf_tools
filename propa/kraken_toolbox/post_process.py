@@ -72,6 +72,13 @@ def postprocess_received_signal(
         pressure_field, propagating_spectrum * norm_factor, axis=0
     )
 
+    nfft_inv = (
+        4 * source.nfft
+    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    T_tot = 1 / source.df
+    dt = T_tot / nfft_inv
+    time_vector = np.arange(0, T_tot, dt)
+
     # Apply corresponding delay to the signal
     if apply_delay:
         for ir, rcv_r in enumerate(rcv_range):  # TODO: remove loop for efficiency
@@ -87,15 +94,8 @@ def postprocess_received_signal(
             )
 
     # Fourier synthesis of the received signal -> time domain
-    nfft_inv = (
-        4 * source.nfft
-    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
     received_signal_t = np.fft.irfft(transmited_field_f, axis=0, n=nfft_inv)
     transmited_field_t = np.real(received_signal_t)
-
-    T_tot = 1 / source.df
-    dt = T_tot / received_signal_t.shape[0]
-    time_vector = np.arange(0, T_tot, dt)
 
     return (
         time_vector,
@@ -165,7 +165,7 @@ def fourier_synthesis_kraken(fname, source, max_depth):
     Note that according to Jensen et al. (2000), the sampling frequency must be greater than 8 * fmax for visual inspection of the propagated pulse.
     """
 
-    # TODO: add args to define the freqeuncies to use
+    # TODO: add args to define the frequencies to use
     # It can be very usefull to reduce the number of frequencies to compute the Fourier synthesis
     # For instance using a non unigorm frequency vector can help catching the entire signal complexity while significantly reducing the
     # computing effort --> example : signal with dirac like harmonics

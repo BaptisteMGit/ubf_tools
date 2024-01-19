@@ -56,7 +56,7 @@ def align_var_description(var_line, desc):
     :return:
     """
 
-    n_align = 35
+    n_align = 55
     blank_space = (max(n_align - len(var_line), 3)) * " "
     return var_line + blank_space + f" ! {desc}\n"
 

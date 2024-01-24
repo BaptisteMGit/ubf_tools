@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from propa.kraken_toolbox.read_modes import readmodes
 from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import get_component
+from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 
 
 def plotmode(filename, freq=0, modes=None):
@@ -60,7 +61,17 @@ def plotmode(filename, freq=0, modes=None):
     # plt.show()
 
 
-def plotshd(filename, freq=None, m=None, n=None, p=None, units="m"):
+def plotshd(
+    filename,
+    freq=None,
+    m=None,
+    n=None,
+    p=None,
+    units="m",
+    title=None,
+    tl_min=None,
+    tl_max=None,
+):
     """Plot Transmission loss field read from '.shd' binary file produced by FIELD.exe.
     Usage :  plotshd(filename, freq, m, n, p, units)
 
@@ -70,14 +81,11 @@ def plotshd(filename, freq=None, m=None, n=None, p=None, units="m"):
 
     # Read data based on the number of input arguments
     filename = filename.lower()  # Convert filename to lowercase
-    PlotTitle, _, freqVec, _, read_freq, _, Pos, pressure = readshd(
+    PlotTitle, _, _, _, read_freq, _, Pos, pressure = readshd(
         filename=filename, freq=freq
     )
 
     pressure = np.squeeze(pressure, axis=(0, 1))
-
-    if freq is None:
-        freq = freqVec[0]
 
     if m is not None and n is not None and p is not None:
         # Create a subplot
@@ -109,7 +117,16 @@ def plotshd(filename, freq=None, m=None, n=None, p=None, units="m"):
     # Plot the data
     tej = plt.get_cmap("jet", 256).reversed()
     plt.pcolor(Pos["r"]["r"], Pos["r"]["z"], tlt, shading="auto", cmap=tej)
-    plt.clim(tlmin, tlmax)
+    if tl_min is not None:
+        tlmin_plot = tl_min
+    else:
+        tlmin_plot = tlmin
+
+    if tl_max is not None:
+        tlmax_plot = tl_max
+    else:
+        tlmax_plot = tlmax
+    plt.clim(tlmin_plot, tlmax_plot)
     plt.gca().invert_yaxis()
     plt.gca().tick_params(direction="out")
 
@@ -117,12 +134,103 @@ def plotshd(filename, freq=None, m=None, n=None, p=None, units="m"):
     cbar.set_label("TL [dB]")
     cbar.ax.invert_yaxis()
 
-    plt.xlabel(xlab, fontsize=20)
-    plt.ylabel("Depth [m]", fontsize=20)
-    plt.title(
-        PlotTitle.replace("_", " ")
-        + f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
-    )
+    plt.xlabel(xlab, fontsize=LABEL_FONTSIZE)
+    plt.ylabel("Depth [m]", fontsize=LABEL_FONTSIZE)
+    plt.yticks(fontsize=TICKS_FONTSIZE)
+    plt.xticks(fontsize=TICKS_FONTSIZE)
+
+    if title is None:
+        title = PlotTitle.replace("_", " ")
+        +f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
+    plt.title(title, fontsize=TITLE_FONTSIZE)
+
+    plt.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
+
+    # If a subplot is created, return a handle to the figure
+    if m is not None and n is not None and p is not None:
+        return plt.gcf()
+
+
+def plotshd_from_pressure_field(
+    filename,
+    pressure_field,
+    freq=None,
+    m=None,
+    n=None,
+    p=None,
+    units="m",
+    title=None,
+    tl_min=None,
+    tl_max=None,
+):
+    """
+    Plot Transmission loss field directly from pressure field array.
+    This function is particularly useful when running broadband simulations with range dependent environments.
+    Usage :  plotshd_from_pressure_field(filename, pressure_field, freq, m, n, p, units)
+    """
+    # Dummy read to get freq and position vectors
+    filename = filename.lower()  # Convert filename to lowercase
+    PlotTitle, _, _, _, read_freq, _, Pos, _ = readshd(filename=filename, freq=freq)
+
+    pressure = np.squeeze(pressure_field, axis=(0, 1))
+
+    if m is not None and n is not None and p is not None:
+        # Create a subplot
+        plt.figure()
+        plt.subplot(m, n, p)
+    else:
+        plt.figure(figsize=(16, 8))
+
+    # Calculate caxis limits
+    tlt = np.abs(pressure).astype(float)
+    # Remove infinities and nan values
+    tlt[np.isnan(tlt)] = 1e-6
+    tlt[np.isinf(tlt)] = 1e-6
+
+    values_counting = tlt > 1e-37
+    tlt[~values_counting] = 1e-37
+    tlt = -20.0 * np.log10(tlt)
+    tlmed = np.median(tlt[values_counting])
+    tlstd = np.std(tlt[values_counting])
+    tlmax = tlmed + 0.75 * tlstd
+    tlmax = 10 * round(tlmax / 10)
+    tlmin = tlmax - 50
+
+    xlab = "Range [m]"
+    if units == "km":
+        Pos["r"]["r"] = Pos["r"]["r"] / 1000.0
+        xlab = "Range [km]"
+
+    # Plot the data
+    tej = plt.get_cmap("jet", 256).reversed()
+    plt.pcolor(Pos["r"]["r"], Pos["r"]["z"], tlt, shading="auto", cmap=tej)
+    if tl_min is not None:
+        tlmin_plot = tl_min
+    else:
+        tlmin_plot = tlmin
+
+    if tl_max is not None:
+        tlmax_plot = tl_max
+    else:
+        tlmax_plot = tlmax
+    plt.clim(tlmin_plot, tlmax_plot)
+    plt.gca().invert_yaxis()
+    plt.gca().tick_params(direction="out")
+
+    cbar = plt.colorbar()
+    cbar.set_label("TL [dB]")
+    cbar.ax.invert_yaxis()
+
+    plt.xlabel(xlab, fontsize=LABEL_FONTSIZE)
+    plt.ylabel("Depth [m]", fontsize=LABEL_FONTSIZE)
+    plt.yticks(fontsize=TICKS_FONTSIZE)
+    plt.xticks(fontsize=TICKS_FONTSIZE)
+
+    if title is None:
+        title = PlotTitle.replace("_", " ")
+        +f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
+    plt.title(title, fontsize=TITLE_FONTSIZE)
+
     plt.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
 
     # If a subplot is created, return a handle to the figure

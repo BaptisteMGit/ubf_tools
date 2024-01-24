@@ -654,12 +654,6 @@ class Bathymetry:
         else:
             self.load_data()
 
-        # if bty_file is None:
-        #     self.bty_file = data_file.replace(".csv", ".bty")
-        # else:
-        #     self.bty_file = bty_file
-        # self.set_interpolation_code()
-
     def load_data(self):
         if os.path.exists(self.data_file):
             data = pd.read_csv(self.data_file, sep=",", header=None)
@@ -685,41 +679,6 @@ class Bathymetry:
             self.use_bathy = True
         else:
             raise ValueError(f"Data file '{self.data_file}' does not exist")
-
-    # def set_interpolation_code(self):
-    #     if self.interpolation_method == "linear":
-    #         self.interpolation_code = "L"
-    #         self.interpolation_description = "Linear interpolation"
-    #     elif self.interpolation_method == "cubic":
-    #         self.interpolation_code = "C"
-    #         self.interpolation_description = "Cubic interpolation"
-    #     else:
-    #         raise ValueError(
-    #             f"Unknown interpolation method '{self.interpolation_method}'. Please pick one of the following: 'linear', 'cubic'"
-    #         )
-
-    # # Write bty_file for compatibility with matlab functions
-    # def write_bty(self):
-    #     self.lines = []
-    #     self.lines.append(
-    #         align_var_description(
-    #             f"'{self.interpolation_code}'", self.interpolation_description
-    #         )
-    #     )
-    #     self.lines.append(
-    #         align_var_description(str(self.bathy_range.size), "Number of points")
-    #     )
-    #     self.lines.append(
-    #         align_var_description(
-    #             f"{self.bathy_range[0]:.2f} {self.bathy_depth[0]:.2f}",
-    #             "Range (km), Depth (m)",
-    #         )
-    #     )
-    #     for i in range(1, self.bathy_range.size):
-    #         self.lines.append(f"{self.bathy_range[i]:.2f} {self.bathy_depth[i]:.2f}\n")
-
-    #     with open(self.bty_file, "w") as f_out:
-    #         f_out.writelines(self.lines)
 
 
 class KrakenEnv:
@@ -781,6 +740,10 @@ class KrakenEnv:
             self.modes_range = self.bathy.bathy_range  # Already in km
             # Sort by ascending ranges
             self.modes_range.sort()
+
+        # Ensure modes_range contains 0 and max_range
+        if self.modes_range[0] != 0:
+            self.modes_range = np.append(0, self.modes_range)
 
         self.range_dependent_env = False
 

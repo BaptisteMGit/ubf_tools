@@ -1,6 +1,7 @@
 import os
 import time
 import numpy as np
+import xarray as xr
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -14,10 +15,14 @@ from propa.kraken_toolbox.kraken_env import (
     KrakenAttenuation,
     KrakenField,
     KrakenEnv,
+    KrakenFlp,
     Bathymetry,
 )
 
-from propa.kraken_toolbox.post_process import postprocess_received_signal
+from propa.kraken_toolbox.post_process import (
+    postprocess_received_signal,
+    postprocess_received_signal_from_broadband_pressure_field,
+)
 from signals import pulse
 from localisation.verlinden.AcousticComponent import AcousticSource
 
@@ -48,7 +53,7 @@ def define_test_env():
     att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
     field = KrakenField(
         src_depth=18,
-        phase_speed_limits=[1400, 2000],
+        phase_speed_limits=[0, 20000],
         n_rcv_z=5001,
         rcv_z_max=3000,
     )
@@ -66,7 +71,20 @@ def define_test_env():
 
 
 def test():
+    rcv_range = np.array([5000, 30000])
+    rcv_depth = [20, 600, 2000]
+
+    fc = 25
+    T = 10
+    s, t = pulse(T=1, f=fc, fs=4 * fc)
+
+    window = np.hanning(s.size)
+    s *= window
+
+    dr = 1
+
     top_hs, medium, att, bott_hs, field, bathy, env_filename = define_test_env()
+    source = AcousticSource(s, t, waveguide_depth=bathy.bathy_depth.min())
 
     env = KrakenEnv(
         title="Test de la classe KrakenEnv",
@@ -79,22 +97,28 @@ def test():
         kraken_bottom_hs=bott_hs,
         kraken_field=field,
         kraken_bathy=bathy,
-        rModes=np.arange(1, 30, 0.1),
+        rModes=np.arange(1, 30, dr),
     )
 
-    freqs = np.arange(20, 200, 40)
+    freqs = source.kraken_freq
     src_depth = 18
     rcv_r_max = 30
     rcv_z_max = 3000
 
-    broadband_pressure_field = runkraken_broadband_range_dependent(
-        range_dependent_env=env,
-        frequencies=freqs,
+    flp = KrakenFlp(
+        env=env,
         src_depth=src_depth,
+        mode_theory="coupled",
         rcv_r_max=rcv_r_max,
         rcv_z_max=rcv_z_max,
     )
-    for ifreq in range(len(freqs)):
+
+    broadband_pressure_field = runkraken_broadband_range_dependent(
+        range_dependent_env=env, flp=flp, frequencies=freqs
+    )
+
+    # for ifreq in range(len(freqs)):
+    for ifreq in [0, 250, 400]:
         pressure_field_to_plot = broadband_pressure_field[ifreq, ...]
         plotshd_from_pressure_field(
             env_filename + ".shd",
@@ -106,27 +130,68 @@ def test():
         )
     plt.show()
 
-    # time_vector, s_at_rcv_pos, Pos = postprocess_received_signal(
-    #     shd_fpath=os.path.join(working_dir, env_filename + ".shd"),
-    #     source=source,
-    #     rcv_range=rcv_range,
-    #     rcv_depth=rcv_depth,
-    #     apply_delay=True,
-    # )
+    (
+        time_vector,
+        s_at_rcv_pos,
+        Pos,
+    ) = postprocess_received_signal_from_broadband_pressure_field(
+        shd_fpath=os.path.join(working_dir, env_filename + ".shd"),
+        broadband_pressure_field=broadband_pressure_field,
+        frequencies=freqs,
+        source=source,
+        rcv_range=rcv_range,
+        rcv_depth=rcv_depth,
+        apply_delay=True,
+        minimum_waveguide_depth=bathy.bathy_depth.min(),
+    )
 
-    # pd.DataFrame({"time": time_vector, "s_received": s_at_rcv_pos}).to_csv(
-    #     f"propagated_signal_dr_{dr}.csv", index=False
-    # )
+    pd_dict = {"time": np.round(time_vector, 3)}
+    for ir, r in enumerate(rcv_range):
+        for iz, z in enumerate(rcv_depth):
+            key = f"r{r}m_z{z}m"
+            pd_dict[key] = s_at_rcv_pos[:, iz, ir]
 
-    # plt.figure()
-    # plt.plot(time_vector, s_at_rcv_pos, "o-")
-    # plt.xlabel("Time [s]", fontsize=LABEL_FONTSIZE)
-    # plt.ylabel("Pressure [Pa]", fontsize=LABEL_FONTSIZE)
-    # plt.xticks(fontsize=TICKS_FONTSIZE)
-    # plt.yticks(fontsize=TICKS_FONTSIZE)
-    # plt.title(
-    #     f"Received signal at {rcv_range} m - dr{dr*1e3}m", fontsize=TITLE_FONTSIZE
-    # )
+            plt.figure()
+            plt.plot(time_vector, s_at_rcv_pos[:, iz, ir])
+            plt.xlabel("Time [s]", fontsize=LABEL_FONTSIZE)
+            plt.ylabel("Pressure [Pa]", fontsize=LABEL_FONTSIZE)
+            plt.xticks(fontsize=TICKS_FONTSIZE)
+            plt.yticks(fontsize=TICKS_FONTSIZE)
+            plt.title(
+                f"Received signal (r={r}m, z={z}m)\n" + r"$\Delta_r$" + f"={dr*1e3}m",
+                fontsize=TITLE_FONTSIZE,
+            )
+
+    pd.DataFrame(pd_dict).to_csv(
+        f"propagated_signal_dr_{dr}.csv",
+        index=False,
+    )
+
+    ds = xr.Dataset(
+        {
+            "s_at_rcv_pos": (["time", "rcv_depth", "rcv_range"], s_at_rcv_pos),
+            "broadband_pressure_field_real": (
+                ["frequency", "Ntheta", "Nsz", "z", "r"],
+                np.real(broadband_pressure_field),
+            ),
+            "broadband_pressure_field_imag": (
+                ["frequency", "Ntheta", "Nsz", "z", "r"],
+                np.imag(broadband_pressure_field),
+            ),
+        },
+        coords={
+            "time": time_vector,
+            "rcv_depth": rcv_depth,
+            "rcv_range": rcv_range,
+            "frequency": freqs,
+            "Ntheta": [0],  # Dummy params to match kraken output
+            "Nsz": [0],  # Dummy params to match kraken output
+            "z": Pos["r"]["z"],
+            "r": Pos["r"]["r"],
+        },
+    )
+
+    ds.to_netcdf("broadband_pressure_field.nc")
 
 
 if __name__ == "__main__":

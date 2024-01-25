@@ -11,6 +11,7 @@ scipy = "*"
 tqdm = "*"
 arlpy = "*"
 moviepy = "*"
+obspy = "*"
 
 [dev-packages]
 ipykernel = "*"

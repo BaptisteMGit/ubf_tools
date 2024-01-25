@@ -3,9 +3,10 @@ from verlinden_analysis import analysis_main
 
 if __name__ == "__main__":
     # snr = [-5, -1, 1, 5, 10, 20]
-    snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
+    # detection_metric = ["intercorr0"]
+    snr = [-20, -10, -5, 0, 5, 10, 20, None]
+    src_signal_type = ["pulse", "pulse_train", "ship"]
     detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
-    src_signal_type = ["ship"]
 
     grid_info = dict(
         Lx=10 * 1e3,
@@ -27,10 +28,10 @@ if __name__ == "__main__":
     for src_stype in src_signal_type:
         # Define the parameters
         src_info = dict(
-            x_pos=[-15000, -13000],
-            y_pos=[40000, 38000],
+            x_pos=[-1800, 3000],
+            y_pos=[8000, 2500],
             v_src=v_ship,
-            nmax_ship=30,
+            nmax_ship=50,
             src_signal_type=src_stype,
             z_src=5,
             on_grid=False,
@@ -71,7 +72,7 @@ if __name__ == "__main__":
         }
 
         # Analyse the results
-        snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
+        # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
         analysis_main(
             snr,
             detection_metric,

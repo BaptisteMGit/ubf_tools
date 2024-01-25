@@ -73,3 +73,24 @@ def ship_spectrum(f):
     Q = 2
     Aship = 1 / (1 - f**2 / fc**2 + 1j * f / fc / Q)
     return Aship
+
+
+def ricker_pulse(fc, fs, T, t0=0, center=True):
+    """Ricker pulse"""
+    t = np.arange(0, T, 1 / fs)
+    if center:
+        t0 = t.max() / 2
+
+    s = (1 - 2 * (np.pi * fc * (t - t0)) ** 2) * np.exp(-((np.pi * fc * (t - t0)) ** 2))
+    return s, t
+
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+
+    s, t = ricker_pulse(fc=200, T=0.05, fs=20 * 200, center=True)
+    plt.figure()
+    plt.plot(t, s)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    plt.show()

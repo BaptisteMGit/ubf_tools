@@ -145,6 +145,9 @@ img/
 # NETCDF data 
 *.nc
 
+# Wav files
+*.wav
+
 # Spyder project settings
 .spyderproject
 .spyproject

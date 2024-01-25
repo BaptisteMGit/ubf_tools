@@ -173,7 +173,8 @@ def readshd_bin(filename, xs=None, ys=None, freq=None):
             pressure = pressure[0, ...]
 
     else:
-        # TODO: this part of the function is inherited from the MATLAB function from AT and might not work anymore
+        # Note : this part of the function is inherited from the MATLAB function from AT and might not work anymore
+        # TODO : check if this part of the function is still working
         read_freq = None
         xdiff = np.abs(Pos["s"]["x"] - xs * 1000)
         idxX = np.argmin(xdiff)

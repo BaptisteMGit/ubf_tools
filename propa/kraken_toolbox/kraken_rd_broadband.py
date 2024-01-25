@@ -7,9 +7,7 @@ from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import runkraken
 
 
-def runkraken_broadband_range_dependent(
-    range_dependent_env, frequencies, src_depth, rcv_r_max, rcv_z_max
-):
+def runkraken_broadband_range_dependent(range_dependent_env, flp, frequencies):
     """KRAKEN is capable of running broadband simulations with range independent environments
     and single frequency simulations with range dependent environments. Yet, for some reason,
     it is not capable of running broadband simulations with range dependent environments.
@@ -43,13 +41,6 @@ def runkraken_broadband_range_dependent(
 
         if ifreq == 0:
             # Write .flp file for the first frequency (independent from frequency)
-            flp = KrakenFlp(
-                env=env,
-                src_depth=src_depth,
-                mode_theory="coupled",
-                rcv_r_max=rcv_r_max,
-                rcv_z_max=rcv_z_max,
-            )
             flp.write_flp()
 
         # Run KRAKEN

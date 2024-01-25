@@ -742,7 +742,7 @@ class KrakenEnv:
             self.modes_range.sort()
 
         # Ensure modes_range contains 0 and max_range
-        if self.modes_range[0] != 0:
+        if self.bathy.use_bathy and self.modes_range[0] != 0:
             self.modes_range = np.append(0, self.modes_range)
 
         self.range_dependent_env = False

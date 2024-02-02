@@ -741,7 +741,7 @@ class KrakenEnv:
             # Sort by ascending ranges
             self.modes_range.sort()
 
-        # Ensure modes_range contains 0 and max_range
+        # Ensure modes_range contains 0
         if self.bathy.use_bathy and self.modes_range[0] != 0:
             self.modes_range = np.append(0, self.modes_range)
 
@@ -988,7 +988,7 @@ class KrakenFlp:
         )
         self.lines.append(
             align_var_description(
-                " ".join([str(r) for r in self.profiles_ranges_]) + " /",
+                " ".join([f"{r:.4f}" for r in self.profiles_ranges_]) + " /",
                 "Profile ranges (km)",
             )
         )

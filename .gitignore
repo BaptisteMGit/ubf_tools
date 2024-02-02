@@ -139,6 +139,10 @@ venv.bak/
 *.mod
 field.exe.stackdump
 
+# bellhop 
+*.ray
+*.arr
+
 # Picture folder 
 img/
 

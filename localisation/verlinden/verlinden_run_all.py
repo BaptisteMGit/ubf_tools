@@ -1,12 +1,15 @@
 from localisation.verlinden.verlinden_process import verlinden_main
 from verlinden_analysis import analysis_main
+from localisation.verlinden.testcase_envs import testcase1_0, testcase1_1, testcase1_2
 
 if __name__ == "__main__":
-    # snr = [-5, -1, 1, 5, 10, 20]
+    # snr = [None]
     # detection_metric = ["intercorr0"]
-    snr = [-20, -10, -5, 0, 5, 10, 20, None]
-    src_signal_type = ["pulse", "pulse_train", "ship"]
-    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
+    testcase = testcase1_2
+    snr = [-5, 0, 5, 10, 20, None]
+    # src_signal_type = ["pulse"]
+    src_signal_type = ["ship"]
+    detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
 
     grid_info = dict(
         Lx=10 * 1e3,
@@ -22,8 +25,6 @@ if __name__ == "__main__":
 
     depth = 150  # Depth m
     v_ship = 50 / 3.6  # m/s
-    env_fname = "verlinden_1_test_case"
-    env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
 
     for src_stype in src_signal_type:
         # Define the parameters
@@ -38,19 +39,18 @@ if __name__ == "__main__":
         )
 
         # Run all the process
-        verlinden_main(
-            env_fname=env_fname,
-            env_root=env_root,
+        simu_folder, testcase_name = verlinden_main(
+            testcase=testcase,
             src_info=src_info,
             grid_info=grid_info,
             obs_info=obs_info,
             snr=snr,
             detection_metric=detection_metric,
-            depth_max=depth,
+            min_waveguide_depth=depth,
         )
 
         simulation_info = {
-            "simulation_folder": r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case",
+            "simulation_folder": simu_folder,
             "src_pos": "not_on_grid",
             "n_instant_to_plot": 10,
             "n_rcv_signals_to_plot": 2,
@@ -72,10 +72,11 @@ if __name__ == "__main__":
         }
 
         # Analyse the results
-        # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
+        # snr = [-20, -10, -5, 0, 5, 10, 20, None]
         analysis_main(
             snr,
             detection_metric,
+            testcase_name=testcase_name,
             simulation_info=simulation_info,
             grid_info=grid_info,
             plot_info=plot_info,

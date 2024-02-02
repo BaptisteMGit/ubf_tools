@@ -3,7 +3,8 @@ import time
 
 from cst import C0, RHO_W
 from misc import mult_along_axis
-from propa.kraken_toolbox.utils import runkraken, waveguide_cutoff_freq
+from propa.kraken_toolbox.utils import waveguide_cutoff_freq
+from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.read_shd import readshd
 from scipy.interpolate import interp1d
 
@@ -141,6 +142,7 @@ def postprocess_ir_from_broadband_pressure_field(
     fc = waveguide_cutoff_freq(max_depth=minimum_waveguide_depth)
     propagating_freq = source.positive_freq[source.positive_freq > fc]
 
+    # TODO need to be fixed
     if (
         frequencies.size < propagating_freq.size
     ):  # Sparse frequency vector used for kraken
@@ -283,7 +285,7 @@ def process_broadband(fname, source, max_depth):
         f.writelines(lines)
 
     # Run kraken for the frequencies of interest
-    runkraken(fname)
+    runkraken(fname)  # TODO: deprecated (needs env flp and freqs as args)
 
 
 def fourier_synthesis_kraken(fname, source, max_depth):
@@ -327,7 +329,7 @@ def fourier_synthesis_kraken(fname, source, max_depth):
         f.writelines(lines)
 
     # Run kraken for the frequencies of interest
-    runkraken(fname)
+    runkraken(fname)  # TODO: deprecated (needs env flp and freqs as args)
 
     env_filename = fname + ".shd"
 
@@ -370,49 +372,3 @@ def fourier_synthesis_kraken(fname, source, max_depth):
 
 if __name__ == "__main__":
     pass
-
-    # plt.figure()
-    # plt.vlines(freqVec, ymin=-0.01, ymax=0.01, color="k", linestyle="--")
-    # plt.plot(positive_fft_freq, np.real(transmited_field_f[:, 0, 0]), label="real")
-    # plt.plot(positive_fft_freq, np.imag(transmited_field_f[:, 0, 0]), label="imag")
-    # plt.xlabel("Frequency (Hz)")
-    # plt.show()
-
-    # # from scipy import interpolate
-    # f_interp = np.arange(positive_fft_freq.min(), positive_fft_freq.max(), 0.1)
-    # interp_phases = np.interp(
-    #     f_interp,
-    #     positive_fft_freq,
-    #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
-    # )
-
-    # # phase_interpolator = interpolate.interp1d(
-    # #     positive_fft_freq,
-    # #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
-    # #     kind="cubic",
-    # # )
-    # # interp_phases = phase_interpolator(f_interp)
-    # wraped_phases = (interp_phases + np.pi) % (2 * np.pi) - np.pi
-
-    # plt.figure()
-    # plt.plot(
-    #     positive_fft_freq,
-    #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
-    #     label="original",
-    # )
-    # plt.plot(f_interp, interp_phases, label="interp")
-    # plt.ylabel("Phase (°)")
-    # plt.xlabel("Frequency (Hz)")
-    # plt.legend()
-
-    # plt.figure()
-    # plt.xlabel("Frequency (Hz)")
-    # plt.ylabel("Phase (rads)")
-    # plt.plot(
-    #     positive_fft_freq,
-    #     np.angle(transmited_field_f[:, 0, 0]),
-    #     label="original",
-    #     marker="+",
-    # )
-    # plt.plot(f_interp, wraped_phases, label="interp", marker="+")
-    # plt.show()

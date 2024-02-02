@@ -71,6 +71,7 @@ def plotshd(
     title=None,
     tl_min=None,
     tl_max=None,
+    bathy=None,
 ):
     """Plot Transmission loss field read from '.shd' binary file produced by FIELD.exe.
     Usage :  plotshd(filename, freq, m, n, p, units)
@@ -127,6 +128,10 @@ def plotshd(
     else:
         tlmax_plot = tlmax
     plt.clim(tlmin_plot, tlmax_plot)
+
+    if bathy is not None:
+        plt.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k")
+
     plt.gca().invert_yaxis()
     plt.gca().tick_params(direction="out")
 
@@ -162,6 +167,7 @@ def plotshd_from_pressure_field(
     title=None,
     tl_min=None,
     tl_max=None,
+    bathy=None,
 ):
     """
     Plot Transmission loss field directly from pressure field array.
@@ -214,6 +220,10 @@ def plotshd_from_pressure_field(
     else:
         tlmax_plot = tlmax
     plt.clim(tlmin_plot, tlmax_plot)
+
+    if bathy is not None:
+        plt.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k")
+
     plt.gca().invert_yaxis()
     plt.gca().tick_params(direction="out")
 

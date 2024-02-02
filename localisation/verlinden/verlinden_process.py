@@ -9,14 +9,17 @@ from tqdm import tqdm
 from cst import BAR_FORMAT, C0
 from misc import mult_along_axis
 from signals import ship_noise, pulse, pulse_train
+from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 from localisation.verlinden.AcousticComponent import AcousticSource
-from localisation.verlinden.RHUM_RHUM_env import (
+from localisation.verlinden.testcase_envs import (
     isotropic_ideal_env,
     rhum_rum_isotropic_env,
-    verlinden_test_case_env,
 )
-from propa.kraken_toolbox.post_process import postprocess_received_signal
-from propa.kraken_toolbox.utils import runkraken, runfield, waveguide_cutoff_freq
+from propa.kraken_toolbox.post_process import (
+    postprocess_received_signal,
+    postprocess_received_signal_from_broadband_pressure_field,
+)
+from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.plot_utils import plotshd
 
 from localisation.verlinden.verlinden_path import (
@@ -36,12 +39,8 @@ def populate_grid(
     x_obs,
     y_obs,
 ):
-    # Write env and flp files
-    kraken_env.write_env()
-    kraken_flp.write_flp()
     # Run KRAKEN
-    os.chdir(kraken_env.root)
-    runkraken(kraken_env.filename)
+    grid_pressure_field = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
 
     # Init Dataset
     n_obs = len(x_obs)
@@ -116,14 +115,30 @@ def populate_grid(
     ):
         rr_from_obs_flat = ds.r_from_obs.sel(idx_obs=i_obs).values.flatten()
 
-        t_obs, s_obs, Pos = postprocess_received_signal(
+        (
+            t_obs,
+            s_obs,
+            Pos,
+        ) = postprocess_received_signal_from_broadband_pressure_field(
             shd_fpath=kraken_env.shd_fpath,
+            broadband_pressure_field=grid_pressure_field,
+            frequencies=library_src.kraken_freq,
             source=library_src,
             rcv_range=rr_from_obs_flat,
             rcv_depth=[z_src],
             apply_delay=True,
             delay=delay_to_apply,
+            minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
         )
+
+        # t_obs, s_obs, Pos = postprocess_received_signal(
+        #     shd_fpath=kraken_env.shd_fpath,
+        #     source=library_src,
+        #     rcv_range=rr_from_obs_flat,
+        #     rcv_depth=[z_src],
+        #     apply_delay=True,
+        #     delay=delay_to_apply,
+        # )
         if i_obs == 0:
             ds["library_signal_time"] = t_obs.astype(np.float32)
             ds["library_signal_time"].attrs["units"] = "s"
@@ -156,7 +171,7 @@ def populate_grid(
 
     ds.to_netcdf(ds.fullpath_populated)
 
-    return ds
+    return ds, grid_pressure_field
 
 
 def add_noise_to_dataset(library_dataset, snr_dB):
@@ -256,6 +271,7 @@ def add_correlation_to_dataset(library_dataset):
 
 def add_event_to_dataset(
     library_dataset,
+    grid_pressure_field,
     kraken_env,
     event_src,
     event_t,
@@ -324,14 +340,31 @@ def add_event_to_dataset(
             .values.flatten()
         )
 
-        t_obs, s_obs, Pos = postprocess_received_signal(
+        (
+            t_obs,
+            s_obs,
+            Pos,
+        ) = postprocess_received_signal_from_broadband_pressure_field(
             shd_fpath=kraken_env.shd_fpath,
+            broadband_pressure_field=grid_pressure_field,
+            frequencies=event_src.kraken_freq,
             source=event_src,
             rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
             rcv_depth=[z_event],
             apply_delay=True,
             delay=delay_to_apply_ship,
+            minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
         )
+
+        # t_obs, s_obs, Pos = postprocess_received_signal(
+        #     shd_fpath=kraken_env.shd_fpath,
+        #     source=event_src,
+        #     rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
+        #     rcv_depth=[z_event],
+        #     apply_delay=True,
+        #     delay=delay_to_apply_ship,
+        # )
+
         if i_obs == 0:
             ds["event_signal_time"] = t_obs.astype(np.float32)
             rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
@@ -517,15 +550,15 @@ def build_ambiguity_surf(ds, detection_metric):
     return ds
 
 
-def init_library_src(dt, depth, sig_type="pulse"):
+def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
     if sig_type == "ship":
         library_src_sig, t_library_src_sig = ship_noise(T=dt)
 
     elif sig_type == "pulse":
-        library_src_sig, t_library_src_sig = pulse(T=dt, f=50, fs=200)
+        library_src_sig, t_library_src_sig = pulse(T=dt, f=25, fs=100)
 
     elif sig_type == "pulse_train":
-        library_src_sig, t_library_src_sig = pulse_train(T=dt, f=50, fs=200)
+        library_src_sig, t_library_src_sig = pulse_train(T=dt, f=25, fs=100)
 
     if sig_type in ["ship", "pulse_train"]:
         # Apply hanning window
@@ -535,7 +568,7 @@ def init_library_src(dt, depth, sig_type="pulse"):
         signal=library_src_sig,
         time=t_library_src_sig,
         name=sig_type,
-        waveguide_depth=depth,
+        waveguide_depth=min_waveguide_depth,
     )
 
     return library_src
@@ -579,9 +612,8 @@ def get_populated_path(grid_x, grid_y, kraken_env, src_signal_type):
 
 
 def verlinden_main(
-    env_root,
-    env_fname,
-    depth_max,
+    testcase,
+    min_waveguide_depth,
     src_info,
     grid_info,
     obs_info,
@@ -600,15 +632,26 @@ def verlinden_main(
         f"    -> Source (event) properties:\n \tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n \tLast position = {src_info['x_pos'][1], src_info['y_pos'][1]}\n \tNumber of positions = {src_info['nmax_ship']}\n \tSource speed = {src_info['v_src']}m.s-1\n \tSignal type = {src_info['src_signal_type']}"
     )
 
-    library_src = init_library_src(dt, depth_max, sig_type=src_info["src_signal_type"])
+    library_src = init_library_src(
+        dt, min_waveguide_depth, sig_type=src_info["src_signal_type"]
+    )
 
     # Define environment
-    kraken_env, kraken_flp = verlinden_test_case_env(
-        env_root=env_root,
-        env_filename=env_fname,
-        title=env_fname,
-        freq=library_src.kraken_freq,
+    kraken_env, kraken_flp = testcase(
+        freq=library_src.kraken_freq, min_waveguide_depth=min_waveguide_depth
     )
+
+    # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
+    fc = waveguide_cutoff_freq(max_depth=kraken_env.bathy.bathy_depth.min())
+    propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
+    if propagating_freq.size != library_src.kraken_freq.size:
+        min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
+        library_src = init_library_src(
+            dt, min_waveguide_depth, sig_type=src_info["src_signal_type"]
+        )
+        kraken_env, kraken_flp = testcase(
+            freq=library_src.kraken_freq, min_waveguide_depth=min_waveguide_depth
+        )
 
     x_ship_t, y_ship_t, t_ship = init_event_src_traj(
         src_info["x_pos"][0],
@@ -619,11 +662,12 @@ def verlinden_main(
         dt,
     )
 
-    # Might be usefull to reduce the number of src positions to consider
+    # Might be usefull to reduce the number of src positions to consider -> downsample
     nmax_ship = min(src_info["nmax_ship"], len(x_ship_t))
-    x_ship_t = x_ship_t[0:nmax_ship]
-    y_ship_t = y_ship_t[0:nmax_ship]
-    t_ship = t_ship[0:nmax_ship]
+    ship_step = len(x_ship_t) // nmax_ship
+    x_ship_t = x_ship_t[0::ship_step]
+    y_ship_t = y_ship_t[0::ship_step]
+    t_ship = t_ship[0::ship_step]
 
     # Define grid around the src positions
     grid_x, grid_y = init_grid_around_event_src_traj(
@@ -635,6 +679,7 @@ def verlinden_main(
         grid_info["dy"],
     )
 
+    grid_pressure_field = None  # Init to None to avoid redundancy
     for snr_i in snr:
         if snr_i is None:
             snr_tag = "noiseless"
@@ -648,16 +693,20 @@ def verlinden_main(
             grid_x, grid_y, kraken_env, src_info["src_signal_type"]
         )
 
-        complete_dataset_loaded = False
         event_in_dataset = False
+        complete_dataset_loaded = False
         for det_metric in detection_metric:
             det_msg = f"Detection metric: {det_metric}"
             print("# " + det_msg + " #")
 
-            if os.path.exists(populated_path) and not complete_dataset_loaded:
+            if (
+                os.path.exists(populated_path)
+                and not complete_dataset_loaded
+                and grid_pressure_field is not None
+            ):
                 ds_library = xr.open_dataset(populated_path)
-            elif not os.path.exists(populated_path):
-                ds_library = populate_grid(
+            elif not os.path.exists(populated_path) or grid_pressure_field is None:
+                ds_library, grid_pressure_field = populate_grid(
                     library_src,
                     src_info["z_src"],
                     kraken_env,
@@ -683,6 +732,7 @@ def verlinden_main(
             if not event_in_dataset:
                 ds = add_event_to_dataset(
                     library_dataset=ds_library,
+                    grid_pressure_field=grid_pressure_field,
                     kraken_env=kraken_env,
                     event_src=event_src,
                     event_t=t_ship,
@@ -724,6 +774,10 @@ def verlinden_main(
 
         ds = ds.drop_vars("event_signal_time")
     print(f"### Verlinden simulation process done ###")
+
+    simu_folder = os.path.dirname(kraken_env.env_fpath)
+
+    return simu_folder, kraken_env.filename
 
 
 if __name__ == "__main__":

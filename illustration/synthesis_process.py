@@ -16,11 +16,9 @@ img_path = (
     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\generation_signaux"
 )
 figsize = (16, 8)
-label_fontsize = 20
+label_fontsize = 26
 
-working_dir = (
-    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test_synthesis"
-)
+working_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\test_synthesis"
 template_env = "CalibSynthesis"
 # template_env = "MunkK"
 

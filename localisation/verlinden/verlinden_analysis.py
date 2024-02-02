@@ -533,7 +533,12 @@ def plot_correlation(ds, img_basepath, det_metric="intercorr0", nb_instant_to_pl
 
 
 def analysis_main(
-    snr_list, detection_metric_list, plot_info={}, simulation_info={}, grid_info={}
+    snr_list,
+    detection_metric_list,
+    testcase_name,
+    plot_info={},
+    simulation_info={},
+    grid_info={},
 ):
     global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN"
     global_log = [global_header_log]
@@ -547,11 +552,11 @@ def analysis_main(
             snr_tag = f"_snr{snr}dB"
 
         for detection_metric in detection_metric_list:
-            env_fname = "verlinden_1_test_case"
+            # env_fname = "verlinden_1_test_case"
 
             output_nc_path = os.path.join(
                 VERLINDEN_OUTPUT_FOLDER,
-                env_fname,
+                testcase_name,
                 simulation_info["src_type"],
                 simulation_info["src_pos"],
                 detection_metric,
@@ -561,7 +566,7 @@ def analysis_main(
 
             # Image folder
             root_img = ds.fullpath_analysis
-            img_basepath = os.path.join(root_img, now, env_fname + "_")
+            img_basepath = os.path.join(root_img, now, testcase_name + "_")
             if not os.path.exists(os.path.dirname(img_basepath)):
                 os.makedirs(os.path.dirname(img_basepath))
 
@@ -572,7 +577,7 @@ def analysis_main(
             # Plot one TL profile
             if plot_info["plot_one_tl_profile"]:
                 shd_fpath = os.path.join(
-                    simulation_info["simulation_folder"], env_fname + ".shd"
+                    simulation_info["simulation_folder"], testcase_name + ".shd"
                 )
                 for f in plot_info["tl_freq_to_plot"]:
                     plotshd(shd_fpath, freq=f, units="km")
@@ -658,7 +663,7 @@ def analysis_main(
     # Write global report in txt file
     global_report_fpath = os.path.join(
         VERLINDEN_ANALYSIS_FOLDER,
-        env_fname,
+        testcase_name,
         simulation_info["src_type"],
         simulation_info["src_pos"],
         "global_report.txt",
@@ -679,10 +684,13 @@ def analysis_main(
 if __name__ == "__main__":
     # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
     # snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
+    snr = [-20, -10, -5, 0, 5, 10]
+    src_signal_type = ["pulse", "pulse_train"]
+    testcase_name = "testcase1_1"
     # snr = [5, -10, 20, -20, None]
     # detection_metric = ["intercorr0"]
-    snr = [None]
-    detection_metric = ["intercorr0"]
+    # snr = [None]
+    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
 
     grid_info = {
         "Lx": 5 * 1e3,
@@ -691,11 +699,11 @@ if __name__ == "__main__":
         "dy": 10,
     }
     simulation_info = {
-        "simulation_folder": r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case",
+        "simulation_folder": r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_output\testcase1_1",
         "src_pos": "not_on_grid",
         "n_instant_to_plot": 10,
         "n_rcv_signals_to_plot": 3,
-        "src_type": "ship",
+        "src_type": "pulse_train",
     }
 
     # plot_info = {
@@ -714,7 +722,7 @@ if __name__ == "__main__":
 
     plot_info = {
         "plot_video": False,
-        "plot_one_tl_profile": True,
+        "plot_one_tl_profile": False,
         "plot_ambiguity_surface_dist": True,
         "plot_received_signal": True,
         "plot_ambiguity_surface": True,
@@ -729,6 +737,7 @@ if __name__ == "__main__":
     analysis_main(
         snr,
         detection_metric,
+        testcase_name=testcase_name,
         simulation_info=simulation_info,
         grid_info=grid_info,
         plot_info=plot_info,

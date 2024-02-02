@@ -1,0 +1,19 @@
+'Calib ray vs mode - bellhop'
+38.0			! FREQ (Hz)
+1			! NMEDIA
+'PVF'			! SSPOPT (Analytic or C-linear interpolation)
+51  0.0  1000.0		! DEPTH of bottom (m)
+    0.0  1500.00  /
+  1000.0  1500.00  /
+'A' 0.0
+ 1000.0  1600.00 0.0 1.0 /
+1				! NSD
+20.0 /			! SD(1:NSD) (m)
+51				! NRD
+0.0 1000.0 /			! RD(1:NRD) (m)
+1001				! NR
+0.0  100.0 /			! R(1:NR ) (km)
+'C'	  			! 'R/C/I/S'
+1001				! NBeams
+-89.0 89.0 /		        ! ALPHA1,2 (degrees)
+0.0  1100.0 101.0		! STEP (m), ZBOX (m), RBOX (km)

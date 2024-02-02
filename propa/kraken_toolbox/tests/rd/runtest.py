@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 from cst import SAND_PROPERTIES, TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 from propa.kraken_toolbox.utils import runkraken
+from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.plot_utils import plotshd
 from propa.kraken_toolbox.kraken_env import (
     KrakenTopHalfspace,
@@ -35,7 +36,7 @@ def define_test_env():
 
     bott_hs_properties = {
         "rho": 1.5,
-        "c_p": 1506.50,  # P-wave celerity (m/s)
+        "c_p": 1600.0,  # P-wave celerity (m/s)
         "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
         "a_p": 0.5,  # Compression wave attenuation (dB/wavelength)
         "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
@@ -47,18 +48,19 @@ def define_test_env():
     )
 
     att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
-    field = KrakenField(
-        src_depth=18,
-        phase_speed_limits=[1400, 2000],
-        n_rcv_z=5001,
-        rcv_z_max=3000,
-    )
 
     # Range dependent bathymetry
     bathy = Bathymetry(
         data_file=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd\bathy_data.csv",
         interpolation_method="linear",
         units="km",
+    )
+
+    field = KrakenField(
+        src_depth=18,
+        phase_speed_limits=[0, 20000],
+        n_rcv_z=5001,
+        rcv_z_max=bathy.bathy_depth.max(),
     )
 
     env_filename = "test_kraken_rd"
@@ -78,24 +80,57 @@ def range_dependent_test():
         title="Test de la classe KrakenEnv",
         env_root=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd",
         env_filename=env_filename,
-        freq=[100, 120],
+        freq=[100],
         kraken_top_hs=top_hs,
         kraken_medium=medium,
         kraken_attenuation=att,
         kraken_bottom_hs=bott_hs,
         kraken_field=field,
         kraken_bathy=bathy,
-        rModes=np.arange(1, 30, 5),
     )
 
-    # env.write_env()
+    env.write_env()
     flp = KrakenFlp(
-        env=env, src_depth=18, mode_theory="coupled", rcv_r_max=30, rcv_z_max=3000
+        env=env,
+        src_depth=18,
+        mode_theory="coupled",
+        rcv_r_max=10,
+        rcv_z_max=3000,
     )
     flp.write_flp()
 
     runkraken(env_filename)
-    plotshd(env_filename + ".shd", title="Step K")
+    plotshd(env_filename + ".shd", title="Step K", tl_max=110, tl_min=60, bathy=bathy)
+
+    PlotTitle, _, _, _, read_freq, _, field_pos, pressure = readshd(
+        filename=env_filename + ".shd",
+    )
+
+    pressure = np.squeeze(pressure, axis=(0, 1))
+
+    rcv_range = field_pos["r"]["r"]
+    rcv_depth = [20]
+    rcv_pos_idx_r = [
+        np.argmin(np.abs(field_pos["r"]["r"] - rcv_r)) for rcv_r in rcv_range
+    ]
+    rcv_pos_idx_z = [
+        np.argmin(np.abs(field_pos["r"]["z"] - rcv_z)) for rcv_z in rcv_depth
+    ]
+    rr, zz = np.meshgrid(rcv_pos_idx_r, rcv_pos_idx_z)
+    tl = pressure[zz, rr].flatten()
+    tlt = np.abs(tl).astype(float)
+    # Remove infinities and nan values
+    tlt[np.isnan(tlt)] = 1e-6
+    tlt[np.isinf(tlt)] = 1e-6
+
+    values_counting = tlt > 1e-37
+    tlt[~values_counting] = 1e-37
+    tlt = -20.0 * np.log10(tlt)
+
+    pd.DataFrame({"range": rcv_range, "tl": tlt}).to_csv(
+        "tl_along_range_semiflat_5000.csv"
+    )
+
     plt.show()
 
 
@@ -118,12 +153,16 @@ def cpu_time_test():
             kraken_bottom_hs=bott_hs,
             kraken_field=field,
             kraken_bathy=bathy,
-            rModes=np.arange(1, 30, dr),
+            rModes=np.arange(1, bathy.bathy_range.max(), dr),
         )
 
         env.write_env()
         flp = KrakenFlp(
-            env=env, src_depth=18, mode_theory="coupled", rcv_r_max=30, rcv_z_max=3000
+            env=env,
+            src_depth=18,
+            mode_theory="coupled",
+            rcv_r_max=bathy.bathy_range.max(),
+            rcv_z_max=bathy.bathy_depth.max(),
         )
         flp.write_flp()
 

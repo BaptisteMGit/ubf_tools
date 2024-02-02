@@ -318,10 +318,11 @@ def run_testcase(testcase=1, freq_to_plot=200):
             title=f"{env.simulation_title} - f = {freq_to_plot} Hz",
             freq=freq_to_plot,
         )
+        plt.savefig(f"saclantcen_testcase{testcase}_f{freq_to_plot}Hz.png")
 
     for ir, r in enumerate(RCV_RANGE):
         for iz, z in enumerate(RCV_DEPTH):
-            plt.figure()
+            plt.figure(figsize=(16, 8))
             plt.plot(time_vector, s_at_rcv_pos[:, iz, ir])
             plt.xlabel("Time [s]", fontsize=LABEL_FONTSIZE)
             plt.ylabel("Pressure [Pa]", fontsize=LABEL_FONTSIZE)
@@ -332,7 +333,10 @@ def run_testcase(testcase=1, freq_to_plot=200):
                 fontsize=TITLE_FONTSIZE,
             )
 
-    plt.show()
+            plt.tight_layout()
+            plt.savefig(f"saclantcen_testcase{testcase}_r{r}m_z{z}m.png")
+
+    # plt.show()
 
 
 if __name__ == "__main__":

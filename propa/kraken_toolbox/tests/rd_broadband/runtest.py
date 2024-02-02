@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from cst import SAND_PROPERTIES, TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
-from propa.kraken_toolbox.kraken_rd_broadband import runkraken_broadband_range_dependent
+from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.plot_utils import plotshd_from_pressure_field
 from propa.kraken_toolbox.kraken_env import (
     KrakenTopHalfspace,
@@ -113,8 +113,8 @@ def test():
         rcv_z_max=rcv_z_max,
     )
 
-    broadband_pressure_field = runkraken_broadband_range_dependent(
-        range_dependent_env=env, flp=flp, frequencies=freqs
+    broadband_pressure_field = runkraken(
+        env=env, flp=flp, frequencies=freqs
     )
 
     # for ifreq in range(len(freqs)):

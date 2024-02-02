@@ -2,20 +2,6 @@ import os
 import numpy as np
 from cst import C0
 
-
-def runkraken(filename):
-    # Run Fortran version of Kraken
-    os.system(f"kraken {filename}")
-
-    # Run Fortran version of Field
-    os.system(f"field {filename}")
-
-
-def runfield(filename):
-    # Run Fortran version of Field
-    os.system(f"field {filename}")
-
-
 def get_component(Modes, comp):
     components = {"H": 0, "V": 1, "T": 2, "N": 3}
 

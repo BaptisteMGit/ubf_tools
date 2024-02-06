@@ -9,6 +9,7 @@ from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 
 pfig = PubFigure()
 
+
 def bathy_sin_slope(
     testcase_name="testcase1",
     min_waveguide_depth=150,
@@ -92,3 +93,46 @@ def bathy_seamount(
     pfig.apply_ticks_fontsize()
     plt.grid()
     plt.savefig(os.path.join(env_dir, "bathy.png"))
+
+
+def mmdpm_profile(testcase_name, mmdpm_testname="PVA_RR48", azimuth=360):
+    data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm"
+    fpath = os.path.join(
+        data_dir, mmdpm_testname, f"mmdpm_test_{mmdpm_testname}_{azimuth}.csv"
+    )
+    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
+
+    pd_data = pd.read_csv(fpath, sep=",", header=None)
+    r = pd_data[0]
+    h = pd_data[1]
+
+    # Plot full bathymetry profile
+    plt.figure(figsize=(16, 8))
+    plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
+    plt.ylim([0, h.max()])
+    plt.fill_between(r, h, h.max(), color="lightgrey")
+    plt.gca().invert_yaxis()
+    plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+    plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+    pfig.apply_ticks_fontsize()
+    plt.grid()
+    plt.savefig(os.path.join(env_dir, "bathy.png"))
+
+    # Subsample profile to reduce cpu time
+    r = r[::10]
+    h = h[::10]
+
+    pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
+        os.path.join(env_dir, "bathy.csv"), index=False, header=False
+    )
+
+    plt.figure(figsize=(16, 8))
+    plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
+    plt.ylim([0, h.max()])
+    plt.fill_between(r, h, h.max(), color="lightgrey")
+    plt.gca().invert_yaxis()
+    plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+    plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+    pfig.apply_ticks_fontsize()
+    plt.grid()
+    plt.savefig(os.path.join(env_dir, "bathy_subsampled.png"))

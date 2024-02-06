@@ -11,12 +11,7 @@ from misc import mult_along_axis
 from signals import ship_noise, pulse, pulse_train
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 from localisation.verlinden.AcousticComponent import AcousticSource
-from localisation.verlinden.testcase_envs import (
-    isotropic_ideal_env,
-    rhum_rum_isotropic_env,
-)
 from propa.kraken_toolbox.post_process import (
-    postprocess_received_signal,
     postprocess_received_signal_from_broadband_pressure_field,
 )
 from propa.kraken_toolbox.run_kraken import runkraken
@@ -40,7 +35,8 @@ def populate_grid(
     y_obs,
 ):
     # Run KRAKEN
-    grid_pressure_field = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
+    grid_pressure_field = runkraken(
+        kraken_env, kraken_flp, library_src.kraken_freq)
 
     # Init Dataset
     n_obs = len(x_obs)

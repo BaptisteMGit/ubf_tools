@@ -16,6 +16,7 @@ from propa.kraken_toolbox.utils import default_nb_rcv_z
 from localisation.verlinden.testcases.testcase_bathy import (
     bathy_sin_slope,
     bathy_seamount,
+    mmdpm_profile,
 )
 from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 
@@ -200,15 +201,31 @@ def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1
     rcv_r_max = 50
     dr = 10  # 10m resolution
     n_rcv_r = rcv_r_max * 1000 / dr + 1
+
+    flp_nrcv_z = 1
+    flp_rcv_z_min = 5
+    flp_rcv_z_max = 5
+
     flp = KrakenFlp(
         env=env,
         src_depth=src_depth,
-        n_rcv_z=n_rcv_z,
-        rcv_z_max=max_depth,
+        n_rcv_z=flp_nrcv_z,
+        rcv_z_min=flp_rcv_z_min,
+        rcv_z_max=flp_rcv_z_max,
         rcv_r_max=rcv_r_max,
         n_rcv_r=n_rcv_r,
         mode_addition="coherent",
     )
+
+    # flp = KrakenFlp(
+    #     env=env,
+    #     src_depth=src_depth,
+    #     n_rcv_z=n_rcv_z,
+    #     rcv_z_max=max_depth,
+    #     rcv_r_max=rcv_r_max,
+    #     n_rcv_r=n_rcv_r,
+    #     mode_addition="coherent",
+    # )
 
     return env, flp
 
@@ -309,5 +326,33 @@ def testcase1_2(freq=[20], min_waveguide_depth=100):
     return env, flp
 
 
+def testcase1_3(freq=[20], min_waveguide_depth=100):
+    """
+    Test case 1.3: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and constant sound speed profile
+    """
+    name = "testcase1_3"
+    title = "Test case 1.3: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and constant sound speed profile"
+
+    if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
+        os.makedirs(os.path.join(TC_WORKING_DIR, name))
+
+    # Create a slope bottom
+    mmdpm_profile(testcase_name=name, mmdpm_testname="PVA_RR48", azimuth=360)
+    bathy = Bathymetry(data_file=os.path.join(TC_WORKING_DIR, name, "bathy.csv"))
+    z_ssp = [0, bathy.bathy_depth.max()]
+    cp_ssp = [1500, 1500]
+
+    env, flp = testcase1_common(
+        freq=freq,
+        z_ssp=z_ssp,
+        cp_ssp=cp_ssp,
+        bathy=bathy,
+        title=title,
+        testcase_name=name,
+    )
+
+    return env, flp
+
+
 if __name__ == "__main__":
-    env, flp = testcase1_2()
+    env, flp = testcase1_3()

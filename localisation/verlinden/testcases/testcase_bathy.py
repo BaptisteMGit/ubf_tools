@@ -4,11 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from publication.PublicationFigure import PubFigure
+from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 
-ENV_ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\testcase_working_directory"
 
 pfig = PubFigure()
-
 
 def bathy_sin_slope(
     testcase_name="testcase1",
@@ -31,7 +30,7 @@ def bathy_sin_slope(
     )
 
     # Save bathymetry
-    env_dir = os.path.join(ENV_ROOT, testcase_name)
+    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
     pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
@@ -78,7 +77,7 @@ def bathy_seamount(
     h[idx_r_after] = downslope[idx_r_after]
 
     # Save bathymetry
-    env_dir = os.path.join(ENV_ROOT, testcase_name)
+    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
     pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )

@@ -16,8 +16,8 @@ from propa.kraken_toolbox.utils import default_nb_rcv_z
 from localisation.verlinden.testcases.testcase_bathy import (
     bathy_sin_slope,
     bathy_seamount,
-    ENV_ROOT,
 )
+from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 
 
 # def isotropic_ideal_env(
@@ -151,7 +151,7 @@ from localisation.verlinden.testcases.testcase_bathy import (
 
 def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1"):
     # Create environment directory
-    env_dir = os.path.join(ENV_ROOT, testcase_name)
+    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
     if not os.path.exists(env_dir):
         os.makedirs(env_dir)
 
@@ -244,8 +244,8 @@ def testcase1_1(freq=[20], min_waveguide_depth=100):
     name = "testcase1_1"
     title = "Test case 1.1: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile"
 
-    if not os.path.exists(os.path.join(ENV_ROOT, name)):
-        os.makedirs(os.path.join(ENV_ROOT, name))
+    if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
+        os.makedirs(os.path.join(TC_WORKING_DIR, name))
 
     # Create a slope bottom
     bathy_sin_slope(
@@ -256,7 +256,7 @@ def testcase1_1(freq=[20], min_waveguide_depth=100):
         range_periodicity=6,
     )
 
-    bathy = Bathymetry(data_file=os.path.join(ENV_ROOT, name, "bathy.csv"))
+    bathy = Bathymetry(data_file=os.path.join(TC_WORKING_DIR, name, "bathy.csv"))
 
     z_ssp = [0, bathy.bathy_depth.max()]
     cp_ssp = [1500, 1500]
@@ -280,8 +280,8 @@ def testcase1_2(freq=[20], min_waveguide_depth=100):
     name = "testcase1_2"
     title = "Test case 1.2: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile"
 
-    if not os.path.exists(os.path.join(ENV_ROOT, name)):
-        os.makedirs(os.path.join(ENV_ROOT, name))
+    if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
+        os.makedirs(os.path.join(TC_WORKING_DIR, name))
 
     # Create a slope bottom
     bathy_seamount(
@@ -292,7 +292,7 @@ def testcase1_2(freq=[20], min_waveguide_depth=100):
         seamount_width=6,
     )
 
-    bathy = Bathymetry(data_file=os.path.join(ENV_ROOT, name, "bathy.csv"))
+    bathy = Bathymetry(data_file=os.path.join(TC_WORKING_DIR, name, "bathy.csv"))
 
     z_ssp = [0, bathy.bathy_depth.max()]
     cp_ssp = [1500, 1500]

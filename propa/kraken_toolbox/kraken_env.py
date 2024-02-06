@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from cst import SAND_PROPERTIES
+from cst import SAND_PROPERTIES, C0
 from propa.kraken_toolbox.utils import align_var_description
 
 
@@ -70,7 +70,7 @@ class KrakenMedium:
                 f"Unknown interpolation method '{self.interpolation_method_}'. Please pick one of the following: {self.available_interpolation_methods}"
             )
 
-    def write_lines(self):
+    def write_lines(self, bottom_hs=None):
         # Medim info
         medium_info = align_var_description(
             f"{self.nmesh_} {self.sigma_} {self.z_ssp_.max():.2f}",
@@ -116,7 +116,7 @@ class KrakenMedium:
         if self.rho_.size == 1 and self.ap_.size == 1 and self.as_.size == 1:
             scalar_flag = True
 
-        # Write SSP bloc
+        # Write water column SSP bloc
         ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S- wave attenuation"
         if not scalar_flag:
             ssp_bloc = [
@@ -141,15 +141,30 @@ class KrakenMedium:
             else:
                 ssp_bloc.append(f"{self.z_ssp_[i]:.2f} {self.cp_ssp_[i]:.2f} / \n")
 
-        self.lines = [medium_info] + ssp_bloc
+        # Write ssp in sediment media layer bloc
+        sedim_medium_info = align_var_description(
+            f"{self.nmesh_} {self.sigma_} {bottom_hs.sedim_layer_max_depth:.2f}",
+            "Number of mesh points in sediment layer, RMS surface roughness, Max depth (units: m)",
+        )
+        sedim_layer_prop_1 = align_var_description(
+            f"{self.z_ssp_.max():.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rho_bot_halfspace:.2f} {bottom_hs.ap_bot_halfspace:.2f} {bottom_hs.as_bot_halfspace:.2f}",
+            ssp_desc,
+        )
+        sedim_layer_prop_2 = align_var_description(
+            f"{bottom_hs.sedim_layer_max_depth:.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rho_bot_halfspace:.2f} {bottom_hs.ap_bot_halfspace:.2f} {bottom_hs.as_bot_halfspace:.2f}",
+            ssp_desc,
+        )
+        ssp_sedim_bloc = [sedim_medium_info, sedim_layer_prop_1, sedim_layer_prop_2]
+
+        self.lines = [medium_info] + ssp_bloc + ssp_sedim_bloc
 
     def set_default(self):
         self.interpolation_method_ = "C_linear"
         self.set_interp_code()
-        self.z_ssp = np.array([0.0, 100.0])
-        self.cp_ssp = np.array([1500.0, 1500.0])
-        self.cs_ssp = np.array([0.0, 0.0])
-        self.rho = np.array([1.0, 1.0])
+        self.z_ssp_ = np.array([0.0, 100.0])
+        self.cp_ssp_ = np.array([1500.0, 1500.0])
+        self.cs_ssp_ = np.array([0.0, 0.0])
+        self.rho_ = np.array([1.0, 1.0])
         self.ap_ = np.array([0.0, 0.0])
         self.as_ = np.array([0.0, 0.0])
         self.nmesh_ = 0
@@ -163,7 +178,7 @@ class KrakenMedium:
         self.plot_density(ax=axs[2])
         plt.suptitle("Medium properties")
         plt.tight_layout()
-        plt.show()
+        # plt.show()
 
     def plot_spp(self, ax=None):
         if ax is None:
@@ -364,10 +379,17 @@ class KrakenBottomHalfspace:
         boundary_condition="acousto_elastic",
         sigma=0.0,
         halfspace_properties=SAND_PROPERTIES,
+        fmin=10,
+        alpha_wavelength=10,
     ):
         self.boundary_condition_ = boundary_condition
         self.sigma_ = sigma
         self.halfspace_properties_ = halfspace_properties
+
+        # Sedim layer depth
+        self.sedim_layer_depth = alpha_wavelength * C0 / fmin
+        self.sedim_layer_max_z = 10000  # Maximum depth of the sediment layer
+        self.sedim_layer_max_depth = None
 
         # Boundary code
         self.boundary_code = None
@@ -418,23 +440,27 @@ class KrakenBottomHalfspace:
                 "You need to provide top halfspace properties when using 'acousto_elastic' boundary condition"
             )
         else:
-            self.cp_top_halfspace = self.halfspace_properties_[
+            self.cp_bot_halfspace = self.halfspace_properties_[
                 "c_p"
             ]  # Compression waves celerity (units: m/s)
-            self.cs_top_halfspace = self.halfspace_properties_[
+            self.cs_bot_halfspace = self.halfspace_properties_[
                 "c_s"
             ]  # Shear waves celerity (units: m/s)
-            self.rho_top_halfspace = self.halfspace_properties_[
+            self.rho_bot_halfspace = self.halfspace_properties_[
                 "rho"
             ]  # Density (units: g/cm3)
-            self.ap_top_halfspace = self.halfspace_properties_[
+            self.ap_bot_halfspace = self.halfspace_properties_[
                 "a_p"
             ]  # Top compressional wave attenuation (units: self.units)
-            self.as_top_halfspace = self.halfspace_properties_[
+            self.as_bot_halfspace = self.halfspace_properties_[
                 "a_s"
             ]  # Top shear wave attenuation (units: self.units)
 
             self.use_halfspace_properties = True
+
+    def derive_sedim_layer_max_depth(self, z_max):
+        sedim_layer_z = z_max + self.sedim_layer_depth
+        self.sedim_layer_max_depth = min(sedim_layer_z, self.sedim_layer_max_z)
 
     def write_lines(self, kraken_medium, use_bathymetry=False):
         # Get bathymetry code
@@ -450,9 +476,13 @@ class KrakenBottomHalfspace:
         if self.use_halfspace_properties:
             ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S-wave attenuation"
             half_space_prop = align_var_description(
-                f"{kraken_medium.z_ssp_.max():.2f} {self.cp_top_halfspace:.2f} {self.cs_top_halfspace:.2f} {self.rho_top_halfspace:.2f} {self.ap_top_halfspace:.2f} {self.as_top_halfspace:.2f}",
+                f"{self.sedim_layer_max_depth:.2f} {self.cp_bot_halfspace:.2f} {self.cs_bot_halfspace:.2f} {self.rho_bot_halfspace:.2f} {self.ap_bot_halfspace:.2f} {self.as_bot_halfspace:.2f}",
                 ssp_desc,
             )
+            # half_space_prop = align_var_description(
+            #     f"{kraken_medium.z_ssp_.max():.2f} {self.cp_bot_halfspace:.2f} {self.cs_bot_halfspace:.2f} {self.rho_bot_halfspace:.2f} {self.ap_bot_halfspace:.2f} {self.as_bot_halfspace:.2f}",
+            #     ssp_desc,
+            # )
             self.lines.append(half_space_prop)
 
     def set_default(self):
@@ -696,7 +726,7 @@ class KrakenEnv:
         kraken_bathy=Bathymetry(),
         rModes=None,
         rModes_units="km",
-        nmedia=1,
+        nmedia=2,
     ):
         self.simulation_title = title
 
@@ -745,6 +775,9 @@ class KrakenEnv:
         if self.bathy.use_bathy and self.modes_range[0] != 0:
             self.modes_range = np.append(0, self.modes_range)
 
+        # Defined max depth of the sediment layer
+        self.bottom_hs.derive_sedim_layer_max_depth(z_max=self.bathy.bathy_depth.max())
+
         self.range_dependent_env = False
 
     def write_range_independent_lines(self):
@@ -759,7 +792,7 @@ class KrakenEnv:
             slow_rootfinder=False,
         )
         # Write medium lines
-        self.medium.write_lines()
+        self.medium.write_lines(bottom_hs=self.bottom_hs)
         # Write bottom halfspace lines
         self.bottom_hs.write_lines(
             kraken_medium=self.medium, use_bathymetry=self.bathy.use_bathy
@@ -832,7 +865,7 @@ class KrakenEnv:
                 medium_copy.z_ssp_ = np.append(medium_copy.z_ssp_, depth)
 
             # Write medium lines
-            medium_copy.write_lines()
+            medium_copy.write_lines(bottom_hs=self.bottom_hs)
 
             # Write bottom halfspace lines
             self.bottom_hs.write_lines(
@@ -919,6 +952,7 @@ class KrakenFlp:
         if self.env.range_dependent_env:
             self.n_profiles_ = self.env.modes_range.size
             self.profiles_ranges_ = self.env.modes_range
+            rcv_z_max = self.env.bottom_hs.sedim_layer_max_depth
         else:
             self.n_profiles_ = 1
             self.profiles_ranges_ = np.array([0.0])

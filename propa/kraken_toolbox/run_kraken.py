@@ -15,8 +15,8 @@ def runkraken(env, flp, frequencies, verbose=False):
     os.chdir(env.root)
 
     # Write env and flp files
-    env.write_env()
-    flp.write_flp()
+    # env.write_env()
+    # flp.write_flp()
 
     if (
         env.range_dependent_env and env.broadband_run
@@ -38,8 +38,10 @@ def runkraken(env, flp, frequencies, verbose=False):
         _, _, _, _, read_freq, _, _, pressure_field = readshd(
             filename=env.filename + ".shd", freq=frequencies
         )
-        if verbose:
-            print("Range independent kraken simulation completed.")
+        if verbose and not env.range_dependent_env and env.broadband_run:
+            print("Broadband range independent kraken simulation completed.")
+        else:
+            print("Single frequency range dependent kraken simulation completed.")
 
         return pressure_field
 

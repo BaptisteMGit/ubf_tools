@@ -34,24 +34,11 @@ t_kraken = time.time() - t0
 print(f"Kraken time: {t_kraken:.2f} s")
 
 # # Bellhop
-# t0 = time.time()
-# filename = r"calib_ray_mode_bellhop"
-# filename_template = r"calib_ray_mode_bellhop_template.env"
-# working_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\compare_ray_modes\env_bellhop"
-# os.chdir(working_dir)
-
-# for freq in frequencies:
-#     with open(filename_template, "r") as f:
-#         lines = f.readlines()
-#         lines[1] = f"{freq:.1f}			! FREQ (Hz)\n"
-#     f_out = f"{filename}.env"
-#     with open(f_out, "w") as f:
-#         f.writelines(lines)
-
-#     os.system(f"bellhop {filename}")
-
-# t_bellhop = time.time() - t0
-# print(f"Bellhop time: {t_bellhop:.2f} s")
+t0 = time.time()
+filename = r"calib_ray_mode_bellhop"
+os.system(f"bellhop {filename}")  # Only one run required to derive the impulse response
+t_bellhop = time.time() - t0
+print(f"Bellhop time: {t_bellhop:.2f} s")
 
 
 # Kraken rd and broadband

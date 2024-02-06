@@ -1,11 +1,16 @@
 from localisation.verlinden.verlinden_process import verlinden_main
 from verlinden_analysis import analysis_main
-from localisation.verlinden.testcase_envs import testcase1_0, testcase1_1, testcase1_2
+from localisation.verlinden.testcases.testcase_envs import (
+    testcase1_0,
+    testcase1_1,
+    testcase1_2,
+    testcase1_3,
+)
 
 if __name__ == "__main__":
     # snr = [None]
     # detection_metric = ["intercorr0"]
-    testcase = testcase1_2
+    testcase = testcase1_3
     snr = [-5, 0, 5, 10, 20, None]
     # src_signal_type = ["pulse"]
     src_signal_type = ["ship"]

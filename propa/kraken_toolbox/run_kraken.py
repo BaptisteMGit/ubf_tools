@@ -7,7 +7,10 @@ from propa.kraken_toolbox.kraken_env import KrakenEnv, KrakenFlp
 from propa.kraken_toolbox.read_shd import readshd
 
 
-def runkraken(env, flp, frequencies):
+def runkraken(env, flp, frequencies, verbose=False):
+    if verbose:
+        print("Running Kraken...")
+
     # Change directory
     os.chdir(env.root)
 
@@ -21,6 +24,8 @@ def runkraken(env, flp, frequencies):
         pressure_field = runkraken_broadband_range_dependent(
             range_dependent_env=env, flp=flp, frequencies=frequencies
         )
+        if verbose:
+            print("Broadband range dependent kraken simulation completed.")
         return pressure_field
 
     else:  # Run range independent simulation
@@ -33,6 +38,8 @@ def runkraken(env, flp, frequencies):
         _, _, _, _, read_freq, _, _, pressure_field = readshd(
             filename=env.filename + ".shd", freq=frequencies
         )
+        if verbose:
+            print("Range independent kraken simulation completed.")
 
         return pressure_field
 

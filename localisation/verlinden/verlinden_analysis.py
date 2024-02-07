@@ -433,6 +433,8 @@ def get_pos_error_metrics(pos_error):
         "max": pos_error.max().round(2).values,
         "min": pos_error.min().round(2).values,
         "rmse": np.sqrt(np.mean(pos_error**2)).round(2).values,
+        "95_percentile": np.percentile(pos_error, 95).round(2),
+        "99_percentile": np.percentile(pos_error, 99).round(2),
     }
     return pos_error_metrics
 
@@ -532,6 +534,19 @@ def plot_correlation(ds, img_basepath, det_metric="intercorr0", nb_instant_to_pl
     plt.close()
 
 
+def check_folder_creation(plot_info):
+    return (
+        plot_info["plot_one_tl_profile"]
+        or plot_info["plot_ambiguity_surface_dist"]
+        or plot_info["plot_received_signal"]
+        or plot_info["plot_ambiguity_surface"]
+        or plot_info["plot_video"]
+        or plot_info["plot_ship_trajectory"]
+        or plot_info["plot_pos_error"]
+        or plot_info["plot_correlation"]
+    )
+
+
 def analysis_main(
     snr_list,
     detection_metric_list,
@@ -540,7 +555,9 @@ def analysis_main(
     simulation_info={},
     grid_info={},
 ):
-    global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN"
+    global_header_log = (
+        "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN,95_percentile,99_percentile"
+    )
     global_log = [global_header_log]
 
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
@@ -567,7 +584,10 @@ def analysis_main(
             # Image folder
             root_img = ds.fullpath_analysis
             img_basepath = os.path.join(root_img, now, testcase_name + "_")
-            if not os.path.exists(os.path.dirname(img_basepath)):
+            create_folder = check_folder_creation(
+                plot_info
+            )  # To avoid creating empty folders
+            if create_folder and not os.path.exists(os.path.dirname(img_basepath)):
                 os.makedirs(os.path.dirname(img_basepath))
 
             n_instant_to_plot = min(
@@ -638,7 +658,12 @@ def analysis_main(
             amb_surf = get_ambiguity_surface(ds)
             amb_dynamic_range = (amb_surf.max() - amb_surf.min()).round(2).values
 
-            global_line = f"{detection_metric}, {snr}, {pos_error_metrics['median']}, {pos_error_metrics['mean']}, {pos_error_metrics['std']}, {pos_error_metrics['rmse']}, {pos_error_metrics['max']}, {pos_error_metrics['min']}"
+            global_line = (
+                f"{detection_metric}, {snr}, {pos_error_metrics['median']:.1f}, {pos_error_metrics['mean']:.1f},"
+                f"{pos_error_metrics['std']:.1f}, {pos_error_metrics['rmse']:.1f}, {pos_error_metrics['max']:.1f},"
+                f"{pos_error_metrics['min']:.1f}, {pos_error_metrics['95_percentile']:.1f}, {pos_error_metrics['99_percentile']:.1f}"
+            )
+
             global_log.append(global_line)
 
             # Write report in txt file
@@ -649,11 +674,15 @@ def analysis_main(
                 f"Number of sensors pairs: {ds.dims['idx_obs_pairs']}",
                 f"Positions of the source: {ds.attrs['source_positions']}",
                 f"Number of source positions analysed: {ds.dims['src_trajectory_time']}",
-                f"Ambiguity surface dynamic (max - min): {amb_dynamic_range}dB",
-                f"Position error median: {pos_error_metrics['median']}m",
-                f"Position error mean: {pos_error_metrics['mean']}m",
-                f"Position error std: {pos_error_metrics['std']}m",
-                f"Position rmse: {pos_error_metrics['rmse']}m",
+                f"Ambiguity surface dynamic (max - min): {amb_dynamic_range:.1f}dB",
+                f"Position error median: {pos_error_metrics['median']:.1f}m",
+                f"Position error mean: {pos_error_metrics['mean']:.1f}m",
+                f"Position error std: {pos_error_metrics['std']:.1f}m",
+                f"Position rmse: {pos_error_metrics['rmse']:.1f}m",
+                f"Position error max: {pos_error_metrics['max']:.1f}m",
+                f"Position error min: {pos_error_metrics['min']:.1f}m",
+                f"Position error 95 percentile: {pos_error_metrics['95_percentile']:.1f}m",
+                f"Position error 99 percentile: {pos_error_metrics['99_percentile']:.1f}m",
             ]
 
             local_report_fpath = os.path.join(root_img, "loc_report.txt")
@@ -672,25 +701,40 @@ def analysis_main(
         f.writelines("\n".join(global_log))
 
     # Analysis global report
-    perf_metrics = ["RMSE", "STD"]
-    plot_localisation_performance(
-        data=pd.read_csv(global_report_fpath, sep=","),
-        detection_metric_list=detection_metric_list,
-        metrics_to_plot=perf_metrics,
-        img_path=os.path.dirname(global_report_fpath),
+    # perf_metrics = ["RMSE", "STD"]
+    data = pd.read_csv(
+        global_report_fpath,
+        sep=",",
+        dtype={
+            "SNR": str,
+            "MEDIAN": float,
+            "MEAN": float,
+            "STD": float,
+            "RMSE": float,
+            "MAX": float,
+            "MIN": float,
+            "95_percentile": float,
+            "99_percentile": float,
+        },
     )
+    list_perf_metrics = [["95_percentile"], ["99_percentile"], ["MEDIAN"]]
+    for perf_metrics in list_perf_metrics:
+        plot_localisation_performance(
+            data=data,
+            detection_metric_list=detection_metric_list,
+            metrics_to_plot=perf_metrics,
+            img_path=os.path.dirname(global_report_fpath),
+        )
 
 
 if __name__ == "__main__":
     # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
     # snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
-    snr = [-20, -10, -5, 0, 5, 10]
-    src_signal_type = ["pulse", "pulse_train"]
-    testcase_name = "testcase1_1"
-    # snr = [5, -10, 20, -20, None]
-    # detection_metric = ["intercorr0"]
-    # snr = [None]
-    detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
+    snr = [-5, 0, 5, 10, 20, None]
+    src_signal_type = ["ship"]
+    testcase_name = "testcase1_3"
+
+    detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
 
     grid_info = {
         "Lx": 5 * 1e3,
@@ -698,12 +742,13 @@ if __name__ == "__main__":
         "dx": 10,
         "dy": 10,
     }
+    simu_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_output"
     simulation_info = {
-        "simulation_folder": r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_output\testcase1_1",
+        "simulation_folder": os.path.join(simu_root, testcase_name),
         "src_pos": "not_on_grid",
         "n_instant_to_plot": 10,
         "n_rcv_signals_to_plot": 3,
-        "src_type": "pulse_train",
+        "src_type": "ship",
     }
 
     # plot_info = {
@@ -723,12 +768,12 @@ if __name__ == "__main__":
     plot_info = {
         "plot_video": False,
         "plot_one_tl_profile": False,
-        "plot_ambiguity_surface_dist": True,
-        "plot_received_signal": True,
-        "plot_ambiguity_surface": True,
-        "plot_ship_trajectory": True,
-        "plot_pos_error": True,
-        "plot_correlation": True,
+        "plot_ambiguity_surface_dist": False,
+        "plot_received_signal": False,
+        "plot_ambiguity_surface": False,
+        "plot_ship_trajectory": False,
+        "plot_pos_error": False,
+        "plot_correlation": False,
         "tl_freq_to_plot": [20],
         "x_offset": 1000,
         "y_offset": 1000,

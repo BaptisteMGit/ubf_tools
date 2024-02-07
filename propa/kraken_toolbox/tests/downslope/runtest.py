@@ -72,8 +72,6 @@ def define_test_env(f):
     plt.close()
 
     n_rcv_z = default_nb_rcv_z(f, 3000, n_per_l=15)
-    # sedim_layer_z = bathy.bathy_depth.max() + bott_hs.sedim_layer_depth
-    # sedim_layer_max_depth = min(sedim_layer_z, bott_hs.sedim_layer_max_z)
     bott_hs.derive_sedim_layer_max_depth(z_max=bathy.bathy_depth.max())
 
     field = KrakenField(

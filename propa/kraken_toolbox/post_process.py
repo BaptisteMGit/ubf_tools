@@ -3,7 +3,7 @@ import time
 
 from cst import C0, RHO_W
 from misc import mult_along_axis
-from propa.kraken_toolbox.utils import waveguide_cutoff_freq
+from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
 from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.read_shd import readshd
 from scipy.interpolate import interp1d
@@ -22,13 +22,7 @@ def postprocess_ir(shd_fpath, source, rcv_range, rcv_depth):
     pressure_field = np.squeeze(pressure, axis=(1, 2))  # 3D array (nfreq, nz, nr)
 
     # No need to process the entire grid :  extract pressure field at desired positions
-    rcv_pos_idx_r = [
-        np.argmin(np.abs(field_pos["r"]["r"] - rcv_r)) for rcv_r in rcv_range
-    ]
-    rcv_pos_idx_z = [
-        np.argmin(np.abs(field_pos["r"]["z"] - rcv_z)) for rcv_z in rcv_depth
-    ]
-    rr, zz = np.meshgrid(rcv_pos_idx_r, rcv_pos_idx_z)
+    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath, rcv_depth, rcv_range)
     pressure_field = pressure_field[:, zz, rr]
 
     # Get rid of frequencies below the cutoff frequency
@@ -115,27 +109,18 @@ def postprocess_ir_from_broadband_pressure_field(
     broadband_pressure_field,
     frequencies,
     source,
-    rcv_range,
-    rcv_depth,
+    rcv_range=None,
+    rcv_depth=None,
     minimum_waveguide_depth=1000,
 ):
     """Post process Kraken run to derive ocean waveguide impulse response."""
-
-    # Dummy read to get frequencies used by kraken and field grid information
-    _, _, freqVec, _, _, _, field_pos, _ = readshd(filename=shd_fpath, freq=0)
 
     pressure_field = np.squeeze(
         broadband_pressure_field, axis=(1, 2)
     )  # 3D array (nfreq, nz, nr)
 
     # No need to process the entire grid :  extract pressure field at desired positions
-    rcv_pos_idx_r = [
-        np.argmin(np.abs(field_pos["r"]["r"] - rcv_r)) for rcv_r in rcv_range
-    ]
-    rcv_pos_idx_z = [
-        np.argmin(np.abs(field_pos["r"]["z"] - rcv_z)) for rcv_z in rcv_depth
-    ]
-    rr, zz = np.meshgrid(rcv_pos_idx_r, rcv_pos_idx_z)
+    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath, rcv_depth, rcv_range)
     pressure_field = pressure_field[:, zz, rr]
 
     # Get rid of frequencies below the cutoff frequency

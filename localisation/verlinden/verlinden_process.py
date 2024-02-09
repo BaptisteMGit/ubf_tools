@@ -35,8 +35,7 @@ def populate_grid(
     y_obs,
 ):
     # Run KRAKEN
-    grid_pressure_field = runkraken(
-        kraken_env, kraken_flp, library_src.kraken_freq)
+    grid_pressure_field = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
 
     # Init Dataset
     n_obs = len(x_obs)
@@ -632,23 +631,6 @@ def verlinden_main(
         dt, min_waveguide_depth, sig_type=src_info["src_signal_type"]
     )
 
-    # Define environment
-    kraken_env, kraken_flp = testcase(
-        freq=library_src.kraken_freq, min_waveguide_depth=min_waveguide_depth
-    )
-
-    # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
-    fc = waveguide_cutoff_freq(max_depth=kraken_env.bathy.bathy_depth.min())
-    propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
-    if propagating_freq.size != library_src.kraken_freq.size:
-        min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
-        library_src = init_library_src(
-            dt, min_waveguide_depth, sig_type=src_info["src_signal_type"]
-        )
-        kraken_env, kraken_flp = testcase(
-            freq=library_src.kraken_freq, min_waveguide_depth=min_waveguide_depth
-        )
-
     x_ship_t, y_ship_t, t_ship = init_event_src_traj(
         src_info["x_pos"][0],
         src_info["y_pos"][0],
@@ -674,6 +656,32 @@ def verlinden_main(
         grid_info["dx"],
         grid_info["dy"],
     )
+
+    # Derive max distance to be used in kraken = grid diagonal
+    max_range = np.round(
+        np.sqrt((grid_x[-1] - grid_x[0]) ** 2 + (grid_y[-1] - grid_y[0]) ** 2), -2
+    )
+
+    # Define environment
+    kraken_env, kraken_flp = testcase(
+        freq=library_src.kraken_freq,
+        min_waveguide_depth=min_waveguide_depth,
+        max_range_m=max_range,
+    )
+
+    # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
+    fc = waveguide_cutoff_freq(max_depth=kraken_env.bathy.bathy_depth.min())
+    propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
+    if propagating_freq.size != library_src.kraken_freq.size:
+        min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
+        library_src = init_library_src(
+            dt, min_waveguide_depth, sig_type=src_info["src_signal_type"]
+        )
+        kraken_env, kraken_flp = testcase(
+            freq=library_src.kraken_freq,
+            min_waveguide_depth=min_waveguide_depth,
+            max_range_m=max_range,
+        )
 
     grid_pressure_field = None  # Init to None to avoid redundancy
     for snr_i in snr:

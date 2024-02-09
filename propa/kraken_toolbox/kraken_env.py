@@ -388,6 +388,9 @@ class KrakenBottomHalfspace:
 
         # Sedim layer depth
         self.sedim_layer_depth = alpha_wavelength * C0 / fmin
+        self.z_in_bottom = np.array(
+            [0, self.sedim_layer_depth]
+        )  # Depth from bottom water/sediment interface (m)
         self.sedim_layer_max_z = 10000  # Maximum depth of the sediment layer
         self.sedim_layer_max_depth = None
 
@@ -462,7 +465,7 @@ class KrakenBottomHalfspace:
         sedim_layer_z = z_max + self.sedim_layer_depth
         self.sedim_layer_max_depth = min(sedim_layer_z, self.sedim_layer_max_z)
 
-    def write_lines(self, kraken_medium, use_bathymetry=False):
+    def write_lines(self, use_bathymetry=False):
         # Get bathymetry code
         self.set_bathymetry_code(use_bathymetry)
 
@@ -479,10 +482,6 @@ class KrakenBottomHalfspace:
                 f"{self.sedim_layer_max_depth:.2f} {self.cp_bot_halfspace:.2f} {self.cs_bot_halfspace:.2f} {self.rho_bot_halfspace:.2f} {self.ap_bot_halfspace:.2f} {self.as_bot_halfspace:.2f}",
                 ssp_desc,
             )
-            # half_space_prop = align_var_description(
-            #     f"{kraken_medium.z_ssp_.max():.2f} {self.cp_bot_halfspace:.2f} {self.cs_bot_halfspace:.2f} {self.rho_bot_halfspace:.2f} {self.ap_bot_halfspace:.2f} {self.as_bot_halfspace:.2f}",
-            #     ssp_desc,
-            # )
             self.lines.append(half_space_prop)
 
     def set_default(self):
@@ -492,37 +491,47 @@ class KrakenBottomHalfspace:
         self.sigma_ = 0.0
         self.bathymetry_code = ""
 
-    """ Associated plotting tools to represent medium properties """
+    """ Associated plotting tools to represent bottom properties """
 
     def plot_bottom_halfspace(self):
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
         axs[0].set_ylabel("Depth [m]")
-        self.plot_spp(ax=axs[0])
+        self.plot_ssp(ax=axs[0])
         self.plot_attenuation(ax=axs[1])
         self.plot_density(ax=axs[2])
-        plt.suptitle("Medium properties")
+        plt.suptitle("Bottom properties")
         plt.tight_layout()
-        plt.show()
+        # plt.show()
 
-    def plot_spp(self, ax=None):
+    def plot_ssp(self, ax=None):
         if ax is None:
             plt.figure(figsize=(10, 8))
             ax = plt.gca()
-            ax.set_ylabel("Depth [m]")
+            ax.set_ylabel("Depth (from water/sediment interface) [m]")
         ax.invert_yaxis()
         col1 = "red"
-        ax.plot(self.cp_ssp_, self.z_ssp_, color=col1)
+
+        # C-wave speed
+        # TODO: change if several layer in bottom
+        # if self.cp_bot_halfspace.size == 1:
+        #     cp = np.ones(self.z_in_bottom.size) * self.cp_bot_halfspace
+        # else:
+        #     cp = self.cp_bot_halfspace
+        cp = np.ones(self.z_in_bottom.size) * self.cp_bot_halfspace
+
+        ax.plot(cp, self.z_in_bottom, color=col1)
         ax.tick_params(axis="x", labelcolor=col1)
         ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]", color=col1)
-        # ax.set_title("Sound speed profile")
 
-        if self.cs_ssp_.size == 1:
-            cs = np.ones(self.z_ssp_.size) * self.cs_ssp_
-        else:
-            cs = self.cs_ssp_
+        # S-wave speed
+        # if self.cs_bot_halfspace.size == 1:
+        #     cs = np.ones(self.z_in_bottom.size) * self.cs_bot_halfspace
+        # else:
+        #     cs = self.cs_bot_halfspace
+        cs = np.ones(self.z_in_bottom.size) * self.cs_bot_halfspace
         ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
         col2 = "blue"
-        ax_bis.plot(cs, self.z_ssp_, color=col2)
+        ax_bis.plot(cs, self.z_in_bottom, color=col2)
         ax_bis.tick_params(axis="x", labelcolor=col2)
         ax_bis.set_xlabel("S-wave celerity " + r"[$m.s^{-1}$]", color=col2)
 
@@ -530,30 +539,38 @@ class KrakenBottomHalfspace:
         if ax is None:
             plt.figure(figsize=(10, 8))
             ax = plt.gca()
-            ax.set_ylabel("Depth [m]")
+            ax.set_ylabel("Depth (from water/sediment interface) [m]")
 
-        if self.ap_.size == 1:
-            ap = np.ones(self.z_ssp_.size) * self.ap_
-        else:
-            ap = self.ap_
+        # if self.ap_bot_halfspace.size == 1:
+        #     ap = np.ones(self.z_in_bottom.size) * self.ap_bot_halfspace
+        # else:
+        #     ap = self.ap_bot_halfspace
+        xlim_offset = 0.5 * abs(self.as_bot_halfspace - self.ap_bot_halfspace)
+        min_att = min(self.as_bot_halfspace, self.ap_bot_halfspace)
+        max_att = max(self.as_bot_halfspace, self.ap_bot_halfspace)
 
+        ap = np.ones(self.z_in_bottom.size) * self.ap_bot_halfspace
         ax.invert_yaxis()
         col1 = "red"
-        ax.plot(ap, self.z_ssp_, color=col1)
+        ax.plot(ap, self.z_in_bottom, color=col1)
         ax.tick_params(axis="x", labelcolor=col1)
         ax.set_xlabel("C-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col1)
+        ax.set_xlim([min_att - xlim_offset, max_att + xlim_offset])
+
         # ax.set_title("Attenuation profile")
 
-        if self.as_.size == 1:
-            as_ = np.ones(self.z_ssp_.size) * self.as_
-        else:
-            as_ = self.as_
+        # if self.as_bot_halfspace.size == 1:
+        #     as_ = np.ones(self.z_in_bottom.size) * self.as_bot_halfspace
+        # else:
+        #     as_ = self.as_bot_halfspace
+        as_ = np.ones(self.z_in_bottom.size) * self.as_bot_halfspace
 
         ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
         col2 = "blue"
-        ax_bis.plot(as_, self.z_ssp_, color=col2)
+        ax_bis.plot(as_, self.z_in_bottom, color=col2)
         ax_bis.tick_params(axis="x", labelcolor=col2)
         ax_bis.set_xlabel("S-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col2)
+        ax_bis.set_xlim([min_att - xlim_offset, max_att + xlim_offset])
 
     def plot_density(self, ax=None):
         if ax is None:
@@ -561,11 +578,12 @@ class KrakenBottomHalfspace:
             ax = plt.gca()
             ax.set_ylabel("Depth [m]")
 
-        if self.rho_.size == 1:
-            rho = np.ones(self.z_ssp_.size) * self.rho_
-        else:
-            rho = self.rho_
-        ax.plot(rho, self.z_ssp_, label="Density", color="blue")
+        # if self.rho_bot_halfspace.size == 1:
+        #     rho = np.ones(self.z_in_bottom.size) * self.rho_bot_halfspace
+        # else:
+        #     rho = self.rho_bot_halfspace
+        rho = np.ones(self.z_in_bottom.size) * self.rho_bot_halfspace
+        ax.plot(rho, self.z_in_bottom, label="Density", color="blue")
         ax.invert_yaxis()
         ax.tick_params(axis="x", labelcolor="blue")
         ax.set_xlabel("Density " + r"[$g.cm^{-3}$]", color="blue")

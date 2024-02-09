@@ -886,9 +886,7 @@ class KrakenEnv:
             medium_copy.write_lines(bottom_hs=self.bottom_hs)
 
             # Write bottom halfspace lines
-            self.bottom_hs.write_lines(
-                kraken_medium=medium_copy, use_bathymetry=self.bathy.use_bathy
-            )
+            self.bottom_hs.write_lines(use_bathymetry=self.bathy.use_bathy)
 
             # Change title to include range
             title = self.simulation_title + f" - r = {self.modes_range[i]:.2f} km"

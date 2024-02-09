@@ -95,7 +95,9 @@ def bathy_seamount(
     plt.savefig(os.path.join(env_dir, "bathy.png"))
 
 
-def mmdpm_profile(testcase_name, mmdpm_testname="PVA_RR48", azimuth=360):
+def mmdpm_profile(
+    testcase_name, mmdpm_testname="PVA_RR48", azimuth=360, max_range_km=50
+):
     data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm"
     fpath = os.path.join(
         data_dir, mmdpm_testname, f"mmdpm_test_{mmdpm_testname}_{azimuth}.csv"
@@ -105,6 +107,11 @@ def mmdpm_profile(testcase_name, mmdpm_testname="PVA_RR48", azimuth=360):
     pd_data = pd.read_csv(fpath, sep=",", header=None)
     r = pd_data[0]
     h = pd_data[1]
+
+    # Limit ranges to max_range_km
+    idx = r <= max_range_km
+    r = r[idx]
+    h = h[idx]
 
     # Plot full bathymetry profile
     plt.figure(figsize=(16, 8))

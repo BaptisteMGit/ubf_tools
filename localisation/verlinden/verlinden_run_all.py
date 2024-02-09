@@ -5,13 +5,14 @@ from localisation.verlinden.testcases.testcase_envs import (
     testcase1_1,
     testcase1_2,
     testcase1_3,
+    testcase1_4,
 )
 
 if __name__ == "__main__":
     # snr = [None]
     # detection_metric = ["intercorr0"]
-    testcase = testcase1_3
-    snr = [-5, 0, 5, 10, 20, None]
+    testcase = testcase1_4
+    snr = [-10, -5, 5, 10, None]
     # src_signal_type = ["pulse"]
     src_signal_type = ["ship"]
     detection_metric = ["intercorr0", "hilbert_env_intercorr0"]

@@ -15,14 +15,14 @@ def runkraken(env, flp, frequencies, verbose=False):
     os.chdir(env.root)
 
     # Write env and flp files
-    # env.write_env()
-    # flp.write_flp()
+    env.write_env()
+    flp.write_flp()
 
     if (
         env.range_dependent_env and env.broadband_run
     ):  # Run broadband range dependent simulation
         pressure_field = runkraken_broadband_range_dependent(
-            range_dependent_env=env, flp=flp, frequencies=frequencies
+            env=env, flp=flp, frequencies=frequencies
         )
         if verbose:
             print("Broadband range dependent kraken simulation completed.")
@@ -51,7 +51,7 @@ def runfield(filename):
     os.system(f"field {filename}")
 
 
-def runkraken_broadband_range_dependent(range_dependent_env, flp, frequencies):
+def runkraken_broadband_range_dependent(env, flp, frequencies):
     """KRAKEN is capable of running broadband simulations with range independent environments
     and single frequency simulations with range dependent environments. Yet, for some reason,
     it is not capable of running broadband simulations with range dependent environments.
@@ -67,17 +67,17 @@ def runkraken_broadband_range_dependent(range_dependent_env, flp, frequencies):
     ):
         # Initialize environment with the current frequency and provided range dependent environment
         env = KrakenEnv(
-            title=range_dependent_env.simulation_title,
-            env_root=range_dependent_env.root,
-            env_filename=range_dependent_env.filename,
+            title=env.simulation_title,
+            env_root=env.root,
+            env_filename=env.filename,
             freq=frequencies[ifreq],
-            kraken_top_hs=range_dependent_env.top_hs,
-            kraken_medium=range_dependent_env.medium,
-            kraken_attenuation=range_dependent_env.att,
-            kraken_bottom_hs=range_dependent_env.bottom_hs,
-            kraken_field=range_dependent_env.field,
-            kraken_bathy=range_dependent_env.bathy,
-            rModes=range_dependent_env.modes_range,
+            kraken_top_hs=env.top_hs,
+            kraken_medium=env.medium,
+            kraken_attenuation=env.att,
+            kraken_bottom_hs=env.bottom_hs,
+            kraken_field=env.field,
+            kraken_bathy=env.bathy,
+            rModes=env.modes_range,
         )
 
         # Write environment

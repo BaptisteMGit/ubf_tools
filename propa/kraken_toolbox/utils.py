@@ -1,6 +1,8 @@
 import os
 import numpy as np
 from cst import C0
+from propa.kraken_toolbox.read_shd import readshd
+
 
 def get_component(Modes, comp):
     components = {"H": 0, "V": 1, "T": 2, "N": 3}
@@ -62,3 +64,28 @@ def default_nb_rcv_z(fmax, max_depth, n_per_l=7):
 def waveguide_cutoff_freq(max_depth, c0=C0):
     fc = c0 / (4 * max_depth)
     return fc
+
+
+def get_rcv_pos_idx(shd_fpath, rcv_depth=None, rcv_range=None):
+    # Dummy read to get frequencies used by kraken and field grid information
+    _, _, _, _, _, _, field_pos, pressure = readshd(filename=shd_fpath, freq=0)
+    nr = pressure.shape[2]
+    nz = pressure.shape[1]
+
+    if rcv_range is not None:
+        # No need to process the entire grid :  extract pressure field at desired positions
+        rcv_pos_idx_r = [
+            np.argmin(np.abs(field_pos["r"]["r"] - rcv_r)) for rcv_r in rcv_range
+        ]
+    else:
+        rcv_pos_idx_r = range(nr)
+
+    if rcv_depth is not None:
+        rcv_pos_idx_z = [
+            np.argmin(np.abs(field_pos["r"]["z"] - rcv_z)) for rcv_z in rcv_depth
+        ]
+    else:
+        rcv_pos_idx_z = range(nz)
+
+    rr, zz = np.meshgrid(rcv_pos_idx_r, rcv_pos_idx_z)
+    return rr, zz, field_pos

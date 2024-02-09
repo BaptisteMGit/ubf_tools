@@ -1,4 +1,6 @@
 import os
+import scipy.io as sio
+import matplotlib.pyplot as plt
 
 from cst import SAND_PROPERTIES, RHO_W
 from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
@@ -254,7 +256,7 @@ def testcase1_0(freq=[20], min_waveguide_depth=150):
     return env, flp
 
 
-def testcase1_1(freq=[20], min_waveguide_depth=100):
+def testcase1_1(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
     """
     Test case 1.1: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile
     """
@@ -264,11 +266,12 @@ def testcase1_1(freq=[20], min_waveguide_depth=100):
     if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
         os.makedirs(os.path.join(TC_WORKING_DIR, name))
 
+    max_range_km = max_range_m * 1e-3
     # Create a slope bottom
     bathy_sin_slope(
         testcase_name=name,
         min_waveguide_depth=min_waveguide_depth,
-        max_range=50,
+        max_range=max_range_km,
         theta=94,
         range_periodicity=6,
     )
@@ -290,7 +293,7 @@ def testcase1_1(freq=[20], min_waveguide_depth=100):
     return env, flp
 
 
-def testcase1_2(freq=[20], min_waveguide_depth=100):
+def testcase1_2(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
     """
     Test case 1.2: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile
     """
@@ -300,11 +303,13 @@ def testcase1_2(freq=[20], min_waveguide_depth=100):
     if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
         os.makedirs(os.path.join(TC_WORKING_DIR, name))
 
+    max_range_km = max_range_m * 1e-3
+
     # Create a slope bottom
     bathy_seamount(
         testcase_name=name,
         min_waveguide_depth=min_waveguide_depth,
-        max_range=50,
+        max_range=max_range_km,
         max_depth=250,
         seamount_width=6,
     )
@@ -326,7 +331,7 @@ def testcase1_2(freq=[20], min_waveguide_depth=100):
     return env, flp
 
 
-def testcase1_3(freq=[20], min_waveguide_depth=100):
+def testcase1_3(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
     """
     Test case 1.3: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and constant sound speed profile
     """
@@ -336,8 +341,15 @@ def testcase1_3(freq=[20], min_waveguide_depth=100):
     if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
         os.makedirs(os.path.join(TC_WORKING_DIR, name))
 
+    max_range_km = max_range_m * 1e-3
+
     # Create a slope bottom
-    mmdpm_profile(testcase_name=name, mmdpm_testname="PVA_RR48", azimuth=360)
+    mmdpm_profile(
+        testcase_name=name,
+        mmdpm_testname="PVA_RR48",
+        azimuth=360,
+        max_range_km=max_range_km,
+    )
     bathy = Bathymetry(data_file=os.path.join(TC_WORKING_DIR, name, "bathy.csv"))
     z_ssp = [0, bathy.bathy_depth.max()]
     cp_ssp = [1500, 1500]
@@ -354,5 +366,52 @@ def testcase1_3(freq=[20], min_waveguide_depth=100):
     return env, flp
 
 
+def testcase1_4(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
+    """
+    Test case 1.4: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile
+    """
+    name = "testcase1_4"
+    title = "Test case 1.4: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile"
+
+    if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
+        os.makedirs(os.path.join(TC_WORKING_DIR, name))
+
+    max_range_km = max_range_m * 1e-3
+
+    # Create a slope bottom
+    mmdpm_profile(
+        testcase_name=name,
+        mmdpm_testname="PVA_RR48",
+        azimuth=360,
+        max_range_km=max_range_km,
+    )
+    bathy = Bathymetry(data_file=os.path.join(TC_WORKING_DIR, name, "bathy.csv"))
+
+    # Load ssp mat file
+    data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+    fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
+    ssp_mat = sio.loadmat(fpath)
+    z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
+    cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
+
+    env, flp = testcase1_common(
+        freq=freq,
+        z_ssp=z_ssp,
+        cp_ssp=cp_ssp,
+        bathy=bathy,
+        title=title,
+        testcase_name=name,
+    )
+
+    # Plot medium properties
+    env.medium.plot_medium()
+    plt.savefig(os.path.join(TC_WORKING_DIR, name, "medium_properties.png"))
+
+    env.bottom_hs.plot_bottom_halfspace()
+    plt.savefig(os.path.join(TC_WORKING_DIR, name, "bottom_properties.png"))
+
+    return env, flp
+
+
 if __name__ == "__main__":
-    env, flp = testcase1_3()
+    env, flp = testcase1_4()

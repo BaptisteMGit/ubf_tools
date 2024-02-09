@@ -555,9 +555,7 @@ def analysis_main(
     simulation_info={},
     grid_info={},
 ):
-    global_header_log = (
-        "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN,95_percentile,99_percentile"
-    )
+    global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN,95_percentile,99_percentile,dynamic_range"
     global_log = [global_header_log]
 
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
@@ -661,7 +659,8 @@ def analysis_main(
             global_line = (
                 f"{detection_metric}, {snr}, {pos_error_metrics['median']:.1f}, {pos_error_metrics['mean']:.1f},"
                 f"{pos_error_metrics['std']:.1f}, {pos_error_metrics['rmse']:.1f}, {pos_error_metrics['max']:.1f},"
-                f"{pos_error_metrics['min']:.1f}, {pos_error_metrics['95_percentile']:.1f}, {pos_error_metrics['99_percentile']:.1f}"
+                f"{pos_error_metrics['min']:.1f}, {pos_error_metrics['95_percentile']:.1f}, {pos_error_metrics['99_percentile']:.1f},"
+                f"{amb_dynamic_range:.1f}"
             )
 
             global_log.append(global_line)
@@ -715,9 +714,15 @@ def analysis_main(
             "MIN": float,
             "95_percentile": float,
             "99_percentile": float,
+            "dynamic_range": float,
         },
     )
-    list_perf_metrics = [["95_percentile"], ["99_percentile"], ["MEDIAN"]]
+    list_perf_metrics = [
+        ["95_percentile"],
+        ["99_percentile"],
+        ["MEDIAN"],
+        ["dynamic_range"],
+    ]
     for perf_metrics in list_perf_metrics:
         plot_localisation_performance(
             data=data,
@@ -730,7 +735,7 @@ def analysis_main(
 if __name__ == "__main__":
     # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
     # snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
-    snr = [-5, 0, 5, 10, 20, None]
+    snr = [-10, -5, 0, 5, 10, None]
     src_signal_type = ["ship"]
     testcase_name = "testcase1_3"
 

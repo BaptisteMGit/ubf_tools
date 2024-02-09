@@ -406,10 +406,12 @@ def testcase1_4(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
     # Plot medium properties
     env.medium.plot_medium()
     plt.savefig(os.path.join(TC_WORKING_DIR, name, "medium_properties.png"))
+    plt.close()
 
     env.bottom_hs.plot_bottom_halfspace()
     plt.savefig(os.path.join(TC_WORKING_DIR, name, "bottom_properties.png"))
-
+    plt.close()
+    
     return env, flp
 
 

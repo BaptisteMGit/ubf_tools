@@ -17,13 +17,6 @@ if __name__ == "__main__":
     src_signal_type = ["ship"]
     detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
 
-    grid_info = dict(
-        Lx=10 * 1e3,
-        Ly=10 * 1e3,
-        dx=100,
-        dy=100,
-    )
-
     obs_info = dict(
         x_obs=[0, 1500],
         y_obs=[0, 0],
@@ -32,13 +25,26 @@ if __name__ == "__main__":
     depth = 150  # Depth m
     v_ship = 50 / 3.6  # m/s
 
+    x_pos_ship = [-3000, 0]
+    y_pos_ship = [30000, 20000]
+    nmax_ship = 100
+
+    grid_info = dict(
+        Lx=1 * 1e3,
+        Ly=1 * 1e3,
+        dx=100,
+        dy=100,
+    )
+
+    # x_pos = ([-1800, 3000],)
+    # y_pos = ([8000, 2500],)
     for src_stype in src_signal_type:
         # Define the parameters
         src_info = dict(
-            x_pos=[-1800, 3000],
-            y_pos=[8000, 2500],
+            x_pos=x_pos_ship,
+            y_pos=y_pos_ship,
             v_src=v_ship,
-            nmax_ship=50,
+            nmax_ship=nmax_ship,
             src_signal_type=src_stype,
             z_src=5,
             on_grid=False,

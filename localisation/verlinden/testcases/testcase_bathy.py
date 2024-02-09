@@ -47,6 +47,7 @@ def bathy_sin_slope(
     pfig.apply_ticks_fontsize()
     plt.grid()
     plt.savefig(os.path.join(env_dir, "bathy.png"))
+    plt.close()
 
 
 def bathy_seamount(
@@ -93,6 +94,7 @@ def bathy_seamount(
     pfig.apply_ticks_fontsize()
     plt.grid()
     plt.savefig(os.path.join(env_dir, "bathy.png"))
+    plt.close()
 
 
 def mmdpm_profile(
@@ -124,6 +126,7 @@ def mmdpm_profile(
     pfig.apply_ticks_fontsize()
     plt.grid()
     plt.savefig(os.path.join(env_dir, "bathy.png"))
+    plt.close()
 
     # Subsample profile to reduce cpu time
     r = r[::10]
@@ -143,3 +146,4 @@ def mmdpm_profile(
     pfig.apply_ticks_fontsize()
     plt.grid()
     plt.savefig(os.path.join(env_dir, "bathy_subsampled.png"))
+    plt.close()

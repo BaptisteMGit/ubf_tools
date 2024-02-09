@@ -34,12 +34,11 @@ def populate_grid(
     x_obs,
     y_obs,
 ):
-    # Run KRAKEN
-    grid_pressure_field = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
-
     # Init Dataset
     n_obs = len(x_obs)
     xx, yy = np.meshgrid(grid_x, grid_y, sparse=True)
+
+    # Compute range from each receiver
     rr_obs = np.array(
         [
             np.sqrt((xx - x_obs[i_obs]) ** 2 + (yy - y_obs[i_obs]) ** 2)
@@ -47,11 +46,17 @@ def populate_grid(
         ]
     )
 
+    # Compute angles relatives to each receiver
+    theta_obs = np.array(
+        [np.arctan2(yy - y_obs[i_obs], xx - x_obs[i_obs]) for i_obs in range(n_obs)]
+    )
+
     ds = xr.Dataset(
         data_vars=dict(
             x_obs=(["idx_obs"], x_obs),
             y_obs=(["idx_obs"], y_obs),
             r_from_obs=(["idx_obs", "y", "x"], rr_obs),
+            theta_obs=(["idx_obs", "y", "x"], theta_obs),
         ),
         coords=dict(
             x=grid_x,
@@ -64,6 +69,22 @@ def populate_grid(
             dy=np.diff(grid_y)[0],
         ),
     )
+
+    # Test : TODO : remove
+    dtheta = np.abs(ds.theta_obs.isel(idx_obs=1).diff(dim="x")).min()
+    print(f"Minimum angle step : {dtheta.values * 180 / np.pi}°")
+    min_theta = ds.theta_obs.isel(idx_obs=1).min()
+    max_theta = ds.theta_obs.isel(idx_obs=1).max()
+    list_theta = np.arange(min_theta, max_theta, dtheta)
+    print(f"Number of angles : {len(list_theta)}")
+
+    # Plot angles
+    # plt.figure()
+    # ds.theta_obs.isel(idx_obs=0).plot()
+    # plt.scatter(ds.x_obs.isel(idx_obs=0), ds.y_obs.isel(idx_obs=0))
+    # plt.ylim([ds.y_obs.isel(idx_obs=0), ds.y.max() + 1e3])
+    # plt.xlim([ds.x.min() - 3e3, ds.x.max() + 3e3])
+    # plt.show()
 
     # Free memory
     del x_obs, y_obs, rr_obs, grid_x, grid_y
@@ -104,6 +125,11 @@ def populate_grid(
     ds["obs_pairs"] = (["idx_obs_pairs", "idx_obs_in_pair"], obs_pairs)
 
     signal_library_dim = ["idx_obs", "y", "x", "library_signal_time"]
+
+    # Loop over angles to populate grid -> TODO
+
+    # Run KRAKEN
+    grid_pressure_field = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
 
     for i_obs in tqdm(
         ds.idx_obs, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
@@ -623,9 +649,6 @@ def verlinden_main(
     print(
         f"    -> Grid properties: dx = {grid_info['dx']} m, dy = {grid_info['dy']} m, dt = {dt} s"
     )
-    print(
-        f"    -> Source (event) properties:\n \tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n \tLast position = {src_info['x_pos'][1], src_info['y_pos'][1]}\n \tNumber of positions = {src_info['nmax_ship']}\n \tSource speed = {src_info['v_src']}m.s-1\n \tSignal type = {src_info['src_signal_type']}"
-    )
 
     library_src = init_library_src(
         dt, min_waveguide_depth, sig_type=src_info["src_signal_type"]
@@ -655,6 +678,11 @@ def verlinden_main(
         grid_info["Ly"],
         grid_info["dx"],
         grid_info["dy"],
+    )
+
+    print(
+        f"    -> Source (event) properties:\n \tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n "
+        f"\tLast position = {src_info['x_pos'][1], src_info['y_pos'][1]}\n \tNumber of positions = {nmax_ship}\n \tSource speed = {src_info['v_src']}m.s-1\n \tSignal type = {src_info['src_signal_type']}"
     )
 
     # Derive max distance to be used in kraken = grid diagonal

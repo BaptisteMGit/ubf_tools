@@ -495,13 +495,12 @@ class KrakenBottomHalfspace:
 
     def plot_bottom_halfspace(self):
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
-        axs[0].set_ylabel("Depth [m]")
+        axs[0].set_ylabel("Depth (from water/sediment interface) [m]")
         self.plot_ssp(ax=axs[0])
         self.plot_attenuation(ax=axs[1])
         self.plot_density(ax=axs[2])
         plt.suptitle("Bottom properties")
         plt.tight_layout()
-        # plt.show()
 
     def plot_ssp(self, ax=None):
         if ax is None:

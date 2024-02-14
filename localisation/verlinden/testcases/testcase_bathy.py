@@ -1,11 +1,12 @@
 import os
 import numpy as np
+import xarray as xr
 import pandas as pd
 import matplotlib.pyplot as plt
 
 from publication.PublicationFigure import PubFigure
 from localisation.verlinden.verlinden_path import TC_WORKING_DIR
-
+from get_data.bathymetry.bathy_profile_extraction import extract_bathy_profile
 
 pfig = PubFigure()
 
@@ -146,4 +147,57 @@ def mmdpm_profile(
     pfig.apply_ticks_fontsize()
     plt.grid()
     plt.savefig(os.path.join(env_dir, "bathy_subsampled.png"))
+    plt.close()
+
+
+def extract_2D_bathy_profile(
+    bathy_nc_path,
+    obs_lon,
+    obs_lat,
+    testcase_name,
+    azimuth=0,
+    max_range_km=100,
+    range_resolution=100,
+):
+    # Load bathymetry data
+    ds_bathy = xr.open_dataset(bathy_nc_path)
+    # Set bathymetry as positive towards the bottom
+    ds_bathy["bathymetry"] = ds_bathy.elevation * -1
+
+    # Extract profile
+    range_along_profile, bathymetry_profile = extract_bathy_profile(
+        xr_bathy=ds_bathy,
+        start_lat=obs_lat,
+        start_lon=obs_lon,
+        azimuth=azimuth,
+        range_resolution=range_resolution,
+        max_range_m=max_range_km * 1e3,
+    )
+
+    # Save profile
+    r_km = range_along_profile / 1e3
+    h_m = bathymetry_profile
+
+    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
+    bathy_folder = os.path.join(
+        env_dir,
+        "bathy_profiles",
+    )
+    if not os.path.exists(bathy_folder):
+        os.makedirs(bathy_folder)
+
+    pd.DataFrame({"r": np.round(r_km, 3), "h": np.round(h_m, 3)}).to_csv(
+        os.path.join(env_dir, "bathy.csv"), index=False, header=False
+    )
+
+    plt.figure(figsize=(16, 8))
+    plt.plot(r_km, h_m, color="k", linewidth=2, marker="o", markersize=2)
+    plt.ylim([0, h_m.max()])
+    plt.fill_between(r_km, h_m, h_m.max(), color="lightgrey")
+    plt.gca().invert_yaxis()
+    plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+    plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+    pfig.apply_ticks_fontsize()
+    plt.grid()
+    plt.savefig(os.path.join(bathy_folder, f"bathy_az{azimuth}.png"))
     plt.close()

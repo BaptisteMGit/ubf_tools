@@ -12,7 +12,8 @@ if __name__ == "__main__":
     # snr = [None]
     # detection_metric = ["intercorr0"]
     testcase = testcase1_4
-    snr = [-10, -5, 5, 10, None]
+    # snr = [-10, -5, 5, 10, None]
+    snr = [-5, 10]
     # src_signal_type = ["pulse"]
     src_signal_type = ["ship"]
     detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
@@ -25,8 +26,8 @@ if __name__ == "__main__":
     depth = 150  # Depth m
     v_ship = 50 / 3.6  # m/s
 
-    x_pos_ship = [-3000, 0]
-    y_pos_ship = [30000, 20000]
+    x_pos_ship = [7000, 10000]
+    y_pos_ship = [50000, 35000]
     nmax_ship = 100
 
     grid_info = dict(

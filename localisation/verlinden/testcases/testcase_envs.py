@@ -19,6 +19,7 @@ from localisation.verlinden.testcases.testcase_bathy import (
     bathy_sin_slope,
     bathy_seamount,
     mmdpm_profile,
+    extract_2D_bathy_profile,
 )
 from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 
@@ -148,7 +149,7 @@ from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 
 
 ##########################################################################################
-# Test case 1 : Shallow water environment (close from Verlinden environment)
+# Test case 1 : Isotropic environment
 ##########################################################################################
 
 
@@ -378,7 +379,7 @@ def testcase1_4(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
 
     max_range_km = max_range_m * 1e-3
 
-    # Create a slope bottom
+    # Load bathy profile
     mmdpm_profile(
         testcase_name=name,
         mmdpm_testname="PVA_RR48",
@@ -411,9 +412,140 @@ def testcase1_4(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
     env.bottom_hs.plot_bottom_halfspace()
     plt.savefig(os.path.join(TC_WORKING_DIR, name, "bottom_properties.png"))
     plt.close()
-    
+
+    return env, flp
+
+
+##########################################################################################
+# Test case 2 : Anisotropic environment
+##########################################################################################
+
+
+def testcase2_common(freq, bathy, title, testcase_name="testcase1"):
+    # Create environment directory
+    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
+    if not os.path.exists(env_dir):
+        os.makedirs(env_dir)
+
+    # Load ssp mat file
+    data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+    fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
+    ssp_mat = sio.loadmat(fpath)
+    z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
+    cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
+
+    max_depth = max(z_ssp)  # Depth at src position (m)
+    src_depth = max_depth - 1  # Assume hydrophone is 1m above the bottom
+
+    top_hs = KrakenTopHalfspace()
+    medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
+
+    # First simple model : 1 layer bottom
+    bott_hs_properties = {
+        "rho": 1.9 * RHO_W,
+        "c_p": 1650,  # P-wave celerity (m/s)
+        "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+        "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
+        "a_s": 2.5,  # Shear wave attenuation (dB/wavelength)
+    }
+    bott_hs_properties["z"] = max(z_ssp)
+    bott_hs = KrakenBottomHalfspace(halfspace_properties=bott_hs_properties)
+
+    att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
+
+    n_rcv_z = default_nb_rcv_z(max(freq), max_depth, n_per_l=15)
+    field = KrakenField(
+        src_depth=src_depth,
+        n_rcv_z=n_rcv_z,
+        rcv_z_max=max_depth,
+    )
+
+    env = KrakenEnv(
+        title=title,
+        env_root=env_dir,
+        env_filename=testcase_name,
+        freq=freq,
+        kraken_top_hs=top_hs,
+        kraken_medium=medium,
+        kraken_attenuation=att,
+        kraken_bottom_hs=bott_hs,
+        kraken_field=field,
+        kraken_bathy=bathy,
+    )
+
+    rcv_r_max = 50
+    dr = 10  # 10m resolution
+    n_rcv_r = rcv_r_max * 1000 / dr + 1
+
+    flp_nrcv_z = 1
+    flp_rcv_z_min = 5
+    flp_rcv_z_max = 5
+
+    flp = KrakenFlp(
+        env=env,
+        src_depth=src_depth,
+        n_rcv_z=flp_nrcv_z,
+        rcv_z_min=flp_rcv_z_min,
+        rcv_z_max=flp_rcv_z_max,
+        rcv_r_max=rcv_r_max,
+        n_rcv_r=n_rcv_r,
+        mode_addition="coherent",
+    )
+
+    return env, flp
+
+
+def testcase2_1(
+    freq=[20],
+    min_waveguide_depth=100,
+    max_range_m=50 * 1e3,
+    azimuth=0,
+    obs_lon=65.94,
+    obs_lat=-27.58,
+):
+    """
+    Test case 2.1: Anisotropic environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile
+    """
+    name = "testcase2_1"
+    title = "Test case 2.1: Anisotropic environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile"
+
+    if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
+        os.makedirs(os.path.join(TC_WORKING_DIR, name))
+
+    max_range_km = max_range_m * 1e-3
+    range_resolution = 1000  # 1km resolution
+    # Load bathy bathy profile
+    bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+    extract_2D_bathy_profile(
+        bathy_nc_path=bathy_nc_path,
+        testcase_name=name,
+        obs_lon=obs_lon,
+        obs_lat=obs_lat,
+        azimuth=azimuth,
+        max_range_km=max_range_km,
+        range_resolution=range_resolution,
+    )
+    bathy = Bathymetry(data_file=os.path.join(TC_WORKING_DIR, name, "bathy.csv"))
+
+    env, flp = testcase2_common(
+        freq=freq,
+        bathy=bathy,
+        title=title,
+        testcase_name=name,
+    )
+
+    # Plot medium properties
+    env.medium.plot_medium()
+    plt.savefig(os.path.join(TC_WORKING_DIR, name, "medium_properties.png"))
+    plt.close()
+
+    env.bottom_hs.plot_bottom_halfspace()
+    plt.savefig(os.path.join(TC_WORKING_DIR, name, "bottom_properties.png"))
+    plt.close()
+
     return env, flp
 
 
 if __name__ == "__main__":
-    env, flp = testcase1_4()
+    for az in range(0, 360, 45):
+        env, flp = testcase2_1(azimuth=az)

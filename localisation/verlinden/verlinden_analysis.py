@@ -22,7 +22,7 @@ from localisation.verlinden.verlinden_analysis_report import (
     plot_localisation_performance,
 )
 
-from localisation.verlinden.utils import plot_localisation_moviepy
+from localisation.verlinden.plot_utils import plot_localisation_moviepy
 from localisation.verlinden.verlinden_path import (
     VERLINDEN_OUTPUT_FOLDER,
     VERLINDEN_ANALYSIS_FOLDER,
@@ -258,7 +258,7 @@ def plot_ambiguity_surface(
 
         plt.yticks(fontsize=TICKS_FONTSIZE)
         plt.xticks(fontsize=TICKS_FONTSIZE)
-        plt.legend(ncol=2, loc="upper right", fontsize=LEGEND_FONTSIZE)
+        plt.legend(ncol=2, loc="best", fontsize=LEGEND_FONTSIZE)
         plt.tight_layout()
         plt.savefig(img_basepath + f"ambiguity_surface_{i}.png")
         plt.close()

@@ -719,13 +719,14 @@ def init_event_src_traj(src_info):
         lat1=lat_i, lon1=lon_i, lat2=lat_f, lon2=lon_f, npts=src_info["max_nb_of_pos"]
     )
 
-    return traj
+    src_info["lons"] = np.array(traj.lons)
+    src_info["lats"] = np.array(traj.lats)
 
 
-def init_grid_around_event_src_traj(traj, grid_info):
-    min_lon, max_lon = np.min(traj.lons), np.max(traj.lons)
-    min_lat, max_lat = np.min(traj.lats), np.max(traj.lats)
-    mean_lon, mean_lat = np.mean(traj.lons), np.mean(traj.lats)
+def init_grid_around_event_src_traj(src_info, grid_info):
+    min_lon, max_lon = np.min(src_info["lons"]), np.max(src_info["lons"])
+    min_lat, max_lat = np.min(src_info["lats"]), np.max(src_info["lats"])
+    mean_lon, mean_lat = np.mean(src_info["lons"]), np.mean(src_info["lats"])
 
     geod = Geod(ellps="WGS84")
     min_lon_grid, _, _ = geod.fwd(
@@ -810,10 +811,82 @@ def load_rhumrum_obs_pos(obs_id):
     )
     return pos.loc[obs_id]
 
-def  print_simulation_info(src_info, obs_info, grid_info):
-    # TODO : print simulation info
-    src_msg = f"Source position : ({src_info['x_pos'][0]}, {src_info['y_pos'][0]}) -> ({src_info['x_pos'][1]}, {src_info['y_pos'][1]})"
-    
+
+def print_simulation_info(src_info, obs_info, grid_info):
+    balises = "".join(["#"] * 80)
+    balises_inter = "".join(["#"] * 40)
+    header_msg = "Start simulation with the following parameters:"
+    src_pos = "\n\t\t".join(
+        [""]
+        + [
+            f"{pos_s}: (lon, lat) = ({lon:.4f}°, {lat:.4f}°)"
+            for pos_s, lon, lat in zip(
+                ["First", "Last"],
+                [src_info["lons"][0], src_info["lons"][-1]],
+                [src_info["lats"][0], src_info["lats"][-1]],
+            )
+        ]
+    )
+    src_msg = [
+        "Source properties:",
+        f"Positions: {src_pos}",
+        f"Depth: {src_info['depth']} m",
+        f"Speed: {src_info['speed']:.2f} m/s",
+        f"Azimuth: {src_info['route_azimuth']}°",
+        f"Route duration: {src_info['duration'] / 60} min",
+        f"Number of positions: {len(src_info['lons'])}",
+    ]
+    src_msg = "\n\t".join(src_msg)
+
+    # Rcv info
+    rcv_pos = "\n\t\t".join(
+        [""]
+        + [
+            f"Receiver {i}: (lon, lat) = ({lon}°, {lat}°)"
+            for i, lon, lat in zip(obs_info["id"], obs_info["lons"], obs_info["lats"])
+        ]
+    )
+    max_range = "\n\t\t".join(
+        [""]
+        + [
+            f"Receiver {i}: {r} m"
+            for i, r in zip(obs_info["id"], obs_info["max_kraken_range_m"])
+        ]
+    )
+    rcv_msg = [
+        "Receivers properties:",
+        f"Number of receivers: {len(obs_info['id'])}",
+        f"Receivers IDs: {obs_info['id']}",
+        f"Receivers positions: {rcv_pos}",
+        f"Maximum range to be covered by KRAKEN: {max_range}",
+    ]
+    rcv_msg = "\n\t".join(rcv_msg)
+
+    # Grid info
+    grid_res = "\n\t\t".join(
+        [""] + [f"dx = {grid_info['dx']} m", f"dy = {grid_info['dy']} m"]
+    )
+    grid_msg = [
+        "Grid properties:",
+        f"Grid resolution: {grid_res}",
+        f"Number of grid points: {len(grid_info['grid_lons']) * len(grid_info['grid_lats'])}",
+    ]
+    grid_msg = "\n\t".join(grid_msg)
+
+    msg = "\n".join(
+        [
+            balises,
+            header_msg,
+            balises_inter,
+            src_msg,
+            balises_inter,
+            rcv_msg,
+            balises_inter,
+            grid_msg,
+            balises,
+        ]
+    )
+    print(msg)
 
 
 def get_populated_path(grid_x, grid_y, kraken_env, src_signal_type):

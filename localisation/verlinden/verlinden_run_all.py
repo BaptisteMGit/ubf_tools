@@ -84,7 +84,7 @@ if __name__ == "__main__":
             testcase=testcase,
             src_info=src_info,
             grid_info=grid_info,
-            obs_info=obs_info,
+            rcv_info=obs_info,
             snr=snr,
             detection_metric=detection_metric,
             min_waveguide_depth=depth,

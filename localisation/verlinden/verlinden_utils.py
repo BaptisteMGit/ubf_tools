@@ -774,33 +774,37 @@ def init_grid_around_event_src_traj(src_info, grid_info):
     )
     grid_info["grid_lons"] = grid_lons
     grid_info["grid_lats"] = grid_lats
+    grid_info["min_lat"] = np.min(grid_lats)
+    grid_info["max_lat"] = np.max(grid_lats)
+    grid_info["min_lon"] = np.min(grid_lons)
+    grid_info["max_lon"] = np.max(grid_lons)
 
 
-def get_max_kraken_range(obs_info, grid_info):
+def get_max_kraken_range(rcv_info, grid_info):
     geod = Geod(ellps="WGS84")
     max_r = []
 
-    for i, id in enumerate(obs_info["id"]):
+    for i, id in enumerate(rcv_info["id"]):
         # Derive distance to the 4 corners of the grid
         _, _, ranges = geod.inv(
-            lons1=[obs_info["lons"][i]] * 4,
-            lats1=[obs_info["lats"][i]] * 4,
+            lons1=[rcv_info["lons"][i]] * 4,
+            lats1=[rcv_info["lats"][i]] * 4,
             lons2=[
-                np.min(grid_info["grid_lons"]),
-                np.min(grid_info["grid_lons"]),
-                np.max(grid_info["grid_lons"]),
-                np.max(grid_info["grid_lons"]),
+                grid_info["min_lon"],
+                grid_info["min_lon"],
+                grid_info["max_lon"],
+                grid_info["max_lon"],
             ],
             lats2=[
-                np.min(grid_info["grid_lats"]),
-                np.max(grid_info["grid_lats"]),
-                np.max(grid_info["grid_lats"]),
-                np.min(grid_info["grid_lats"]),
+                grid_info["min_lat"],
+                grid_info["max_lat"],
+                grid_info["max_lat"],
+                grid_info["min_lat"],
             ],
         )
 
         max_r.append(np.max(ranges))
-    obs_info["max_kraken_range_m"] = np.round(max_r, -2)
+    rcv_info["max_kraken_range_m"] = np.round(max_r, -2)
 
 
 def load_rhumrum_obs_pos(obs_id):
@@ -812,7 +816,7 @@ def load_rhumrum_obs_pos(obs_id):
     return pos.loc[obs_id]
 
 
-def print_simulation_info(src_info, obs_info, grid_info):
+def print_simulation_info(src_info, rcv_info, grid_info):
     balises = "".join(["#"] * 80)
     balises_inter = "".join(["#"] * 40)
     header_msg = "Start simulation with the following parameters:"
@@ -843,20 +847,20 @@ def print_simulation_info(src_info, obs_info, grid_info):
         [""]
         + [
             f"Receiver {i}: (lon, lat) = ({lon}°, {lat}°)"
-            for i, lon, lat in zip(obs_info["id"], obs_info["lons"], obs_info["lats"])
+            for i, lon, lat in zip(rcv_info["id"], rcv_info["lons"], rcv_info["lats"])
         ]
     )
     max_range = "\n\t\t".join(
         [""]
         + [
             f"Receiver {i}: {r} m"
-            for i, r in zip(obs_info["id"], obs_info["max_kraken_range_m"])
+            for i, r in zip(rcv_info["id"], rcv_info["max_kraken_range_m"])
         ]
     )
     rcv_msg = [
         "Receivers properties:",
-        f"Number of receivers: {len(obs_info['id'])}",
-        f"Receivers IDs: {obs_info['id']}",
+        f"Number of receivers: {len(rcv_info['id'])}",
+        f"Receivers IDs: {rcv_info['id']}",
         f"Receivers positions: {rcv_pos}",
         f"Maximum range to be covered by KRAKEN: {max_range}",
     ]
@@ -889,56 +893,25 @@ def print_simulation_info(src_info, obs_info, grid_info):
     print(msg)
 
 
-def get_populated_path(grid_x, grid_y, kraken_env, src_signal_type):
-    area_label = "_".join(
-        [str(v) for v in [min(grid_x), max(grid_x), min(grid_y), max(grid_y)]]
+def get_populated_path(grid_info, kraken_env, src_signal_type):
+    boundaries = "_".join(
+        [
+            f"{v:.4f}"
+            for v in [
+                grid_info["min_lon"],
+                grid_info["max_lon"],
+                grid_info["min_lat"],
+                grid_info["max_lat"],
+            ]
+        ]
     )
     populated_path = os.path.join(
         VERLINDEN_POPULATED_FOLDER,
         kraken_env.filename,
-        f"populated_{area_label}_{src_signal_type}.nc",
+        f"populated_{boundaries}_{src_signal_type}.nc",
     )
     return populated_path
 
 
 if __name__ == "__main__":
-    v_ship = 50 / 3.6  # m/s
-    src_info = dict(
-        x_pos=[-1000, 2500],
-        y_pos=[3000, 2000],
-        v_src=v_ship,
-        nmax_ship=100,
-        src_signal_type="pulse_train",
-        z_src=5,
-        on_grid=False,
-    )
-
-    grid_info = dict(
-        Lx=5 * 1e3,
-        Ly=5 * 1e3,
-        dx=100,
-        dy=100,
-    )
-
-    obs_info = dict(
-        x_obs=[0, 1500],
-        y_obs=[0, 0],
-    )
-
-    snr = [-30, 0]
-    detection_metric = ["intercorr0"]
-    # detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
-
-    depth = 150  # Depth m
-    env_fname = "verlinden_1_test_case"
-    env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
-    verlinden_main(
-        env_fname=env_fname,
-        env_root=env_root,
-        src_info=src_info,
-        grid_info=grid_info,
-        obs_info=obs_info,
-        snr=snr,
-        detection_metric=detection_metric,
-        depth_max=depth,
-    )
+    pass

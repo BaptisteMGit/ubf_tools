@@ -64,8 +64,6 @@ def get_coords_along_profile(
         # Number of points in the profile
         n_points = int(distance / range_resolution) + 1
 
-        return profile_coords, r
-
     else:
         raise ValueError(
             "You must provide either an azimuth and a maximum range or a final point coordinates."

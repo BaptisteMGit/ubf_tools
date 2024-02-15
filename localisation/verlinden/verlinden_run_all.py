@@ -6,12 +6,13 @@ from localisation.verlinden.testcases.testcase_envs import (
     testcase1_2,
     testcase1_3,
     testcase1_4,
+    testcase2_1,
 )
 
 if __name__ == "__main__":
     # snr = [None]
     # detection_metric = ["intercorr0"]
-    testcase = testcase1_4
+    testcase = testcase2_1
     # snr = [-10, -5, 5, 10, None]
     snr = [-5, 10]
     # src_signal_type = ["pulse"]

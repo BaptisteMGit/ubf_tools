@@ -37,6 +37,7 @@ from localisation.verlinden.verlinden_utils import (
     init_library_src,
     init_library_dataset,
     populate_istropic_env,
+    populate_anistropic_env,
     check_waveguide_cutoff,
 )
 
@@ -50,6 +51,7 @@ def populate_grid(
     x_obs,
     y_obs,
     isotropic_env=True,
+    testcase=None,
 ):
     """
     Populate grid with received signal for isotropic environment. This function is used to generate the library of received signals for the Verlinden method.
@@ -73,6 +75,10 @@ def populate_grid(
     if isotropic_env:
         ds, rcv_signal_library, grid_pressure_field = populate_istropic_env(
             ds, library_src, kraken_env, kraken_flp, signal_library_dim
+        )
+    else:
+        ds, rcv_signal_library, grid_pressure_field = populate_anistropic_env(
+            ds, library_src, signal_library_dim, testcase
         )
 
     ds["rcv_signal_library"] = (
@@ -323,6 +329,7 @@ def verlinden_main(
                     obs_info["x_obs"],
                     obs_info["y_obs"],
                     isotropic_env=False,
+                    testcase=testcase,
                 )
 
             # 10/01/2024 No more 1 save/snr to save memory

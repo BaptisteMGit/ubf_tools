@@ -93,21 +93,25 @@ def populate_anistropic_env(ds, library_src, signal_library_dim, testcase):
             bar_format=BAR_FORMAT,
             desc="Scanning azimuths",
         ):
+
+            # TODO add params to load testcase :
             kraken_env, kraken_flp = testcase(
                 freq=[20],
                 min_waveguide_depth=100,
                 max_range_m=50 * 1e3,
-                azimuth=0,
+                azimuth=theta,
                 obs_lon=65.94,
                 obs_lat=-27.58,
             )
 
             kraken_env, kraken_flp = testcase(
                 freq=library_src.kraken_freq,
-                min_waveguide_depth=min_waveguide_depth,
                 max_range_m=max_range_m,
                 azimuth=theta,
-                obs_lon=65.94,
+                obs_lon=ds.lon_obs.sel(
+                    idx_obs=i_obs
+                ).values,  # TODO : those variables does not exist yet !!
+                obs_lat=ds.lat_obs.sel(idx_obs=i_obs).values,
             )
 
             # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)

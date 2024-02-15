@@ -229,17 +229,12 @@ def verlinden_main(
         min(grid_info["dx"], grid_info["dy"]) / src_info["speed"]
     )  # Minimum time spent by the source in a single grid box (s)
 
-    print(f"### Starting Verlinden simulation process ... ###")
-    print(
-        f"    -> Grid properties: dx = {grid_info['dx']} m, dy = {grid_info['dy']} m, dt = {dt} s"
-    )
-
     library_src = init_library_src(
         dt, min_waveguide_depth, sig_type=src_info["signal_type"]
     )
 
     t_ship = np.arange(0, src_info["max_nb_of_pos"] * dt, dt)
-    traj_ship = init_event_src_traj(src_info)
+    init_event_src_traj(src_info)
     # x_ship_t, y_ship_t, t_ship = init_event_src_traj(
     #     src_info["x_pos"][0],
     #     src_info["y_pos"][0],
@@ -257,7 +252,7 @@ def verlinden_main(
     # t_ship = t_ship[0::ship_step]
 
     # Define grid around the src positions
-    init_grid_around_event_src_traj(traj_ship, grid_info)
+    init_grid_around_event_src_traj(src_info, grid_info)
 
     # grid_x, grid_y = init_grid_around_event_src_traj(
     #     x_ship_t,
@@ -284,6 +279,7 @@ def verlinden_main(
     # )
 
     # Define environment
+    max_range_m = np.max(obs_info["max_kraken_range_m"])
     kraken_env, kraken_flp = testcase(
         freq=library_src.kraken_freq,
         min_waveguide_depth=min_waveguide_depth,
@@ -297,7 +293,7 @@ def verlinden_main(
         library_src,
         max_range_m,
         dt,
-        sig_type=src_info["src_signal_type"],
+        sig_type=src_info["signal_type"],
     )
 
     grid_pressure_field = None  # Init to None to avoid redundancy

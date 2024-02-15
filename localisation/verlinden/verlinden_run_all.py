@@ -25,11 +25,22 @@ if __name__ == "__main__":
     )
 
     depth = 150  # Depth m
-    v_ship = 50 / 3.6  # m/s
+    v_knots = 20  # 20 knots
+    v_ship = v_knots * 1852 / 3600  # m/s
+    # v_ship = 50 / 3.6  # m/s
 
-    x_pos_ship = [7000, 10000]
-    y_pos_ship = [50000, 35000]
+    # x_pos_ship = [7000, 10000]
+    # y_pos_ship = [50000, 35000]
+
+    initial_ship_pos = {
+        "lon": 65.44,
+        "lat": 27.08,
+        "crs": "WGS84",
+    }  # CRS might not be usefull directly but it is better to keep track of the coordinates system used
+    z_src = 5
     nmax_ship = 100
+    duration = 3600  # 1 hour
+    route_azimuth = 90  # East
 
     grid_info = dict(
         Lx=1 * 1e3,
@@ -42,15 +53,24 @@ if __name__ == "__main__":
     # y_pos = ([8000, 2500],)
     for src_stype in src_signal_type:
         # Define the parameters
-        src_info = dict(
-            x_pos=x_pos_ship,
-            y_pos=y_pos_ship,
-            v_src=v_ship,
-            nmax_ship=nmax_ship,
-            src_signal_type=src_stype,
-            z_src=5,
-            on_grid=False,
-        )
+        # src_info = dict(
+        #     x_pos=x_pos_ship,
+        #     y_pos=y_pos_ship,
+        #     v_src=v_ship,
+        #     nmax_ship=nmax_ship,
+        #     src_signal_type=src_stype,
+        #     z_src=5,
+        #     on_grid=False,
+        # )
+        src_info = {
+            "speed": v_ship,
+            "depth": z_src,
+            "duration": duration,
+            "signal_type": src_stype,
+            "max_nb_of_pos": nmax_ship,
+            "route_azimuth": route_azimuth,
+            "initial_pos": initial_ship_pos,
+        }
 
         # Run all the process
         simu_folder, testcase_name = verlinden_main(

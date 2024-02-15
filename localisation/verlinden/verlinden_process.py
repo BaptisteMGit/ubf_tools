@@ -224,7 +224,7 @@ def verlinden_main(
     detection_metric,
 ):
     dt = (
-        min(grid_info["dx"], grid_info["dy"]) / src_info["v_src"]
+        min(grid_info["dx"], grid_info["dy"]) / src_info["speed"]
     )  # Minimum time spent by the source in a single grid box (s)
 
     print(f"### Starting Verlinden simulation process ... ###")
@@ -233,24 +233,26 @@ def verlinden_main(
     )
 
     library_src = init_library_src(
-        dt, min_waveguide_depth, sig_type=src_info["src_signal_type"]
+        dt, min_waveguide_depth, sig_type=src_info["signal_type"]
     )
 
-    x_ship_t, y_ship_t, t_ship = init_event_src_traj(
-        src_info["x_pos"][0],
-        src_info["y_pos"][0],
-        src_info["x_pos"][1],
-        src_info["y_pos"][1],
-        src_info["v_src"],
-        dt,
-    )
+    t_ship = np.arange(0, src_info["nmax_ship"] * dt, dt)
+    traj_ship = init_event_src_traj(src_info)
+    # x_ship_t, y_ship_t, t_ship = init_event_src_traj(
+    #     src_info["x_pos"][0],
+    #     src_info["y_pos"][0],
+    #     src_info["x_pos"][1],
+    #     src_info["y_pos"][1],
+    #     src_info["v_src"],
+    #     dt,
+    # )
 
-    # Might be usefull to reduce the number of src positions to consider -> downsample
-    nmax_ship = min(src_info["nmax_ship"], len(x_ship_t))
-    ship_step = len(x_ship_t) // nmax_ship
-    x_ship_t = x_ship_t[0::ship_step]
-    y_ship_t = y_ship_t[0::ship_step]
-    t_ship = t_ship[0::ship_step]
+    # # Might be usefull to reduce the number of src positions to consider -> downsample
+    # nmax_ship = min(src_info["nmax_ship"], len(x_ship_t))
+    # ship_step = len(x_ship_t) // nmax_ship
+    # x_ship_t = x_ship_t[0::ship_step]
+    # y_ship_t = y_ship_t[0::ship_step]
+    # t_ship = t_ship[0::ship_step]
 
     # Define grid around the src positions
     grid_x, grid_y = init_grid_around_event_src_traj(

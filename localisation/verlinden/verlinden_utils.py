@@ -16,11 +16,12 @@
 import os
 import numpy as np
 import xarray as xr
-from pyproj import Geod
-import matplotlib.pyplot as plt
+import pandas as pd
 import scipy.signal as signal
+import matplotlib.pyplot as plt
 
 from tqdm import tqdm
+from pyproj import Geod
 
 from cst import BAR_FORMAT, C0
 from misc import mult_along_axis
@@ -699,8 +700,7 @@ def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
 
 
 def init_event_src_traj(src_info):
-
-    # Dtot = np.sqrt((x_begin - x_end) ** 2 + (y_begin - y_end) ** 2)
+    """Init the source trajectory given initial position, speed and duration"""
     Dtot = src_info["speed"] * src_info["duration"]
 
     # Define the geodetic object
@@ -722,14 +722,98 @@ def init_event_src_traj(src_info):
     return traj
 
 
-def init_grid_around_event_src_traj(x_event_t, y_event_t, Lx, Ly, dx, dy):
-    grid_x = np.arange(
-        -Lx / 2 + min(x_event_t), Lx / 2 + max(x_event_t), dx, dtype=np.float32
+def init_grid_around_event_src_traj(traj, grid_info):
+    min_lon, max_lon = np.min(traj.lons), np.max(traj.lons)
+    min_lat, max_lat = np.min(traj.lats), np.max(traj.lats)
+    mean_lon, mean_lat = np.mean(traj.lons), np.mean(traj.lats)
+
+    geod = Geod(ellps="WGS84")
+    min_lon_grid, _, _ = geod.fwd(
+        lons=min_lon,
+        lats=mean_lat,
+        az=270,
+        dist=grid_info["Lx"] / 2,
     )
-    grid_y = np.arange(
-        -Ly / 2 + min(y_event_t), Ly / 2 + max(y_event_t), dy, dtype=np.float32
+    max_lon_grid, _, _ = geod.fwd(
+        lons=max_lon,
+        lats=mean_lat,
+        az=90,
+        dist=grid_info["Lx"] / 2,
     )
-    return grid_x, grid_y
+    _, min_lat_grid, _ = geod.fwd(
+        lons=mean_lon,
+        lats=min_lat,
+        az=0,
+        dist=grid_info["Ly"] / 2,
+    )
+    _, max_lat_grid, _ = geod.fwd(
+        lons=mean_lon,
+        lats=max_lat,
+        az=180,
+        dist=grid_info["Ly"] / 2,
+    )
+
+    grid_lons = np.array(
+        geod.inv_intermediate(
+            lat1=mean_lat,
+            lon1=min_lon_grid,
+            lat2=mean_lat,
+            lon2=max_lon_grid,
+            del_s=grid_info["dx"],
+        ).lons
+    )
+    grid_lats = np.array(
+        geod.inv_intermediate(
+            lat1=min_lat_grid,
+            lon1=mean_lon,
+            lat2=max_lat_grid,
+            lon2=mean_lon,
+            del_s=grid_info["dy"],
+        ).lats
+    )
+    grid_info["grid_lons"] = grid_lons
+    grid_info["grid_lats"] = grid_lats
+
+
+def get_max_kraken_range(obs_info, grid_info):
+    geod = Geod(ellps="WGS84")
+    max_r = []
+
+    for i, id in enumerate(obs_info["id"]):
+        # Derive distance to the 4 corners of the grid
+        _, _, ranges = geod.inv(
+            lons1=[obs_info["lons"][i]] * 4,
+            lats1=[obs_info["lats"][i]] * 4,
+            lons2=[
+                np.min(grid_info["grid_lons"]),
+                np.min(grid_info["grid_lons"]),
+                np.max(grid_info["grid_lons"]),
+                np.max(grid_info["grid_lons"]),
+            ],
+            lats2=[
+                np.min(grid_info["grid_lats"]),
+                np.max(grid_info["grid_lats"]),
+                np.max(grid_info["grid_lats"]),
+                np.min(grid_info["grid_lats"]),
+            ],
+        )
+
+        max_r.append(np.max(ranges))
+    obs_info["max_kraken_range_m"] = np.round(max_r, -2)
+
+
+def load_rhumrum_obs_pos(obs_id):
+    pos = pd.read_csv(
+        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\rhum_rum_obs_pos.csv",
+        index_col="id",
+        delimiter=",",
+    )
+    return pos.loc[obs_id]
+
+def  print_simulation_info(src_info, obs_info, grid_info):
+    # TODO : print simulation info
+    src_msg = f"Source position : ({src_info['x_pos'][0]}, {src_info['y_pos'][0]}) -> ({src_info['x_pos'][1]}, {src_info['y_pos'][1]})"
+    
 
 
 def get_populated_path(grid_x, grid_y, kraken_env, src_signal_type):

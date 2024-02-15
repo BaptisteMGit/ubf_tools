@@ -1,6 +1,22 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   verlinden_utils.py
+@Time    :   2024/02/15 09:21:29
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   None
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
+
 import os
 import numpy as np
 import xarray as xr
+from pyproj import Geod
 import matplotlib.pyplot as plt
 import scipy.signal as signal
 
@@ -682,19 +698,28 @@ def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
     return library_src
 
 
-def init_event_src_traj(x_begin, y_begin, x_end, y_end, v, dt):
-    Dtot = np.sqrt((x_begin - x_end) ** 2 + (y_begin - y_end) ** 2)
+def init_event_src_traj(src_info):
 
-    vx = v * (x_end - x_begin) / Dtot
-    vy = v * (y_end - y_begin) / Dtot
+    # Dtot = np.sqrt((x_begin - x_end) ** 2 + (y_begin - y_end) ** 2)
+    Dtot = src_info["speed"] * src_info["duration"]
 
-    Ttot = Dtot / v + 3
-    t = np.arange(0, Ttot - dt, dt)
+    # Define the geodetic object
+    geod = Geod(ellps="WGS84")
+    # Determine longitude and latitude of terminus point
+    lat_i, lon_i = src_info["initial_pos"]["lat"], src_info["initial_pos"]["lon"]
+    lon_f, lat_f, back_az = geod.fwd(
+        lons=lon_i,
+        lats=lat_i,
+        az=src_info["route_azimuth"],
+        dist=Dtot,
+    )
 
-    x_t = x_begin + vx * t
-    y_t = y_begin + vy * t
+    # Determine coordinates along trajectory
+    traj = geod.inv_intermediate(
+        lat1=lat_i, lon1=lon_i, lat2=lat_f, lon2=lon_f, npts=src_info["max_nb_of_pos"]
+    )
 
-    return x_t, y_t, t
+    return traj
 
 
 def init_grid_around_event_src_traj(x_event_t, y_event_t, Lx, Ly, dx, dy):

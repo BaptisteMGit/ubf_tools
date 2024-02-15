@@ -54,7 +54,7 @@ def populate_istropic_env(ds, library_src, kraken_env, kraken_flp, signal_librar
         ds.idx_obs, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
     ):
 
-        rr_from_obs_flat = ds.r_from_obs.sel(idx_obs=i_obs).values.flatten()
+        rr_from_rcv_flat = ds.r_from_rcv.sel(idx_obs=i_obs).values.flatten()
 
         (
             t_obs,
@@ -65,7 +65,7 @@ def populate_istropic_env(ds, library_src, kraken_env, kraken_flp, signal_librar
             broadband_pressure_field=grid_pressure_field,
             frequencies=library_src.kraken_freq,
             source=library_src,
-            rcv_range=rr_from_obs_flat,
+            rcv_range=rr_from_rcv_flat,
             rcv_depth=[library_src.z_src],
             apply_delay=True,
             delay=delay_to_apply,
@@ -88,7 +88,7 @@ def populate_istropic_env(ds, library_src, kraken_env, kraken_flp, signal_librar
         rcv_signal_library[i_obs, :] = s_obs
 
         # Free memory
-        del s_obs, rr_from_obs_flat
+        del s_obs, rr_from_rcv_flat
 
     return ds, rcv_signal_library, grid_pressure_field
 
@@ -149,7 +149,7 @@ def populate_anistropic_env(ds, library_src, signal_library_dim, testcase):
             # Store received signal in dataset
             pass
 
-        rr_from_obs_flat = ds.r_from_obs.sel(idx_obs=i_obs).values.flatten()
+        rr_from_rcv_flat = ds.r_from_rcv.sel(idx_obs=i_obs).values.flatten()
 
         (
             t_obs,
@@ -160,7 +160,7 @@ def populate_anistropic_env(ds, library_src, signal_library_dim, testcase):
             broadband_pressure_field=grid_pressure_field,
             frequencies=library_src.kraken_freq,
             source=library_src,
-            rcv_range=rr_from_obs_flat,
+            rcv_range=rr_from_rcv_flat,
             rcv_depth=[library_src.z_src],
             apply_delay=True,
             delay=delay_to_apply,
@@ -170,7 +170,7 @@ def populate_anistropic_env(ds, library_src, signal_library_dim, testcase):
         # t_obs, s_obs, Pos = postprocess_received_signal(
         #     shd_fpath=kraken_env.shd_fpath,
         #     source=library_src,
-        #     rcv_range=rr_from_obs_flat,
+        #     rcv_range=rr_from_rcv_flat,
         #     rcv_depth=[z_src],
         #     apply_delay=True,
         #     delay=delay_to_apply,
@@ -191,40 +191,53 @@ def populate_anistropic_env(ds, library_src, signal_library_dim, testcase):
         rcv_signal_library[i_obs, :] = s_obs
 
         # Free memory
-        del s_obs, rr_from_obs_flat
+        del s_obs, rr_from_rcv_flat
 
     return ds, rcv_signal_library, grid_pressure_field
 
 
-def init_library_dataset(grid_x, grid_y, x_obs, y_obs, isotropic_env=True):
+def get_range_from_rcv(grid_info, rcv_info):
+    llon, llat = np.meshgrid(grid_info["lons"], grid_info["lats"])
+    s = llon.shape
+    geod = Geod(ellps="WGS84")
+
+    rr_from_rcv = np.empty((len(rcv_info["id"]), s[0], s[1]))
+    for i, id in enumerate(rcv_info["id"]):
+        # Derive distance from rcv n°i to all grid points
+        _, _, ranges = geod.inv(
+            lons1=np.ones(s) * rcv_info["lons"][i],
+            lats1=np.ones(s) * rcv_info["lats"][i],
+            lons2=llon,
+            lats2=llat,
+        )
+        rr_from_rcv[i, :, :] = ranges
+
+    return rr_from_rcv
+
+
+def init_library_dataset(grid_info, rcv_info, isotropic_env=True):
 
     # Init Dataset
-    n_obs = len(x_obs)
-    xx, yy = np.meshgrid(grid_x, grid_y, sparse=True)
+    n_obs = len(rcv_info["id"])
 
     # Compute range from each receiver
-    rr_obs = np.array(
-        [
-            np.sqrt((xx - x_obs[i_obs]) ** 2 + (yy - y_obs[i_obs]) ** 2)
-            for i_obs in range(n_obs)
-        ]
-    )
+    rr_rcv = get_range_from_rcv(grid_info, rcv_info)
 
     ds = xr.Dataset(
         data_vars=dict(
-            x_obs=(["idx_obs"], x_obs),
-            y_obs=(["idx_obs"], y_obs),
-            r_from_obs=(["idx_obs", "y", "x"], rr_obs),
+            lon_rcv=(["idx_obs"], rcv_info["lons"]),
+            lat_rcv=(["idx_obs"], rcv_info["lats"]),
+            r_from_rcv=(["idx_obs", "lat", "lon"], rr_rcv),
         ),
         coords=dict(
-            x=grid_x,
-            y=grid_y,
+            lon=grid_info["lons"],
+            lat=grid_info["lats"],
             idx_obs=np.arange(n_obs),
         ),
         attrs=dict(
             title="Verlinden simulation with simple environment",
-            dx=np.diff(grid_x)[0],
-            dy=np.diff(grid_y)[0],
+            dx=grid_info["dx"],
+            dy=grid_info["dy"],
         ),
     )
 
@@ -236,7 +249,7 @@ def init_library_dataset(grid_x, grid_y, x_obs, y_obs, isotropic_env=True):
         ds["theta_obs"] = (["idx_obs", "y", "x"], theta_obs)
 
         # Build list of angles to be used in kraken
-        dmax = ds.r_from_obs.max(dim=["y", "x", "idx_obs"]).round(0).values
+        dmax = ds.r_from_rcv.max(dim=["y", "x", "idx_obs"]).round(0).values
         delta = min(ds.dx, ds.dy)
         dtheta_th = np.arctan(delta / dmax)
         list_theta_th = np.arange(ds.theta_obs.min(), ds.theta_obs.max(), dtheta_th)
@@ -261,7 +274,7 @@ def init_library_dataset(grid_x, grid_y, x_obs, y_obs, isotropic_env=True):
             "y_obs",
             "x",
             "y",
-            "r_from_obs",
+            "r_from_rcv",
         ],
         "": ["idx_obs"],
     }
@@ -271,13 +284,13 @@ def init_library_dataset(grid_x, grid_y, x_obs, y_obs, isotropic_env=True):
 
     ds["x_obs"].attrs["long_name"] = "x_obs"
     ds["y_obs"].attrs["long_name"] = "y_obs"
-    ds["r_from_obs"].attrs["long_name"] = "Range from receiver"
+    ds["r_from_rcv"].attrs["long_name"] = "Range from receiver"
     ds["x"].attrs["long_name"] = "x"
     ds["y"].attrs["long_name"] = "y"
     ds["idx_obs"].attrs["long_name"] = "Receiver index"
 
     # TODO : need to be changed in case of multiple receivers couples
-    ds["delay_obs"] = ds.r_from_obs / C0
+    ds["delay_obs"] = ds.r_from_rcv / C0
 
     # Build OBS pairs
     obs_pairs = []
@@ -772,8 +785,8 @@ def init_grid_around_event_src_traj(src_info, grid_info):
             del_s=grid_info["dy"],
         ).lats
     )
-    grid_info["grid_lons"] = grid_lons
-    grid_info["grid_lats"] = grid_lats
+    grid_info["lons"] = grid_lons
+    grid_info["lats"] = grid_lats
     grid_info["min_lat"] = np.min(grid_lats)
     grid_info["max_lat"] = np.max(grid_lats)
     grid_info["min_lon"] = np.min(grid_lons)
@@ -873,7 +886,7 @@ def print_simulation_info(src_info, rcv_info, grid_info):
     grid_msg = [
         "Grid properties:",
         f"Grid resolution: {grid_res}",
-        f"Number of grid points: {len(grid_info['grid_lons']) * len(grid_info['grid_lats'])}",
+        f"Number of grid points: {len(grid_info['lons']) * len(grid_info['lats'])}",
     ]
     grid_msg = "\n\t".join(grid_msg)
 

@@ -60,10 +60,8 @@ def populate_grid(
 
     # Init Dataset
     ds = init_library_dataset(
-        grid_x=grid_x,
-        grid_y=grid_y,
-        x_obs=x_obs,
-        y_obs=y_obs,
+        grid_info,
+        rcv_info,
         isotropic_env=isotropic_env,
     )
     # Free memory

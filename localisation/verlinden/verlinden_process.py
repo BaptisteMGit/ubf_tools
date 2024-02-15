@@ -48,10 +48,8 @@ def populate_grid(
     library_src,
     kraken_env,
     kraken_flp,
-    grid_x,
-    grid_y,
-    x_obs,
-    y_obs,
+    grid_info,
+    rcv_info,
     isotropic_env=True,
     testcase=None,
 ):
@@ -221,7 +219,7 @@ def verlinden_main(
     min_waveguide_depth,
     src_info,
     grid_info,
-    obs_info,
+    rcv_info,
     snr,
     detection_metric,
 ):
@@ -264,10 +262,10 @@ def verlinden_main(
     # )
 
     # Derive max distance to be used in kraken for each receiver
-    get_max_kraken_range(obs_info, grid_info)
+    get_max_kraken_range(rcv_info, grid_info)
 
     # Display usefull information
-    print_simulation_info(src_info, obs_info, grid_info)
+    print_simulation_info(src_info, rcv_info, grid_info)
 
     # print(
     #     f"    -> Source (event) properties:\n "
@@ -279,7 +277,7 @@ def verlinden_main(
     # )
 
     # Define environment
-    max_range_m = np.max(obs_info["max_kraken_range_m"])
+    max_range_m = np.max(rcv_info["max_kraken_range_m"])
     kraken_env, kraken_flp = testcase(
         freq=library_src.kraken_freq,
         min_waveguide_depth=min_waveguide_depth,
@@ -307,7 +305,7 @@ def verlinden_main(
         print("## " + snr_msg + " ##")
 
         populated_path = get_populated_path(
-            grid_x, grid_y, kraken_env, src_info["src_signal_type"]
+            grid_info, kraken_env, src_info["signal_type"]
         )
 
         event_in_dataset = False
@@ -327,10 +325,8 @@ def verlinden_main(
                     library_src,
                     kraken_env,
                     kraken_flp,
-                    grid_x,
-                    grid_y,
-                    obs_info["x_obs"],
-                    obs_info["y_obs"],
+                    grid_info,
+                    rcv_info,
                     isotropic_env=False,
                     testcase=testcase,
                 )
@@ -434,7 +430,7 @@ if __name__ == "__main__":
         env_root=env_root,
         src_info=src_info,
         grid_info=grid_info,
-        obs_info=obs_info,
+        rcv_info=obs_info,
         snr=snr,
         detection_metric=detection_metric,
         depth_max=depth,

@@ -1,6 +1,7 @@
-from localisation.verlinden.verlinden_process import verlinden_main
+from verlinden_process import verlinden_main
 from verlinden_analysis import analysis_main
-from localisation.verlinden.testcases.testcase_envs import (
+from verlinden_utils import load_rhumrum_obs_pos
+from testcases.testcase_envs import (
     testcase1_0,
     testcase1_1,
     testcase1_2,
@@ -19,10 +20,16 @@ if __name__ == "__main__":
     src_signal_type = ["ship"]
     detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
 
-    obs_info = dict(
-        x_obs=[0, 1500],
-        y_obs=[0, 0],
-    )
+    obs_info = {
+        "id": ["RR48", "RR45"],
+        "lons": [],
+        "lats": [],
+    }
+
+    for obs_id in obs_info["id"]:
+        pos_obs = load_rhumrum_obs_pos(obs_id)
+        obs_info["lons"].append(pos_obs.lon)
+        obs_info["lats"].append(pos_obs.lat)
 
     depth = 150  # Depth m
     v_knots = 20  # 20 knots
@@ -34,13 +41,13 @@ if __name__ == "__main__":
 
     initial_ship_pos = {
         "lon": 65.44,
-        "lat": 27.08,
+        "lat": -27.08,
         "crs": "WGS84",
     }  # CRS might not be usefull directly but it is better to keep track of the coordinates system used
     z_src = 5
     nmax_ship = 100
     duration = 3600  # 1 hour
-    route_azimuth = 90  # East
+    route_azimuth = 120  # East
 
     grid_info = dict(
         Lx=1 * 1e3,

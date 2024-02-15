@@ -39,6 +39,8 @@ from localisation.verlinden.verlinden_utils import (
     populate_istropic_env,
     populate_anistropic_env,
     check_waveguide_cutoff,
+    get_max_kraken_range,
+    print_simulation_info,
 )
 
 
@@ -236,7 +238,7 @@ def verlinden_main(
         dt, min_waveguide_depth, sig_type=src_info["signal_type"]
     )
 
-    t_ship = np.arange(0, src_info["nmax_ship"] * dt, dt)
+    t_ship = np.arange(0, src_info["max_nb_of_pos"] * dt, dt)
     traj_ship = init_event_src_traj(src_info)
     # x_ship_t, y_ship_t, t_ship = init_event_src_traj(
     #     src_info["x_pos"][0],
@@ -255,28 +257,31 @@ def verlinden_main(
     # t_ship = t_ship[0::ship_step]
 
     # Define grid around the src positions
-    grid_x, grid_y = init_grid_around_event_src_traj(
-        x_ship_t,
-        y_ship_t,
-        grid_info["Lx"],
-        grid_info["Ly"],
-        grid_info["dx"],
-        grid_info["dy"],
-    )
+    init_grid_around_event_src_traj(traj_ship, grid_info)
 
-    # Derive max distance to be used in kraken = grid diagonal
-    max_range_m = np.round(
-        np.sqrt((grid_x[-1] - grid_x[0]) ** 2 + (grid_y[-1] - grid_y[0]) ** 2), -2
-    )
+    # grid_x, grid_y = init_grid_around_event_src_traj(
+    #     x_ship_t,
+    #     y_ship_t,
+    #     grid_info["Lx"],
+    #     grid_info["Ly"],
+    #     grid_info["dx"],
+    #     grid_info["dy"],
+    # )
 
-    print(
-        f"    -> Source (event) properties:\n "
-        f"\tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n "
-        f"\tLast position = {src_info['x_pos'][1], src_info['y_pos'][1]}\n "
-        f"\tNumber of positions = {nmax_ship}\n "
-        f"\tSource speed = {src_info['v_src']:.2f}m.s-1\n "
-        f"\tSignal type = {src_info['src_signal_type']}"
-    )
+    # Derive max distance to be used in kraken for each receiver
+    get_max_kraken_range(obs_info, grid_info)
+
+    # Display usefull information
+    print_simulation_info(src_info, obs_info, grid_info)
+
+    # print(
+    #     f"    -> Source (event) properties:\n "
+    #     f"\tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n "
+    #     f"\tLast position = {src_info['x_pos'][1], src_info['y_pos'][1]}\n "
+    #     f"\tNumber of positions = {nmax_ship}\n "
+    #     f"\tSource speed = {src_info['v_src']:.2f}m.s-1\n "
+    #     f"\tSignal type = {src_info['src_signal_type']}"
+    # )
 
     # Define environment
     kraken_env, kraken_flp = testcase(

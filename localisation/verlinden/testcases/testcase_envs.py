@@ -497,11 +497,11 @@ def testcase2_common(freq, bathy, title, testcase_name="testcase1"):
 
 def testcase2_1(
     freq=[20],
-    min_waveguide_depth=100,
     max_range_m=50 * 1e3,
     azimuth=0,
     obs_lon=65.94,
     obs_lat=-27.58,
+    min_waveguide_depth=None,
 ):
     """
     Test case 2.1: Anisotropic environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile

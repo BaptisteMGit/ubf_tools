@@ -113,7 +113,7 @@ def plot_ambiguity_surface_dist(ds, img_basepath):
     plt.xlabel("Ambiguity surface [dB]", fontsize=LABEL_FONTSIZE)
     plt.yticks(fontsize=TICKS_FONTSIZE)
     plt.xticks(fontsize=TICKS_FONTSIZE)
-    plt.legend(loc="upper right")
+    plt.legend(loc="best")
     plt.savefig(img_basepath + f"ambiguity_surface_dist.png")
     plt.close()
 
@@ -412,7 +412,7 @@ def plot_ship_trajectory(ds, img_basepath):
     plt.xlabel("x [m]", fontsize=LABEL_FONTSIZE)
     plt.ylabel("y [m]", fontsize=LABEL_FONTSIZE)
     plt.grid(True)
-    plt.legend(loc="upper right", fontsize=LEGEND_FONTSIZE)
+    plt.legend(loc="best", fontsize=LEGEND_FONTSIZE)
     plt.tight_layout()
     plt.savefig(img_basepath + f"estimated_pos.png")
     plt.close()
@@ -735,9 +735,9 @@ def analysis_main(
 if __name__ == "__main__":
     # snr = [-30, -20, -10, -5, -1, 1, 5, 10, 20]
     # snr = [-30, -20, -15, -10, -5, -1, 1, 5, 10, 20]
-    snr = [-10, -5, 0, 5, 10, None]
+    snr = [-5, 10]
     src_signal_type = ["ship"]
-    testcase_name = "testcase1_3"
+    testcase_name = "testcase1_4"
 
     detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
 
@@ -751,7 +751,7 @@ if __name__ == "__main__":
     simulation_info = {
         "simulation_folder": os.path.join(simu_root, testcase_name),
         "src_pos": "not_on_grid",
-        "n_instant_to_plot": 10,
+        "n_instant_to_plot": 20,
         "n_rcv_signals_to_plot": 3,
         "src_type": "ship",
     }
@@ -775,7 +775,7 @@ if __name__ == "__main__":
         "plot_one_tl_profile": False,
         "plot_ambiguity_surface_dist": False,
         "plot_received_signal": False,
-        "plot_ambiguity_surface": False,
+        "plot_ambiguity_surface": True,
         "plot_ship_trajectory": False,
         "plot_pos_error": False,
         "plot_correlation": False,

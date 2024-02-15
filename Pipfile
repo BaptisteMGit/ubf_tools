@@ -12,6 +12,8 @@ tqdm = "*"
 arlpy = "*"
 moviepy = "*"
 obspy = "*"
+netcdf4 = "*"
+pyproj = "*"
 
 [dev-packages]
 ipykernel = "*"

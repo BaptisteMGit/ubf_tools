@@ -224,55 +224,23 @@ def verlinden_main(
         min(grid_info["dx"], grid_info["dy"]) / src_info["speed"]
     )  # Minimum time spent by the source in a single grid box (s)
 
+    # Initialize source
     library_src = init_library_src(
         dt, min_waveguide_depth, sig_type=src_info["signal_type"]
     )
-
+    # Define ship trajectory
     t_ship = np.arange(0, src_info["max_nb_of_pos"] * dt, dt)
     init_event_src_traj(src_info)
-    # x_ship_t, y_ship_t, t_ship = init_event_src_traj(
-    #     src_info["x_pos"][0],
-    #     src_info["y_pos"][0],
-    #     src_info["x_pos"][1],
-    #     src_info["y_pos"][1],
-    #     src_info["v_src"],
-    #     dt,
-    # )
-
-    # # Might be usefull to reduce the number of src positions to consider -> downsample
-    # nmax_ship = min(src_info["nmax_ship"], len(x_ship_t))
-    # ship_step = len(x_ship_t) // nmax_ship
-    # x_ship_t = x_ship_t[0::ship_step]
-    # y_ship_t = y_ship_t[0::ship_step]
-    # t_ship = t_ship[0::ship_step]
 
     # Define grid around the src positions
     init_grid_around_event_src_traj(src_info, grid_info)
     src_info["dt"] = dt
-
-    # grid_x, grid_y = init_grid_around_event_src_traj(
-    #     x_ship_t,
-    #     y_ship_t,
-    #     grid_info["Lx"],
-    #     grid_info["Ly"],
-    #     grid_info["dx"],
-    #     grid_info["dy"],
-    # )
 
     # Derive max distance to be used in kraken for each receiver
     get_max_kraken_range(rcv_info, grid_info)
 
     # Display usefull information
     print_simulation_info(src_info, rcv_info, grid_info)
-
-    # print(
-    #     f"    -> Source (event) properties:\n "
-    #     f"\tFirst position = {src_info['x_pos'][0], src_info['y_pos'][0]}\n "
-    #     f"\tLast position = {src_info['x_pos'][1], src_info['y_pos'][1]}\n "
-    #     f"\tNumber of positions = {nmax_ship}\n "
-    #     f"\tSource speed = {src_info['v_src']:.2f}m.s-1\n "
-    #     f"\tSignal type = {src_info['src_signal_type']}"
-    # )
 
     # Define environment
     max_range_m = np.max(rcv_info["max_kraken_range_m"])

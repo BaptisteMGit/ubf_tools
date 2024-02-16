@@ -534,14 +534,14 @@ def testcase2_1(
         testcase_name=name,
     )
 
-    # Plot medium properties
-    env.medium.plot_medium()
-    plt.savefig(os.path.join(TC_WORKING_DIR, name, "medium_properties.png"))
-    plt.close()
+    # # Plot medium properties
+    # env.medium.plot_medium()
+    # plt.savefig(os.path.join(TC_WORKING_DIR, name, "medium_properties.png"))
+    # plt.close()
 
-    env.bottom_hs.plot_bottom_halfspace()
-    plt.savefig(os.path.join(TC_WORKING_DIR, name, "bottom_properties.png"))
-    plt.close()
+    # env.bottom_hs.plot_bottom_halfspace()
+    # plt.savefig(os.path.join(TC_WORKING_DIR, name, "bottom_properties.png"))
+    # plt.close()
 
     return env, flp
 

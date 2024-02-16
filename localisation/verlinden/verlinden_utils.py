@@ -14,6 +14,7 @@
 # ======================================================================================================================
 
 import os
+import time
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -44,21 +45,21 @@ from localisation.verlinden.verlinden_path import (
 
 def populate_istropic_env(ds, library_src, kraken_env, kraken_flp, signal_library_dim):
 
-    delay_to_apply = ds.delay_obs.min(dim="idx_obs").values.flatten()
+    delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values.flatten()
 
     # Run KRAKEN
     grid_pressure_field = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
 
     # Loop over receivers
-    for i_obs in tqdm(
-        ds.idx_obs, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
+    for i_rcv in tqdm(
+        ds.idx_rcv, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
     ):
 
-        rr_from_rcv_flat = ds.r_from_rcv.sel(idx_obs=i_obs).values.flatten()
+        rr_from_rcv_flat = ds.r_from_rcv.sel(idx_rcv=i_rcv).values.flatten()
 
         (
-            t_obs,
-            s_obs,
+            t_rcv,
+            s_rcv,
             Pos,
         ) = postprocess_received_signal_from_broadband_pressure_field(
             shd_fpath=kraken_env.shd_fpath,
@@ -72,131 +73,115 @@ def populate_istropic_env(ds, library_src, kraken_env, kraken_flp, signal_librar
             minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
         )
 
-        if i_obs == 0:
-            ds["library_signal_time"] = t_obs.astype(np.float32)
+        if i_rcv == 0:
+            ds["library_signal_time"] = t_rcv.astype(np.float32)
             ds["library_signal_time"].attrs["units"] = "s"
             ds["library_signal_time"].attrs["long_name"] = "Time"
 
             rcv_signal_library = np.empty(tuple(ds.dims[d] for d in signal_library_dim))
 
         # Time domain signal
-        s_obs = s_obs[:, 0, :].T
-        s_obs = s_obs.reshape(
-            ds.dims["y"], ds.dims["x"], ds.dims["library_signal_time"]
+        s_rcv = s_rcv[:, 0, :].T
+        s_rcv = s_rcv.reshape(
+            ds.dims["lat"], ds.dims["lon"], ds.dims["library_signal_time"]
         )
 
-        rcv_signal_library[i_obs, :] = s_obs
+        rcv_signal_library[i_rcv, :] = s_rcv
 
         # Free memory
-        del s_obs, rr_from_rcv_flat
+        del s_rcv, rr_from_rcv_flat
 
     return ds, rcv_signal_library, grid_pressure_field
 
 
-def populate_anistropic_env(ds, library_src, signal_library_dim, testcase):
+def populate_anistropic_env(
+    ds, library_src, signal_library_dim, testcase, rcv_info, src_info
+):
 
-    # delay_to_apply = ds.delay_obs.min(dim="idx_obs").values.flatten()
+    # delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values.flatten()
 
     # # Run KRAKEN
     # grid_pressure_field = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
 
     # Loop over receivers
-    for i_obs in tqdm(
-        ds.idx_obs, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
+    for i_rcv in tqdm(
+        ds.idx_rcv.values,
+        bar_format=BAR_FORMAT,
+        desc="Populate grid with received signal",
     ):
         # Loop over possible azimuths
-        for i_theta, theta in tqdm(
-            enumerate(np.unique(ds.theta_propa.values)),
+        for i_az, az in tqdm(
+            enumerate(np.unique(ds.az_propa.values)),
             bar_format=BAR_FORMAT,
             desc="Scanning azimuths",
         ):
 
-            # TODO add params to load testcase :
-            kraken_env, kraken_flp = testcase(
-                freq=[20],
-                min_waveguide_depth=100,
-                max_range_m=50 * 1e3,
-                azimuth=theta,
-                obs_lon=65.94,
-                obs_lat=-27.58,
-            )
-
+            # Get environement for selected angle
             kraken_env, kraken_flp = testcase(
                 freq=library_src.kraken_freq,
-                max_range_m=max_range_m,
-                azimuth=theta,
-                obs_lon=ds.lon_obs.sel(
-                    idx_obs=i_obs
-                ).values,  # TODO : those variables does not exist yet !!
-                obs_lat=ds.lat_obs.sel(idx_obs=i_obs).values,
+                max_range_m=rcv_info["max_kraken_range_m"][i_rcv],
+                azimuth=az,
+                obs_lon=rcv_info["lons"][i_rcv],
+                obs_lat=rcv_info["lats"][i_rcv],
             )
 
             # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
             kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
                 testcase,
                 kraken_env,
+                kraken_flp,
                 library_src,
-                max_range_m,
-                dt,
-                sig_type=src_info["src_signal_type"],
+                max_range_m=rcv_info["max_kraken_range_m"],
+                dt=src_info["dt"],
+                sig_type=src_info["signal_type"],
+            )
+
+            # Run kraken for selected angle
+            grid_pressure_field = runkraken(
+                kraken_env, kraken_flp, library_src.kraken_freq
+            )
+
+            # Get receiver ranges for selected angle
+            idx_az = ds.az_propa.sel(idx_rcv=i_rcv).values == az
+            rr_from_rcv_az = ds.r_from_rcv.sel(idx_rcv=i_rcv).values[idx_az].flatten()
+            # Get received signal for selected angle
+            delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values[idx_az].flatten()
+
+            (
+                t_rcv,
+                s_rcv,
+                Pos,
+            ) = postprocess_received_signal_from_broadband_pressure_field(
+                shd_fpath=kraken_env.shd_fpath,
+                broadband_pressure_field=grid_pressure_field,
+                frequencies=library_src.kraken_freq,
+                source=library_src,
+                rcv_range=rr_from_rcv_az,
+                rcv_depth=[library_src.z_src],
+                apply_delay=True,
+                delay=delay_to_apply,
+                minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
             )
 
             # TODO
-            # Get environement for selected angle
-            # Run kraken for selected angle
-            # Get receiver ranges for selected angle
-            # Get received signal for selected angle
             # Store received signal in dataset
-            pass
+            if i_rcv == 0:
+                ds["library_signal_time"] = t_rcv.astype(np.float32)
+                ds["library_signal_time"].attrs["units"] = "s"
+                ds["library_signal_time"].attrs["long_name"] = "Time"
+                rcv_signal_library = np.empty(
+                    tuple(ds.dims[d] for d in signal_library_dim)
+                )
 
-        rr_from_rcv_flat = ds.r_from_rcv.sel(idx_obs=i_obs).values.flatten()
-
-        (
-            t_obs,
-            s_obs,
-            Pos,
-        ) = postprocess_received_signal_from_broadband_pressure_field(
-            shd_fpath=kraken_env.shd_fpath,
-            broadband_pressure_field=grid_pressure_field,
-            frequencies=library_src.kraken_freq,
-            source=library_src,
-            rcv_range=rr_from_rcv_flat,
-            rcv_depth=[library_src.z_src],
-            apply_delay=True,
-            delay=delay_to_apply,
-            minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
-        )
-
-        # t_obs, s_obs, Pos = postprocess_received_signal(
-        #     shd_fpath=kraken_env.shd_fpath,
-        #     source=library_src,
-        #     rcv_range=rr_from_rcv_flat,
-        #     rcv_depth=[z_src],
-        #     apply_delay=True,
-        #     delay=delay_to_apply,
-        # )
-        if i_obs == 0:
-            ds["library_signal_time"] = t_obs.astype(np.float32)
-            ds["library_signal_time"].attrs["units"] = "s"
-            ds["library_signal_time"].attrs["long_name"] = "Time"
-
-            rcv_signal_library = np.empty(tuple(ds.dims[d] for d in signal_library_dim))
-
-        # Time domain signal
-        s_obs = s_obs[:, 0, :].T
-        s_obs = s_obs.reshape(
-            ds.dims["y"], ds.dims["x"], ds.dims["library_signal_time"]
-        )
-
-        rcv_signal_library[i_obs, :] = s_obs
-
-        # Free memory
-        del s_obs, rr_from_rcv_flat
+            # Time domain signal
+            s_rcv = s_rcv[:, 0, :].T
+            rcv_signal_library[i_rcv, idx_az, :] = s_rcv
 
     return ds, rcv_signal_library, grid_pressure_field
 
 
 def get_range_from_rcv(grid_info, rcv_info):
+    """Compute range between grid points and rcvs. Equivalent to get_azimuth_rcv but for ranges."""
     llon, llat = np.meshgrid(grid_info["lons"], grid_info["lats"])
     s = llon.shape
     geod = Geod(ellps="WGS84")
@@ -215,24 +200,46 @@ def get_range_from_rcv(grid_info, rcv_info):
     return rr_from_rcv
 
 
+def get_azimuth_rcv(grid_info, rcv_info):
+    """Compute azimuth between grid points and rcvs. Equivalent to get_range_from_rcv but for azimuths."""
+
+    llon, llat = np.meshgrid(grid_info["lons"], grid_info["lats"])
+    s = llon.shape
+
+    geod = Geod(ellps="WGS84")
+    az_rcv = np.empty((len(rcv_info["id"]), s[0], s[1]))
+
+    for i, id in enumerate(rcv_info["id"]):
+        # Derive distance from rcv n°i to all grid points
+        fwd_az, _, _ = geod.inv(
+            lons1=np.ones(s) * rcv_info["lons"][i],
+            lats1=np.ones(s) * rcv_info["lats"][i],
+            lons2=llon,
+            lats2=llat,
+        )
+        az_rcv[i, :, :] = fwd_az
+
+    return az_rcv
+
+
 def init_library_dataset(grid_info, rcv_info, isotropic_env=True):
 
     # Init Dataset
-    n_obs = len(rcv_info["id"])
+    n_rcv = len(rcv_info["id"])
 
     # Compute range from each receiver
     rr_rcv = get_range_from_rcv(grid_info, rcv_info)
 
     ds = xr.Dataset(
         data_vars=dict(
-            lon_rcv=(["idx_obs"], rcv_info["lons"]),
-            lat_rcv=(["idx_obs"], rcv_info["lats"]),
-            r_from_rcv=(["idx_obs", "lat", "lon"], rr_rcv),
+            lon_rcv=(["idx_rcv"], rcv_info["lons"]),
+            lat_rcv=(["idx_rcv"], rcv_info["lats"]),
+            r_from_rcv=(["idx_rcv", "lat", "lon"], rr_rcv),
         ),
         coords=dict(
             lon=grid_info["lons"],
             lat=grid_info["lats"],
-            idx_obs=np.arange(n_obs),
+            idx_rcv=np.arange(n_rcv),
         ),
         attrs=dict(
             title="Verlinden simulation with simple environment",
@@ -242,76 +249,80 @@ def init_library_dataset(grid_info, rcv_info, isotropic_env=True):
     )
 
     if not isotropic_env:
-        # Compute angles relatives to each receiver
-        theta_obs = np.array(
-            [np.arctan2(yy - y_obs[i_obs], xx - x_obs[i_obs]) for i_obs in range(n_obs)]
-        )
-        ds["theta_obs"] = (["idx_obs", "y", "x"], theta_obs)
+        # Compute azimuths
+        az_rcv = get_azimuth_rcv(grid_info, rcv_info)
+        ds["az_rcv"] = (["idx_rcv", "lat", "lon"], az_rcv)
 
         # Build list of angles to be used in kraken
-        dmax = ds.r_from_rcv.max(dim=["y", "x", "idx_obs"]).round(0).values
+        dmax = ds.r_from_rcv.min(dim=["lat", "lon", "idx_rcv"]).round(0).values
         delta = min(ds.dx, ds.dy)
-        dtheta_th = np.arctan(delta / dmax)
-        list_theta_th = np.arange(ds.theta_obs.min(), ds.theta_obs.max(), dtheta_th)
+        d_az = np.arctan(delta / dmax) * 180 / np.pi
+        list_az_th = np.arange(ds.az_rcv.min(), ds.az_rcv.max(), d_az)
 
-        theta_propa = np.empty(ds.theta_obs.shape)
-        for i_obs in range(n_obs):
-            for theta in list_theta_th:
+        az_propa = np.empty(ds.az_rcv.shape)
+        # t0 = time.time()
+        for i_rcv in range(n_rcv):
+            for az in list_az_th:
                 closest_points_idx = (
-                    np.abs(ds.theta_obs.sel(idx_obs=i_obs) - theta) < dtheta_th / 2
+                    np.abs(ds.az_rcv.sel(idx_rcv=i_rcv) - az) <= d_az / 2
                 )
-                theta_propa[i_obs, closest_points_idx] = theta
+                az_propa[i_rcv, closest_points_idx] = az
+        # print(f"Elapsed time : {time.time() - t0}")
 
-        # Add theta_propa to dataset
-        ds["theta_propa"] = (["idx_obs", "y", "x"], theta_propa)
-        # Remove theta_obs
-        ds = ds.drop_vars("theta_obs")
+        # Add az_propa to dataset
+        ds["az_propa"] = (["idx_rcv", "lat", "lon"], az_propa)
+        # plot_angle_repartition(ds, grid_info)
+
+        # Remove az_rcv
+        ds = ds.drop_vars("az_rcv")
 
     # Set attributes
     var_unit_mapping = {
-        "m": [
-            "x_obs",
-            "y_obs",
-            "x",
-            "y",
-            "r_from_rcv",
+        "°": [
+            "lon_rcv",
+            "lat_rcv",
+            "lon",
+            "lat",
         ],
-        "": ["idx_obs"],
+        "m": ["r_from_rcv"],
+        "": ["idx_rcv"],
     }
     for unit in var_unit_mapping.keys():
         for var in var_unit_mapping[unit]:
             ds[var].attrs["units"] = unit
 
-    ds["x_obs"].attrs["long_name"] = "x_obs"
-    ds["y_obs"].attrs["long_name"] = "y_obs"
+    ds["lon_rcv"].attrs["long_name"] = "Receiver longitude"
+    ds["lat_rcv"].attrs["long_name"] = "Receiver latitude"
     ds["r_from_rcv"].attrs["long_name"] = "Range from receiver"
-    ds["x"].attrs["long_name"] = "x"
-    ds["y"].attrs["long_name"] = "y"
-    ds["idx_obs"].attrs["long_name"] = "Receiver index"
+    ds["lon"].attrs["long_name"] = "Longitude"
+    ds["lat"].attrs["long_name"] = "Latitude"
+    ds["idx_rcv"].attrs["long_name"] = "Receiver index"
 
     # TODO : need to be changed in case of multiple receivers couples
-    ds["delay_obs"] = ds.r_from_rcv / C0
+    ds["delay_rcv"] = ds.r_from_rcv / C0
 
     # Build OBS pairs
     obs_pairs = []
-    for i in ds.idx_obs.values:
-        for j in range(i + 1, ds.idx_obs.values[-1] + 1):
+    for i in ds.idx_rcv.values:
+        for j in range(i + 1, ds.idx_rcv.values[-1] + 1):
             obs_pairs.append((i, j))
-    ds.coords["idx_obs_pairs"] = np.arange(len(obs_pairs))
-    ds.coords["idx_obs_in_pair"] = np.arange(2)
-    ds["obs_pairs"] = (["idx_obs_pairs", "idx_obs_in_pair"], obs_pairs)
+    ds.coords["idx_rcv_pairs"] = np.arange(len(obs_pairs))
+    ds.coords["idx_rcv_in_pair"] = np.arange(2)
+    ds["obs_pairs"] = (["idx_rcv_pairs", "idx_rcv_in_pair"], obs_pairs)
 
     return ds
 
 
 def check_waveguide_cutoff(
-    testcase, kraken_env, library_src, max_range_m, dt, sig_type
+    testcase, kraken_env, kraken_flp, library_src, max_range_m, dt, sig_type
 ):
     fc = waveguide_cutoff_freq(max_depth=kraken_env.bathy.bathy_depth.min())
     propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
     if propagating_freq.size != library_src.kraken_freq.size:
         min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
         library_src = init_library_src(dt, min_waveguide_depth, sig_type=sig_type)
+
+        # Update env and flp
         kraken_env, kraken_flp = testcase(
             freq=library_src.kraken_freq,
             min_waveguide_depth=min_waveguide_depth,
@@ -323,13 +334,13 @@ def check_waveguide_cutoff(
 
 def add_noise_to_dataset(library_dataset, snr_dB):
     ds = library_dataset
-    for i_obs in tqdm(
-        ds.idx_obs, bar_format=BAR_FORMAT, desc="Add noise to received signal"
+    for i_rcv in tqdm(
+        ds.idx_rcv, bar_format=BAR_FORMAT, desc="Add noise to received signal"
     ):
         if snr_dB is not None:
             # Add noise to received signal
-            ds.rcv_signal_library.loc[dict(idx_obs=i_obs)] = add_noise_to_signal(
-                ds.rcv_signal_library.sel(idx_obs=i_obs).values, snr_dB=snr_dB
+            ds.rcv_signal_library.loc[dict(idx_rcv=i_rcv)] = add_noise_to_signal(
+                ds.rcv_signal_library.sel(idx_rcv=i_rcv).values, snr_dB=snr_dB
             )
             ds.attrs["snr_dB"] = snr_dB
         else:
@@ -347,34 +358,34 @@ def add_correlation_to_dataset(library_dataset):
     ds["library_corr_lags"].attrs["long_name"] = "Correlation lags"
 
     # Derive cross_correlation vector for each grid pixel
-    library_corr_dim = ["idx_obs_pairs", "y", "x", "library_corr_lags"]
+    library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
     library_corr = np.empty(tuple(ds.dims[d] for d in library_corr_dim))
 
     # May be way faster with a FFT based approach
     ns = ds.dims["library_signal_time"]
     for i_pair in tqdm(
-        range(ds.dims["idx_obs_pairs"]),
+        range(ds.dims["idx_rcv_pairs"]),
         bar_format=BAR_FORMAT,
         desc="Derive correlation vector for each grid pixel",
     ):
-        rcv_pair = ds.obs_pairs.isel(idx_obs_pairs=i_pair)
+        rcv_pair = ds.obs_pairs.isel(idx_rcv_pairs=i_pair)
         for i_x in tqdm(
-            range(ds.dims["x"]),
+            range(ds.dims["lon"]),
             bar_format=BAR_FORMAT,
             desc="Scanning x axis",
             leave=False,
         ):
             for i_y in tqdm(
-                range(ds.dims["y"]),
+                range(ds.dims["lat"]),
                 bar_format=BAR_FORMAT,
                 desc="Scanning y axis",
                 leave=False,
             ):
                 s0 = ds.rcv_signal_library.sel(
-                    idx_obs=rcv_pair[0], x=ds.x.isel(x=i_x), y=ds.y.isel(y=i_y)
+                    idx_rcv=rcv_pair[0], x=ds.x.isel(x=i_x), y=ds.y.isel(y=i_y)
                 )
                 s1 = ds.rcv_signal_library.sel(
-                    idx_obs=rcv_pair[1], x=ds.x.isel(x=i_x), y=ds.y.isel(y=i_y)
+                    idx_rcv=rcv_pair[1], x=ds.x.isel(x=i_x), y=ds.y.isel(y=i_y)
                 )
                 corr_01 = signal.correlate(s0, s1)
                 n0 = corr_01.shape[0] // 2
@@ -432,10 +443,10 @@ def add_event_to_dataset(
 
     r_event_t = [
         np.sqrt(
-            (x_event_t - ds.x_obs.sel(idx_obs=i_obs).values) ** 2
-            + (y_event_t - ds.y_obs.sel(idx_obs=i_obs).values) ** 2
+            (x_event_t - ds.x_rcv.sel(idx_rcv=i_rcv).values) ** 2
+            + (y_event_t - ds.y_rcv.sel(idx_rcv=i_rcv).values) ** 2
         )
-        for i_obs in range(ds.dims["idx_obs"])
+        for i_rcv in range(ds.dims["idx_rcv"])
     ]
 
     ds.coords["event_signal_time"] = []
@@ -443,8 +454,8 @@ def add_event_to_dataset(
 
     ds["x_ship"] = (["src_trajectory_time"], x_event_t.astype(np.float32))
     ds["y_ship"] = (["src_trajectory_time"], y_event_t.astype(np.float32))
-    ds["r_obs_ship"] = (
-        ["idx_obs", "src_trajectory_time"],
+    ds["r_rcv_ship"] = (
+        ["idx_rcv", "src_trajectory_time"],
         np.array(r_event_t).astype(np.float32),
     )
 
@@ -453,19 +464,19 @@ def add_event_to_dataset(
 
     ds["x_ship"].attrs["long_name"] = "x_ship"
     ds["y_ship"].attrs["long_name"] = "y_ship"
-    ds["r_obs_ship"].attrs["long_name"] = "Range from receiver to source"
+    ds["r_rcv_ship"].attrs["long_name"] = "Range from receiver to source"
     ds["event_signal_time"].attrs["units"] = "Time"
     ds["src_trajectory_time"].attrs["long_name"] = "Time"
 
     if interp_src_pos_on_grid:
         ds["x_ship"] = ds.x.sel(x=ds.x_ship, method="nearest")
         ds["y_ship"] = ds.y.sel(y=ds.y_ship, method="nearest")
-        ds["r_obs_ship"].values = [
+        ds["r_rcv_ship"].values = [
             np.sqrt(
-                (ds.x_ship - ds.x_obs.sel(idx_obs=i_obs)) ** 2
-                + (ds.y_ship - ds.y_obs.sel(idx_obs=i_obs)) ** 2
+                (ds.x_ship - ds.x_rcv.sel(idx_rcv=i_rcv)) ** 2
+                + (ds.y_ship - ds.y_rcv.sel(idx_rcv=i_rcv)) ** 2
             )
-            for i_obs in range(ds.dims["idx_obs"])
+            for i_rcv in range(ds.dims["idx_rcv"])
         ]
         ds.attrs["source_positions"] = "Interpolated on grid"
         ds.attrs["src_pos"] = "on_grid"
@@ -473,47 +484,47 @@ def add_event_to_dataset(
         ds.attrs["source_positions"] = "Not interpolated on grid"
         ds.attrs["src_pos"] = "not_on_grid"
 
-    signal_event_dim = ["idx_obs", "src_trajectory_time", "event_signal_time"]
+    signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
 
     # Derive received signal for successive positions of the ship
-    for i_obs in tqdm(
-        range(ds.dims["idx_obs"]),
+    for i_rcv in tqdm(
+        range(ds.dims["idx_rcv"]),
         bar_format=BAR_FORMAT,
         desc="Derive received signal for successive positions of the ship",
     ):
         delay_to_apply_ship = (
-            ds.delay_obs.min(dim="idx_obs")
+            ds.delay_rcv.min(dim="idx_rcv")
             .sel(x=ds.x_ship, y=ds.y_ship, method="nearest")
             .values.flatten()
         )
 
         (
-            t_obs,
-            s_obs,
+            t_rcv,
+            s_rcv,
             Pos,
         ) = postprocess_received_signal_from_broadband_pressure_field(
             shd_fpath=kraken_env.shd_fpath,
             broadband_pressure_field=grid_pressure_field,
             frequencies=event_src.kraken_freq,
             source=event_src,
-            rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
+            rcv_range=ds.r_rcv_ship.sel(idx_rcv=i_rcv).values,
             rcv_depth=[z_event],
             apply_delay=True,
             delay=delay_to_apply_ship,
             minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
         )
 
-        if i_obs == 0:
-            ds["event_signal_time"] = t_obs.astype(np.float32)
+        if i_rcv == 0:
+            ds["event_signal_time"] = t_rcv.astype(np.float32)
             rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
 
-        rcv_signal_event[i_obs, :] = s_obs[:, 0, :].T
+        rcv_signal_event[i_rcv, :] = s_rcv[:, 0, :].T
 
         # Free memory
-        del t_obs, s_obs, Pos
+        del t_rcv, s_rcv, Pos
 
     ds["rcv_signal_event"] = (
-        ["idx_obs", "src_trajectory_time", "event_signal_time"],
+        ["idx_rcv", "src_trajectory_time", "event_signal_time"],
         rcv_signal_event.astype(np.float32),
     )
 
@@ -525,13 +536,13 @@ def add_event_to_dataset(
 
 def add_noise_to_event(library_dataset, snr_dB):
     ds = library_dataset
-    for i_obs in tqdm(
-        ds.idx_obs, bar_format=BAR_FORMAT, desc="Add noise to event signal"
+    for i_rcv in tqdm(
+        ds.idx_rcv, bar_format=BAR_FORMAT, desc="Add noise to event signal"
     ):
         if snr_dB is not None:
             # Add noise to received signal
-            ds.rcv_signal_event.loc[dict(idx_obs=i_obs)] = add_noise_to_signal(
-                ds.rcv_signal_event.sel(idx_obs=i_obs).values, snr_dB
+            ds.rcv_signal_event.loc[dict(idx_rcv=i_rcv)] = add_noise_to_signal(
+                ds.rcv_signal_event.sel(idx_rcv=i_rcv).values, snr_dB
             )
             ds.attrs["snr_dB"] = snr_dB
         else:
@@ -549,7 +560,7 @@ def add_event_correlation(library_dataset):
     ds["event_corr_lags"].attrs["long_name"] = "Correlation lags"
 
     # Derive cross_correlation vector for each ship position
-    event_corr_dim = ["idx_obs_pairs", "src_trajectory_time", "event_corr_lags"]
+    event_corr_dim = ["idx_rcv_pairs", "src_trajectory_time", "event_corr_lags"]
     event_corr = np.empty(tuple(ds.dims[d] for d in event_corr_dim))
 
     for i_ship in tqdm(
@@ -558,10 +569,10 @@ def add_event_correlation(library_dataset):
         desc="Derive correlation vector for each ship position",
     ):
         for i_pair, rcv_pair in enumerate(ds.obs_pairs):
-            s0 = ds.rcv_signal_event.sel(idx_obs=rcv_pair[0]).isel(
+            s0 = ds.rcv_signal_event.sel(idx_rcv=rcv_pair[0]).isel(
                 src_trajectory_time=i_ship
             )
-            s1 = ds.rcv_signal_event.sel(idx_obs=rcv_pair[1]).isel(
+            s1 = ds.rcv_signal_event.sel(idx_rcv=rcv_pair[1]).isel(
                 src_trajectory_time=i_ship
             )
 
@@ -610,7 +621,7 @@ def add_noise_to_signal(sig, snr_dB):
 
 
 def build_ambiguity_surf(ds, detection_metric):
-    ambiguity_surface_dim = ["idx_obs_pairs", "src_trajectory_time", "y", "x"]
+    ambiguity_surface_dim = ["idx_rcv_pairs", "src_trajectory_time", "lat", "lon"]
     ambiguity_surface = np.empty(tuple(ds.dims[d] for d in ambiguity_surface_dim))
 
     for i_ship in tqdm(
@@ -618,9 +629,9 @@ def build_ambiguity_surf(ds, detection_metric):
         bar_format=BAR_FORMAT,
         desc="Build ambiguity surface",
     ):
-        for i_pair in ds.idx_obs_pairs:
-            lib_data = ds.library_corr.sel(idx_obs_pairs=i_pair)
-            event_vector = ds.event_corr.sel(idx_obs_pairs=i_pair).isel(
+        for i_pair in ds.idx_rcv_pairs:
+            lib_data = ds.library_corr.sel(idx_rcv_pairs=i_pair)
+            event_vector = ds.event_corr.sel(idx_rcv_pairs=i_pair).isel(
                 src_trajectory_time=i_ship
             )
 
@@ -680,8 +691,12 @@ def build_ambiguity_surf(ds, detection_metric):
     )
 
     # Derive src position
-    ds["detected_pos_x"] = ds.x.isel(x=ds.ambiguity_surface.argmax(dim=["x", "y"])["x"])
-    ds["detected_pos_y"] = ds.y.isel(y=ds.ambiguity_surface.argmax(dim=["x", "y"])["y"])
+    ds["detected_pos_x"] = ds.x.isel(
+        x=ds.ambiguity_surface.argmax(dim=["lon", "lat"])["lon"]
+    )
+    ds["detected_pos_y"] = ds.y.isel(
+        y=ds.ambiguity_surface.argmax(dim=["lon", "lat"])["lat"]
+    )
 
     ds.attrs["detection_metric"] = detection_metric
 

@@ -50,6 +50,7 @@ def populate_grid(
     kraken_flp,
     grid_info,
     rcv_info,
+    src_info,
     isotropic_env=True,
     testcase=None,
 ):
@@ -64,10 +65,8 @@ def populate_grid(
         rcv_info,
         isotropic_env=isotropic_env,
     )
-    # Free memory
-    del x_obs, y_obs, grid_x, grid_y
 
-    signal_library_dim = ["idx_obs", "y", "x", "library_signal_time"]
+    signal_library_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
 
     # Switch between isotropic and anisotropic environment
     if isotropic_env:
@@ -76,7 +75,7 @@ def populate_grid(
         )
     else:
         ds, rcv_signal_library, grid_pressure_field = populate_anistropic_env(
-            ds, library_src, signal_library_dim, testcase
+            ds, library_src, signal_library_dim, testcase, rcv_info, src_info
         )
 
     ds["rcv_signal_library"] = (
@@ -249,6 +248,7 @@ def verlinden_main(
 
     # Define grid around the src positions
     init_grid_around_event_src_traj(src_info, grid_info)
+    src_info["dt"] = dt
 
     # grid_x, grid_y = init_grid_around_event_src_traj(
     #     x_ship_t,
@@ -286,6 +286,7 @@ def verlinden_main(
     kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
         testcase,
         kraken_env,
+        kraken_flp,
         library_src,
         max_range_m,
         dt,
@@ -325,6 +326,7 @@ def verlinden_main(
                     kraken_flp,
                     grid_info,
                     rcv_info,
+                    src_info,
                     isotropic_env=False,
                     testcase=testcase,
                 )

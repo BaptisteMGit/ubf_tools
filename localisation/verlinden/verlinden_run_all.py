@@ -52,8 +52,8 @@ if __name__ == "__main__":
     grid_info = dict(
         Lx=1 * 1e3,
         Ly=1 * 1e3,
-        dx=100,
-        dy=100,
+        dx=500,
+        dy=500,
     )
 
     # x_pos = ([-1800, 3000],)

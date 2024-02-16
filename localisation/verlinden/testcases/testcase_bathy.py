@@ -199,5 +199,5 @@ def extract_2D_bathy_profile(
     plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
     pfig.apply_ticks_fontsize()
     plt.grid()
-    plt.savefig(os.path.join(bathy_folder, f"bathy_az{azimuth}.png"))
+    plt.savefig(os.path.join(bathy_folder, f"bathy_az{azimuth:.2f}.png"))
     plt.close()

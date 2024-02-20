@@ -27,20 +27,21 @@ from localisation.verlinden.verlinden_path import (
 
 from localisation.verlinden.verlinden_utils import (
     add_correlation_to_dataset,
-    add_event_correlation,
     add_noise_to_dataset,
-    add_noise_to_event,
     build_ambiguity_surf,
     get_populated_path,
     init_event_src_traj,
     init_grid_around_event_src_traj,
     init_library_src,
     init_library_dataset,
+    init_event_dataset,
     populate_istropic_env,
     populate_anistropic_env,
     check_waveguide_cutoff,
     get_max_kraken_range,
     print_simulation_info,
+    add_event_isotropic_env,
+    add_event_anisotropic_env,
 )
 
 
@@ -84,8 +85,11 @@ def populate_grid(
     )
 
     ds.attrs["fullpath_populated"] = get_populated_path(
-        ds.x.values, ds.y.values, kraken_env, library_src.name
+        grid_info,
+        kraken_env,
+        src_info["signal_type"],
     )
+    # ds.x.values, ds.y.values, kraken_env, library_src.name
 
     if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
         os.makedirs(os.path.dirname(ds.fullpath_populated))
@@ -100,113 +104,37 @@ def add_event_to_dataset(
     grid_pressure_field,
     kraken_env,
     event_src,
-    event_t,
-    x_event_t,
-    y_event_t,
-    z_event,
-    interp_src_pos_on_grid=False,
+    src_info,
+    rcv_info,
     snr_dB=None,
+    isotropic_env=True,
+    interp_src_pos_on_grid=False,
 ):
     ds = library_dataset
 
-    r_event_t = [
-        np.sqrt(
-            (x_event_t - ds.x_obs.sel(idx_obs=i_obs).values) ** 2
-            + (y_event_t - ds.y_obs.sel(idx_obs=i_obs).values) ** 2
+    ds = init_event_dataset(ds, src_info, rcv_info, interp_src_pos_on_grid=False)
+
+    signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
+
+    if isotropic_env:
+        ds = add_event_isotropic_env(
+            ds=ds,
+            snr_dB=snr_dB,
+            event_src=event_src,
+            kraken_env=kraken_env,
+            signal_event_dim=signal_event_dim,
+            grid_pressure_field=grid_pressure_field,
         )
-        for i_obs in range(ds.dims["idx_obs"])
-    ]
-
-    ds.coords["event_signal_time"] = []
-    ds.coords["src_trajectory_time"] = event_t.astype(np.float32)
-
-    ds["x_ship"] = (["src_trajectory_time"], x_event_t.astype(np.float32))
-    ds["y_ship"] = (["src_trajectory_time"], y_event_t.astype(np.float32))
-    ds["r_obs_ship"] = (
-        ["idx_obs", "src_trajectory_time"],
-        np.array(r_event_t).astype(np.float32),
-    )
-
-    ds["event_signal_time"].attrs["units"] = "s"
-    ds["src_trajectory_time"].attrs["units"] = "s"
-
-    ds["x_ship"].attrs["long_name"] = "x_ship"
-    ds["y_ship"].attrs["long_name"] = "y_ship"
-    ds["r_obs_ship"].attrs["long_name"] = "Range from receiver to source"
-    ds["event_signal_time"].attrs["units"] = "Time"
-    ds["src_trajectory_time"].attrs["long_name"] = "Time"
-
-    if interp_src_pos_on_grid:
-        ds["x_ship"] = ds.x.sel(x=ds.x_ship, method="nearest")
-        ds["y_ship"] = ds.y.sel(y=ds.y_ship, method="nearest")
-        ds["r_obs_ship"].values = [
-            np.sqrt(
-                (ds.x_ship - ds.x_obs.sel(idx_obs=i_obs)) ** 2
-                + (ds.y_ship - ds.y_obs.sel(idx_obs=i_obs)) ** 2
-            )
-            for i_obs in range(ds.dims["idx_obs"])
-        ]
-        ds.attrs["source_positions"] = "Interpolated on grid"
-        ds.attrs["src_pos"] = "on_grid"
     else:
-        ds.attrs["source_positions"] = "Not interpolated on grid"
-        ds.attrs["src_pos"] = "not_on_grid"
 
-    signal_event_dim = ["idx_obs", "src_trajectory_time", "event_signal_time"]
-
-    # Derive received signal for successive positions of the ship
-    for i_obs in tqdm(
-        range(ds.dims["idx_obs"]),
-        bar_format=BAR_FORMAT,
-        desc="Derive received signal for successive positions of the ship",
-    ):
-        delay_to_apply_ship = (
-            ds.delay_obs.min(dim="idx_obs")
-            .sel(x=ds.x_ship, y=ds.y_ship, method="nearest")
-            .values.flatten()
+        ds = add_event_anisotropic_env(
+            ds=ds,
+            snr_dB=snr_dB,
+            event_src=event_src,
+            kraken_env=kraken_env,
+            signal_event_dim=signal_event_dim,
+            grid_pressure_field=grid_pressure_field,
         )
-
-        (
-            t_obs,
-            s_obs,
-            Pos,
-        ) = postprocess_received_signal_from_broadband_pressure_field(
-            shd_fpath=kraken_env.shd_fpath,
-            broadband_pressure_field=grid_pressure_field,
-            frequencies=event_src.kraken_freq,
-            source=event_src,
-            rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
-            rcv_depth=[z_event],
-            apply_delay=True,
-            delay=delay_to_apply_ship,
-            minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
-        )
-
-        # t_obs, s_obs, Pos = postprocess_received_signal(
-        #     shd_fpath=kraken_env.shd_fpath,
-        #     source=event_src,
-        #     rcv_range=ds.r_obs_ship.sel(idx_obs=i_obs).values,
-        #     rcv_depth=[z_event],
-        #     apply_delay=True,
-        #     delay=delay_to_apply_ship,
-        # )
-
-        if i_obs == 0:
-            ds["event_signal_time"] = t_obs.astype(np.float32)
-            rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
-
-        rcv_signal_event[i_obs, :] = s_obs[:, 0, :].T
-
-        # Free memory
-        del t_obs, s_obs, Pos
-
-    ds["rcv_signal_event"] = (
-        ["idx_obs", "src_trajectory_time", "event_signal_time"],
-        rcv_signal_event.astype(np.float32),
-    )
-
-    ds = add_noise_to_event(ds, snr_dB=snr_dB)
-    ds = add_event_correlation(ds)
 
     return ds
 
@@ -229,12 +157,10 @@ def verlinden_main(
         dt, min_waveguide_depth, sig_type=src_info["signal_type"]
     )
     # Define ship trajectory
-    t_ship = np.arange(0, src_info["max_nb_of_pos"] * dt, dt)
-    init_event_src_traj(src_info)
+    init_event_src_traj(src_info, dt)
 
     # Define grid around the src positions
     init_grid_around_event_src_traj(src_info, grid_info)
-    src_info["dt"] = dt
 
     # Derive max distance to be used in kraken for each receiver
     get_max_kraken_range(rcv_info, grid_info)
@@ -311,18 +237,17 @@ def verlinden_main(
                 complete_dataset_loaded = True
 
             event_src = library_src
+            event_src.z_src = src_info["depth"]
             if not event_in_dataset:
                 ds = add_event_to_dataset(
                     library_dataset=ds_library,
                     grid_pressure_field=grid_pressure_field,
                     kraken_env=kraken_env,
                     event_src=event_src,
-                    event_t=t_ship,
-                    x_event_t=x_ship_t,
-                    y_event_t=y_ship_t,
-                    z_event=src_info["z_src"],
-                    interp_src_pos_on_grid=src_info["on_grid"],
+                    src_info=src_info,
+                    rcv_info=rcv_info,
                     snr_dB=snr_i,
+                    isotropic_env=False,
                 )
                 event_in_dataset = True
 

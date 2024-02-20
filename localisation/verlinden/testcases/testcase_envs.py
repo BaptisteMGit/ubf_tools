@@ -421,7 +421,7 @@ def testcase1_4(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
 ##########################################################################################
 
 
-def testcase2_common(freq, bathy, title, testcase_name="testcase1"):
+def testcase2_common(freq, bathy, title, testcase_name="testcase1", rcv_r_max=50):
     # Create environment directory
     env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
     if not os.path.exists(env_dir):
@@ -473,7 +473,7 @@ def testcase2_common(freq, bathy, title, testcase_name="testcase1"):
         kraken_bathy=bathy,
     )
 
-    rcv_r_max = 50
+    # rcv_r_max = 50
     dr = 10  # 10m resolution
     n_rcv_r = rcv_r_max * 1000 / dr + 1
 
@@ -499,8 +499,8 @@ def testcase2_1(
     freq=[20],
     max_range_m=50 * 1e3,
     azimuth=0,
-    obs_lon=65.94,
-    obs_lat=-27.58,
+    rcv_lon=65.94,
+    rcv_lat=-27.58,
     min_waveguide_depth=None,
 ):
     """
@@ -519,8 +519,8 @@ def testcase2_1(
     extract_2D_bathy_profile(
         bathy_nc_path=bathy_nc_path,
         testcase_name=name,
-        obs_lon=obs_lon,
-        obs_lat=obs_lat,
+        obs_lon=rcv_lon,
+        obs_lat=rcv_lat,
         azimuth=azimuth,
         max_range_km=max_range_km,
         range_resolution=range_resolution,
@@ -532,6 +532,7 @@ def testcase2_1(
         bathy=bathy,
         title=title,
         testcase_name=name,
+        rcv_r_max=max_range_km,
     )
 
     # # Plot medium properties

@@ -12,18 +12,9 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
-
-import os
-import time
 import numpy as np
-import xarray as xr
 from pyproj import Geod
 from scipy.interpolate import RegularGridInterpolator
-
-
-# ======================================================================================================================
-# Data extraction
-# ======================================================================================================================
 
 
 def get_coords_along_profile(
@@ -40,11 +31,13 @@ def get_coords_along_profile(
     If azimuth is given, the porfile is defined by initial point and azimuth.
     If stop_lat and stop_lon are given, the profile is defined by initial and final points.
 
-    :param start_lat:
-    :param stop_lat:
-    :param start_lon:
-    :param stop_lon:
-    :param range_resolution:
+    :param start_lat: Initial position latitude
+    :param start_lon: Initial position longitude
+    :param range_resolution: Range resolution in m
+    :param max_range_m: Maximum range in m
+    :param azimuth: Azimuth from
+    :param stop_lat: Final position Latitude
+    :param stop_lon: Final position longitude
     :return:
     """
 

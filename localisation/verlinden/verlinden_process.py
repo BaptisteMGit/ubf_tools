@@ -74,9 +74,12 @@ def populate_grid(
         ds, rcv_signal_library, grid_pressure_field = populate_istropic_env(
             ds, library_src, kraken_env, kraken_flp, signal_library_dim
         )
+        kraken_grid = None  # TODO : update this 
     else:
-        ds, rcv_signal_library, grid_pressure_field = populate_anistropic_env(
-            ds, library_src, signal_library_dim, testcase, rcv_info, src_info
+        ds, rcv_signal_library, grid_pressure_field, kraken_grid = (
+            populate_anistropic_env(
+                ds, library_src, signal_library_dim, testcase, rcv_info, src_info
+            )
         )
 
     ds["rcv_signal_library"] = (
@@ -96,12 +99,13 @@ def populate_grid(
 
     ds.to_netcdf(ds.fullpath_populated)
 
-    return ds, grid_pressure_field
+    return ds, grid_pressure_field, kraken_grid
 
 
 def add_event_to_dataset(
     library_dataset,
     grid_pressure_field,
+    kraken_grid,
     kraken_env,
     event_src,
     src_info,
@@ -132,6 +136,7 @@ def add_event_to_dataset(
             snr_dB=snr_dB,
             event_src=event_src,
             kraken_env=kraken_env,
+            kraken_grid=kraken_grid,
             signal_event_dim=signal_event_dim,
             grid_pressure_field=grid_pressure_field,
         )
@@ -147,10 +152,12 @@ def verlinden_main(
     rcv_info,
     snr,
     detection_metric,
+    dt=None,
 ):
-    dt = (
-        min(grid_info["dx"], grid_info["dy"]) / src_info["speed"]
-    )  # Minimum time spent by the source in a single grid box (s)
+    if dt is None:
+        dt = (
+            min(grid_info["dx"], grid_info["dy"]) / src_info["speed"]
+        )  # Minimum time spent by the source in a single grid box (s)
 
     # Initialize source
     library_src = init_library_src(
@@ -214,7 +221,7 @@ def verlinden_main(
             ):
                 ds_library = xr.open_dataset(populated_path)
             elif not os.path.exists(populated_path) or grid_pressure_field is None:
-                ds_library, grid_pressure_field = populate_grid(
+                ds_library, grid_pressure_field, kraken_grid = populate_grid(
                     library_src,
                     kraken_env,
                     kraken_flp,
@@ -242,6 +249,7 @@ def verlinden_main(
                 ds = add_event_to_dataset(
                     library_dataset=ds_library,
                     grid_pressure_field=grid_pressure_field,
+                    kraken_grid=kraken_grid,
                     kraken_env=kraken_env,
                     event_src=event_src,
                     src_info=src_info,

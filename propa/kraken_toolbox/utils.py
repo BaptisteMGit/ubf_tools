@@ -66,26 +66,40 @@ def waveguide_cutoff_freq(max_depth, c0=C0):
     return fc
 
 
-def get_rcv_pos_idx(shd_fpath, rcv_depth=None, rcv_range=None):
-    # Dummy read to get frequencies used by kraken and field grid information
-    _, _, _, _, _, _, field_pos, pressure = readshd(filename=shd_fpath, freq=0)
-    nr = pressure.shape[2]
-    nz = pressure.shape[1]
+def get_rcv_pos_idx(
+    kraken_range=None,
+    kraken_depth=None,
+    shd_fpath=None,
+    rcv_depth=None,
+    rcv_range=None,
+):
+    if kraken_range is None and kraken_depth is None:
+        # Dummy read to get frequencies used by kraken and field grid information
+        _, _, _, _, _, _, field_pos, pressure = readshd(filename=shd_fpath, freq=0)
+        nr = pressure.shape[2]
+        nz = pressure.shape[1]
+        kraken_range = field_pos["r"]["r"]
+        kraken_depth = field_pos["r"]["z"]
+    else:
+        nr = kraken_range.size
+        nz = kraken_depth.size
+        field_pos = None
 
     if rcv_range is not None:
-        # No need to process the entire grid :  extract pressure field at desired positions
+        # No need to process the entire grid : extract pressure field at desired positions
         rcv_pos_idx_r = [
-            np.argmin(np.abs(field_pos["r"]["r"] - rcv_r)) for rcv_r in rcv_range
+            np.nanargmin(np.abs(kraken_range - rcv_r)) for rcv_r in rcv_range
         ]
     else:
         rcv_pos_idx_r = range(nr)
 
     if rcv_depth is not None:
         rcv_pos_idx_z = [
-            np.argmin(np.abs(field_pos["r"]["z"] - rcv_z)) for rcv_z in rcv_depth
+            np.nanargmin(np.abs(kraken_depth - rcv_z)) for rcv_z in rcv_depth
         ]
     else:
         rcv_pos_idx_z = range(nz)
 
     rr, zz = np.meshgrid(rcv_pos_idx_r, rcv_pos_idx_z)
+
     return rr, zz, field_pos

@@ -105,22 +105,34 @@ def postprocess_received_signal(
 
 
 def postprocess_ir_from_broadband_pressure_field(
-    shd_fpath,
     broadband_pressure_field,
     frequencies,
     source,
+    kraken_range=None,
+    kraken_depth=None,
+    shd_fpath=None,
     rcv_range=None,
     rcv_depth=None,
     minimum_waveguide_depth=1000,
+    squeeze=True,
 ):
     """Post process Kraken run to derive ocean waveguide impulse response."""
 
-    pressure_field = np.squeeze(
-        broadband_pressure_field, axis=(1, 2)
-    )  # 3D array (nfreq, nz, nr)
+    if squeeze:
+        pressure_field = np.squeeze(
+            broadband_pressure_field, axis=(1, 2)
+        )  # 3D array (nfreq, nz, nr)
+    else:
+        pressure_field = broadband_pressure_field
 
     # No need to process the entire grid :  extract pressure field at desired positions
-    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath, rcv_depth, rcv_range)
+    rr, zz, field_pos = get_rcv_pos_idx(
+        kraken_range=kraken_range,
+        kraken_depth=kraken_depth,
+        rcv_depth=rcv_depth,
+        rcv_range=rcv_range,
+        shd_fpath=shd_fpath,
+    )
     pressure_field = pressure_field[:, zz, rr]
 
     # Get rid of frequencies below the cutoff frequency
@@ -146,15 +158,18 @@ def postprocess_ir_from_broadband_pressure_field(
 
 
 def postprocess_received_signal_from_broadband_pressure_field(
-    shd_fpath,
     broadband_pressure_field,
     frequencies,
     source,
     rcv_range,
     rcv_depth,
     minimum_waveguide_depth=1000,
+    kraken_range=None,
+    kraken_depth=None,
+    shd_fpath=None,
     apply_delay=True,
     delay=None,
+    squeeze=True,
 ):
     # Derive broadband impulse response of the ocean waveguide
     (
@@ -162,13 +177,16 @@ def postprocess_received_signal_from_broadband_pressure_field(
         pressure_field,
         field_pos,
     ) = postprocess_ir_from_broadband_pressure_field(
-        shd_fpath,
-        broadband_pressure_field,
-        frequencies,
-        source,
-        rcv_range,
-        rcv_depth,
+        broadband_pressure_field=broadband_pressure_field,
+        frequencies=frequencies,
+        source=source,
+        shd_fpath=shd_fpath,
+        kraken_range=kraken_range,
+        kraken_depth=kraken_depth,
+        rcv_range=rcv_range,
+        rcv_depth=rcv_depth,
         minimum_waveguide_depth=minimum_waveguide_depth,
+        squeeze=squeeze,
     )
 
     # Extract propagating spectrum from entire spectrum

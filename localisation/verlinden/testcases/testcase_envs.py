@@ -474,9 +474,10 @@ def testcase2_common(freq, bathy, title, testcase_name="testcase1", rcv_r_max=50
     )
 
     # rcv_r_max = 50
-    dr = 10  # 10m resolution
+    dr = 100  # 100m resolution
     n_rcv_r = rcv_r_max * 1000 / dr + 1
 
+    # One receiver at 5m depth
     flp_nrcv_z = 1
     flp_rcv_z_min = 5
     flp_rcv_z_max = 5

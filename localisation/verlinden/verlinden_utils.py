@@ -106,9 +106,10 @@ def populate_anistropic_env(
 
     # Grid pressure field for all azimuths : list of nested lists required due to inhomogeneous sizes (depending on the azimuths)
     grid_pressure_field = np.empty((idx_rcv.size), dtype=object)
-    kraken_range_rcv = np.empty((idx_rcv.size), dtype=object)
-    kraken_depth_rcv = np.empty((idx_rcv.size), dtype=object)
+    kraken_range_rcv = []
+    kraken_depth_rcv = []
     rcv_depth = [library_src.z_src]
+    kraken_grid = {}
 
     # Loop over receivers
     for i_rcv in tqdm(
@@ -147,6 +148,7 @@ def populate_anistropic_env(
                 dt=src_info["dt"],
                 sig_type=src_info["signal_type"],
             )
+
             # Get receiver ranges for selected angle
             idx_az = ds.az_propa.sel(idx_rcv=i_rcv).values == az
             rr_from_rcv_az = ds.r_from_rcv.sel(idx_rcv=i_rcv).values[idx_az].flatten()
@@ -183,14 +185,19 @@ def populate_anistropic_env(
             # az_pressure_field[i_az] = pf
 
             if i_az == 0:
-                # Get pos field and store it in dataset (receiver grid depends on rcv)
-                _, _, _, _, _, _, field_pos, _ = readshd(
-                    filename=kraken_env.shd_fpath, freq=0
-                )
-                r_rcv = field_pos["r"]["r"]
-                z_rcv = field_pos["r"]["z"]
-                kraken_range_rcv[i_rcv] = r_rcv
-                kraken_depth_rcv[i_rcv] = z_rcv
+                # Store grid pos in dataset (receiver grid depends on rcv)
+                r_rcv = Pos["r"]["r"]
+                z_rcv = Pos["r"]["z"]
+                kraken_range_rcv.append(r_rcv)
+                kraken_depth_rcv.append(z_rcv)
+                # Init kraken grid "min_waveguide_depth" attribute
+                kraken_grid["min_waveguide_depth"] = {}
+
+            # Store minimum waveguide depth for current azimuth
+            for i_az in range(azimuths_rcv.size):
+                kraken_grid["min_waveguide_depth"][
+                    i_az
+                ] = kraken_env.bathy.bathy_depth.min()
 
             # Values outside of the grid range are set to 0j and the sparse pressure field is stored to save memory
             r_offset = 5 * ds.dx
@@ -223,12 +230,53 @@ def populate_anistropic_env(
         # Store pressure field for all azimuths relative to current rcv
         grid_pressure_field[i_rcv] = az_pressure_field
 
-    print("1")
+    # Cast kraken grid range/depth arrays to the same size
+    nr_max = np.max([kraken_range_rcv[i_rcv].size for i_rcv in ds.idx_rcv.values])
+    nz_max = np.max([kraken_depth_rcv[i_rcv].size for i_rcv in ds.idx_rcv.values])
     # Store kraken range and depth for rcv
-    ds["kraken_range"] = (["idx_rcv"], kraken_range_rcv)
-    ds["kraken_depth"] = (["idx_rcv"], kraken_depth_rcv)
+    for i_rcv in ds.idx_rcv.values:
+        if kraken_range_rcv[i_rcv].size < nr_max:
+            kraken_range_rcv[i_rcv] = np.pad(
+                kraken_range_rcv[i_rcv],
+                (0, nr_max - kraken_range_rcv[i_rcv].size),
+                constant_values=np.nan,
+            )
 
-    return ds, rcv_signal_library, grid_pressure_field
+        if kraken_depth_rcv[i_rcv].size < nz_max:
+            kraken_depth_rcv[i_rcv] = np.pad(
+                kraken_depth_rcv[i_rcv],
+                (0, nz_max - kraken_depth_rcv[i_rcv].size),
+                constant_values=np.nan,
+            )
+
+        # Size calculation.
+        # print("Receiver %s" % i_rcv)
+        # print("Size of kraken_range_rcv in bytes: %s" % kraken_range_rcv[i_rcv].nbytes)
+        # print(
+        #     "Size of sparse kraken_range_rcv in bytes: %s" % sp_kraken_range_rcv.nbytes
+        # )
+        # print("Size of kraken_depth_rcv in bytes: %s" % kraken_depth_rcv[i_rcv].nbytes)
+        # print(
+        #     "Size of sparse kraken_depth_rcv in bytes: %s" % sp_kraken_depth_rcv.nbytes
+        # )
+
+    # Object array to float array
+    # kraken_range_rcv = list(kraken_range_rcv)
+    # kraken_depth_rcv = list(kraken_depth_rcv)
+    kraken_range_rcv = np.array(kraken_range_rcv, dtype=np.float32)
+    kraken_depth_rcv = np.array(kraken_depth_rcv, dtype=np.float32)
+
+    # # Sparse representation to save memory
+    kraken_range_rcv = sparse.COO(kraken_range_rcv, fill_value=np.nan)
+    kraken_depth_rcv = sparse.COO(kraken_depth_rcv, fill_value=np.nan)
+
+    for i_rcv in ds.idx_rcv.values:
+        kraken_grid[i_rcv] = {
+            "range": kraken_range_rcv[i_rcv, :],
+            "depth": kraken_depth_rcv[i_rcv, :],
+        }
+
+    return ds, rcv_signal_library, grid_pressure_field, kraken_grid
 
 
 def add_event_isotropic_env(
@@ -292,6 +340,7 @@ def add_event_anisotropic_env(
     snr_dB,
     event_src,
     kraken_env,
+    kraken_grid,
     signal_event_dim,
     grid_pressure_field,
 ):
@@ -310,15 +359,14 @@ def add_event_anisotropic_env(
         desc="Derive received signal for successive positions of the ship",
     ):
         # Get kraken grid for the given rcv
-        kraken_range = ds.kraken_range.sel(idx_rcv=i_rcv).values
-        kraken_depth = ds.kraken_depth.sel(idx_rcv=i_rcv).values
-        min_wg_depth = kraken_depth.min()
+        kraken_range = kraken_grid[i_rcv]["range"].todense()
+        kraken_depth = kraken_grid[i_rcv]["depth"].todense()
 
         # Loop over src positions
         for i_src in tqdm(
             idx_src_pos,
             bar_format=BAR_FORMAT,
-            desc="Scanning ship positions",
+            desc="Scanning src positions",
         ):
 
             delay_to_apply_ship = (
@@ -328,9 +376,12 @@ def add_event_anisotropic_env(
             )
 
             # Get azimuths for current ship position
-            az_kraken, rcv_range, transfert_function = get_src_transfert_function(
-                ds, i_rcv, i_src, grid_pressure_field
+            i_az_kraken, az_kraken, rcv_range, transfert_function = (
+                get_src_transfert_function(ds, i_rcv, i_src, grid_pressure_field)
             )
+            rcv_range = rcv_range.reshape(1)
+            transfert_function = transfert_function.todense()
+            min_wg_depth = kraken_grid["min_waveguide_depth"][i_az_kraken]
 
             (
                 t_rcv,
@@ -380,7 +431,8 @@ def get_src_transfert_function(ds, i_rcv, i_src, grid_pressure_field):
     rcv_range = (
         ds.r_src_rcv.sel(idx_rcv=i_rcv).isel(src_trajectory_time=i_src).values
     )  # Range along the given azimuth
-    return az, rcv_range, transfert_function
+
+    return i_az_src, az, rcv_range, transfert_function
 
 
 def get_unique_azimuths(ds, i_rcv):
@@ -1006,8 +1058,10 @@ def build_ambiguity_surf(ds, detection_metric):
 
 
 def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
+    nfft = None
     if sig_type == "ship":
         library_src_sig, t_library_src_sig = ship_noise(T=dt)
+        # nfft = fs * dt
 
     elif sig_type == "pulse":
         library_src_sig, t_library_src_sig = pulse(T=dt, f=25, fs=100)
@@ -1016,7 +1070,9 @@ def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
         library_src_sig, t_library_src_sig = pulse_train(T=dt, f=25, fs=100)
 
     elif sig_type == "debug_pulse":
-        library_src_sig, t_library_src_sig = pulse(T=dt, f=5, fs=20)
+        fs = 20
+        library_src_sig, t_library_src_sig = pulse(T=0.1, f=5, fs=fs)
+        nfft = int(fs * dt)
 
     if sig_type in ["ship", "pulse_train"]:
         # Apply hanning window
@@ -1027,6 +1083,7 @@ def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
         time=t_library_src_sig,
         name=sig_type,
         waveguide_depth=min_waveguide_depth,
+        nfft=nfft,
     )
 
     return library_src

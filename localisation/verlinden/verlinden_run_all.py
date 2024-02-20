@@ -39,9 +39,9 @@ def debug_config():
         "crs": "WGS84",
     }
     z_src = 5
-    nmax_ship = 3
+    nmax_ship = 2
     duration = 400  #
-    route_azimuth = 120  # East
+    route_azimuth = 140  # East
 
     grid_info = dict(
         Lx=100,
@@ -49,6 +49,8 @@ def debug_config():
         dx=500,
         dy=500,
     )
+
+    dt_debug = 0.5
 
     for src_stype in src_signal_type:
         # Define the parameters
@@ -71,6 +73,7 @@ def debug_config():
             snr=snr,
             detection_metric=detection_metric,
             min_waveguide_depth=depth,
+            dt=dt_debug,
         )
 
         simulation_info = {

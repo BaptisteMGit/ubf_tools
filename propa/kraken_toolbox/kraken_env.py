@@ -978,12 +978,12 @@ class KrakenFlp:
 
         # Receiver depth info
         self.n_rcv_z_ = int(n_rcv_z)
-        self.rcv_z_min_ = int(rcv_z_min)
-        self.rcv_z_max_ = int(rcv_z_max)
+        self.rcv_z_min_ = int(np.floor(rcv_z_min))
+        self.rcv_z_max_ = int(np.ceil(rcv_z_max))
         # Receiver range info
         self.n_rcv_r_ = int(n_rcv_r)
-        self.rcv_r_min_ = int(rcv_r_min)
-        self.rcv_r_max_ = int(rcv_r_max)
+        self.rcv_r_min_ = int(np.floor(rcv_r_min))
+        self.rcv_r_max_ = int(np.ceil(rcv_r_max))
         self.rcv_dist_offset_ = int(rcv_dist_offset)
 
         self.set_codes()

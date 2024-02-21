@@ -35,7 +35,7 @@ from localisation.verlinden.verlinden_utils import (
     init_library_src,
     init_library_dataset,
     init_event_dataset,
-    populate_istropic_env,
+    populate_isotropic_env,
     populate_anistropic_env,
     check_waveguide_cutoff,
     get_max_kraken_range,
@@ -71,10 +71,10 @@ def populate_grid(
 
     # Switch between isotropic and anisotropic environment
     if isotropic_env:
-        ds, rcv_signal_library, grid_pressure_field = populate_istropic_env(
+        ds, rcv_signal_library, grid_pressure_field = populate_isotropic_env(
             ds, library_src, kraken_env, kraken_flp, signal_library_dim
         )
-        kraken_grid = None  # TODO : update this 
+        kraken_grid = None  # TODO : update this ?
     else:
         ds, rcv_signal_library, grid_pressure_field, kraken_grid = (
             populate_anistropic_env(

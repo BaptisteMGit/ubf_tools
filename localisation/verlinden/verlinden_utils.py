@@ -46,7 +46,7 @@ from localisation.verlinden.verlinden_path import (
 )
 
 
-def populate_istropic_env(ds, library_src, kraken_env, kraken_flp, signal_library_dim):
+def populate_isotropic_env(ds, library_src, kraken_env, kraken_flp, signal_library_dim):
 
     delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values.flatten()
 
@@ -105,7 +105,7 @@ def populate_anistropic_env(
     idx_rcv = ds.idx_rcv.values
 
     # Grid pressure field for all azimuths : list of nested lists required due to inhomogeneous sizes (depending on the azimuths)
-    grid_pressure_field = np.empty((idx_rcv.size), dtype=object)
+    grid_pressure_field = []
     kraken_range_rcv = []
     kraken_depth_rcv = []
     rcv_depth = [library_src.z_src]
@@ -120,7 +120,8 @@ def populate_anistropic_env(
         # Loop over possible azimuths
         # azimuths_rcv = np.unique(ds.az_propa.sel(idx_rcv=i_rcv).values)
         azimuths_rcv = get_unique_azimuths(ds, i_rcv)
-        az_pressure_field = np.empty((azimuths_rcv.size), dtype=object)
+        az_pressure_field = []
+        # az_pressure_field = np.empty((azimuths_rcv.size), dtype=object)
 
         for i_az in tqdm(
             range(azimuths_rcv.size),
@@ -211,8 +212,9 @@ def populate_anistropic_env(
             )
             pf[:, :, idx_not_usefull] = 0j
 
-            sparse_pf = sparse.COO(pf)
-            az_pressure_field[i_az] = sparse_pf
+            sparse_pf = sparse.COO(pf, fill_value=0j)
+            az_pressure_field.append(sparse_pf)
+            # az_pressure_field[i_az] = sparse_pf
 
             # Store received signal in dataset
             if i_rcv == 0:
@@ -228,7 +230,8 @@ def populate_anistropic_env(
             rcv_signal_library[i_rcv, idx_az, :] = s_rcv
 
         # Store pressure field for all azimuths relative to current rcv
-        grid_pressure_field[i_rcv] = az_pressure_field
+        # grid_pressure_field[i_rcv] = az_pressure_field
+        grid_pressure_field.append(az_pressure_field)
 
     # Cast kraken grid range/depth arrays to the same size
     nr_max = np.max([kraken_range_rcv[i_rcv].size for i_rcv in ds.idx_rcv.values])
@@ -1045,11 +1048,11 @@ def build_ambiguity_surf(ds, detection_metric):
     )
 
     # Derive src position
-    ds["detected_pos_x"] = ds.x.isel(
-        x=ds.ambiguity_surface.argmax(dim=["lon", "lat"])["lon"]
+    ds["detected_pos_lon"] = ds.lon.isel(
+        lon=ds.ambiguity_surface.argmax(dim=["lon", "lat"])["lon"]
     )
-    ds["detected_pos_y"] = ds.y.isel(
-        y=ds.ambiguity_surface.argmax(dim=["lon", "lat"])["lat"]
+    ds["detected_pos_lat"] = ds.lat.isel(
+        lat=ds.ambiguity_surface.argmax(dim=["lon", "lat"])["lat"]
     )
 
     ds.attrs["detection_metric"] = detection_metric

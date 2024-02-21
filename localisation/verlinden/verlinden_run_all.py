@@ -18,7 +18,7 @@ def debug_config():
     detection_metric = ["intercorr0"]
 
     obs_info = {
-        "id": ["RR48", "RR45"],
+        "id": ["RR45", "RR48"],
         "lons": [],
         "lats": [],
     }
@@ -33,15 +33,17 @@ def debug_config():
     v_ship = v_knots * 1852 / 3600  # m/s
 
     # Close src position to reduce kraken cpu time for debug
+
     initial_ship_pos = {
-        "lon": obs_info["lons"][0] - 0.002,
-        "lat": obs_info["lats"][0] - 0.002,
+        "lon": obs_info["lons"][1] - 0.1,
+        "lat": obs_info["lats"][1] + 0.2,
         "crs": "WGS84",
     }
+
     z_src = 5
-    nmax_ship = 2
-    duration = 400  #
-    route_azimuth = 140  # East
+    nmax_ship = 3
+    duration = 3000  # 1 hour
+    route_azimuth = 130  # East
 
     grid_info = dict(
         Lx=100,
@@ -76,6 +78,11 @@ def debug_config():
             dt=dt_debug,
         )
 
+        # import os
+        # testcase_name = "testcase2_1"
+        # simu_folder = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_output"
+        # simu_folder = os.path.join(simu_folder, testcase_name)
+
         simulation_info = {
             "simulation_folder": simu_folder,
             "src_pos": "not_on_grid",
@@ -94,8 +101,8 @@ def debug_config():
             "plot_pos_error": True,
             "plot_correlation": True,
             "tl_freq_to_plot": [20],
-            "x_offset": 1000,
-            "y_offset": 1000,
+            "lon_offset": 0.01,
+            "lat_offset": 0.01,
         }
 
         # Analyse the results
@@ -110,23 +117,23 @@ def debug_config():
 
 
 if __name__ == "__main__":
-    run_mode = "debug"
-    # run_mode = "normal"
+    # run_mode = "debug"
+    run_mode = "normal"
     if run_mode == "debug":
         debug_config()
 
     else:
         # snr = [None]
-        # detection_metric = ["intercorr0"]
+        # detection_metric = ["intercorr0"]  "hilbert_env_intercorr0"
         testcase = testcase2_1
         # snr = [-10, -5, 5, 10, None]
         snr = [-5, 10]
         # src_signal_type = ["pulse"]
         src_signal_type = ["ship"]
-        detection_metric = ["intercorr0", "hilbert_env_intercorr0"]
+        detection_metric = ["intercorr0"]
 
         obs_info = {
-            "id": ["RR48", "RR45"],
+            "id": ["RR45", "RR48"],
             "lons": [],
             "lats": [],
         }
@@ -144,15 +151,22 @@ if __name__ == "__main__":
         # x_pos_ship = [7000, 10000]
         # y_pos_ship = [50000, 35000]
 
+        # initial_ship_pos = {
+        #     "lon": 65.44,
+        #     "lat": -27.08,
+        #     "crs": "WGS84",
+        # }  # CRS might not be usefull directly but it is better to keep track of the coordinates system used
+
         initial_ship_pos = {
-            "lon": 65.44,
-            "lat": -27.08,
+            "lon": obs_info["lons"][0],
+            "lat": obs_info["lats"][0] + 0.07,
             "crs": "WGS84",
-        }  # CRS might not be usefull directly but it is better to keep track of the coordinates system used
+        }
+
         z_src = 5
-        nmax_ship = 100
-        duration = 3600  # 1 hour
-        route_azimuth = 120  # East
+        nmax_ship = 5
+        duration = 1000  # 1 hour
+        route_azimuth = 130  # East
 
         grid_info = dict(
             Lx=1 * 1e3,

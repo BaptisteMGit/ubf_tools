@@ -42,20 +42,20 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
 
     for i_ship in range(n_instant_to_plot):
         fig, axes = plt.subplots(
-            xr_dataset.dims["idx_obs"],
+            xr_dataset.dims["idx_rcv"],
             1,
             figsize=(16, 8),
             sharey=True,
         )
 
-        for i_obs in range(xr_dataset.dims["idx_obs"]):
+        for i_rcv in range(xr_dataset.dims["idx_rcv"]):
             lib_sig = xr_dataset.rcv_signal_library.sel(
-                x=xr_dataset.x_ship.isel(src_trajectory_time=i_ship),
-                y=xr_dataset.y_ship.isel(src_trajectory_time=i_ship),
+                lon=xr_dataset.lon_src.isel(src_trajectory_time=i_ship),
+                lat=xr_dataset.lat_src.isel(src_trajectory_time=i_ship),
                 method="nearest",
-            ).isel(idx_obs=i_obs)
+            ).isel(idx_rcv=i_rcv)
             event_sig = xr_dataset.rcv_signal_event.isel(
-                src_trajectory_time=i_ship, idx_obs=i_obs
+                src_trajectory_time=i_ship, idx_rcv=i_rcv
             )
             # Plot the signal with the smallest std on top
             if event_sig.std() <= lib_sig.std():
@@ -66,24 +66,24 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
                 lib_zorder = 2
 
             lib_sig.plot(
-                ax=axes[i_obs],
-                label=f"library - obs {i_obs}",
+                ax=axes[i_rcv],
+                label=f"library - obs {i_rcv}",
                 color=LIBRARY_COLOR,
                 zorder=lib_zorder,
             )
             event_sig.plot(
-                ax=axes[i_obs],
-                label=f"event - obs {i_obs}",
+                ax=axes[i_rcv],
+                label=f"event - obs {i_rcv}",
                 color=EVENT_COLOR,
                 zorder=event_zorder,
             )
 
-            axes[i_obs].set_xlabel("")
-            axes[i_obs].set_ylabel("")
-            axes[i_obs].legend(loc="upper right")
-            axes[i_obs].tick_params(labelsize=TICKS_FONTSIZE)
+            axes[i_rcv].set_xlabel("")
+            axes[i_rcv].set_ylabel("")
+            axes[i_rcv].legend(loc="upper right")
+            axes[i_rcv].tick_params(labelsize=TICKS_FONTSIZE)
 
-        for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_obs.values]):
+        for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_rcv.values]):
             ax.set_title(col, fontsize=TITLE_FONTSIZE)
 
         fig.supylabel("Received signal", fontsize=SUPLABEL_FONTSIZE)
@@ -107,7 +107,7 @@ def plot_ambiguity_surface_dist(ds, img_basepath):
     amb_surf = get_ambiguity_surface(ds)
 
     plt.figure(figsize=(16, 10))
-    amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=0).plot.hist(bins=10000)
+    amb_surf.isel(idx_rcv_pairs=0, src_trajectory_time=0).plot.hist(bins=10000)
     plt.scatter(amb_surf.max(), 1, marker="o", color="red", label="Max")
     plt.ylabel("Number of points", fontsize=LABEL_FONTSIZE)
     plt.xlabel("Ambiguity surface [dB]", fontsize=LABEL_FONTSIZE)
@@ -136,15 +136,15 @@ def get_grid_arrays(ds, grid_info={}):
     rr_obs = np.array(
         [
             np.sqrt(
-                (xx - ds.x_obs.sel(idx_obs=i_obs).values) ** 2
-                + (yy - ds.y_obs.sel(idx_obs=i_obs).values) ** 2
+                (xx - ds.lon_rcv.sel(idx_rcv=i_rcv).values) ** 2
+                + (yy - ds.lat_rcv.sel(idx_rcv=i_rcv).values) ** 2
             )
-            for i_obs in range(ds.dims["idx_obs"])
+            for i_rcv in range(ds.dims["idx_rcv"])
         ]
     )
 
     delta_rr = rr_obs[0, ...] - rr_obs[1, ...]
-    delta_rr_ship = ds.r_obs_ship.sel(idx_obs=0) - ds.r_obs_ship.sel(idx_obs=1)
+    delta_rr_ship = ds.r_obs_ship.sel(idx_rcv=0) - ds.r_obs_ship.sel(idx_rcv=1)
 
     return xx, yy, delta_rr, delta_rr_ship
 
@@ -166,11 +166,11 @@ def plot_ambiguity_surface(
         plt.figure(figsize=(10, 8))
 
         vmin = (
-            amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).quantile(0.35).values
+            amb_surf.isel(idx_rcv_pairs=0, src_trajectory_time=i).quantile(0.35).values
         )
-        vmax = amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).max()
-        amb_surf.isel(idx_obs_pairs=0, src_trajectory_time=i).plot(
-            x="x", y="y", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
+        vmax = amb_surf.isel(idx_rcv_pairs=0, src_trajectory_time=i).max()
+        amb_surf.isel(idx_rcv_pairs=0, src_trajectory_time=i).plot(
+            x="lon", y="lat", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
         )
         ax = plt.gca()
         for item in (
@@ -182,8 +182,8 @@ def plot_ambiguity_surface(
 
         # if plot_beampattern:
         #     # bp_offset = np.sqrt(
-        #     #     (ds.x_ship.isel(src_trajectory_time=i) - x_center_array) ** 2
-        #     #     + (ds.y_ship.isel(src_trajectory_time=i) - y_center_array) ** 2
+        #     #     (ds.lon_src.isel(src_trajectory_time=i) - x_center_array) ** 2
+        #     #     + (ds.lat_src.isel(src_trajectory_time=i) - y_center_array) ** 2
         #     # )
         #     # log_bp = 10 * np.log10(linear_bp)
         #     # bp_alpha = -bp_offset / min(log_bp)
@@ -193,7 +193,7 @@ def plot_ambiguity_surface(
         #     # plt.plot(x_bp, y_bp, "k", linestyle="--", label="Beampattern", zorder=1)
 
         #     # plt.gca().get_images()[0].clim([0, 20])
-        #     # ds.ambiguity_surface.isel(idx_obs_pairs=0, src_trajectory_time=i).plot(
+        #     # ds.ambiguity_surface.isel(idx_rcv_pairs=0, src_trajectory_time=i).plot(
         #     #     x="x", y="y", zorder=0, clim=[-1, 1]
         #     # )
 
@@ -214,8 +214,8 @@ def plot_ambiguity_surface(
             )
 
         plt.scatter(
-            ds.x_ship.isel(src_trajectory_time=i),
-            ds.y_ship.isel(src_trajectory_time=i),
+            ds.lon_src.isel(src_trajectory_time=i),
+            ds.lat_src.isel(src_trajectory_time=i),
             color="k",
             marker="+",
             s=90,
@@ -224,8 +224,8 @@ def plot_ambiguity_surface(
         )
 
         plt.scatter(
-            ds.detected_pos_x.isel(idx_obs_pairs=0, src_trajectory_time=i),
-            ds.detected_pos_y.isel(idx_obs_pairs=0, src_trajectory_time=i),
+            ds.detected_pos_lon.isel(idx_rcv_pairs=0, src_trajectory_time=i),
+            ds.detected_pos_lat.isel(idx_rcv_pairs=0, src_trajectory_time=i),
             marker="o",
             facecolors="none",
             edgecolors="black",
@@ -235,24 +235,24 @@ def plot_ambiguity_surface(
             zorder=3,
         )
 
-        for i_obs in range(ds.dims["idx_obs"]):
+        for i_rcv in range(ds.dims["idx_rcv"]):
             plt.scatter(
-                ds.x_obs.isel(idx_obs=i_obs),
-                ds.y_obs.isel(idx_obs=i_obs),
+                ds.lon_rcv.isel(idx_rcv=i_rcv),
+                ds.lat_rcv.isel(idx_rcv=i_rcv),
                 marker="o",
-                label=f"$O_{i_obs}$",
+                label=f"$O_{i_rcv}$",
             )
 
             plt.xlim(
                 [
-                    min(ds.x.min(), ds.x_obs.min()) - plot_info["x_offset"],
-                    max(ds.x.max(), ds.x_obs.max()) + plot_info["x_offset"],
+                    min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                    max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
                 ]
             )
             plt.ylim(
                 [
-                    min(ds.y.min(), ds.y_obs.min()) - plot_info["y_offset"],
-                    max(ds.y.max(), ds.y_obs.max()) + plot_info["y_offset"],
+                    min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                    max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
                 ]
             )
 
@@ -292,8 +292,8 @@ def plot_localisation_moviepy(
 
         # True source position
         plt.scatter(
-            ds.x_ship.isel(src_trajectory_time=i),
-            ds.y_ship.isel(src_trajectory_time=i),
+            ds.lon_src.isel(src_trajectory_time=i),
+            ds.lat_src.isel(src_trajectory_time=i),
             color="k",
             marker="+",
             s=90,
@@ -303,8 +303,8 @@ def plot_localisation_moviepy(
 
         # Estimated source position
         plt.scatter(
-            ds.detected_pos_x.isel(idx_obs_pairs=0, src_trajectory_time=i),
-            ds.detected_pos_y.isel(idx_obs_pairs=0, src_trajectory_time=i),
+            ds.detected_pos_lon.isel(idx_rcv_pairs=0, src_trajectory_time=i),
+            ds.detected_pos_lat.isel(idx_rcv_pairs=0, src_trajectory_time=i),
             marker="o",
             facecolors="none",
             edgecolors="black",
@@ -334,28 +334,28 @@ def plot_localisation_moviepy(
             )
 
         # Obs location
-        for i_obs in range(ds.dims["idx_obs"]):
+        for i_rcv in range(ds.dims["idx_rcv"]):
             plt.scatter(
-                ds.x_obs.isel(idx_obs=i_obs),
-                ds.y_obs.isel(idx_obs=i_obs),
+                ds.lon_rcv.isel(idx_rcv=i_rcv),
+                ds.lat_rcv.isel(idx_rcv=i_rcv),
                 marker="o",
-                color=obs_col[i_obs],
-                label=f"$O_{i_obs}$",
+                color=obs_col[i_rcv],
+                label=f"$O_{i_rcv}$",
             )
 
         # plt.xlim(
         #     [
-        #         min(ds.x.min(), ds.x_obs.min())
+        #         min(ds.lon.min(), ds.lon_rcv.min())
         #         - x_offset,
-        #         max(ds.x.max(), ds.x_obs.max())
+        #         max(ds.lon.max(), ds.lon_rcv.max())
         #         + x_offset,
         #     ]
         # )
         # plt.ylim(
         #     [
-        #         min(ds.y.min(), ds.y_obs.min())
+        #         min(ds.lat.min(), ds.lat_rcv.min())
         #         - y_offset,
-        #         max(ds.y.max(), ds.y_obs.max())
+        #         max(ds.lat.max(), ds.lat_rcv.max())
         #         + y_offset,
         #     ]
         # )
@@ -390,18 +390,18 @@ def plot_ship_trajectory(ds, img_basepath):
     """Plot ship trajectory."""
 
     plt.figure(figsize=(10, 8))
-    plt.plot(ds.x_ship, ds.y_ship, marker="+", color="red", label=r"$X_{ship}$")
-    for i_obs in range(ds.dims["idx_obs"]):
+    plt.plot(ds.lon_src, ds.lat_src, marker="+", color="red", label=r"$X_{ship}$")
+    for i_rcv in range(ds.dims["idx_rcv"]):
         plt.scatter(
-            ds.x_obs.isel(idx_obs=i_obs),
-            ds.y_obs.isel(idx_obs=i_obs),
+            ds.lon_rcv.isel(idx_rcv=i_rcv),
+            ds.lat_rcv.isel(idx_rcv=i_rcv),
             marker="o",
-            label=f"$O_{i_obs}$",
+            label=f"$O_{i_rcv}$",
         )
-    for i_pair in ds.idx_obs_pairs:
+    for i_pair in ds.idx_rcv_pairs:
         plt.scatter(
-            ds.detected_pos_x.sel(idx_obs_pairs=i_pair),
-            ds.detected_pos_y.sel(idx_obs_pairs=i_pair),
+            ds.detected_pos_lon.sel(idx_rcv_pairs=i_pair),
+            ds.detected_pos_lat.sel(idx_rcv_pairs=i_pair),
             marker="+",
             color="black",
             s=120,
@@ -420,7 +420,8 @@ def plot_ship_trajectory(ds, img_basepath):
 
 def get_pos_error(ds):
     pos_error = np.sqrt(
-        (ds.detected_pos_x - ds.x_ship) ** 2 + (ds.detected_pos_y - ds.y_ship) ** 2
+        (ds.detected_pos_lon - ds.lon_src) ** 2
+        + (ds.detected_pos_lat - ds.lat_src) ** 2
     )
     return pos_error
 
@@ -445,8 +446,8 @@ def plot_pos_error(ds, img_basepath):
     pos_error = get_pos_error(ds)
 
     plt.figure(figsize=(10, 8))
-    for i_pair in ds.idx_obs_pairs:
-        pos_error.sel(idx_obs_pairs=i_pair).plot(label=f"obs pair {i_pair.values}")
+    for i_pair in ds.idx_rcv_pairs:
+        pos_error.sel(idx_rcv_pairs=i_pair).plot(label=f"obs pair {i_pair.values}")
 
         plt.axhline(
             pos_error.median(),
@@ -471,25 +472,25 @@ def plot_correlation(ds, img_basepath, det_metric="intercorr0", nb_instant_to_pl
 
     fig, axes = plt.subplots(
         nb_instant_to_plot,
-        ds.dims["idx_obs_pairs"],
+        ds.dims["idx_rcv_pairs"],
         sharex=True,
         sharey=True,
         figsize=(16, 8),
     )
     axes = np.reshape(
-        axes, (nb_instant_to_plot, ds.dims["idx_obs_pairs"])
+        axes, (nb_instant_to_plot, ds.dims["idx_rcv_pairs"])
     )  # Ensure 2D axes array in case of single obs pair
 
     for i_ship in range(nb_instant_to_plot):
-        for i_obs_pair in range(ds.dims["idx_obs_pairs"]):
+        for i_rcv_pair in range(ds.dims["idx_rcv_pairs"]):
             event_vect = ds.event_corr.isel(
-                src_trajectory_time=i_ship, idx_obs_pairs=i_obs_pair
+                src_trajectory_time=i_ship, idx_rcv_pairs=i_rcv_pair
             )
             lib_vect = ds.library_corr.sel(
-                x=ds.x_ship.isel(src_trajectory_time=i_ship),
-                y=ds.y_ship.isel(src_trajectory_time=i_ship),
+                lon=ds.lon_src.isel(src_trajectory_time=i_ship),
+                lat=ds.lat_src.isel(src_trajectory_time=i_ship),
                 method="nearest",
-            ).isel(idx_obs_pairs=i_obs_pair)
+            ).isel(idx_rcv_pairs=i_rcv_pair)
 
             if det_metric == "hilbert_env_intercorr0":
                 event_vect.values = np.abs(signal.hilbert(event_vect))
@@ -507,24 +508,24 @@ def plot_correlation(ds, img_basepath, det_metric="intercorr0", nb_instant_to_pl
                 lib_zorder = 2
 
             event_vect.plot(
-                ax=axes[i_ship, i_obs_pair],
+                ax=axes[i_ship, i_rcv_pair],
                 label="event",
                 color=EVENT_COLOR,
                 zorder=event_zorder,
             )
             lib_vect.plot(
-                ax=axes[i_ship, i_obs_pair],
+                ax=axes[i_ship, i_rcv_pair],
                 label="lib at ship pos",
                 color=LIBRARY_COLOR,
                 zorder=lib_zorder,
             )
-            axes[i_ship, i_obs_pair].set_xlabel("")
-            axes[i_ship, i_obs_pair].set_ylabel("")
-            axes[i_ship, i_obs_pair].set_title(
+            axes[i_ship, i_rcv_pair].set_xlabel("")
+            axes[i_ship, i_rcv_pair].set_ylabel("")
+            axes[i_ship, i_rcv_pair].set_title(
                 f"Source pos n°{i_ship}", fontsize=TITLE_FONTSIZE
             )
-            axes[i_ship, i_obs_pair].legend(loc="upper right", fontsize=LEGEND_FONTSIZE)
-            axes[i_ship, i_obs_pair].tick_params(labelsize=TICKS_FONTSIZE)
+            axes[i_ship, i_rcv_pair].legend(loc="upper right", fontsize=LEGEND_FONTSIZE)
+            axes[i_ship, i_rcv_pair].tick_params(labelsize=TICKS_FONTSIZE)
 
     fig.supxlabel(r"$\tau (s)$", fontsize=SUPLABEL_FONTSIZE)
     fig.supylabel(ylabel, fontsize=SUPLABEL_FONTSIZE)
@@ -669,8 +670,8 @@ def analysis_main(
             local_log = [
                 f"Detection metric: {detection_metric}",
                 f"SNR: {ds.attrs['snr_dB']}dB",
-                f"Number of sensors: {ds.dims['idx_obs']}",
-                f"Number of sensors pairs: {ds.dims['idx_obs_pairs']}",
+                f"Number of sensors: {ds.dims['idx_rcv']}",
+                f"Number of sensors pairs: {ds.dims['idx_rcv_pairs']}",
                 f"Positions of the source: {ds.attrs['source_positions']}",
                 f"Number of source positions analysed: {ds.dims['src_trajectory_time']}",
                 f"Ambiguity surface dynamic (max - min): {amb_dynamic_range:.1f}dB",

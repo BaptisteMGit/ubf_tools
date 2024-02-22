@@ -748,13 +748,13 @@ class KrakenEnv:
         self.simulation_title = title
 
         # Env file info
-        self.root = env_root
+        self.root_ = env_root
         self.filename = env_filename
-        self.env_fpath = os.path.join(self.root, self.filename + ".env")
+        self.env_fpath = os.path.join(self.root_, self.filename + ".env")
         # Flp file info
-        self.flp_fpath = os.path.join(self.root, self.filename + ".flp")
+        self.flp_fpath = os.path.join(self.root_, self.filename + ".flp")
         # Shd file info
-        self.shd_fpath = os.path.join(self.root, self.filename + ".shd")
+        self.shd_fpath = os.path.join(self.root_, self.filename + ".shd")
 
         # List of ordered frequencies
         self.freq = np.array(freq)
@@ -936,7 +936,16 @@ class KrakenEnv:
     def plot_env(self):
         self.medium.plot_medium()
 
-        # pass
+    @property
+    def root(self):
+        return self.root_
+
+    @root.setter
+    def root(self, root):
+        self.root_ = root
+        self.env_fpath = os.path.join(self.root_, self.filename + ".env")
+        self.flp_fpath = os.path.join(self.root_, self.filename + ".flp")
+        self.shd_fpath = os.path.join(self.root_, self.filename + ".shd")
 
 
 class KrakenFlp:
@@ -957,6 +966,7 @@ class KrakenFlp:
         rcv_dist_offset=0.0,
     ):
         self.env = env
+        self.flp_fpath = self.env.flp_fpath
         self.title_ = self.env.simulation_title
         self.src_type_ = src_type
         self.mode_theory_ = mode_theory
@@ -1082,7 +1092,7 @@ class KrakenFlp:
     def write_flp(self):
         self.write_lines()
 
-        with open(self.env.flp_fpath, "w") as f_out:
+        with open(self.flp_fpath, "w") as f_out:
             f_out.writelines(self.lines)
 
 

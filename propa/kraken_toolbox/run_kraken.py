@@ -19,7 +19,7 @@ import os
 # import pathos
 import psutil
 import shutil
-import multiprocess
+import multiprocessing
 import numpy as np
 
 from tqdm import tqdm
@@ -51,7 +51,7 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
             clear_kraken_parallel_working_dir(root=env.root)
 
             # Spawn processes
-            pool = multiprocess.Pool(N_CORES)
+            pool = multiprocessing.Pool(N_CORES)
 
             # Build the parameter pool
             nf = len(frequencies)
@@ -73,8 +73,11 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
                 > 0
             ]
 
+            # cs =
             # Run parallel processes
-            result = pool.starmap(runkraken_broadband_range_dependent, param_pool)
+            result = pool.starmap(
+                runkraken_broadband_range_dependent, param_pool, chunksize=1
+            )
             field_pos = result[0][1]
             pressure_field = np.concatenate([r[0] for r in result], axis=0)
 
@@ -163,7 +166,7 @@ def get_child_pids():
 
     :return:
     """
-    parent_pid = multiprocess.current_process().pid
+    parent_pid = multiprocessing.current_process().pid
     children = psutil.Process(parent_pid).children(recursive=True)
     return [child.pid for child in children]
 

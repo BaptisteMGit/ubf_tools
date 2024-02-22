@@ -113,9 +113,7 @@ def test():
         rcv_z_max=rcv_z_max,
     )
 
-    broadband_pressure_field = runkraken(
-        env=env, flp=flp, frequencies=freqs
-    )
+    broadband_pressure_field, _ = runkraken(env=env, flp=flp, frequencies=freqs)
 
     # for ifreq in range(len(freqs)):
     for ifreq in [0, 250, 400]:

@@ -14,7 +14,9 @@
 # ======================================================================================================================
 
 import os
-import pathos
+
+# import time
+# import pathos
 import psutil
 import shutil
 import multiprocess
@@ -26,12 +28,18 @@ from propa.kraken_toolbox.usefull_path import KRAKEN_BIN_DIRECTORY
 from propa.kraken_toolbox.kraken_env import KrakenEnv, KrakenFlp
 from propa.kraken_toolbox.read_shd import readshd
 
-N_CORES = 2
+N_CORES = 8
 
 
 def runkraken(env, flp, frequencies, parallel=False, verbose=False):
     if verbose:
         print(f"Running Kraken  (parallel = {parallel})...")
+
+    # Change directory
+    os.chdir(env.root)
+    # Write env and flp files
+    env.write_env()
+    flp.write_flp()
 
     if (
         env.range_dependent_env and env.broadband_run
@@ -43,11 +51,7 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
             clear_kraken_parallel_working_dir(root=env.root)
 
             # Spawn processes
-            mp = (
-                pathos.helpers.mp
-            )  # Trick to get an equivalent of starmap using dill and not pickle for advanced serialization
-            pool = mp.Pool(N_CORES)
-            child_pids = get_child_pids()
+            pool = multiprocess.Pool(N_CORES)
 
             # Build the parameter pool
             nf = len(frequencies)
@@ -59,7 +63,6 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
                         slice(i * nf // N_CORES, min((i + 1) * nf // N_CORES, nf))
                     ],
                     True,
-                    child_pids[i],
                 )
                 for i in range(N_CORES)
                 if len(
@@ -72,49 +75,43 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
 
             # Run parallel processes
             result = pool.starmap(runkraken_broadband_range_dependent, param_pool)
-            pressure_field = np.concatenate(result, axis=0)
-        else:
-            # Change directory
-            os.chdir(env.root)
-            # Write env and flp files
-            env.write_env()
-            flp.write_flp()
+            field_pos = result[0][1]
+            pressure_field = np.concatenate([r[0] for r in result], axis=0)
 
-            pressure_field = runkraken_broadband_range_dependent(
+            # Close pool
+            pool.close()
+            # Wait for all processes to finish
+            pool.join()
+
+        else:
+            pressure_field, field_pos = runkraken_broadband_range_dependent(
                 env=env, flp=flp, frequencies=frequencies
             )
 
         if verbose:
             print("Broadband range dependent kraken simulation completed.")
 
-        return pressure_field
+        return pressure_field, field_pos
 
     else:  # Run range independent simulation (no parallelization for now)
 
-        # Change directory
-        os.chdir(env.root)
-
-        # Write env and flp files
-        env.write_env()
-        flp.write_flp()
-
         # Run Fortran version of Kraken
         run_kraken(env.filename)
-        # os.system(f"kraken {env.filename}")
         # Run Fortran version of Field
-        # os.system(f"field {env.filename}")
         run_field(env.filename)
 
         # Read pressure field for the current frequency
-        _, _, _, _, read_freq, _, _, pressure_field = readshd(
+        _, _, _, _, read_freq, _, field_pos, pressure_field = readshd(
             filename=env.filename + ".shd", freq=frequencies
         )
         if verbose and not env.range_dependent_env and env.broadband_run:
             print("Broadband range independent kraken simulation completed.")
-        else:
+        elif verbose and env.range_dependent_env and not env.broadband_run:
             print("Single frequency range dependent kraken simulation completed.")
+        elif verbose and not env.range_dependent_env and not env.broadband_run:
+            print("Single frequency range independent kraken simulation completed.")
 
-        return pressure_field
+        return pressure_field, field_pos
 
 
 def run_field(filename, parallel=False, worker_pid=None):
@@ -222,14 +219,21 @@ def runkraken_broadband_range_dependent(
     for each frequency of the broadband simulation and then merge the results in a single pressure field.
     """
     # Root dir to share with subprocesses
+    worker_pid = os.getpid()
     env_root = env.root
+
+    if parallel:
+        desc = f"Running broadband range dependent kraken simulation... (worker_pid = {worker_pid})"
+    else:
+        desc = "Running broadband range dependent kraken simulation..."
 
     # Loop over frequencies
     for ifreq in tqdm(
         range(len(frequencies)),
         bar_format=BAR_FORMAT,
-        desc="Computing broadband pressure field for range dependent environment",
+        desc=desc,
     ):
+        # for ifreq in range(len(frequencies)):
         # Initialize environment with the current frequency and provided range dependent environment
         env = KrakenEnv(
             title=env.simulation_title,
@@ -261,25 +265,23 @@ def runkraken_broadband_range_dependent(
 
         # Run Fortran version of Kraken
         run_kraken(env.filename, parallel, worker_pid)
-        # os.system(f"kraken {env.filename}")
         # Run Fortran version of Field
         run_field(env.filename, parallel, worker_pid)
-        # os.system(f"field {env.filename}")
 
         # Read pressure field for the current frequency
-        _, _, _, _, read_freq, _, _, pressure = readshd(
+        _, _, _, _, read_freq, _, field_pos, pressure = readshd(
             filename=env.filename + ".shd", freq=frequencies[ifreq]
         )
 
         # Initialize broadband pressure field array
         if ifreq == 0:
             broadband_shape = (len(frequencies),) + pressure.shape
-
             broadband_pressure_field = np.zeros(broadband_shape, dtype=complex)
 
         broadband_pressure_field[ifreq, ...] = pressure
 
-    return broadband_pressure_field
+    # time.sleep(worker_pid / 10000)
+    return broadband_pressure_field, field_pos
 
 
 if __name__ == "__main__":

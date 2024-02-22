@@ -114,7 +114,7 @@ if RUN:
     )
     flp.write_flp()
 
-    pressure_field = runkraken(env, flp, src.kraken_freq)
+    pressure_field, _ = runkraken(env, flp, src.kraken_freq)
 
     (
         t_obs,

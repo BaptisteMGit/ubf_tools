@@ -2,6 +2,7 @@ import os
 import numpy as np
 from cst import C0
 from propa.kraken_toolbox.read_shd import readshd
+from scipy.optimize import minimize
 
 
 def get_component(Modes, comp):
@@ -103,3 +104,63 @@ def get_rcv_pos_idx(
     rr, zz = np.meshgrid(rcv_pos_idx_r, rcv_pos_idx_z)
 
     return rr, zz, field_pos
+
+
+""" Find optimal intervals for parallel processing """
+
+
+def find_optimal_intervals(fmin, fmax, nf, n_workers, mean_cpu_time=None, z=None):
+    """
+    Find optimal intervals for parallel processing based on cpu time. The function finds optimal frequency intervals
+     bounds so that the cpu time is balanced between workers."""
+
+    # If z is not provided, use known polynomial fit coef (computed on the range 0 - 100 Hz)
+    if z is None:
+        # z = [0.0016158, -0.01881528, 0.49200085]  # win = 20
+        # z = [0.00173842, -0.05340321, 1.02745305]  # win = 40
+        # z = [0.00168555, -0.04056279, 0.79734153]  # win = 30
+        z = [0.00181359, -0.06963699, 1.38239787]  # win = 50
+
+    if mean_cpu_time is None:
+        mean_cpu_time = 5.2  # Mean cpu time for the range 0 - 100 Hz (s)
+
+    # Initial guess
+    fi = np.linspace(fmin, fmax, n_workers + 1)
+    fi = fi[1:-1]
+    alpha = mean_cpu_time * nf
+    x0 = np.array([alpha, *fi])
+
+    # Bounds
+    bounds = [(0, alpha), *[(fmin, fmax)] * len(fi)]
+    res = minimize(objective_function, x0, args=(z, fmin, fmax), bounds=bounds)
+    expected_cpu_time = res.x[0]
+    freq_bounds = [fmin, *res.x[1:], fmax]
+
+    return expected_cpu_time, freq_bounds
+
+
+def objective_function(x, z, fmin, fmax):
+    Y = build_y(x, z=z, fmin=fmin, fmax=fmax)
+    return np.sum(Y**2)
+
+
+def build_y(x, z, fmin, fmax):
+    alpha = x[0]
+    fi = x[1:]
+    Y = np.array([g(fi, alpha, k, z, fmin, fmax) for k in range(len(fi) + 1)])
+    # print(f"alpha = {alpha}")
+    # print(f"fi = {fi}")
+    # print(f"Y = {Y}")
+    return Y
+
+
+def g(fi, alpha, k, z, fmin, fmax):
+    x = [fmin, *fi, fmax]
+    a, b, c = z
+    gk = (
+        a / 3 * (x[k + 1] ** 3 - x[k] ** 3)
+        + b / 2 * (x[k + 1] ** 2 - x[k] ** 2)
+        + c * (x[k + 1] - x[k])
+        - alpha
+    )
+    return gk

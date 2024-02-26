@@ -14,8 +14,8 @@
 # ======================================================================================================================
 
 import os
+import time
 
-# import time
 # import pathos
 import psutil
 import shutil
@@ -27,6 +27,7 @@ from cst import BAR_FORMAT
 from propa.kraken_toolbox.usefull_path import KRAKEN_BIN_DIRECTORY
 from propa.kraken_toolbox.kraken_env import KrakenEnv, KrakenFlp
 from propa.kraken_toolbox.read_shd import readshd
+from propa.kraken_toolbox.utils import find_optimal_intervals
 
 N_CORES = 8
 
@@ -50,28 +51,53 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
             # Clear working dirs
             clear_kraken_parallel_working_dir(root=env.root)
 
-            # Spawn processes
-            pool = multiprocessing.Pool(N_CORES)
+            # Get optimal frequencies intervals bounds
+            frequencies_intervalls = assign_frequency_intervalls(
+                frequencies, N_CORES, mode="optimal"
+            )
 
             # Build the parameter pool
-            nf = len(frequencies)
+
             param_pool = [
                 (
                     env,
                     flp,
-                    frequencies[
-                        slice(i * nf // N_CORES, min((i + 1) * nf // N_CORES, nf))
-                    ],
+                    frequencies_intervalls[i],
                     True,
                 )
-                for i in range(N_CORES)
-                if len(
-                    frequencies[
-                        slice(i * nf // N_CORES, min((i + 1) * nf // N_CORES, nf))
-                    ]
-                )
-                > 0
+                for i in range(len(frequencies_intervalls))
             ]
+
+            # # Parallel process with queue
+            # t0 = time.time()
+            # result = []
+            # processes = []
+            # # create the queue
+            # queue = multiprocessing.Queue()
+            # for i in range(N_CORES):
+            #     args = (queue, param_pool[i])
+            #     process = multiprocessing.Process(
+            #         target=kraken_parallel_wraper_queue,
+            #         args=args,
+            #     )
+            #     processes.append(process)
+            #     process.start()
+
+            # for p in processes:
+            #     res = queue.get()  # will block
+            #     result.append(res)
+            # for p in processes:
+            #     p.join()
+
+            # field_pos = result[0][1]
+            # pressure_field = np.concatenate([r[0] for r in result], axis=0)
+
+            # cpu_time = t0 - time.time()
+            # print(f"CPU time (Queue): {cpu_time:.2f} s")
+
+            t0 = time.time()
+            # Spawn processes
+            pool = multiprocessing.Pool(N_CORES)
 
             # cs =
             # Run parallel processes
@@ -85,6 +111,9 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
             pool.close()
             # Wait for all processes to finish
             pool.join()
+
+            cpu_time = t0 - time.time()
+            print(f"CPU time (Map): {cpu_time:.2f} s")
 
         else:
             pressure_field, field_pos = runkraken_broadband_range_dependent(
@@ -115,6 +144,51 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
             print("Single frequency range independent kraken simulation completed.")
 
         return pressure_field, field_pos
+
+
+def kraken_parallel_wraper_queue(queue, param):
+    queue.put(runkraken_broadband_range_dependent(*param))
+
+
+def assign_frequency_intervalls(frequencies, n_workers, mode="equally_distributed"):
+    """
+    Assign frequency intervals to workers.
+
+    :param frequencies:
+    :param n_workers:
+    :return:
+    """
+    # Distribute frequencies to workers, ensuring decreasing subarray sizes
+    nf = len(frequencies)
+
+    if mode == "equally_distributed":
+        assigned_frequency_ranges = [
+            frequencies[slice(i * nf // n_workers, min((i + 1) * nf // n_workers, nf))]
+            for i in range(n_workers)
+            if len(
+                frequencies[
+                    slice(i * nf // n_workers, min((i + 1) * nf // n_workers, nf))
+                ]
+            )
+            > 0
+        ]
+
+    elif mode == "optimal":
+        assigned_frequency_ranges = []
+        expected_cpu_time, f_bounds = find_optimal_intervals(
+            fmin=frequencies.min(), fmax=frequencies.max(), nf=nf, n_workers=n_workers
+        )
+
+        for i in range(n_workers):
+            idx_freq = np.logical_and(
+                frequencies >= f_bounds[i], frequencies <= f_bounds[i + 1]
+            )
+            assigned_frequency_ranges.append(frequencies[idx_freq])
+
+    else:
+        raise ValueError(f"Mode {mode} not implemented.")
+
+    return assigned_frequency_ranges
 
 
 def run_field(filename, parallel=False, worker_pid=None):
@@ -213,7 +287,10 @@ def init_parallel_kraken_working_dirs(env, env_root, worker_pid):
 
 
 def runkraken_broadband_range_dependent(
-    env, flp, frequencies, parallel=False, worker_pid=None
+    env,
+    flp,
+    frequencies,
+    parallel=False,
 ):
     """KRAKEN is capable of running broadband simulations with range independent environments
     and single frequency simulations with range dependent environments. Yet, for some reason,

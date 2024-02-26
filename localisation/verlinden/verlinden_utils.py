@@ -51,7 +51,7 @@ def populate_isotropic_env(ds, library_src, kraken_env, kraken_flp, signal_libra
     delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values.flatten()
 
     # Run KRAKEN
-    grid_pressure_field = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
+    grid_pressure_field, _ = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
 
     # Loop over receivers
     for i_rcv in tqdm(
@@ -157,12 +157,18 @@ def populate_anistropic_env(
             delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values[idx_az].flatten()
 
             # Run kraken for selected angle
-            pf = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
+            pf, field_pos = runkraken(
+                kraken_env,
+                kraken_flp,
+                library_src.kraken_freq,
+                parallel=True,
+                verbose=False,
+            )
 
             (
                 t_rcv,
                 s_rcv,
-                Pos,
+                _,
             ) = postprocess_received_signal_from_broadband_pressure_field(
                 shd_fpath=kraken_env.shd_fpath,
                 broadband_pressure_field=pf,
@@ -187,8 +193,8 @@ def populate_anistropic_env(
 
             if i_az == 0:
                 # Store grid pos in dataset (receiver grid depends on rcv)
-                r_rcv = Pos["r"]["r"]
-                z_rcv = Pos["r"]["z"]
+                r_rcv = field_pos["r"]["r"]
+                z_rcv = field_pos["r"]["z"]
                 kraken_range_rcv.append(r_rcv)
                 kraken_depth_rcv.append(z_rcv)
                 # Init kraken grid "min_waveguide_depth" attribute

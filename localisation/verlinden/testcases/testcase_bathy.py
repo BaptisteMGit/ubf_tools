@@ -158,6 +158,7 @@ def extract_2D_bathy_profile(
     azimuth=0,
     max_range_km=100,
     range_resolution=100,
+    plot_bathy=False,
 ):
     # Load bathymetry data
     ds_bathy = xr.open_dataset(bathy_nc_path)
@@ -190,14 +191,15 @@ def extract_2D_bathy_profile(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
 
-    plt.figure(figsize=(16, 8))
-    plt.plot(r_km, h_m, color="k", linewidth=2, marker="o", markersize=2)
-    plt.ylim([0, h_m.max()])
-    plt.fill_between(r_km, h_m, h_m.max(), color="lightgrey")
-    plt.gca().invert_yaxis()
-    plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
-    plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-    pfig.apply_ticks_fontsize()
-    plt.grid()
-    plt.savefig(os.path.join(bathy_folder, f"bathy_az{azimuth:.2f}.png"))
-    plt.close()
+    if plot_bathy:
+        plt.figure(figsize=(16, 8))
+        plt.plot(r_km, h_m, color="k", linewidth=2, marker="o", markersize=2)
+        plt.ylim([0, h_m.max()])
+        plt.fill_between(r_km, h_m, h_m.max(), color="lightgrey")
+        plt.gca().invert_yaxis()
+        plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+        plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+        pfig.apply_ticks_fontsize()
+        plt.grid()
+        plt.savefig(os.path.join(bathy_folder, f"bathy_az{azimuth:.2f}.png"))
+        plt.close()

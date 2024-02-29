@@ -177,20 +177,29 @@ def verlinden_main(
 
     # Define environment
     max_range_m = np.max(rcv_info["max_kraken_range_m"])
+    testcase_varin = dict(
+        freq=library_src.kraken_freq,
+        max_range_m=max_range_m,
+        min_waveguide_depth=min_waveguide_depth,
+    )
+
+    # kraken_env, kraken_flp = testcase(testcase_varin)
     kraken_env, kraken_flp = testcase(
+        testcase_varin,
         freq=library_src.kraken_freq,
         min_waveguide_depth=min_waveguide_depth,
-        max_range_m=max_range_m,
+        # max_range_m=max_range_m,
     )
 
     # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
     kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
-        testcase,
-        kraken_env,
-        kraken_flp,
-        library_src,
-        max_range_m,
-        dt,
+        testcase=testcase,
+        testcase_varin=testcase_varin,
+        kraken_env=kraken_env,
+        kraken_flp=kraken_flp,
+        library_src=library_src,
+        max_range_m=max_range_m,
+        dt=dt,
         sig_type=src_info["signal_type"],
     )
 

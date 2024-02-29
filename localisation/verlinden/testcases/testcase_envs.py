@@ -497,6 +497,7 @@ def testcase2_common(freq, bathy, title, testcase_name="testcase1", rcv_r_max=50
 
 
 def testcase2_1(
+    testcase_varin,
     freq=[20],
     max_range_m=50 * 1e3,
     azimuth=0,
@@ -507,6 +508,32 @@ def testcase2_1(
     """
     Test case 2.1: Anisotropic environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile
     """
+
+    if "freq" not in testcase_varin:
+        freq = [20]
+    else:
+        freq = testcase_varin["freq"]
+
+    if "max_range_m" not in testcase_varin:
+        max_range_m = 50 * 1e3
+    else:
+        max_range_m = testcase_varin["max_range_m"]
+
+    if "azimuth" not in testcase_varin:
+        azimuth = 0
+    else:
+        azimuth = testcase_varin["azimuth"]
+
+    if "rcv_lon" not in testcase_varin:
+        rcv_lon = 65.94
+    else:
+        rcv_lon = testcase_varin["rcv_lon"]
+
+    if "rcv_lat" not in testcase_varin:
+        rcv_lat = -27.58
+    else:
+        rcv_lat = testcase_varin["rcv_lat"]
+
     name = "testcase2_1"
     title = "Test case 2.1: Anisotropic environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile"
 

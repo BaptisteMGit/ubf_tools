@@ -117,6 +117,8 @@ def populate_anistropic_env(
         bar_format=BAR_FORMAT,
         desc="Populate grid with received signal",
     ):
+
+        # i_rcv = 1
         # Loop over possible azimuths
         # azimuths_rcv = np.unique(ds.az_propa.sel(idx_rcv=i_rcv).values)
         azimuths_rcv = get_unique_azimuths(ds, i_rcv)
@@ -128,26 +130,43 @@ def populate_anistropic_env(
             bar_format=BAR_FORMAT,
             desc="Scanning azimuths",
         ):
+
+            # i_az = 1
+            print(i_rcv, i_az)
+            print(f"Receiver {i_rcv} - Azimuth {i_az} / {azimuths_rcv.size}")
             az = azimuths_rcv[i_az]
 
+            print(f"Freqs avant de définir le tc : lib:{library_src.kraken_freq[0:5]}")
             # Get environement for selected angle
-            kraken_env, kraken_flp = testcase(
+            testcase_varin = dict(
                 freq=library_src.kraken_freq,
                 max_range_m=rcv_info["max_kraken_range_m"][i_rcv],
                 azimuth=az,
                 rcv_lon=rcv_info["lons"][i_rcv],
                 rcv_lat=rcv_info["lats"][i_rcv],
             )
+            kraken_env, kraken_flp = testcase(testcase_varin)
 
-            # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
+            print(
+                f"Freqs apres de définir le tc : lib:{library_src.kraken_freq[0:5]}, env={kraken_env.freq[0:5]}"
+            )
+
+            # if i_rcv == 1 and i_az == 1:
+            #     print("Debug")
+
+            # Assert kraken freq is set with correct min_depth (otherwise postprocess will fail)
             kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
-                testcase,
-                kraken_env,
-                kraken_flp,
-                library_src,
-                max_range_m=rcv_info["max_kraken_range_m"][i_rcv],
+                testcase=testcase,
+                testcase_varin=testcase_varin,
+                kraken_env=kraken_env,
+                kraken_flp=kraken_flp,
+                library_src=library_src,
                 dt=src_info["dt"],
+                max_range_m=rcv_info["max_kraken_range_m"][i_rcv],
                 sig_type=src_info["signal_type"],
+            )
+            print(
+                f"Freqs après waveguide_cutoff : lib:{library_src.kraken_freq[0:5]}, env={kraken_env.freq[0:5]}"
             )
 
             # Get receiver ranges for selected angle
@@ -671,8 +690,16 @@ def init_event_dataset(ds, src_info, rcv_info, interp_src_pos_on_grid=False):
 
 
 def check_waveguide_cutoff(
-    testcase, kraken_env, kraken_flp, library_src, max_range_m, dt, sig_type
+    testcase,
+    testcase_varin,
+    kraken_env,
+    kraken_flp,
+    library_src,
+    dt,
+    max_range_m,
+    sig_type,
 ):
+
     fc = waveguide_cutoff_freq(max_depth=kraken_env.bathy.bathy_depth.min())
     propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
     if propagating_freq.size != library_src.kraken_freq.size:
@@ -680,8 +707,14 @@ def check_waveguide_cutoff(
         library_src = init_library_src(dt, min_waveguide_depth, sig_type=sig_type)
 
         # Update env and flp
+        # testcase_varin = {}
+        testcase_varin["freq"] = library_src.kraken_freq
+        # testcase_varin["min_waveguide_depth"] = min_waveguide_depth
+        # kraken_env, kraken_flp = testcase(testcase_varin)
+
         kraken_env, kraken_flp = testcase(
-            freq=library_src.kraken_freq,
+            testcase_varin=testcase_varin,
+            # freq=library_src.kraken_freq,
             min_waveguide_depth=min_waveguide_depth,
             max_range_m=max_range_m,
         )

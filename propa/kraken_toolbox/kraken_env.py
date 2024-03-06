@@ -747,13 +747,13 @@ class KrakenEnv:
     ):
         self.simulation_title = title
 
-        # Env file info
         self.root_ = env_root
         self.filename = env_filename
+        # .env file path
         self.env_fpath = os.path.join(self.root_, self.filename + ".env")
-        # Flp file info
+        # .flp file path
         self.flp_fpath = os.path.join(self.root_, self.filename + ".flp")
-        # Shd file info
+        # .shd file path
         self.shd_fpath = os.path.join(self.root_, self.filename + ".shd")
 
         # List of ordered frequencies
@@ -792,8 +792,11 @@ class KrakenEnv:
         if self.bathy.use_bathy and self.modes_range[0] != 0:
             self.modes_range = np.append(0, self.modes_range)
 
-        # Defined max depth of the sediment layer
-        self.bottom_hs.derive_sedim_layer_max_depth(z_max=self.bathy.bathy_depth.max())
+        if self.bathy.use_bathy:
+            # Defined max depth of the sediment layer
+            self.bottom_hs.derive_sedim_layer_max_depth(
+                z_max=self.bathy.bathy_depth.max()
+            )
 
         self.range_dependent_env = False
 

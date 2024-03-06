@@ -48,13 +48,16 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
 
         # Run parallel
         if parallel:
+            n_workers = min(len(frequencies), N_CORES)
+
             # Clear working dirs
             clear_kraken_parallel_working_dir(root=env.root)
 
             # Get optimal frequencies intervals bounds
-            frequencies_intervalls = assign_frequency_intervalls(
-                frequencies, N_CORES, mode="optimal"
+            frequencies_intervalls, nb_used_workers = assign_frequency_intervalls(
+                frequencies, n_workers, mode="optimal"
             )
+            n_workers = nb_used_workers
 
             # Build the parameter pool
             param_pool = [
@@ -67,11 +70,10 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
                 for i in range(len(frequencies_intervalls))
             ]
 
-            t0 = time.time()
+            # t0 = time.time()
             # Spawn processes
-            pool = multiprocessing.Pool(N_CORES)
+            pool = multiprocessing.Pool(n_workers)
 
-            # cs =
             # Run parallel processes
             result = pool.starmap(
                 runkraken_broadband_range_dependent, param_pool, chunksize=1
@@ -84,8 +86,8 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
             # Wait for all processes to finish
             pool.join()
 
-            cpu_time = t0 - time.time()
-            print(f"CPU time (Map): {cpu_time:.2f} s")
+            # cpu_time = time.time() - t0
+            # print(f"CPU time (Map): {cpu_time:.2f} s")
 
         else:
             pressure_field, field_pos = runkraken_broadband_range_dependent(
@@ -138,25 +140,39 @@ def assign_frequency_intervalls(frequencies, n_workers, mode="equally_distribute
                     slice(i * nf // n_workers, min((i + 1) * nf // n_workers, nf))
                 ]
             )
-            > 0
+            > 0  # Assert at least 1 freq falls into the interval
         ]
 
     elif mode == "optimal":
-        assigned_frequency_ranges = []
-        expected_cpu_time, f_bounds = find_optimal_intervals(
-            fmin=frequencies.min(), fmax=frequencies.max(), nf=nf, n_workers=n_workers
-        )
-
-        for i in range(n_workers):
-            idx_freq = np.logical_and(
-                frequencies >= f_bounds[i], frequencies <= f_bounds[i + 1]
+        if (
+            nf <= n_workers
+        ):  # If there is less freqs than workers the optimal choice is to assign one freq per worker
+            assigned_frequency_ranges, _ = assign_frequency_intervalls(
+                frequencies=frequencies, n_workers=n_workers, mode="equally_distributed"
             )
-            assigned_frequency_ranges.append(frequencies[idx_freq])
+        else:
+            assigned_frequency_ranges = []
+            expected_cpu_time, f_bounds = find_optimal_intervals(
+                fmin=frequencies.min(),
+                fmax=frequencies.max(),
+                nf=nf,
+                n_workers=n_workers,
+            )
+
+            for i in range(n_workers):
+                idx_freq = np.logical_and(
+                    frequencies >= f_bounds[i], frequencies <= f_bounds[i + 1]
+                )
+                # Assert at least 1 freq falls into the interval
+                if np.any(idx_freq):
+                    assigned_frequency_ranges.append(frequencies[idx_freq])
 
     else:
         raise ValueError(f"Mode {mode} not implemented.")
 
-    return assigned_frequency_ranges
+    nb_used_workers = len(assigned_frequency_ranges)
+
+    return assigned_frequency_ranges, nb_used_workers
 
 
 def run_field(filename, parallel=False, worker_pid=None):

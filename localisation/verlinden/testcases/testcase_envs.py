@@ -154,6 +154,7 @@ from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 
 
 def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1"):
+
     # Create environment directory
     env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
     if not os.path.exists(env_dir):
@@ -161,11 +162,13 @@ def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1
 
     max_depth = max(z_ssp)  # Depth at src position (m)
     src_depth = (
-        max_depth - 7
-    )  # 7m above the bottom (Assume Verlinden used Hydrophone #1 presentend in fig 3.8)
+        max_depth - 1
+    )  # Assume hydrophone is 1m above the bottom (which seems to be reasonable in the case of a hydrophone mounted on a OBS)
+    # src_depth = (
+    #     max_depth - 7
+    # )  # 7m above the bottom (Assume Verlinden used Hydrophone #1 presentend in fig 3.8)
 
     top_hs = KrakenTopHalfspace()
-
     medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
 
     # First simple model : 1 layer bottom
@@ -233,16 +236,22 @@ def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1
     return env, flp
 
 
-def testcase1_0(freq=[20], min_waveguide_depth=150):
+def testcase1_0(testcase_varin):
     """
     Test case 1.0 : Flat and isotopric environment. 1 layer bottom and constant sound speed profile
     """
     name = "testcase1_0"
     title = "Test case 1.0: Flat and isotopric environment. 1 layer bottom and constant sound speed profile"
 
-    max_depth = min_waveguide_depth
-    z_ssp = [0, max_depth]
-    cp_ssp = [1500, 1500]
+    if "freq" not in testcase_varin:
+        freq = [20]
+    else:
+        freq = testcase_varin["freq"]
+
+    waveguide_depth = 200
+    cst_celerity = 1500
+    z_ssp = [0, waveguide_depth]
+    cp_ssp = [cst_celerity, cst_celerity]
 
     bathy = Bathymetry()  # Default bathymetry is flat
     env, flp = testcase1_common(
@@ -296,10 +305,10 @@ def testcase1_1(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
 
 def testcase1_2(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
     """
-    Test case 1.2: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile
+    Test case 1.2: Isotopric environment with seamount bottom. 1 layer bottom and constant sound speed profile
     """
     name = "testcase1_2"
-    title = "Test case 1.2: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile"
+    title = "Test case 1.2: Isotopric environment with seamount bottom. 1 layer bottom and constant sound speed profile"
 
     if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
         os.makedirs(os.path.join(TC_WORKING_DIR, name))
@@ -417,7 +426,7 @@ def testcase1_4(freq=[20], min_waveguide_depth=100, max_range_m=50 * 1e3):
 
 
 ##########################################################################################
-# Test case 2 : Anisotropic environment
+# Test case 2 : Anisotropic environment with RHUM RUM environment
 ##########################################################################################
 
 
@@ -498,12 +507,12 @@ def testcase2_common(freq, bathy, title, testcase_name="testcase1", rcv_r_max=50
 
 def testcase2_1(
     testcase_varin,
-    freq=[20],
-    max_range_m=50 * 1e3,
-    azimuth=0,
-    rcv_lon=65.94,
-    rcv_lat=-27.58,
-    min_waveguide_depth=None,
+    # freq=[20],
+    # max_range_m=50 * 1e3,
+    # azimuth=0,
+    # rcv_lon=65.94,
+    # rcv_lat=-27.58,
+    # min_waveguide_depth=None,
 ):
     """
     Test case 2.1: Anisotropic environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile
@@ -575,6 +584,186 @@ def testcase2_1(
     return env, flp
 
 
+##########################################################################################
+# Test case 3 : Anisotropic environment with shallow water environment
+##########################################################################################
+
+
+def testcase3_common(freq, bathy, title, testcase_name="testcase3", rcv_r_max=50):
+    # Create environment directory
+    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
+    if not os.path.exists(env_dir):
+        os.makedirs(env_dir)
+
+    # Load ssp mat file
+    data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+    fpath = os.path.join(
+        data_dir, "shallow_water", f"fevrier_lon_-5.87_-2.87_lat_51.02_54.02_ssp.mat"
+    )
+    ssp_mat = sio.loadmat(fpath)
+    z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
+    cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
+
+    max_depth = max(z_ssp)  # Depth at src position (m)
+    src_depth = max_depth - 1  # Assume hydrophone is 1m above the bottom
+
+    top_hs = KrakenTopHalfspace()
+    medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
+
+    # 1 layer bottom
+    bott_hs_properties = {
+        "rho": 1.9 * RHO_W,
+        "c_p": 1650,  # P-wave celerity (m/s)
+        "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+        "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
+        "a_s": 2.5,  # Shear wave attenuation (dB/wavelength)
+    }
+    bott_hs_properties["z"] = max(z_ssp)
+    bott_hs = KrakenBottomHalfspace(halfspace_properties=bott_hs_properties)
+
+    att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
+
+    n_rcv_z = default_nb_rcv_z(max(freq), max_depth, n_per_l=15)
+    field = KrakenField(
+        src_depth=src_depth,
+        n_rcv_z=n_rcv_z,
+        rcv_z_max=max_depth,
+    )
+
+    env = KrakenEnv(
+        title=title,
+        env_root=env_dir,
+        env_filename=testcase_name,
+        freq=freq,
+        kraken_top_hs=top_hs,
+        kraken_medium=medium,
+        kraken_attenuation=att,
+        kraken_bottom_hs=bott_hs,
+        kraken_field=field,
+        kraken_bathy=bathy,
+    )
+
+    # rcv_r_max = 50
+    dr = 100  # 100m resolution
+    n_rcv_r = rcv_r_max * 1000 / dr + 1
+
+    # One receiver at 5m depth
+    flp_nrcv_z = 1
+    flp_rcv_z_min = 5
+    flp_rcv_z_max = 5
+
+    flp = KrakenFlp(
+        env=env,
+        src_depth=src_depth,
+        n_rcv_z=flp_nrcv_z,
+        rcv_z_min=flp_rcv_z_min,
+        rcv_z_max=flp_rcv_z_max,
+        rcv_r_max=rcv_r_max,
+        n_rcv_r=n_rcv_r,
+        mode_addition="coherent",
+    )
+
+    return env, flp
+
+
+def testcase3_1(
+    testcase_varin,
+    plot_bathy=False,
+    # freq=[20],
+    # max_range_m=50 * 1e3,
+    # azimuth=0,
+    # rcv_lon=-4.87,
+    # rcv_lat=52.52,
+    # min_waveguide_depth=None,
+):
+    """
+    Test case 3.1: Shallow water environment with real bathy profile extracted using MMDPM app. 1 layer bottom and realistic sound speed profile
+    """
+
+    if "freq" not in testcase_varin:
+        freq = [20]
+    else:
+        freq = testcase_varin["freq"]
+
+    if "max_range_m" not in testcase_varin:
+        max_range_m = 50 * 1e3
+    else:
+        max_range_m = testcase_varin["max_range_m"]
+
+    if "azimuth" not in testcase_varin:
+        azimuth = 0
+    else:
+        azimuth = testcase_varin["azimuth"]
+
+    if "rcv_lon" not in testcase_varin:
+        rcv_lon = -4.87
+    else:
+        rcv_lon = testcase_varin["rcv_lon"]
+
+    if "rcv_lat" not in testcase_varin:
+        rcv_lat = 52.22
+    else:
+        rcv_lat = testcase_varin["rcv_lat"]
+
+    name = "testcase3_1"
+    title = "Test case 3.1: Anisotropic environment with real bathy profile extracted using MMDPM app. 1 layer bottom and realistic sound speed profile"
+
+    if not os.path.exists(os.path.join(TC_WORKING_DIR, name)):
+        os.makedirs(os.path.join(TC_WORKING_DIR, name))
+
+    max_range_km = max_range_m * 1e-3
+    range_resolution = 1000  # 1km resolution
+    # Load bathy bathy profile
+    bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\shallow_water\GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
+    extract_2D_bathy_profile(
+        bathy_nc_path=bathy_nc_path,
+        testcase_name=name,
+        obs_lon=rcv_lon,
+        obs_lat=rcv_lat,
+        azimuth=azimuth,
+        max_range_km=max_range_km,
+        range_resolution=range_resolution,
+        plot_bathy=plot_bathy,
+    )
+    bathy = Bathymetry(data_file=os.path.join(TC_WORKING_DIR, name, "bathy.csv"))
+
+    env, flp = testcase3_common(
+        freq=freq,
+        bathy=bathy,
+        title=title,
+        testcase_name=name,
+        rcv_r_max=max_range_km,
+    )
+
+    # # Plot medium properties
+    # env.medium.plot_medium()
+    # plt.savefig(os.path.join(TC_WORKING_DIR, name, "medium_properties.png"))
+    # plt.close()
+
+    # env.bottom_hs.plot_bottom_halfspace()
+    # plt.savefig(os.path.join(TC_WORKING_DIR, name, "bottom_properties.png"))
+    # plt.close()
+
+    return env, flp
+
+
 if __name__ == "__main__":
-    for az in range(0, 360, 45):
-        env, flp = testcase2_1(azimuth=az)
+
+    tc_varin = {"freq": [20]}
+    env, flp = testcase1_0(tc_varin)
+    print()
+
+    # from propa.kraken_toolbox.utils import waveguide_cutoff_freq
+
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    #     "rcv_lon": -4.7,
+    #     "rcv_lat": 52.6,
+    # }
+    # for az in range(0, 360, 10):
+    #     tc_varin["azimuth"] = az
+    #     env, flp = testcase3_1(tc_varin, plot_bathy=True)
+
+    #     print(f"fc = {waveguide_cutoff_freq(env.bathy.bathy_depth.min()):.2f} Hz")

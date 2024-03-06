@@ -139,20 +139,20 @@ def postprocess_ir_from_broadband_pressure_field(
     fc = waveguide_cutoff_freq(max_depth=minimum_waveguide_depth)
     propagating_freq = source.positive_freq[source.positive_freq > fc]
 
-    # TODO need to be fixed
-    if (
-        frequencies.size < propagating_freq.size
-    ):  # Sparse frequency vector used for kraken
-        pressure_field = interp_frequency_domain_ir(
-            frequencies, pressure_field, propagating_freq
-        )
+    # # TODO need to be fixed
+    # if (
+    #     frequencies.size < propagating_freq.size
+    # ):  # Sparse frequency vector used for kraken
+    #     pressure_field = interp_frequency_domain_ir(
+    #         frequencies, pressure_field, propagating_freq
+    #     )
 
-    elif frequencies.size == propagating_freq.size:
-        freqdiff = frequencies - propagating_freq
-        if freqdiff.max() > 0.5:  # Different frequency sampling
-            pressure_field = interp_frequency_domain_ir(
-                frequencies, pressure_field, propagating_freq
-            )
+    # elif frequencies.size == propagating_freq.size:
+    #     freqdiff = frequencies - propagating_freq
+    #     if freqdiff.max() > 0.5:  # Different frequency sampling
+    #         pressure_field = interp_frequency_domain_ir(
+    #             frequencies, pressure_field, propagating_freq
+    #         )
 
     return propagating_freq, pressure_field, field_pos
 

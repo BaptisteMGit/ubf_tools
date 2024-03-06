@@ -146,7 +146,6 @@ def add_event_to_dataset(
 
 def verlinden_main(
     testcase,
-    min_waveguide_depth,
     src_info,
     grid_info,
     rcv_info,
@@ -160,8 +159,9 @@ def verlinden_main(
         )  # Minimum time spent by the source in a single grid box (s)
 
     # Initialize source
+    min_waveguide_depth = 150  # Dummy value updated once bathy is loaded
     library_src = init_library_src(
-        dt, min_waveguide_depth, sig_type=src_info["signal_type"]
+        dt, min_waveguide_depth=min_waveguide_depth, sig_type=src_info["signal_type"]
     )
     # Define ship trajectory
     init_event_src_traj(src_info, dt)
@@ -183,13 +183,7 @@ def verlinden_main(
         min_waveguide_depth=min_waveguide_depth,
     )
 
-    # kraken_env, kraken_flp = testcase(testcase_varin)
-    kraken_env, kraken_flp = testcase(
-        testcase_varin,
-        freq=library_src.kraken_freq,
-        min_waveguide_depth=min_waveguide_depth,
-        # max_range_m=max_range_m,
-    )
+    kraken_env, kraken_flp = testcase(testcase_varin)
 
     # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
     kraken_env, kraken_flp, library_src = check_waveguide_cutoff(

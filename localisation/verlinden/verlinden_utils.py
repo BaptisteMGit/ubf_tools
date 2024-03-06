@@ -20,7 +20,8 @@ import numpy as np
 import xarray as xr
 import pandas as pd
 import scipy.signal as signal
-import matplotlib.pyplot as plt
+
+# import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from pyproj import Geod
@@ -29,19 +30,22 @@ from scipy.sparse import csr_matrix
 from cst import BAR_FORMAT, C0
 from misc import mult_along_axis
 from signals import ship_noise, pulse, pulse_train
-from propa.kraken_toolbox.read_shd import readshd
+
+# from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
-from illustration.verlinden_nx2d import plot_angle_repartition
+
+# from illustration.verlinden_nx2d import plot_angle_repartition
 from localisation.verlinden.AcousticComponent import AcousticSource
 from propa.kraken_toolbox.post_process import (
     postprocess_received_signal_from_broadband_pressure_field,
 )
 from propa.kraken_toolbox.run_kraken import runkraken
-from propa.kraken_toolbox.plot_utils import plotshd
+
+# from propa.kraken_toolbox.plot_utils import plotshd
 
 from localisation.verlinden.verlinden_path import (
-    VERLINDEN_OUTPUT_FOLDER,
-    VERLINDEN_ANALYSIS_FOLDER,
+    # VERLINDEN_OUTPUT_FOLDER,
+    # VERLINDEN_ANALYSIS_FOLDER,
     VERLINDEN_POPULATED_FOLDER,
 )
 
@@ -106,10 +110,11 @@ def populate_anistropic_env(
 
     # Grid pressure field for all azimuths : list of nested lists required due to inhomogeneous sizes (depending on the azimuths)
     grid_pressure_field = []
+    kraken_grid = {}
     kraken_range_rcv = []
     kraken_depth_rcv = []
+    kraken_min_wg_depth_rcv = []
     rcv_depth = [library_src.z_src]
-    kraken_grid = {}
 
     # Loop over receivers
     for i_rcv in tqdm(
@@ -118,12 +123,10 @@ def populate_anistropic_env(
         desc="Populate grid with received signal",
     ):
 
-        # i_rcv = 1
         # Loop over possible azimuths
-        # azimuths_rcv = np.unique(ds.az_propa.sel(idx_rcv=i_rcv).values)
         azimuths_rcv = get_unique_azimuths(ds, i_rcv)
         az_pressure_field = []
-        # az_pressure_field = np.empty((azimuths_rcv.size), dtype=object)
+        az_kraken_min_wg_depth = []
 
         for i_az in tqdm(
             range(azimuths_rcv.size),
@@ -131,12 +134,8 @@ def populate_anistropic_env(
             desc="Scanning azimuths",
         ):
 
-            # i_az = 1
-            print(i_rcv, i_az)
-            print(f"Receiver {i_rcv} - Azimuth {i_az} / {azimuths_rcv.size}")
             az = azimuths_rcv[i_az]
 
-            print(f"Freqs avant de définir le tc : lib:{library_src.kraken_freq[0:5]}")
             # Get environement for selected angle
             testcase_varin = dict(
                 freq=library_src.kraken_freq,
@@ -146,13 +145,6 @@ def populate_anistropic_env(
                 rcv_lat=rcv_info["lats"][i_rcv],
             )
             kraken_env, kraken_flp = testcase(testcase_varin)
-
-            print(
-                f"Freqs apres de définir le tc : lib:{library_src.kraken_freq[0:5]}, env={kraken_env.freq[0:5]}"
-            )
-
-            # if i_rcv == 1 and i_az == 1:
-            #     print("Debug")
 
             # Assert kraken freq is set with correct min_depth (otherwise postprocess will fail)
             kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
@@ -165,9 +157,9 @@ def populate_anistropic_env(
                 max_range_m=rcv_info["max_kraken_range_m"][i_rcv],
                 sig_type=src_info["signal_type"],
             )
-            print(
-                f"Freqs après waveguide_cutoff : lib:{library_src.kraken_freq[0:5]}, env={kraken_env.freq[0:5]}"
-            )
+            # Store minimum waveguide depth to be used when populating env with events
+            min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
+            az_kraken_min_wg_depth.append(min_waveguide_depth)
 
             # Get receiver ranges for selected angle
             idx_az = ds.az_propa.sel(idx_rcv=i_rcv).values == az
@@ -183,13 +175,20 @@ def populate_anistropic_env(
                 parallel=True,
                 verbose=False,
             )
+            if i_az == 0:
+                # Store grid pos in dataset (receiver grid depends on rcv)
+                r_rcv = field_pos["r"]["r"]
+                z_rcv = field_pos["r"]["z"]
+                kraken_range_rcv.append(r_rcv)
+                kraken_depth_rcv.append(z_rcv)
 
             (
                 t_rcv,
                 s_rcv,
                 _,
             ) = postprocess_received_signal_from_broadband_pressure_field(
-                shd_fpath=kraken_env.shd_fpath,
+                kraken_range=r_rcv,
+                kraken_depth=z_rcv,
                 broadband_pressure_field=pf,
                 frequencies=library_src.kraken_freq,
                 source=library_src,
@@ -197,33 +196,10 @@ def populate_anistropic_env(
                 rcv_depth=rcv_depth,
                 apply_delay=True,
                 delay=delay_to_apply,
-                minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
+                minimum_waveguide_depth=min_waveguide_depth,
             )
 
             pf = np.squeeze(pf, axis=(1, 2))
-            # rr, zz, _ = get_rcv_pos_idx(
-            #     shd_fpath=kraken_env.shd_fpath,
-            #     rcv_depth=rcv_depth,
-            #     rcv_range=rr_from_rcv_az,
-            # )
-            # az_pressure_field[i_az] = pf[:, zz, rr]
-            # Store azimuth specific pressure field
-            # az_pressure_field[i_az] = pf
-
-            if i_az == 0:
-                # Store grid pos in dataset (receiver grid depends on rcv)
-                r_rcv = field_pos["r"]["r"]
-                z_rcv = field_pos["r"]["z"]
-                kraken_range_rcv.append(r_rcv)
-                kraken_depth_rcv.append(z_rcv)
-                # Init kraken grid "min_waveguide_depth" attribute
-                kraken_grid["min_waveguide_depth"] = {}
-
-            # Store minimum waveguide depth for current azimuth
-            for i_az in range(azimuths_rcv.size):
-                kraken_grid["min_waveguide_depth"][
-                    i_az
-                ] = kraken_env.bathy.bathy_depth.min()
 
             # Values outside of the grid range are set to 0j and the sparse pressure field is stored to save memory
             r_offset = 5 * ds.dx
@@ -242,11 +218,11 @@ def populate_anistropic_env(
             # az_pressure_field[i_az] = sparse_pf
 
             # Store received signal in dataset
-            if i_rcv == 0:
+            if i_rcv == 0 and i_az == 0:
                 ds["library_signal_time"] = t_rcv.astype(np.float32)
                 ds["library_signal_time"].attrs["units"] = "s"
                 ds["library_signal_time"].attrs["long_name"] = "Time"
-                rcv_signal_library = np.empty(
+                rcv_signal_library = np.zeros(
                     tuple(ds.dims[d] for d in signal_library_dim)
                 )
 
@@ -254,13 +230,23 @@ def populate_anistropic_env(
             s_rcv = s_rcv[:, 0, :].T
             rcv_signal_library[i_rcv, idx_az, :] = s_rcv
 
+            # print(f"Contains nans ? : {np.any(np.isnan(s_rcv.astype(np.float32)))}")
+            # if np.any(np.abs(s_rcv) > 1e20):
+            #     greater = True
+            #     print(f"Is greater than 1e20")
+            # if np.any(np.logical_and((0 < np.abs(s_rcv)), (np.abs(s_rcv) < 1e-20))):
+            #     smaller = True
+            #     print(f"Is smaller than 1e-20")
+
         # Store pressure field for all azimuths relative to current rcv
-        # grid_pressure_field[i_rcv] = az_pressure_field
         grid_pressure_field.append(az_pressure_field)
+        # Store minimum waveguide depth for all azimuths relative to current rcv
+        kraken_min_wg_depth_rcv.append(az_kraken_min_wg_depth)
 
     # Cast kraken grid range/depth arrays to the same size
     nr_max = np.max([kraken_range_rcv[i_rcv].size for i_rcv in ds.idx_rcv.values])
     nz_max = np.max([kraken_depth_rcv[i_rcv].size for i_rcv in ds.idx_rcv.values])
+
     # Store kraken range and depth for rcv
     for i_rcv in ds.idx_rcv.values:
         if kraken_range_rcv[i_rcv].size < nr_max:
@@ -288,13 +274,11 @@ def populate_anistropic_env(
         #     "Size of sparse kraken_depth_rcv in bytes: %s" % sp_kraken_depth_rcv.nbytes
         # )
 
-    # Object array to float array
-    # kraken_range_rcv = list(kraken_range_rcv)
-    # kraken_depth_rcv = list(kraken_depth_rcv)
+    # Convert to float array
     kraken_range_rcv = np.array(kraken_range_rcv, dtype=np.float32)
     kraken_depth_rcv = np.array(kraken_depth_rcv, dtype=np.float32)
 
-    # # Sparse representation to save memory
+    # Sparse representation to save memory
     kraken_range_rcv = sparse.COO(kraken_range_rcv, fill_value=np.nan)
     kraken_depth_rcv = sparse.COO(kraken_depth_rcv, fill_value=np.nan)
 
@@ -302,6 +286,10 @@ def populate_anistropic_env(
         kraken_grid[i_rcv] = {
             "range": kraken_range_rcv[i_rcv, :],
             "depth": kraken_depth_rcv[i_rcv, :],
+            "min_waveguide_depth": {
+                i_az: kraken_min_wg_depth_rcv[i_rcv][i_az]
+                for i_az in range(len(kraken_min_wg_depth_rcv[i_rcv]))
+            },
         }
 
     return ds, rcv_signal_library, grid_pressure_field, kraken_grid
@@ -373,6 +361,10 @@ def add_event_anisotropic_env(
     grid_pressure_field,
 ):
 
+    # TODO remove
+    greater = False
+    smaller = False
+
     # Array of receiver indexes
     idx_rcv = ds.idx_rcv.values
     # Array of ship positions idx
@@ -386,6 +378,8 @@ def add_event_anisotropic_env(
         bar_format=BAR_FORMAT,
         desc="Derive received signal for successive positions of the ship",
     ):
+        # TODO remove
+        # i_rcv = 1
         # Get kraken grid for the given rcv
         kraken_range = kraken_grid[i_rcv]["range"].todense()
         kraken_depth = kraken_grid[i_rcv]["depth"].todense()
@@ -396,6 +390,9 @@ def add_event_anisotropic_env(
             bar_format=BAR_FORMAT,
             desc="Scanning src positions",
         ):
+
+            # TODO remove
+            # i_src = 2
 
             delay_to_apply_ship = (
                 ds.delay_rcv.min(dim="idx_rcv")
@@ -409,7 +406,7 @@ def add_event_anisotropic_env(
             )
             rcv_range = rcv_range.reshape(1)
             transfert_function = transfert_function.todense()
-            min_wg_depth = kraken_grid["min_waveguide_depth"][i_az_kraken]
+            min_wg_depth = kraken_grid[i_rcv]["min_waveguide_depth"][i_az_kraken]
 
             (
                 t_rcv,
@@ -429,16 +426,37 @@ def add_event_anisotropic_env(
                 squeeze=False,
             )
 
-            if i_rcv == 0:
+            if i_rcv == 0 and i_src == 0:
                 ds["event_signal_time"] = t_rcv.astype(np.float32)
-                rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
+                rcv_signal_event = np.zeros(tuple(ds.dims[d] for d in signal_event_dim))
+                # rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
+                rcv_signal_event_visits = np.zeros(
+                    tuple(ds.dims[d] for d in signal_event_dim)
+                )
+                # print(s_rcv)
 
-            rcv_signal_event[i_rcv, :] = s_rcv[:, 0, :].T
+            s_rcv = s_rcv[:, 0, :].T
+            rcv_signal_event[i_rcv, i_src, :] = s_rcv
+            rcv_signal_event_visits[i_rcv, i_src, :] += 1
+
+            # print(f"Contains nans ? : {np.any(np.isnan(s_rcv.astype(np.float32)))}")
+            # if np.any(np.abs(s_rcv) > 1e20):
+            #     greater = True
+            #     print(f"Is greater than 1e20")
+            # if np.any(np.logical_and((0 < np.abs(s_rcv)), (np.abs(s_rcv) < 1e-20))):
+            #     smaller = True
+            #     print(f"Is smaller than 1e-20")
 
     ds["rcv_signal_event"] = (
         ["idx_rcv", "src_trajectory_time", "event_signal_time"],
         rcv_signal_event.astype(np.float32),
     )
+
+    # print(f"Greater : {greater}; smaller : {smaller}")
+    # print(f"greater :{np.any(np.abs(rcv_signal_event) > 1e20)}")
+    # print(
+    #     f"smaller : {np.any(np.logical_and((0 < np.abs(rcv_signal_event)), (np.abs(rcv_signal_event) < 1e-20)))}"
+    # )
 
     ds = add_noise_to_event(ds, snr_dB=snr_dB)
     ds = add_event_correlation(ds)
@@ -707,16 +725,12 @@ def check_waveguide_cutoff(
         library_src = init_library_src(dt, min_waveguide_depth, sig_type=sig_type)
 
         # Update env and flp
-        # testcase_varin = {}
         testcase_varin["freq"] = library_src.kraken_freq
-        # testcase_varin["min_waveguide_depth"] = min_waveguide_depth
-        # kraken_env, kraken_flp = testcase(testcase_varin)
+        testcase_varin["min_waveguide_depth"] = min_waveguide_depth
+        testcase_varin["max_range_m"] = max_range_m
 
         kraken_env, kraken_flp = testcase(
             testcase_varin=testcase_varin,
-            # freq=library_src.kraken_freq,
-            min_waveguide_depth=min_waveguide_depth,
-            max_range_m=max_range_m,
         )
 
     return kraken_env, kraken_flp, library_src
@@ -1112,8 +1126,8 @@ def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
         library_src_sig, t_library_src_sig = pulse_train(T=dt, f=25, fs=100)
 
     elif sig_type == "debug_pulse":
-        fs = 20
-        library_src_sig, t_library_src_sig = pulse(T=0.1, f=5, fs=fs)
+        fs = 40
+        library_src_sig, t_library_src_sig = pulse(T=0.1, f=10, fs=fs)
         nfft = int(fs * dt)
 
     if sig_type in ["ship", "pulse_train"]:
@@ -1158,40 +1172,59 @@ def init_event_src_traj(src_info, dt):
     src_info["lons"] = np.array(traj.lons)
     src_info["lats"] = np.array(traj.lats)
 
-    # Subsample the trajectory to match the desired number of positions
-    # TODO
-
 
 def init_grid_around_event_src_traj(src_info, grid_info):
     min_lon, max_lon = np.min(src_info["lons"]), np.max(src_info["lons"])
     min_lat, max_lat = np.min(src_info["lats"]), np.max(src_info["lats"])
     mean_lon, mean_lat = np.mean(src_info["lons"]), np.mean(src_info["lats"])
 
+    offset_lon = grid_info["offset_cells_lon"] * grid_info["dx"]
+    offset_lat = grid_info["offset_cells_lat"] * grid_info["dy"]
+
     geod = Geod(ellps="WGS84")
     min_lon_grid, _, _ = geod.fwd(
         lons=min_lon,
         lats=mean_lat,
         az=270,
-        dist=grid_info["Lx"] / 2,
+        dist=offset_lon,
     )
     max_lon_grid, _, _ = geod.fwd(
         lons=max_lon,
         lats=mean_lat,
         az=90,
-        dist=grid_info["Lx"] / 2,
+        dist=offset_lon,
     )
-    _, min_lat_grid, _ = geod.fwd(
-        lons=mean_lon,
-        lats=min_lat,
-        az=0,
-        dist=grid_info["Ly"] / 2,
-    )
-    _, max_lat_grid, _ = geod.fwd(
-        lons=mean_lon,
-        lats=max_lat,
-        az=180,
-        dist=grid_info["Ly"] / 2,
-    )
+
+    if (min_lat < 0) and (
+        max_lat < 0
+    ):  # Case where the trajectory is in the southern hemisphere
+        _, min_lat_grid, _ = geod.fwd(
+            lons=mean_lon,
+            lats=min_lat,
+            az=180,
+            dist=offset_lat,
+        )
+        _, max_lat_grid, _ = geod.fwd(
+            lons=mean_lon,
+            lats=max_lat,
+            az=0,
+            dist=offset_lat,
+        )
+    elif (min_lat > 0) and (
+        max_lat > 0
+    ):  # Case where the trajectory is in the northern hemisphere
+        _, min_lat_grid, _ = geod.fwd(
+            lons=mean_lon,
+            lats=min_lat,
+            az=0,
+            dist=offset_lat,
+        )
+        _, max_lat_grid, _ = geod.fwd(
+            lons=mean_lon,
+            lats=max_lat,
+            az=180,
+            dist=offset_lat,
+        )
 
     grid_lons = np.array(
         geod.inv_intermediate(
@@ -1312,6 +1345,7 @@ def print_simulation_info(src_info, rcv_info, grid_info):
     grid_msg = [
         "Grid properties:",
         f"Grid resolution: {grid_res}",
+        f"Grid cells offset around src trajectory: {grid_info['offset_cells_lon']} in lon and {grid_info['offset_cells_lat']} in lat",
         f"Number of grid points: {len(grid_info['lons']) * len(grid_info['lats'])}",
     ]
     grid_msg = "\n\t".join(grid_msg)

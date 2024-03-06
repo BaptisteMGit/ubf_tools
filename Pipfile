@@ -17,6 +17,8 @@ pyproj = "*"
 sparse = "*"
 pathos = "*"
 psutil = "*"
+pylint = "*"
+scikit-learn = "*"
 
 [dev-packages]
 ipykernel = "*"

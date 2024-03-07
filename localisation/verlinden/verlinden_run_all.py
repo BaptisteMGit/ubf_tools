@@ -178,6 +178,11 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False):
             snr=snr,
             detection_metric=detection_metric,
         )
+        # import os
+
+        # testcase_name = "testcase1_0"
+        # simu_folder = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_output"
+        # simu_folder = os.path.join(simu_folder, testcase_name)
 
         simulation_info = {
             "simulation_folder": simu_folder,
@@ -214,7 +219,7 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False):
 
 if __name__ == "__main__":
 
-    tc = "1_0"
+    tc = "2_1"
     debug = True
 
     if tc == "1_0":

@@ -231,7 +231,7 @@ def verlinden_main(
                     grid_info,
                     rcv_info,
                     src_info,
-                    isotropic_env=False,
+                    isotropic_env=False,  # TODO : update this to switch between isotropic and anisotropic
                     testcase=testcase,
                 )
 

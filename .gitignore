@@ -141,6 +141,7 @@ field.exe.stackdump
 
 # Parallel working dir 
 parallel_working_dir/
+bathy.csv
 
 # bellhop 
 *.ray
@@ -148,6 +149,7 @@ parallel_working_dir/
 
 # Picture folder 
 img/
+env_desc_img/
 
 # NETCDF data 
 *.nc

@@ -37,13 +37,13 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False):
     v_ship = v_knots * 1852 / 3600  # m/s
 
     z_src = 5
-    nmax_ship = 3  # Minimum possible
     route_azimuth = 45  # North-East route
 
     if debug:
         src_signal_type = ["debug_pulse"]
         snr = [0]
-        duration = 200  # 50 s
+        duration = 200  # 1000 s
+        nmax_ship = 10
         grid_info = dict(
             offset_cells_lon=1,
             offset_cells_lat=1,
@@ -54,11 +54,12 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False):
     else:
         src_signal_type = ["ship"]
         snr = [0]
-        duration = 1000  # 1000 s
+        duration = 200  # 1000 s
+        nmax_ship = 10
 
         grid_info = dict(
-            offset_cells_lon=2,
-            offset_cells_lat=2,
+            offset_cells_lon=1,
+            offset_cells_lat=1,
             dx=100,
             dy=100,
         )
@@ -133,7 +134,7 @@ def run_tests(run_mode):
     }
     # Initial ship position for shallow water test cases
     initial_ship_pos_sw = {
-        "lon": rcv_info_sw["lons"][0],
+        "lon": rcv_info_sw["lons"][0] - 0.05,
         "lat": rcv_info_sw["lats"][0] + 0.05,
         "crs": "WGS84",
     }

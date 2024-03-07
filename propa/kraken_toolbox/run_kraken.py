@@ -72,7 +72,7 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
 
             # t0 = time.time()
             # Spawn processes
-            pool = multiprocessing.Pool(n_workers)
+            pool = multiprocessing.Pool(processes=n_workers)
 
             # Run parallel processes
             result = pool.starmap(
@@ -293,12 +293,13 @@ def runkraken_broadband_range_dependent(
         desc = "Running broadband range dependent kraken simulation..."
 
     # Loop over frequencies
-    for ifreq in tqdm(
-        range(len(frequencies)),
-        bar_format=BAR_FORMAT,
-        desc=desc,
-    ):
-        # for ifreq in range(len(frequencies)):
+    # for ifreq in tqdm(
+    #     range(len(frequencies)),
+    #     bar_format=BAR_FORMAT,
+    #     desc=desc,
+    # ):
+
+    for ifreq in range(len(frequencies)):
         # Initialize environment with the current frequency and provided range dependent environment
         env = KrakenEnv(
             title=env.simulation_title,

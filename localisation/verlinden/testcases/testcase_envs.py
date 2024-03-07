@@ -71,6 +71,9 @@ def plot_env_properties(env, plot_medium, plot_bottom):
 
 
 def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1"):
+    """
+    Test case 1.x common properties.
+    """
 
     # Create environment directory
     env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
@@ -147,6 +150,7 @@ def testcase1_0(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom
     """
     Test case 1.0 :
         Environment: isotopric
+        Bathymetry: flat bottom
         SSP: c = 1500 m/s
         Sediment: One layer bottom with constant properties
     """
@@ -201,8 +205,13 @@ def testcase1_1(
     plot_bottom=False,
 ):
     """
-    Test case 1.1: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile
+    Test case 1.1 :
+        Environment: isotopric
+        Bathymetry: sinusoidal bottom
+        SSP: c = 1500 m/s
+        Sediment: One layer bottom with constant properties
     """
+
     name = "testcase1_1"
     title = "Test case 1.1: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile"
 
@@ -254,8 +263,13 @@ def testcase1_1(
 
 def testcase1_2(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom=False):
     """
-    Test case 1.2: Isotopric environment with seamount bottom. 1 layer bottom and constant sound speed profile
+    Test case 1.2 :
+        Environment: isotopric
+        Bathymetry: seamount bottom
+        SSP: c = 1500 m/s
+        Sediment: One layer bottom with constant properties
     """
+
     name = "testcase1_2"
     title = "Test case 1.2: Isotopric environment with seamount bottom. 1 layer bottom and constant sound speed profile"
 
@@ -307,8 +321,13 @@ def testcase1_2(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom
 
 def testcase1_3(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom=False):
     """
-    Test case 1.3: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and constant sound speed profile
+    Test case 1.3 :
+        Environment: isotopric
+        Bathymetry: real bathy profile around OBS RR48 (extracted from GEBCO grid using MMDPM app)
+        SSP: c = 1500 m/s
+        Sediment: One layer bottom with constant properties
     """
+
     name = "testcase1_3"
     title = "Test case 1.3: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and constant sound speed profile"
 
@@ -354,7 +373,11 @@ def testcase1_3(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom
 
 def testcase1_4(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom=False):
     """
-    Test case 1.4: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile
+    Test case 1.4 :
+        Environment: isotopric
+        Bathymetry: real bathy profile around OBS RR48 (extracted from GEBCO grid using MMDPM app)
+        SSP: Realistic sound speed profile  (from Copernicus Marine Service)
+        Sediment: One layer bottom with constant properties
     """
     name = "testcase1_4"
     title = "Test case 1.4: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile"
@@ -411,6 +434,9 @@ def testcase1_4(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom
 def testcase2_common(
     freq, bathy, title, testcase_name="testcase2", rcv_r_max=50, ssp_profile="constant"
 ):
+    """
+    Test case 2.x common properties.
+    """
     # Create environment directory
     env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
     if not os.path.exists(env_dir):
@@ -500,7 +526,11 @@ def testcase2_0(
     plot_bottom=False,
 ):
     """
-    Test case 2.0: Dummy test case equivalent to 1.0 to ensure the anisotropic process is producing results equivalent to the isotropic process.
+    Test case 2.0:
+        Environment: Anisotropic
+        Bathymetry: flat bottom
+        SSP: c = 1500 m/s
+        Sediment: One layer bottom with constant properties
     """
 
     if "freq" not in testcase_varin:
@@ -512,11 +542,6 @@ def testcase2_0(
         max_range_m = 50 * 1e3
     else:
         max_range_m = testcase_varin["max_range_m"]
-
-    if "azimuth" not in testcase_varin:
-        azimuth = 0
-    else:
-        azimuth = testcase_varin["azimuth"]
 
     waveguide_depth = 200
     max_range_km = max_range_m * 1e-3
@@ -557,7 +582,11 @@ def testcase2_1(
     plot_bottom=False,
 ):
     """
-    Test case 2.1: Shallow water environment with sinusoidal bathy profile (same as test case 1.1). 1 layer bottom and constant sound speed profile
+    Test case 2.1:
+        Environment: Anisotropic
+        Bathymetry: sinusoidal bottom
+        SSP: c = 1500 m/s
+        Sediment: One layer bottom with constant properties
     """
 
     if "freq" not in testcase_varin:
@@ -620,7 +649,11 @@ def testcase2_2(
     plot_bottom=False,
 ):
     """
-    Test case 2.2: Shallow water environment with real bathy profile extracted using MMDPM app. 1 layer bottom and realistic sound speed profile
+    Test case 2.2:
+        Environment: Anisotropic
+        Bathymetry: real shallow water bathy profile (extracted from GEBCO grid using MMDPM app)
+        SSP: Realistic sound speed profile  (from Copernicus Marine Service)
+        Sediment: One layer bottom with constant properties
     """
 
     if "freq" not in testcase_varin:
@@ -689,6 +722,9 @@ def testcase2_2(
 
 
 def testcase3_common(freq, bathy, title, testcase_name="testcase1", rcv_r_max=50):
+    """
+    Test case 3.x common properties.
+    """
     # Create environment directory
     env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
     if not os.path.exists(env_dir):
@@ -770,7 +806,11 @@ def testcase3_1(
     plot_bottom=False,
 ):
     """
-    Test case 3.1: Anisotropic environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile
+    Test case 3.1:
+        Environment: Anisotropic
+        Bathymetry: real depp water bathy profile around OBS RR48 (extracted from GEBCO grid using MMDPM app)
+        SSP: Realistic sound speed profile  (from Copernicus Marine Service)
+        Sediment: One layer bottom with constant properties
     """
 
     if "freq" not in testcase_varin:

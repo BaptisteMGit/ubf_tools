@@ -1178,8 +1178,8 @@ def init_grid_around_event_src_traj(src_info, grid_info):
     min_lat, max_lat = np.min(src_info["lats"]), np.max(src_info["lats"])
     mean_lon, mean_lat = np.mean(src_info["lons"]), np.mean(src_info["lats"])
 
-    offset_lon = grid_info["offset_cells_lon"] * grid_info["dx"]
-    offset_lat = grid_info["offset_cells_lat"] * grid_info["dy"]
+    offset_lon = max(2, grid_info["offset_cells_lon"]) * grid_info["dx"]
+    offset_lat = max(2, grid_info["offset_cells_lat"]) * grid_info["dy"]
 
     geod = Geod(ellps="WGS84")
     min_lon_grid, _, _ = geod.fwd(
@@ -1195,36 +1195,36 @@ def init_grid_around_event_src_traj(src_info, grid_info):
         dist=offset_lon,
     )
 
-    if (min_lat < 0) and (
-        max_lat < 0
-    ):  # Case where the trajectory is in the southern hemisphere
-        _, min_lat_grid, _ = geod.fwd(
-            lons=mean_lon,
-            lats=min_lat,
-            az=180,
-            dist=offset_lat,
-        )
-        _, max_lat_grid, _ = geod.fwd(
-            lons=mean_lon,
-            lats=max_lat,
-            az=0,
-            dist=offset_lat,
-        )
-    elif (min_lat > 0) and (
-        max_lat > 0
-    ):  # Case where the trajectory is in the northern hemisphere
-        _, min_lat_grid, _ = geod.fwd(
-            lons=mean_lon,
-            lats=min_lat,
-            az=0,
-            dist=offset_lat,
-        )
-        _, max_lat_grid, _ = geod.fwd(
-            lons=mean_lon,
-            lats=max_lat,
-            az=180,
-            dist=offset_lat,
-        )
+    # if (min_lat < 0) and (
+    #     max_lat < 0
+    # ):  # Case where the trajectory is in the southern hemisphere
+    _, min_lat_grid, _ = geod.fwd(
+        lons=mean_lon,
+        lats=min_lat,
+        az=180,
+        dist=offset_lat,
+    )
+    _, max_lat_grid, _ = geod.fwd(
+        lons=mean_lon,
+        lats=max_lat,
+        az=0,
+        dist=offset_lat,
+    )
+    # elif (min_lat > 0) and (
+    #     max_lat > 0
+    # ):  # Case where the trajectory is in the northern hemisphere
+    #     _, min_lat_grid, _ = geod.fwd(
+    #         lons=mean_lon,
+    #         lats=min_lat,
+    #         az=0,
+    #         dist=offset_lat,
+    #     )
+    #     _, max_lat_grid, _ = geod.fwd(
+    #         lons=mean_lon,
+    #         lats=max_lat,
+    #         az=180,
+    #         dist=offset_lat,
+    #     )
 
     grid_lons = np.array(
         geod.inv_intermediate(

@@ -11,12 +11,47 @@ from get_data.bathymetry.bathy_profile_extraction import extract_bathy_profile
 pfig = PubFigure()
 
 
+def bathy_flat_seabed(
+    testcase_name="testcase1",
+    waveguide_depth=200,
+    max_range=50,
+    plot=False,
+    bathy_path="",
+):
+    # Define bathymetry
+    r = [0, max_range]
+    h = [waveguide_depth, waveguide_depth]
+
+    # Save bathymetry
+    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
+    pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
+        os.path.join(env_dir, "bathy.csv"), index=False, header=False
+    )
+
+    # Plot bathy
+    if plot:
+        max_depth = waveguide_depth + 10
+        plt.figure(figsize=(16, 8))
+        plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
+        plt.ylim([0, max_depth])
+        plt.fill_between(r, h, max_depth, color="lightgrey")
+        plt.gca().invert_yaxis()
+        plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+        plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+        pfig.apply_ticks_fontsize()
+        plt.grid()
+        plt.savefig(bathy_path)
+        plt.close()
+
+
 def bathy_sin_slope(
     testcase_name="testcase1",
-    min_waveguide_depth=150,
+    min_depth=150,
     max_range=50,
     theta=94,
     range_periodicity=6,
+    plot=False,
+    bathy_path="",
 ):
     # Define bathymetry
     fr = 1 / range_periodicity
@@ -24,7 +59,7 @@ def bathy_sin_slope(
     r = np.arange(0, max_range + dr, dr)
 
     alpha = 50
-    h = min_waveguide_depth - alpha * (
+    h = min_depth - alpha * (
         -1
         + np.sin(
             2 * np.pi * r * np.cos(theta * np.pi / 180) / range_periodicity - np.pi / 2
@@ -36,29 +71,32 @@ def bathy_sin_slope(
     pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
-
-    max_depth = min_waveguide_depth + 2 * alpha
-    plt.figure(figsize=(16, 8))
-    plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
-    plt.ylim([0, max_depth])
-    plt.fill_between(r, h, max_depth, color="lightgrey")
-    plt.gca().invert_yaxis()
-    plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
-    plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-    pfig.apply_ticks_fontsize()
-    plt.grid()
-    plt.savefig(os.path.join(env_dir, "bathy.png"))
-    plt.close()
+    if plot:
+        max_depth = min_depth + 2 * alpha
+        plt.figure(figsize=(16, 8))
+        plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
+        plt.ylim([0, max_depth])
+        plt.fill_between(r, h, max_depth, color="lightgrey")
+        plt.gca().invert_yaxis()
+        plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+        plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+        pfig.apply_ticks_fontsize()
+        plt.grid()
+        plt.savefig(bathy_path)
+        plt.close()
 
 
 def bathy_seamount(
     testcase_name="testcase1",
-    min_waveguide_depth=150,
+    min_depth=150,
     max_range=50,
-    max_depth=250,
+    seamount_height=100,
     seamount_width=6,
+    plot=False,
+    bathy_path="",
 ):
     # Define bathymetry
+    max_depth = min_depth + seamount_height
     fr = 1 / seamount_width
     dr = 1 / (20 * fr)
     r = np.arange(0, max_range + dr, dr)
@@ -67,7 +105,7 @@ def bathy_seamount(
     r0 = r_seamount - seamount_width / 2
     r1 = r_seamount + seamount_width / 2
 
-    h_seamount = min_waveguide_depth
+    h_seamount = min_depth
     h = np.ones(r.size) * max_depth
 
     alpha = (h_seamount - max_depth) / (r_seamount - r0)
@@ -85,21 +123,28 @@ def bathy_seamount(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
 
-    plt.figure(figsize=(16, 8))
-    plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
-    plt.ylim([0, max_depth])
-    plt.fill_between(r, h, max_depth, color="lightgrey")
-    plt.gca().invert_yaxis()
-    plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
-    plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-    pfig.apply_ticks_fontsize()
-    plt.grid()
-    plt.savefig(os.path.join(env_dir, "bathy.png"))
-    plt.close()
+    if plot:
+        max_depth = max_depth + 10
+        plt.figure(figsize=(16, 8))
+        plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
+        plt.ylim([0, max_depth])
+        plt.fill_between(r, h, max_depth, color="lightgrey")
+        plt.gca().invert_yaxis()
+        plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+        plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+        pfig.apply_ticks_fontsize()
+        plt.grid()
+        plt.savefig(bathy_path)
+        plt.close()
 
 
 def mmdpm_profile(
-    testcase_name, mmdpm_testname="PVA_RR48", azimuth=360, max_range_km=50
+    testcase_name,
+    mmdpm_testname="PVA_RR48",
+    azimuth=360,
+    max_range_km=50,
+    plot=False,
+    bathy_path="",
 ):
     data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm"
     fpath = os.path.join(
@@ -117,17 +162,18 @@ def mmdpm_profile(
     h = h[idx]
 
     # Plot full bathymetry profile
-    plt.figure(figsize=(16, 8))
-    plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
-    plt.ylim([0, h.max()])
-    plt.fill_between(r, h, h.max(), color="lightgrey")
-    plt.gca().invert_yaxis()
-    plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
-    plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-    pfig.apply_ticks_fontsize()
-    plt.grid()
-    plt.savefig(os.path.join(env_dir, "bathy.png"))
-    plt.close()
+    if plot:
+        plt.figure(figsize=(16, 8))
+        plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
+        plt.ylim([0, h.max()])
+        plt.fill_between(r, h, h.max(), color="lightgrey")
+        plt.gca().invert_yaxis()
+        plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+        plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+        pfig.apply_ticks_fontsize()
+        plt.grid()
+        plt.savefig(bathy_path)
+        plt.close()
 
     # Subsample profile to reduce cpu time
     r = r[::10]
@@ -137,17 +183,18 @@ def mmdpm_profile(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
 
-    plt.figure(figsize=(16, 8))
-    plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
-    plt.ylim([0, h.max()])
-    plt.fill_between(r, h, h.max(), color="lightgrey")
-    plt.gca().invert_yaxis()
-    plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
-    plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-    pfig.apply_ticks_fontsize()
-    plt.grid()
-    plt.savefig(os.path.join(env_dir, "bathy_subsampled.png"))
-    plt.close()
+    if plot:
+        plt.figure(figsize=(16, 8))
+        plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
+        plt.ylim([0, h.max()])
+        plt.fill_between(r, h, h.max(), color="lightgrey")
+        plt.gca().invert_yaxis()
+        plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
+        plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
+        pfig.apply_ticks_fontsize()
+        plt.grid()
+        plt.savefig(bathy_path.replace(".png", "_subsampled.png"))
+        plt.close()
 
 
 def extract_2D_bathy_profile(
@@ -158,7 +205,8 @@ def extract_2D_bathy_profile(
     azimuth=0,
     max_range_km=100,
     range_resolution=100,
-    plot_bathy=False,
+    plot=False,
+    bathy_path="",
 ):
     # Load bathymetry data
     ds_bathy = xr.open_dataset(bathy_nc_path)
@@ -180,18 +228,11 @@ def extract_2D_bathy_profile(
     h_m = bathymetry_profile
 
     env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
-    bathy_folder = os.path.join(
-        env_dir,
-        "bathy_profiles",
-    )
-    if not os.path.exists(bathy_folder):
-        os.makedirs(bathy_folder)
-
     pd.DataFrame({"r": np.round(r_km, 3), "h": np.round(h_m, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
 
-    if plot_bathy:
+    if plot:
         plt.figure(figsize=(16, 8))
         plt.plot(r_km, h_m, color="k", linewidth=2, marker="o", markersize=2)
         plt.ylim([0, h_m.max()])
@@ -201,5 +242,5 @@ def extract_2D_bathy_profile(
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
         pfig.apply_ticks_fontsize()
         plt.grid()
-        plt.savefig(os.path.join(bathy_folder, f"bathy_az{azimuth:.2f}.png"))
+        plt.savefig(bathy_path)
         plt.close()

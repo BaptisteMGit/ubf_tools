@@ -17,6 +17,7 @@ from cst import (
     LEGEND_FONTSIZE,
     SUPLABEL_FONTSIZE,
 )
+from pyproj import Geod
 from propa.kraken_toolbox.plot_utils import plotshd
 from localisation.verlinden.verlinden_analysis_report import (
     plot_localisation_performance,
@@ -243,18 +244,18 @@ def plot_ambiguity_surface(
                 label=f"$O_{i_rcv}$",
             )
 
-            plt.xlim(
-                [
-                    min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
-                    max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
-                ]
-            )
-            plt.ylim(
-                [
-                    min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
-                    max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
-                ]
-            )
+        plt.xlim(
+            [
+                min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
+            ]
+        )
+        plt.ylim(
+            [
+                min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
+            ]
+        )
 
         plt.yticks(fontsize=TICKS_FONTSIZE)
         plt.xticks(fontsize=TICKS_FONTSIZE)
@@ -386,7 +387,7 @@ def plot_localisation_moviepy(
     plt.close(fig)
 
 
-def plot_ship_trajectory(ds, img_basepath):
+def plot_ship_trajectory(ds, img_basepath, plot_info={}):
     """Plot ship trajectory."""
 
     plt.figure(figsize=(10, 8))
@@ -398,6 +399,7 @@ def plot_ship_trajectory(ds, img_basepath):
             marker="o",
             label=f"$O_{i_rcv}$",
         )
+
     for i_pair in ds.idx_rcv_pairs:
         plt.scatter(
             ds.detected_pos_lon.sel(idx_rcv_pairs=i_pair),
@@ -409,8 +411,21 @@ def plot_ship_trajectory(ds, img_basepath):
             label="Estimated position",
         )
 
-    plt.xlabel("x [m]", fontsize=LABEL_FONTSIZE)
-    plt.ylabel("y [m]", fontsize=LABEL_FONTSIZE)
+        plt.xlim(
+            [
+                min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
+            ]
+        )
+        plt.ylim(
+            [
+                min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
+            ]
+        )
+
+    plt.xlabel("Longitude [°]", fontsize=LABEL_FONTSIZE)
+    plt.ylabel("Latitude [°]", fontsize=LABEL_FONTSIZE)
     plt.grid(True)
     plt.legend(loc="best", fontsize=LEGEND_FONTSIZE)
     plt.tight_layout()
@@ -419,9 +434,24 @@ def plot_ship_trajectory(ds, img_basepath):
 
 
 def get_pos_error(ds):
-    pos_error = np.sqrt(
-        (ds.detected_pos_lon - ds.lon_src) ** 2
-        + (ds.detected_pos_lat - ds.lat_src) ** 2
+    """Compute position error between true and estimated position."""
+    # Define the geodetic object
+    geod = Geod(ellps="WGS84")
+    _, _, pos_error = geod.inv(
+        lats1=ds.lat_src,
+        lons1=ds.lon_src,
+        lats2=ds.detected_pos_lat,
+        lons2=ds.detected_pos_lon,
+    )
+
+    # Convert to xr array
+    pos_error = xr.DataArray(
+        pos_error,
+        dims=["idx_rcv_pairs", "src_trajectory_time"],
+        coords={
+            "idx_rcv_pairs": ds.idx_rcv_pairs,
+            "src_trajectory_time": ds.src_trajectory_time,
+        },
     )
     return pos_error
 
@@ -636,7 +666,7 @@ def analysis_main(
 
             # Plot ship trajectory
             if plot_info["plot_ship_trajectory"]:
-                plot_ship_trajectory(ds, img_basepath)
+                plot_ship_trajectory(ds, img_basepath, plot_info=plot_info)
 
             # Plot detection error
             if plot_info["plot_pos_error"]:

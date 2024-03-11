@@ -290,33 +290,14 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     ax.plot(cp, z, color=col1, label="C-wave")
     ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]")
 
-    # ax.tick_params(axis="x", labelcolor=col1)
-    # ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]", color=col1)
-    # ax.set_title("Sound speed profile")
-
-    # if np.array(cs_ssp).size == 1:
-    #     cs = np.ones(z.size) * cs_ssp
-    # else:
-    #     cs = cs_ssp
-
-    # # No need to plot the S-wave celerity if it is 0
-    # if np.all(cs == 0):
-    #     cs = np.ones(z.size) * np.nan
-
-    # ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
     col2 = "blue"
     ax.plot(cs, z, color=col2, label="S-wave")
     ax.legend()
-
-    # ax_bis.plot(cs, z, color=col2)
-    # ax_bis.tick_params(axis="x", labelcolor=col2)
-    # ax_bis.set_xlabel("S-wave celerity " + r"[$m.s^{-1}$]", color=col2)
 
     # Color domains with water and sediment
     min_x = np.nanmin([min_cp, min_cs])
     max_x = np.nanmax([max_cp, max_cs])
     color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
-    # color_domains(ax, min_x=np.min(cp), max_x=np.max(cp), z=z, z_bottom=z_bottom)
 
 
 def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
@@ -358,17 +339,9 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
     ax.plot(ap, z, color=col1, label="C-wave")
     ax.set_xlabel("Attenuation " + r"[$dB.\lambda^{-1}$]")
 
-    # ax.tick_params(axis="x", labelcolor=col1)
-    # ax.set_xlabel("C-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col1)
-
     col2 = "blue"
     ax.plot(as_, z, color=col2, label="S-wave")
     ax.legend()
-
-    # ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
-    # ax_bis.plot(as_, z, color=col2)
-    # ax_bis.tick_params(axis="x", labelcolor=col2)
-    # ax_bis.set_xlabel("S-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col2)
 
     # Color domains with water and sediment
     min_x = np.nanmin([min_ap, min_as])
@@ -389,7 +362,6 @@ def plot_density(rho, z, z_bottom=None, ax=None):
 
     ax.plot(rho, z, label="Density", color="blue")
     ax.invert_yaxis()
-    # ax.tick_params(axis="x", labelcolor="blue")
     ax.set_xlabel("Density " + r"[$g.cm^{-3}$]")
 
     # Color domains with water and sediment

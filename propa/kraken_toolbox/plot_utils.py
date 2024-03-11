@@ -272,31 +272,45 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
         cp = np.ones(z.size) * np.nan
         min_cp = np.nan
         max_cp = np.nan
+        plot_cp = False
     else:
         min_cp = np.min(cp)
         max_cp = np.max(cp)
+        plot_cp = True
 
     # No need to plot the S-wave attenuation if it is 0 and ap is not 0
     if np.all(cs == 0) and not np.all(cp == 0):
         cs = np.ones(z.size) * np.nan
         min_cs = np.nan
         max_cs = np.nan
+        plot_cs = False
     else:
         min_cs = np.min(cs)
         max_cs = np.max(cs)
+        plot_cs = True
 
-    ax.invert_yaxis()
-    col1 = "red"
-    ax.plot(cp, z, color=col1, label="C-wave")
+    if plot_cp:
+        col1 = "red"
+        ax.plot(cp, z, color=col1, label="C-wave")
     ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]")
 
-    col2 = "blue"
-    ax.plot(cs, z, color=col2, label="S-wave")
+    if plot_cs:
+        col2 = "blue"
+        ax.plot(cs, z, color=col2, label="S-wave")
+
+    ax.invert_yaxis()
     ax.legend()
 
     # Color domains with water and sediment
     min_x = np.nanmin([min_cp, min_cs])
     max_x = np.nanmax([max_cp, max_cs])
+
+    # Set the x-axis limits
+    x_offset = max(0.1 * (max_x - min_x), 10)
+    min_x -= x_offset
+    max_x += x_offset
+    ax.set_xlim(min_x, max_x)
+
     color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
 
 
@@ -321,32 +335,46 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
         ap = np.ones(z.size) * np.nan
         min_ap = np.nan
         max_ap = np.nan
+        plot_ap = False
     else:
         min_ap = np.min(ap)
         max_ap = np.max(ap)
+        plot_ap = True
 
     # No need to plot the S-wave attenuation if it is 0 and ap is not 0
     if np.all(as_ == 0) and not np.all(ap == 0):
         as_ = np.ones(z.size) * np.nan
         min_as = np.nan
         max_as = np.nan
+        plot_as = False
     else:
         min_as = np.min(as_)
         max_as = np.max(as_)
+        plot_as = True
 
-    ax.invert_yaxis()
-    col1 = "red"
-    ax.plot(ap, z, color=col1, label="C-wave")
+    if plot_ap:
+        col1 = "red"
+        ax.plot(ap, z, color=col1, label="C-wave")
     ax.set_xlabel("Attenuation " + r"[$dB.\lambda^{-1}$]")
 
-    col2 = "blue"
-    ax.plot(as_, z, color=col2, label="S-wave")
-    ax.legend()
+    if plot_as:
+        col2 = "blue"
+        ax.plot(as_, z, color=col2, label="S-wave")
 
     # Color domains with water and sediment
     min_x = np.nanmin([min_ap, min_as])
     max_x = np.nanmax([max_ap, max_as])
+
+    # Set the x-axis limits
+    x_offset = max(0.1 * (max_x - min_x), 2)
+    min_x -= x_offset
+    max_x += x_offset
+    ax.set_xlim(min_x, max_x)
+
     color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
+
+    ax.invert_yaxis()
+    ax.legend()
 
 
 def plot_density(rho, z, z_bottom=None, ax=None):
@@ -365,7 +393,16 @@ def plot_density(rho, z, z_bottom=None, ax=None):
     ax.set_xlabel("Density " + r"[$g.cm^{-3}$]")
 
     # Color domains with water and sediment
-    color_domains(ax, min_x=np.min(rho), max_x=np.max(rho), z=z, z_bottom=z_bottom)
+    min_x = np.min(rho)
+    max_x = np.max(rho)
+
+    # Set the x-axis limits
+    x_offset = max(0.1 * (max_x - min_x), 0.5)
+    min_x -= x_offset
+    max_x += x_offset
+    ax.set_xlim(min_x, max_x)
+
+    color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
 
 
 def color_domains(ax, min_x, max_x, z, z_bottom=None):

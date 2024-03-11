@@ -246,3 +246,171 @@ def plotshd_from_pressure_field(
     # If a subplot is created, return a handle to the figure
     if m is not None and n is not None and p is not None:
         return plt.gcf()
+
+
+""" Plot environment profiles """
+
+
+def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
+    if ax is None:
+        plt.figure(figsize=(10, 8))
+        ax = plt.gca()
+        ax.set_ylabel("Depth [m]")
+
+    if np.array(cp_ssp).size == 1:
+        cp = np.ones(z.size) * cp_ssp
+    else:
+        cp = cp_ssp
+
+    if np.array(cs_ssp).size == 1:
+        cs = np.ones(z.size) * cs_ssp
+    else:
+        cs = cs_ssp
+
+    # No need to plot the C-wave attenuation if it is 0 and as is not 0
+    if np.all(cp == 0) and not np.all(cs == 0):
+        cp = np.ones(z.size) * np.nan
+        min_cp = np.nan
+        max_cp = np.nan
+    else:
+        min_cp = np.min(cp)
+        max_cp = np.max(cp)
+
+    # No need to plot the S-wave attenuation if it is 0 and ap is not 0
+    if np.all(cs == 0) and not np.all(cp == 0):
+        cs = np.ones(z.size) * np.nan
+        min_cs = np.nan
+        max_cs = np.nan
+    else:
+        min_cs = np.min(cs)
+        max_cs = np.max(cs)
+
+    ax.invert_yaxis()
+    col1 = "red"
+    ax.plot(cp, z, color=col1, label="C-wave")
+    ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]")
+
+    # ax.tick_params(axis="x", labelcolor=col1)
+    # ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]", color=col1)
+    # ax.set_title("Sound speed profile")
+
+    # if np.array(cs_ssp).size == 1:
+    #     cs = np.ones(z.size) * cs_ssp
+    # else:
+    #     cs = cs_ssp
+
+    # # No need to plot the S-wave celerity if it is 0
+    # if np.all(cs == 0):
+    #     cs = np.ones(z.size) * np.nan
+
+    # ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
+    col2 = "blue"
+    ax.plot(cs, z, color=col2, label="S-wave")
+    ax.legend()
+
+    # ax_bis.plot(cs, z, color=col2)
+    # ax_bis.tick_params(axis="x", labelcolor=col2)
+    # ax_bis.set_xlabel("S-wave celerity " + r"[$m.s^{-1}$]", color=col2)
+
+    # Color domains with water and sediment
+    min_x = np.nanmin([min_cp, min_cs])
+    max_x = np.nanmax([max_cp, max_cs])
+    color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
+    # color_domains(ax, min_x=np.min(cp), max_x=np.max(cp), z=z, z_bottom=z_bottom)
+
+
+def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
+    if ax is None:
+        plt.figure(figsize=(10, 8))
+        ax = plt.gca()
+        ax.set_ylabel("Depth [m]")
+
+    if np.array(ap).size == 1:
+        ap = np.ones(z.size) * ap
+    else:
+        pass
+
+    if np.array(as_).size == 1:
+        as_ = np.ones(z.size) * as_
+    else:
+        pass
+
+    # No need to plot the C-wave attenuation if it is 0 and as is not 0
+    if np.all(ap == 0) and not np.all(as_ == 0):
+        ap = np.ones(z.size) * np.nan
+        min_ap = np.nan
+        max_ap = np.nan
+    else:
+        min_ap = np.min(ap)
+        max_ap = np.max(ap)
+
+    # No need to plot the S-wave attenuation if it is 0 and ap is not 0
+    if np.all(as_ == 0) and not np.all(ap == 0):
+        as_ = np.ones(z.size) * np.nan
+        min_as = np.nan
+        max_as = np.nan
+    else:
+        min_as = np.min(as_)
+        max_as = np.max(as_)
+
+    ax.invert_yaxis()
+    col1 = "red"
+    ax.plot(ap, z, color=col1, label="C-wave")
+    ax.set_xlabel("Attenuation " + r"[$dB.\lambda^{-1}$]")
+
+    # ax.tick_params(axis="x", labelcolor=col1)
+    # ax.set_xlabel("C-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col1)
+
+    col2 = "blue"
+    ax.plot(as_, z, color=col2, label="S-wave")
+    ax.legend()
+
+    # ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
+    # ax_bis.plot(as_, z, color=col2)
+    # ax_bis.tick_params(axis="x", labelcolor=col2)
+    # ax_bis.set_xlabel("S-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col2)
+
+    # Color domains with water and sediment
+    min_x = np.nanmin([min_ap, min_as])
+    max_x = np.nanmax([max_ap, max_as])
+    color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
+
+
+def plot_density(rho, z, z_bottom=None, ax=None):
+    if ax is None:
+        plt.figure(figsize=(10, 8))
+        ax = plt.gca()
+        ax.set_ylabel("Depth [m]")
+
+    if np.array(rho).size == 1:
+        rho = np.ones(z.size) * rho
+    else:
+        pass
+
+    ax.plot(rho, z, label="Density", color="blue")
+    ax.invert_yaxis()
+    # ax.tick_params(axis="x", labelcolor="blue")
+    ax.set_xlabel("Density " + r"[$g.cm^{-3}$]")
+
+    # Color domains with water and sediment
+    color_domains(ax, min_x=np.min(rho), max_x=np.max(rho), z=z, z_bottom=z_bottom)
+
+
+def color_domains(ax, min_x, max_x, z, z_bottom=None):
+    if z_bottom is not None:
+        # Bottom domain
+        ax.fill_between(
+            [min_x, max_x],
+            [z_bottom, z_bottom],
+            np.max(z),
+            color="lightgrey",
+        )
+        # Water domain
+        ax.fill_between(
+            [min_x, max_x],
+            [z_bottom, z_bottom],
+            0,
+            color="lightblue",
+        )
+    else:
+        pass

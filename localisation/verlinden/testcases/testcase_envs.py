@@ -173,7 +173,6 @@ class TestCase:
             plot_bool = True
         for key_plot in ["bathy", "medium", "bottom", "env"]:
             setattr(self, f"plot_{key_plot}", plot_bool)
-            # self.testcase_varin[key_plot] = plot_bool
 
     def plot_testcase_env(self):
         plot_env_properties(
@@ -428,6 +427,47 @@ class TestCase1_3(TestCase1):
         )
 
 
+class TestCase1_4(TestCase1):
+    def __init__(self, testcase_varin={}, mode="prod"):
+        name = "testcase1_4"
+        title = "Test case 1.4: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile"
+        desc = "Environment: isotopric, Bathymetry: real bathy profile around OBS RR48 (extracted from GEBCO grid using MMDPM app), SSP: Realistic sound speed profile  (from Copernicus Marine Service), Sediment: One layer bottom with constant properties"
+
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [20],
+            "max_range_m": 50 * 1e3,
+        }
+        # Flat bottom
+        self.range_dependence = True
+
+        # Process all info
+        self.process_testcase()
+
+    def write_bathy(self):
+        # Load bathy profile
+        mmdpm_profile(
+            testcase_name=self.name,
+            mmdpm_testname="PVA_RR48",
+            azimuth=360,
+            max_range_km=self.max_range_m * 1e-3,
+            plot=self.plot_bathy,
+            bathy_path=get_img_path(self.name, type="bathy"),
+        )
+
+    def load_ssp(self):
+        # Load ssp mat file
+        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+        fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
+        ssp_mat = sio.loadmat(fpath)
+        self.z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
+        self.cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
+
+
 ##########################################################################################
 # Test case 2 : Anisotropic and shallow water environment
 ##########################################################################################
@@ -460,125 +500,6 @@ class TestCase3(TestCase):
     ):
         super().__init__(name, testcase_varin, title)
         self.range_dependence = True
-
-
-def testcase1_3(
-    testcase_varin,
-    plot_bathy=False,
-    plot_medium=False,
-    plot_bottom=False,
-    plot_env=False,
-):
-    """
-    Test case 1.3 :
-        Environment: isotopric
-        Bathymetry: real bathy profile around OBS RR48 (extracted from GEBCO grid using MMDPM app)
-        SSP: c = 1500 m/s
-        Sediment: One layer bottom with constant properties
-    """
-
-    name = "testcase1_3"
-    title = "Test case 1.3: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and constant sound speed profile"
-
-    if "freq" not in testcase_varin:
-        freq = [20]
-    else:
-        freq = testcase_varin["freq"]
-    if "max_range_m" not in testcase_varin:
-        max_range_m = 50 * 1e3
-    else:
-        max_range_m = testcase_varin["max_range_m"]
-
-    max_range_km = max_range_m * 1e-3
-
-    # Create a slope bottom
-    mmdpm_profile(
-        testcase_name=name,
-        mmdpm_testname="PVA_RR48",
-        azimuth=360,
-        max_range_km=max_range_km,
-        plot=plot_bathy,
-        bathy_path=get_img_path(name, type="bathy"),
-    )
-
-    bathy = Bathymetry(data_file=get_bathy_path(testcase_name=name))
-    z_ssp = [0, bathy.bathy_depth.max()]
-    cp_ssp = [1500, 1500]
-
-    env, flp = testcase1_common(
-        freq=freq,
-        z_ssp=z_ssp,
-        cp_ssp=cp_ssp,
-        bathy=bathy,
-        title=title,
-        testcase_name=name,
-    )
-
-    # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
-
-    return env, flp
-
-
-def testcase1_4(
-    testcase_varin,
-    plot_bathy=False,
-    plot_medium=False,
-    plot_bottom=False,
-    plot_env=False,
-):
-    """
-    Test case 1.4 :
-        Environment: isotopric
-        Bathymetry: real bathy profile around OBS RR48 (extracted from GEBCO grid using MMDPM app)
-        SSP: Realistic sound speed profile  (from Copernicus Marine Service)
-        Sediment: One layer bottom with constant properties
-    """
-    name = "testcase1_4"
-    title = "Test case 1.4: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and realistic sound speed profile"
-
-    if "freq" not in testcase_varin:
-        freq = [20]
-    else:
-        freq = testcase_varin["freq"]
-    if "max_range_m" not in testcase_varin:
-        max_range_m = 50 * 1e3
-    else:
-        max_range_m = testcase_varin["max_range_m"]
-
-    max_range_km = max_range_m * 1e-3
-
-    # Load bathy profile
-    mmdpm_profile(
-        testcase_name=name,
-        mmdpm_testname="PVA_RR48",
-        azimuth=360,
-        max_range_km=max_range_km,
-        plot=plot_bathy,
-        bathy_path=get_img_path(name, type="bathy"),
-    )
-    bathy = Bathymetry(data_file=get_bathy_path(testcase_name=name))
-
-    # Load ssp mat file
-    data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
-    fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
-    ssp_mat = sio.loadmat(fpath)
-    z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
-    cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
-
-    env, flp = testcase1_common(
-        freq=freq,
-        z_ssp=z_ssp,
-        cp_ssp=cp_ssp,
-        bathy=bathy,
-        title=title,
-        testcase_name=name,
-    )
-
-    # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
-
-    return env, flp
 
 
 ##########################################################################################
@@ -1037,7 +958,9 @@ if __name__ == "__main__":
     # tc1_0 = TestCase1_0(mode="show")
     # tc1_1 = TestCase1_1(mode="show")
     # tc1_2 = TestCase1_2(mode="show")
-    tc1_3 = TestCase1_3(mode="show")
+    # tc1_3 = TestCase1_3(mode="show")
+    tc1_ = TestCase1_4(mode="show")
+
     print()
 
     # # Test case 1.0

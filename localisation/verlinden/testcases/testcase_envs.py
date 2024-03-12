@@ -523,6 +523,7 @@ class TestCase2_1(TestCase2):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
+            "azimuth": 0,
         }
         # Flat bottom
         self.range_dependence = True
@@ -536,7 +537,7 @@ class TestCase2_1(TestCase2):
             testcase_name=self.name,
             min_depth=self.min_depth,
             max_range=self.max_range_m * 1e-3,
-            theta=94,
+            theta=self.azimuth,
             range_periodicity=6,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),

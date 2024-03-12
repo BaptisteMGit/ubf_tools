@@ -341,7 +341,7 @@ class TestCase1_1(TestCase1):
             "min_depth": 100,
         }
         # Flat bottom
-        self.range_dependence = False
+        self.range_dependence = True
 
         # Process all info
         self.process_testcase()
@@ -357,6 +357,64 @@ class TestCase1_1(TestCase1):
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
         )
+
+
+class TestCase1_2(TestCase1):
+    def __init__(self, testcase_varin={}, mode="prod"):
+        name = "testcase1_2"
+        title = "Test case 1.2: Isotopric environment with seamount bottom. 1 layer bottom and constant sound speed profile"
+        desc = "Environment: isotopric, Bathymetry: seamount bottom, SSP: c = 1500 m/s, Sediment: One layer bottom with constant properties"
+
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [25],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+        }
+        # Flat bottom
+        self.range_dependence = True
+
+        # Process all info
+        self.process_testcase()
+
+    def write_bathy(self):
+        # Create a seamount bathy profile
+        bathy_seamount(
+            testcase_name=self.name,
+            min_depth=self.min_depth,
+            max_range=self.max_range_m * 1e-3,
+            seamount_height=100,
+            seamount_width=6,
+            plot=self.plot_bathy,
+            bathy_path=get_img_path(self.name, type="bathy"),
+        )
+
+
+class TestCase1_3(TestCase1):
+    def __init__(self, testcase_varin={}, mode="prod"):
+        name = "testcase1_3"
+        title = "Test case 1.3: Isotopric environment with real bathy profile extracted using MMDPM app around OBS RR48. 1 layer bottom and constant sound speed profile"
+        desc = "Environment: isotopric, Bathymetry: real bathy profile around OBS RR48 (extracted from GEBCO grid using MMDPM app), SSP: c = 1500 m/s, Sediment: One layer bottom with constant properties"
+
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [25],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+        }
+        # Flat bottom
+        self.range_dependence = True
+
+        # Process all info
+        self.process_testcase()
 
 
 ##########################################################################################
@@ -1031,6 +1089,8 @@ if __name__ == "__main__":
     # Test class
     tc1_0 = TestCase1_0(mode="show")
     tc1_1 = TestCase1_1(mode="show")
+    tc1_2 = TestCase1_2(mode="show")
+    # tc1_3 = TestCase1_3(mode="show")
     print()
 
     # # Test case 1.0

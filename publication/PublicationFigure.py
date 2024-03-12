@@ -14,6 +14,7 @@ class PubFigure:
         legend_fontsize=16,
         suplabel_fontsize=22,
         titlepad=20,
+        labelpad=15,
         dpi=100,
     ):
         self.size = size
@@ -23,6 +24,7 @@ class PubFigure:
         self.legend_fontsize = legend_fontsize
         self.suplabel_fontsize = suplabel_fontsize
         self.titlepad = titlepad
+        self.labelpad = labelpad
         self.dpi = dpi
         self.set_all_fontsize()
 
@@ -39,10 +41,12 @@ class PubFigure:
         params = {
             "legend.fontsize": self.legend_fontsize,
             "figure.figsize": self.size,
+            "figure.titlesize": self.title_fontsize,
             "axes.labelsize": self.label_fontsize,
             "axes.titlesize": self.title_fontsize,
             "xtick.labelsize": self.ticks_fontsize,
             "ytick.labelsize": self.ticks_fontsize,
             "axes.titlepad": self.titlepad,
+            "axes.labelpad": self.labelpad,
         }
         plt.rcParams.update(params)

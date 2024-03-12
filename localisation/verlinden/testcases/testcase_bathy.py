@@ -8,7 +8,7 @@ from publication.PublicationFigure import PubFigure
 from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 from get_data.bathymetry.bathy_profile_extraction import extract_bathy_profile
 
-pfig = PubFigure()
+pfig = PubFigure(labelpad=15)
 
 
 def bathy_flat_seabed(
@@ -38,8 +38,9 @@ def bathy_flat_seabed(
         plt.gca().invert_yaxis()
         plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-        pfig.apply_ticks_fontsize()
         plt.grid()
+        plt.tight_layout()
+        pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()
 
@@ -59,11 +60,8 @@ def bathy_sin_slope(
     r = np.arange(0, max_range + dr, dr)
 
     alpha = 50
-    h = min_depth - alpha * (
-        -1
-        + np.sin(
-            2 * np.pi * r * np.cos(theta * np.pi / 180) / range_periodicity - np.pi / 2
-        )
+    h = min_depth + alpha * (
+        1 + np.cos(2 * np.pi * r / range_periodicity * np.cos(theta * np.pi / 180))
     )
 
     # Save bathymetry
@@ -80,8 +78,9 @@ def bathy_sin_slope(
         plt.gca().invert_yaxis()
         plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-        pfig.apply_ticks_fontsize()
         plt.grid()
+        plt.tight_layout()
+        pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()
 
@@ -132,8 +131,9 @@ def bathy_seamount(
         plt.gca().invert_yaxis()
         plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-        pfig.apply_ticks_fontsize()
         plt.grid()
+        plt.tight_layout()
+        pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()
 
@@ -170,8 +170,9 @@ def mmdpm_profile(
         plt.gca().invert_yaxis()
         plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-        pfig.apply_ticks_fontsize()
         plt.grid()
+        plt.tight_layout()
+        pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()
 
@@ -191,8 +192,9 @@ def mmdpm_profile(
         plt.gca().invert_yaxis()
         plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-        pfig.apply_ticks_fontsize()
         plt.grid()
+        plt.tight_layout()
+        pfig.set_all_fontsize()
         plt.savefig(bathy_path.replace(".png", "_subsampled.png"))
         plt.close()
 
@@ -240,7 +242,8 @@ def extract_2D_bathy_profile(
         plt.gca().invert_yaxis()
         plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
-        pfig.apply_ticks_fontsize()
         plt.grid()
+        plt.tight_layout()
+        pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()

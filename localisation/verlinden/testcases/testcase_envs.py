@@ -486,6 +486,63 @@ class TestCase2(TestCase):
         self.isotropic = False
 
 
+class TestCase2_0(TestCase2):
+    def __init__(self, testcase_varin={}, mode="prod"):
+        name = "testcase2_0"
+        title = "Test case 2.0: Anisotropic environment with flat bottom. 1 layer bottom and constant sound speed profile"
+        desc = "Environment: Anisotropic, Bathymetry: flat bottom, SSP: c = 1500 m/s, Sediment: One layer bottom with constant properties"
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [25],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+        }
+        # Flat bottom
+        self.range_dependence = False
+
+        # Process all info
+        self.process_testcase()
+
+
+class TestCase2_1(TestCase2):
+    def __init__(self, testcase_varin={}, mode="prod"):
+        name = "testcase2_1"
+        title = "Test case 2.1: Anisotropic environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile"
+        desc = "Environment: Anisotropic, Bathymetry: sinusoidal bottom, SSP: c = 1500 m/s, Sediment: One layer bottom with constant properties"
+
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [25],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+        }
+        # Flat bottom
+        self.range_dependence = True
+
+        # Process all info
+        self.process_testcase()
+
+    def write_bathy(self):
+        # Create a slope bottom
+        bathy_sin_slope(
+            testcase_name=self.name,
+            min_depth=self.min_depth,
+            max_range=self.max_range_m * 1e-3,
+            theta=94,
+            range_periodicity=6,
+            plot=self.plot_bathy,
+            bathy_path=get_img_path(self.name, type="bathy"),
+        )
+
+
 ##########################################################################################
 # Test case 3 : Anisotropic and deep whater environment (RHUM RUM)
 ##########################################################################################

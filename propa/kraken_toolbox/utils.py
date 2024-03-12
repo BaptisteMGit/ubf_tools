@@ -1,4 +1,18 @@
-import os
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   utils.py
+@Time    :   2024/03/11 10:23:35
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   None
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
+
 import numpy as np
 from cst import C0
 from propa.kraken_toolbox.read_shd import readshd

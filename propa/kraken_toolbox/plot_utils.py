@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   plot_utils.py
+@Time    :   2024/03/12 08:48:09
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   None
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -388,7 +403,7 @@ def plot_density(rho, z, z_bottom=None, ax=None):
     else:
         pass
 
-    ax.plot(rho, z, label="Density", color="blue")
+    ax.plot(rho, z, label="Density", color="k")
     ax.invert_yaxis()
     ax.set_xlabel("Density " + r"[$g.cm^{-3}$]")
 
@@ -397,7 +412,7 @@ def plot_density(rho, z, z_bottom=None, ax=None):
     max_x = np.max(rho)
 
     # Set the x-axis limits
-    x_offset = max(0.1 * (max_x - min_x), 0.5)
+    x_offset = max(0.1 * (max_x - min_x), 0.1)
     min_x -= x_offset
     max_x += x_offset
     ax.set_xlim(min_x, max_x)

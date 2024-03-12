@@ -653,63 +653,6 @@ def testcase2_common(
     return env, flp
 
 
-def testcase2_0(
-    testcase_varin,
-    plot_bathy=False,
-    plot_medium=False,
-    plot_bottom=False,
-    plot_env=False,
-):
-    """
-    Test case 2.0:
-        Environment: Anisotropic
-        Bathymetry: flat bottom
-        SSP: c = 1500 m/s
-        Sediment: One layer bottom with constant properties
-    """
-
-    if "freq" not in testcase_varin:
-        freq = [20]
-    else:
-        freq = testcase_varin["freq"]
-
-    if "max_range_m" not in testcase_varin:
-        max_range_m = 50 * 1e3
-    else:
-        max_range_m = testcase_varin["max_range_m"]
-
-    waveguide_depth = 200
-    max_range_km = max_range_m * 1e-3
-
-    name = "testcase2_0"
-    title = "Test case 2.0: Dummy test case equivalent to 1.0 to ensure the anisotropic process is producing results equivalent to the isotropic process."
-
-    # Create flat bottom
-    bathy_flat_seabed(
-        testcase_name=name,
-        waveguide_depth=waveguide_depth,
-        max_range=max_range_km,
-        plot=plot_bathy,
-        bathy_path=get_img_path(name, type="bathy"),
-    )
-
-    bathy = Bathymetry(data_file=get_bathy_path(testcase_name=name))
-
-    env, flp = testcase2_common(
-        freq=freq,
-        bathy=bathy,
-        title=title,
-        testcase_name=name,
-        rcv_r_max=max_range_km,
-        ssp_profile="constant",
-    )
-
-    # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
-
-    return env, flp
-
-
 def testcase2_1(
     testcase_varin,
     plot_bathy=False,

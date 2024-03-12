@@ -95,6 +95,7 @@ class TestCase:
         self.rcv_lat = None
         self.plot_medium = False
         self.plot_bottom = False
+        self.plot_bathy = False
         self.plot_env = False
         # Ssp
         self.z_ssp = None
@@ -128,9 +129,6 @@ class TestCase:
             "rcv_lat": 52.22,
         }
 
-        # Read variables
-        self.read_varin()
-
         # Set env directory
         self.set_env_dir()
 
@@ -144,11 +142,15 @@ class TestCase:
             "z": None,
         }
 
+        self.process_testcase()
+
+    def process_testcase(self):
+        # Read variables
+        self.read_varin()
         # Load testcase
         self.load_testcase()
         # Write flp and env files
         self.write_testcase_files()
-
         # Plot env
         self.plot_testcase_env()
 
@@ -182,9 +184,12 @@ class TestCase:
         )
 
     def load_testcase(self):
-        self.load_ssp()
+        # Load bathy
         self.write_bathy()
         self.set_bathy()
+        # Load ssp
+        self.load_ssp()
+        # Set kraken objects
         self.set_top_hs()
         self.set_medium()
         self.set_att()
@@ -196,11 +201,8 @@ class TestCase:
     def load_ssp(self):
         # Default sound speed profile
         c0 = 1500
-        self.z_ssp = [0, self.min_depth]
+        self.z_ssp = [0, self.max_depth]
         self.cp_ssp = [c0, c0]
-        self.max_depth = max(self.z_ssp)  # Depth at src position (m)
-        self.src_depth = self.max_depth - 1  # Assume hydrophone is 1m above the bottom
-        self.bott_hs_properties["z"] = self.max_depth
 
     def set_top_hs(self):
         self.top_hs = KrakenTopHalfspace()
@@ -240,6 +242,10 @@ class TestCase:
 
     def set_bathy(self):
         self.bathy = Bathymetry(get_bathy_path(testcase_name=self.name))
+        self.max_depth = self.bathy.bathy_depth.max()
+        self.min_depth = self.bathy.bathy_depth.min()
+        self.src_depth = self.max_depth - 1  # Assume hydrophone is 1m above the bottom
+        self.bott_hs_properties["z"] = self.max_depth
 
     def set_env(self):
         self.env = KrakenEnv(
@@ -297,20 +303,60 @@ class TestCase1(TestCase):
 
 
 class TestCase1_0(TestCase1):
-    def __init__(self, mode="prod"):
+    def __init__(self, testcase_varin={}, mode="prod"):
         name = "testcase1_0"
         title = "Test case 1.0: Flat and isotopric environment. 1 layer bottom and constant sound speed profile"
         desc = "Environment: isotopric, Bathymetry: flat bottom, SSP: c = 1500 m/s, Sediment: One layer bottom with constant properties"
-        testcase_varin = {
-            "freq": [20],
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
         }
-
-        super().__init__(name, testcase_varin, title, desc, mode)
-
         # Flat bottom
         self.range_dependence = False
+
+        # Process all info
+        self.process_testcase()
+
+
+class TestCase1_1(TestCase1):
+    def __init__(self, testcase_varin={}, mode="prod"):
+        name = "testcase1_1"
+        title = "Test case 1.1: Isotopric environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile"
+        desc = "Environment: isotopric, Bathymetry: sinusoidal bottom, SSP: c = 1500 m/s, Sediment: One layer bottom with constant properties"
+
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [25],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+        }
+        # Flat bottom
+        self.range_dependence = False
+
+        # Process all info
+        self.process_testcase()
+
+    def write_bathy(self):
+        # Create a slope bottom
+        bathy_sin_slope(
+            testcase_name=self.name,
+            min_depth=self.min_depth,
+            max_range=self.max_range_m * 1e-3,
+            theta=94,
+            range_periodicity=6,
+            plot=self.plot_bathy,
+            bathy_path=get_img_path(self.name, type="bathy"),
+        )
 
 
 ##########################################################################################
@@ -320,9 +366,14 @@ class TestCase1_0(TestCase1):
 
 class TestCase2(TestCase):
     def __init__(
-        self, name, testcase_varin={}, title="Test case 2: Anisotropic environment"
+        self,
+        name,
+        testcase_varin={},
+        title="Test case 1: Isotropic environment",
+        desc="",
+        mode="prod",
     ):
-        super().__init__(name, testcase_varin, title)
+        super().__init__(name, testcase_varin, title, desc, mode)
         self.isotropic = False
 
 
@@ -1043,6 +1094,7 @@ if __name__ == "__main__":
 
     # Test class
     tc1_0 = TestCase1_0(mode="show")
+    tc1_1 = TestCase1_1(mode="show")
     print()
 
     # # Test case 1.0

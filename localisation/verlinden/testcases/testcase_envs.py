@@ -416,6 +416,17 @@ class TestCase1_3(TestCase1):
         # Process all info
         self.process_testcase()
 
+    def write_bathy(self):
+        # Load real profile around OBS RR48
+        mmdpm_profile(
+            testcase_name=self.name,
+            mmdpm_testname="PVA_RR48",
+            azimuth=360,
+            max_range_km=self.max_range_m * 1e-3,
+            plot=self.plot_bathy,
+            bathy_path=get_img_path(self.name, type="bathy"),
+        )
+
 
 ##########################################################################################
 # Test case 2 : Anisotropic and shallow water environment
@@ -449,70 +460,6 @@ class TestCase3(TestCase):
     ):
         super().__init__(name, testcase_varin, title)
         self.range_dependence = True
-
-
-def testcase1_2(
-    testcase_varin,
-    plot_bathy=False,
-    plot_medium=False,
-    plot_bottom=False,
-    plot_env=False,
-):
-    """
-    Test case 1.2 :
-        Environment: isotopric
-        Bathymetry: seamount bottom
-        SSP: c = 1500 m/s
-        Sediment: One layer bottom with constant properties
-    """
-
-    name = "testcase1_2"
-    title = "Test case 1.2: Isotopric environment with seamount bottom. 1 layer bottom and constant sound speed profile"
-
-    if "freq" not in testcase_varin:
-        freq = [20]
-    else:
-        freq = testcase_varin["freq"]
-    if "max_range_m" not in testcase_varin:
-        max_range_m = 50 * 1e3
-    else:
-        max_range_m = testcase_varin["max_range_m"]
-    if "min_depth" not in testcase_varin:
-        min_depth = 100
-    else:
-        min_depth = testcase_varin["min_depth"]
-
-    max_range_km = max_range_m * 1e-3
-
-    # Create a slope bottom
-    bathy_seamount(
-        testcase_name=name,
-        min_depth=min_depth,
-        max_range=max_range_km,
-        seamount_height=100,
-        seamount_width=6,
-        plot=plot_bathy,
-        bathy_path=get_img_path(name, type="bathy"),
-    )
-
-    bathy = Bathymetry(data_file=os.path.join(TC_WORKING_DIR, name, "bathy.csv"))
-
-    z_ssp = [0, bathy.bathy_depth.max()]
-    cp_ssp = [1500, 1500]
-
-    env, flp = testcase1_common(
-        freq=freq,
-        z_ssp=z_ssp,
-        cp_ssp=cp_ssp,
-        bathy=bathy,
-        title=title,
-        testcase_name=name,
-    )
-
-    # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
-
-    return env, flp
 
 
 def testcase1_3(
@@ -1087,10 +1034,10 @@ def testcase3_1(
 if __name__ == "__main__":
 
     # Test class
-    tc1_0 = TestCase1_0(mode="show")
-    tc1_1 = TestCase1_1(mode="show")
-    tc1_2 = TestCase1_2(mode="show")
-    # tc1_3 = TestCase1_3(mode="show")
+    # tc1_0 = TestCase1_0(mode="show")
+    # tc1_1 = TestCase1_1(mode="show")
+    # tc1_2 = TestCase1_2(mode="show")
+    tc1_3 = TestCase1_3(mode="show")
     print()
 
     # # Test case 1.0

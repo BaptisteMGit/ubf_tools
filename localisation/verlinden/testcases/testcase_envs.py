@@ -42,6 +42,8 @@ def get_img_path(testcase_name, type="medium", azimuth=None):
         return os.path.join(root, "medium_properties.png")
     elif type == "bottom":
         return os.path.join(root, "bottom_properties.png")
+    elif type == "env":
+        return os.path.join(root, "env_properties.png")
     elif type == "bathy":
         if azimuth is not None:
             return os.path.join(root, f"bathy_az{azimuth:.2f}.png")
@@ -53,7 +55,7 @@ def get_bathy_path(testcase_name):
     return os.path.join(TC_WORKING_DIR, testcase_name, "bathy.csv")
 
 
-def plot_env_properties(env, plot_medium, plot_bottom):
+def plot_env_properties(env, plot_medium, plot_bottom, plot_env):
     if plot_medium:
         env.medium.plot_medium()
         plt.savefig(get_img_path(env.filename, type="medium"))
@@ -62,6 +64,11 @@ def plot_env_properties(env, plot_medium, plot_bottom):
     if plot_bottom:
         env.bottom_hs.plot_bottom_halfspace()
         plt.savefig(get_img_path(env.filename, type="bottom"))
+        plt.close()
+
+    if plot_env:
+        env.plot_env()
+        plt.savefig(get_img_path(env.filename, type="env"))
         plt.close()
 
 
@@ -93,7 +100,7 @@ def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1
 
     # First simple model : 1 layer bottom
     bott_hs_properties = {
-        "rho": 1.9 * RHO_W,
+        "rho": 1.9 * RHO_W / 1000,  # Density (g/cm^3)
         "c_p": 1650,  # P-wave celerity (m/s)
         "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
         "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
@@ -146,7 +153,13 @@ def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1
     return env, flp
 
 
-def testcase1_0(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom=False):
+def testcase1_0(
+    testcase_varin,
+    plot_bathy=False,
+    plot_medium=False,
+    plot_bottom=False,
+    plot_env=False,
+):
     """
     Test case 1.0 :
         Environment: isotopric
@@ -193,7 +206,7 @@ def testcase1_0(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
@@ -203,6 +216,7 @@ def testcase1_1(
     plot_bathy=False,
     plot_medium=False,
     plot_bottom=False,
+    plot_env=False,
 ):
     """
     Test case 1.1 :
@@ -256,12 +270,18 @@ def testcase1_1(
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
 
-def testcase1_2(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom=False):
+def testcase1_2(
+    testcase_varin,
+    plot_bathy=False,
+    plot_medium=False,
+    plot_bottom=False,
+    plot_env=False,
+):
     """
     Test case 1.2 :
         Environment: isotopric
@@ -314,12 +334,18 @@ def testcase1_2(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
 
-def testcase1_3(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom=False):
+def testcase1_3(
+    testcase_varin,
+    plot_bathy=False,
+    plot_medium=False,
+    plot_bottom=False,
+    plot_env=False,
+):
     """
     Test case 1.3 :
         Environment: isotopric
@@ -366,12 +392,18 @@ def testcase1_3(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
 
-def testcase1_4(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom=False):
+def testcase1_4(
+    testcase_varin,
+    plot_bathy=False,
+    plot_medium=False,
+    plot_bottom=False,
+    plot_env=False,
+):
     """
     Test case 1.4 :
         Environment: isotopric
@@ -421,7 +453,7 @@ def testcase1_4(testcase_varin, plot_bathy=False, plot_medium=False, plot_bottom
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
@@ -465,7 +497,7 @@ def testcase2_common(
 
     # 1 layer bottom
     bott_hs_properties = {
-        "rho": 1.9 * RHO_W,
+        "rho": 1.9 * RHO_W / 1000,
         "c_p": 1650,  # P-wave celerity (m/s)
         "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
         "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
@@ -524,6 +556,7 @@ def testcase2_0(
     plot_bathy=False,
     plot_medium=False,
     plot_bottom=False,
+    plot_env=False,
 ):
     """
     Test case 2.0:
@@ -570,7 +603,7 @@ def testcase2_0(
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
@@ -580,6 +613,7 @@ def testcase2_1(
     plot_bathy=False,
     plot_medium=False,
     plot_bottom=False,
+    plot_env=False,
 ):
     """
     Test case 2.1:
@@ -637,7 +671,7 @@ def testcase2_1(
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
@@ -647,6 +681,7 @@ def testcase2_2(
     plot_bathy=False,
     plot_medium=False,
     plot_bottom=False,
+    plot_env=False,
 ):
     """
     Test case 2.2:
@@ -711,7 +746,7 @@ def testcase2_2(
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
@@ -745,7 +780,7 @@ def testcase3_common(freq, bathy, title, testcase_name="testcase1", rcv_r_max=50
 
     # First simple model : 1 layer bottom
     bott_hs_properties = {
-        "rho": 1.9 * RHO_W,
+        "rho": 1.9 * RHO_W / 1000,
         "c_p": 1650,  # P-wave celerity (m/s)
         "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
         "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
@@ -804,6 +839,7 @@ def testcase3_1(
     plot_bathy=False,
     plot_medium=False,
     plot_bottom=False,
+    plot_env=False,
 ):
     """
     Test case 3.1:
@@ -867,7 +903,7 @@ def testcase3_1(
     )
 
     # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom)
+    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
 
     return env, flp
 
@@ -877,7 +913,7 @@ if __name__ == "__main__":
     # Test case 1.0
     tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
     env, flp = testcase1_0(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
     )
     env.write_env()
     flp.write_flp()
@@ -885,7 +921,7 @@ if __name__ == "__main__":
     # Test case 1.1
     tc_varin = {"freq": [20], "min_depth": 150}
     env, flp = testcase1_1(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
     )
     env.write_env()
     flp.write_flp()
@@ -893,7 +929,7 @@ if __name__ == "__main__":
     # Test case 1.2
     tc_varin = {"freq": [20], "min_depth": 100}
     env, flp = testcase1_2(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
     )
     env.write_env()
     flp.write_flp()
@@ -901,7 +937,7 @@ if __name__ == "__main__":
     # Test case 1.3
     tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
     env, flp = testcase1_3(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
     )
     env.write_env()
     flp.write_flp()
@@ -909,7 +945,7 @@ if __name__ == "__main__":
     # Test case 1.4
     tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
     env, flp = testcase1_4(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
     )
     env.write_env()
     flp.write_flp()
@@ -922,7 +958,7 @@ if __name__ == "__main__":
     for az in range(0, 360, 30):
         tc_varin["azimuth"] = az
         env, flp = testcase2_0(
-            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
         )
     env.write_env()
     flp.write_flp()
@@ -936,7 +972,7 @@ if __name__ == "__main__":
     for az in range(0, 360, 30):
         tc_varin["azimuth"] = az
         env, flp = testcase2_1(
-            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
         )
     env.write_env()
     flp.write_flp()
@@ -952,7 +988,7 @@ if __name__ == "__main__":
     for az in range(0, 360, 30):
         tc_varin["azimuth"] = az
         env, flp = testcase2_2(
-            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
         )
     env.write_env()
     flp.write_flp()
@@ -968,146 +1004,7 @@ if __name__ == "__main__":
     for az in range(0, 360, 30):
         tc_varin["azimuth"] = az
         env, flp = testcase3_1(
-            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True
+            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
         )
     env.write_env()
     flp.write_flp()
-
-    # from propa.kraken_toolbox.utils import waveguide_cutoff_freq
-
-    # tc_varin = {
-    #     "freq": [20],
-    #     "max_range_m": 15 * 1e3,
-    #     "azimuth": 0,
-    #     "rcv_lon": -4.7,
-    #     "rcv_lat": 52.6,
-    # }
-    # for az in range(0, 360, 10):
-    #     tc_varin["azimuth"] = az
-    #     env, flp = testcase2_1(tc_varin, plot_bathy=True)
-
-    #     print(f"fc = {waveguide_cutoff_freq(env.bathy.bathy_depth.min()):.2f} Hz")
-
-
-# def isotropic_ideal_env(
-#     env_root,
-#     env_filename,
-#     title="Isotropic ideal environment",
-#     max_depth=3000,
-#     src_depth=None,
-#     freq=[20],
-# ):
-#     if src_depth is None:
-#         src_depth = max_depth - 2  # 2m above the bottom
-
-#     top_hs = KrakenTopHalfspace()
-#     z_ssp = np.array([0.0, max_depth])
-#     cp_ssp = np.array([1500.0, 1500.0])
-
-#     medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
-
-#     bott_hs_properties = SAND_PROPERTIES
-#     bott_hs_properties["z"] = z_ssp.max()
-#     bott_hs = KrakenBottomHalfspace(halfspace_properties=bott_hs_properties)
-
-#     att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
-
-#     n_rcv_z = default_nb_rcv_z(max(freq), max_depth)
-#     field = KrakenField(
-#         src_depth=src_depth,
-#         n_rcv_z=n_rcv_z,
-#         rcv_z_max=max_depth,
-#     )
-
-#     env = KrakenEnv(
-#         title=title,
-#         env_root=env_root,
-#         env_filename=env_filename,
-#         freq=freq,
-#         kraken_top_hs=top_hs,
-#         kraken_medium=medium,
-#         kraken_attenuation=att,
-#         kraken_bottom_hs=bott_hs,
-#         kraken_field=field,
-#     )
-
-#     flp = KrakenFlp(
-#         env=env,
-#         src_depth=src_depth,
-#         n_rcv_z=n_rcv_z,
-#         rcv_z_max=max_depth,
-#         rcv_r_max=30,
-#         mode_addition="coherent",
-#     )
-
-#     return env, flp
-
-
-# def rhum_rum_isotropic_env(
-#     env_root,
-#     env_filename,
-#     title="Isotropic ideal environment with real Sound Speed Profile",
-#     src_depth=None,
-#     freq=[20],
-# ):
-#     swir_salinity_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\cmems_mod_glo_phy-so_anfc_0.083deg_P1M-m_1700737971954.nc"
-#     swir_temp_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\cmems_mod_glo_phy-thetao_anfc_0.083deg_P1M-m_1700737952634.nc"
-
-#     # Load temperatue and salinity
-#     ds_sal = xr.open_dataset(swir_salinity_path)
-#     ds_temp = xr.open_dataset(swir_temp_path)
-
-#     ssp = uwa.soundspeed(
-#         ds_sal.so.isel(latitude=0, longitude=0, time=0),
-#         ds_temp.thetao.isel(latitude=0, longitude=0, time=0),
-#         ds_sal.depth,
-#     )
-#     ssp = ssp.dropna(dim="depth")
-#     # ssp.<
-#     # ssp.plot(y="depth", yincrease=False)
-
-#     max_depth = ssp.depth.max().round(2).values
-#     if src_depth is None:
-#         src_depth = max_depth - 2  # 2m above the bottom
-
-#     top_hs = KrakenTopHalfspace()
-#     z_ssp = ssp.depth.round(2).values
-#     cp_ssp = ssp.round(2).values
-
-#     medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
-
-#     bott_hs_properties = SAND_PROPERTIES
-#     bott_hs_properties["z"] = z_ssp.max()
-#     bott_hs = KrakenBottomHalfspace(halfspace_properties=bott_hs_properties)
-
-#     att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
-
-#     n_rcv_z = default_nb_rcv_z(max(freq), max_depth)
-#     field = KrakenField(
-#         src_depth=src_depth,
-#         n_rcv_z=n_rcv_z,
-#         rcv_z_max=max_depth,
-#     )
-
-#     env = KrakenEnv(
-#         title=title,
-#         env_root=env_root,
-#         env_filename=env_filename,
-#         freq=freq,
-#         kraken_top_hs=top_hs,
-#         kraken_medium=medium,
-#         kraken_attenuation=att,
-#         kraken_bottom_hs=bott_hs,
-#         kraken_field=field,
-#     )
-
-#     flp = KrakenFlp(
-#         env=env,
-#         src_depth=src_depth,
-#         n_rcv_z=n_rcv_z,
-#         rcv_z_max=max_depth,
-#         rcv_r_max=50,
-#         mode_addition="coherent",
-#     )
-
-#     return env, flp

@@ -511,7 +511,7 @@ class TestCase2_0(TestCase2):
 class TestCase2_1(TestCase2):
     def __init__(self, testcase_varin={}, mode="prod"):
         name = "testcase2_1"
-        title = "Test case 2.1: Anisotropic environment with sinusoidal bottom. 1 layer bottom and constant sound speed profile"
+        title = "Test case 2.1:  Shallow water environment with sinusoidal bathy profile (same as test case 1.1). 1 layer bottom and constant sound speed profile"
         desc = "Environment: Anisotropic, Bathymetry: sinusoidal bottom, SSP: c = 1500 m/s, Sediment: One layer bottom with constant properties"
 
         super().__init__(
@@ -540,7 +540,7 @@ class TestCase2_1(TestCase2):
             theta=self.azimuth,
             range_periodicity=6,
             plot=self.plot_bathy,
-            bathy_path=get_img_path(self.name, type="bathy"),
+            bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
         )
 
 
@@ -960,7 +960,16 @@ if __name__ == "__main__":
     # tc1_1 = TestCase1_1(mode="show")
     # tc1_2 = TestCase1_2(mode="show")
     # tc1_3 = TestCase1_3(mode="show")
-    tc1_ = TestCase1_4(mode="show")
+    # tc1_4 = TestCase1_4(mode="show")
+    # tc2_0 = TestCase2_0(mode="show")
+
+    for az in range(0, 360, 30):
+        tc_varin = {
+            "freq": [20],
+            "max_range_m": 15 * 1e3,
+            "azimuth": az,
+        }
+        tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
 
     print()
 

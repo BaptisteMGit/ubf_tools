@@ -73,8 +73,273 @@ def plot_env_properties(env, plot_medium, plot_bottom, plot_env):
 
 
 ##########################################################################################
+# Main class
+##########################################################################################
+class TestCase:
+    def __init__(
+        self, name, testcase_varin={}, title="Default testcase", desc="", mode="prod"
+    ):
+        self.name = name
+        self.testcase_varin = testcase_varin
+        self.title = title
+        self.desc = desc
+        self.mode = mode
+
+        ### Define variables ###
+        # Varins
+        self.freq = None
+        self.max_range_m = None
+        self.min_depth = None
+        self.azimuth = None
+        self.rcv_lon = None
+        self.rcv_lat = None
+        self.plot_medium = False
+        self.plot_bottom = False
+        self.plot_env = False
+        # Ssp
+        self.z_ssp = None
+        self.cp_ssp = None
+        # Kraken objects
+        self.top_hs = None
+        self.medium = None
+        self.bott_hs = None
+        self.att = None
+        self.field = None
+        self.bathy = None
+        self.env = None
+        self.flp = None
+        # Environment directory
+        self.env_dir = ""
+        # Max depth
+        self.max_depth = None
+        self.src_depth = None
+
+        # Flag for range-dependence and isotropic/anisotropic
+        self.range_dependence = False
+        self.isotropic = True
+
+        # Default values
+        self.default_varin = {
+            "freq": [20],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+            "azimuth": 0,
+            "rcv_lon": -4.87,
+            "rcv_lat": 52.22,
+        }
+
+        # Read variables
+        self.read_varin()
+
+        # Set env directory
+        self.set_env_dir()
+
+        # Bottom properties (1 layer bottom)
+        self.bott_hs_properties = {
+            "rho": 1.9 * RHO_W * 1e-3,  # Density (g/cm^3)
+            "c_p": 1650,  # P-wave celerity (m/s)
+            "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+            "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
+            "a_s": 2.5,  # Shear wave attenuation (dB/wavelength)
+            "z": None,
+        }
+
+        # Load testcase
+        self.load_testcase()
+        # Write flp and env files
+        self.write_testcase_files()
+
+        # Plot env
+        self.plot_testcase_env()
+
+    def set_env_dir(self):
+        self.env_dir = os.path.join(TC_WORKING_DIR, self.name)
+        if not os.path.exists(self.env_dir):
+            os.makedirs(self.env_dir)
+
+    def read_varin(self):
+        for key, default_value in self.default_varin.items():
+            if key in self.testcase_varin:
+                setattr(self, key, self.testcase_varin[key])
+            else:
+                setattr(self, key, default_value)
+
+        # In production mode no plots should be used (using plot functions creates conflics between subprocesses)
+        if self.mode == "prod":
+            plot_bool = False
+        else:
+            plot_bool = True
+        for key_plot in ["bathy", "medium", "bottom", "env"]:
+            setattr(self, f"plot_{key_plot}", plot_bool)
+            # self.testcase_varin[key_plot] = plot_bool
+
+    def plot_testcase_env(self):
+        plot_env_properties(
+            self.env,
+            plot_medium=self.plot_medium,
+            plot_bottom=self.plot_bottom,
+            plot_env=self.plot_env,
+        )
+
+    def load_testcase(self):
+        self.load_ssp()
+        self.write_bathy()
+        self.set_bathy()
+        self.set_top_hs()
+        self.set_medium()
+        self.set_att()
+        self.set_field()
+        self.set_bott_hs()
+        self.set_env()
+        self.set_flp()
+
+    def load_ssp(self):
+        # Default sound speed profile
+        c0 = 1500
+        self.z_ssp = [0, self.min_depth]
+        self.cp_ssp = [c0, c0]
+        self.max_depth = max(self.z_ssp)  # Depth at src position (m)
+        self.src_depth = self.max_depth - 1  # Assume hydrophone is 1m above the bottom
+        self.bott_hs_properties["z"] = self.max_depth
+
+    def set_top_hs(self):
+        self.top_hs = KrakenTopHalfspace()
+
+    def set_bott_hs(self):
+        self.bott_hs = KrakenBottomHalfspace(
+            halfspace_properties=self.bott_hs_properties
+        )
+
+    def set_att(self):
+        self.att = KrakenAttenuation(
+            units="dB_per_wavelength", use_volume_attenuation=False
+        )
+
+    def set_field(self):
+        n_rcv_z = default_nb_rcv_z(max(self.freq), self.max_depth, n_per_l=15)
+        self.field = KrakenField(
+            n_rcv_z=n_rcv_z,
+            src_depth=self.src_depth,
+            rcv_z_max=self.max_depth,
+        )
+
+    def set_medium(self):
+        self.medium = KrakenMedium(
+            ssp_interpolation_method="C_linear", z_ssp=self.z_ssp, c_p=self.cp_ssp
+        )
+
+    def write_bathy(self):
+        # Default bathy
+        bathy_flat_seabed(
+            testcase_name=self.name,
+            waveguide_depth=self.min_depth,
+            max_range=self.max_range_m * 1e-3,
+            plot=self.plot_bathy,
+            bathy_path=get_img_path(self.name, type="bathy"),
+        )
+
+    def set_bathy(self):
+        self.bathy = Bathymetry(get_bathy_path(testcase_name=self.name))
+
+    def set_env(self):
+        self.env = KrakenEnv(
+            title=self.title,
+            env_root=self.env_dir,
+            env_filename=self.name,
+            freq=self.freq,
+            kraken_top_hs=self.top_hs,
+            kraken_medium=self.medium,
+            kraken_attenuation=self.att,
+            kraken_bottom_hs=self.bott_hs,
+            kraken_field=self.field,
+            kraken_bathy=self.bathy,
+        )
+
+    def set_flp(self):
+        dr = 10  # 10m resolution
+        n_rcv_r = self.max_range_m * 1000 / dr + 1
+
+        # Source = ship radiating sound at 5m depth
+        flp_nrcv_z = 1
+        flp_rcv_z_min = 5
+        flp_rcv_z_max = 5
+
+        self.flp = KrakenFlp(
+            env=self.env,
+            src_depth=self.src_depth,
+            n_rcv_z=flp_nrcv_z,
+            rcv_z_min=flp_rcv_z_min,
+            rcv_z_max=flp_rcv_z_max,
+            rcv_r_max=self.max_range_m * 1e-3,
+            n_rcv_r=n_rcv_r,
+            mode_addition="coherent",
+        )
+
+    def write_testcase_files(self):
+        self.env.write_env()
+        self.flp.write_flp()
+
+
+##########################################################################################
 # Test case 1 : Isotropic environment
 ##########################################################################################
+class TestCase1(TestCase):
+    def __init__(
+        self,
+        name,
+        testcase_varin={},
+        title="Test case 1: Isotropic environment",
+        desc="",
+        mode="prod",
+    ):
+        super().__init__(name, testcase_varin, title, desc, mode)
+        self.isotropic = True
+
+
+class TestCase1_0(TestCase1):
+    def __init__(self, mode="prod"):
+        name = "testcase1_0"
+        title = "Test case 1.0: Flat and isotopric environment. 1 layer bottom and constant sound speed profile"
+        desc = "Environment: isotopric, Bathymetry: flat bottom, SSP: c = 1500 m/s, Sediment: One layer bottom with constant properties"
+        testcase_varin = {
+            "freq": [20],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+        }
+
+        super().__init__(name, testcase_varin, title, desc, mode)
+
+        # Flat bottom
+        self.range_dependence = False
+
+
+##########################################################################################
+# Test case 2 : Anisotropic and shallow water environment
+##########################################################################################
+
+
+class TestCase2(TestCase):
+    def __init__(
+        self, name, testcase_varin={}, title="Test case 2: Anisotropic environment"
+    ):
+        super().__init__(name, testcase_varin, title)
+        self.isotropic = False
+
+
+##########################################################################################
+# Test case 3 : Anisotropic and deep whater environment (RHUM RUM)
+##########################################################################################
+
+
+class TestCase3(TestCase):
+    def __init__(
+        self,
+        name,
+        testcase_varin={},
+        title="Test case 3: Real environment (real bathy and ssp)",
+    ):
+        super().__init__(name, testcase_varin, title)
+        self.range_dependence = True
 
 
 def testcase1_common(freq, z_ssp, cp_ssp, bathy, title, testcase_name="testcase1"):
@@ -910,101 +1175,105 @@ def testcase3_1(
 
 if __name__ == "__main__":
 
-    # Test case 1.0
-    tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    env, flp = testcase1_0(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    )
-    env.write_env()
-    flp.write_flp()
+    # Test class
+    tc1_0 = TestCase1_0(mode="show")
+    print()
 
-    # Test case 1.1
-    tc_varin = {"freq": [20], "min_depth": 150}
-    env, flp = testcase1_1(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    )
-    env.write_env()
-    flp.write_flp()
+    # # Test case 1.0
+    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
+    # env, flp = testcase1_0(
+    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    # )
+    # env.write_env()
+    # flp.write_flp()
 
-    # Test case 1.2
-    tc_varin = {"freq": [20], "min_depth": 100}
-    env, flp = testcase1_2(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    )
-    env.write_env()
-    flp.write_flp()
+    # # Test case 1.1
+    # tc_varin = {"freq": [20], "min_depth": 150}
+    # env, flp = testcase1_1(
+    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    # )
+    # env.write_env()
+    # flp.write_flp()
 
-    # Test case 1.3
-    tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    env, flp = testcase1_3(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    )
-    env.write_env()
-    flp.write_flp()
+    # # Test case 1.2
+    # tc_varin = {"freq": [20], "min_depth": 100}
+    # env, flp = testcase1_2(
+    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    # )
+    # env.write_env()
+    # flp.write_flp()
 
-    # Test case 1.4
-    tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    env, flp = testcase1_4(
-        tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    )
-    env.write_env()
-    flp.write_flp()
+    # # Test case 1.3
+    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
+    # env, flp = testcase1_3(
+    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    # )
+    # env.write_env()
+    # flp.write_flp()
 
-    # Test case 2.0
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-    }
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        env, flp = testcase2_0(
-            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-        )
-    env.write_env()
-    flp.write_flp()
+    # # Test case 1.4
+    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
+    # env, flp = testcase1_4(
+    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    # )
+    # env.write_env()
+    # flp.write_flp()
 
-    # Test case 2.1
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-    }
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        env, flp = testcase2_1(
-            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-        )
-    env.write_env()
-    flp.write_flp()
+    # # Test case 2.0
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    # }
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     env, flp = testcase2_0(
+    #         tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    #     )
+    # env.write_env()
+    # flp.write_flp()
 
-    # Test case 2.2
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-        "rcv_lon": -4.7,
-        "rcv_lat": 52.6,
-    }
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        env, flp = testcase2_2(
-            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-        )
-    env.write_env()
-    flp.write_flp()
+    # # Test case 2.1
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    # }
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     env, flp = testcase2_1(
+    #         tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    #     )
+    # env.write_env()
+    # flp.write_flp()
 
-    # Test case 3.1
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-        "rcv_lon": 65.943,
-        "rcv_lat": -27.5792,
-    }
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        env, flp = testcase3_1(
-            tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-        )
-    env.write_env()
-    flp.write_flp()
+    # # Test case 2.2
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    #     "rcv_lon": -4.7,
+    #     "rcv_lat": 52.6,
+    # }
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     env, flp = testcase2_2(
+    #         tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    #     )
+    # env.write_env()
+    # flp.write_flp()
+
+    # # Test case 3.1
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    #     "rcv_lon": 65.943,
+    #     "rcv_lat": -27.5792,
+    # }
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     env, flp = testcase3_1(
+    #         tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
+    #     )
+    # env.write_env()
+    # flp.write_flp()

@@ -1,22 +1,21 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   verlinden_process.py
+@Time    :   2024/03/12 13:22:32
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   None
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
+
 import os
 import numpy as np
 import xarray as xr
-import matplotlib.pyplot as plt
-import scipy.signal as signal
-
-from tqdm import tqdm
-
-from cst import BAR_FORMAT, C0
-from misc import mult_along_axis
-from signals import ship_noise, pulse, pulse_train
-from propa.kraken_toolbox.utils import waveguide_cutoff_freq
-from illustration.verlinden_nx2d import plot_angle_repartition
-from localisation.verlinden.AcousticComponent import AcousticSource
-from propa.kraken_toolbox.post_process import (
-    postprocess_received_signal_from_broadband_pressure_field,
-)
-from propa.kraken_toolbox.run_kraken import runkraken
-from propa.kraken_toolbox.plot_utils import plotshd
 
 from localisation.verlinden.verlinden_path import (
     VERLINDEN_OUTPUT_FOLDER,
@@ -39,6 +38,7 @@ from localisation.verlinden.verlinden_utils import (
     populate_anistropic_env,
     check_waveguide_cutoff,
     get_max_kraken_range,
+    get_dist_between_rcv,
     print_simulation_info,
     add_event_isotropic_env,
     add_event_anisotropic_env,
@@ -171,6 +171,9 @@ def verlinden_main(
 
     # Derive max distance to be used in kraken for each receiver
     get_max_kraken_range(rcv_info, grid_info)
+
+    # Derive dist between rcvs
+    get_dist_between_rcv(rcv_info)
 
     # Display usefull information
     print_simulation_info(src_info, rcv_info, grid_info)

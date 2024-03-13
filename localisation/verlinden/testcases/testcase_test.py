@@ -12,23 +12,33 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import os
 from localisation.verlinden.verlinden_process import verlinden_main
 from localisation.verlinden.verlinden_analysis import analysis_main
 from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
 from testcase_envs import (
-    testcase1_0,
-    testcase1_1,
-    testcase1_2,
-    testcase1_3,
-    testcase1_4,
-    testcase2_0,
-    testcase2_1,
-    testcase2_2,
-    testcase3_1,
+    TestCase1_0,
+    TestCase1_1,
+    TestCase1_2,
+    TestCase1_3,
+    TestCase1_4,
+    TestCase2_0,
+    TestCase2_1,
+    TestCase2_2,
+    TestCase3_1,
 )
 
 
-def run_tc(testcase, rcv_info, initial_ship_pos, debug=False):
+def get_simu_info(
+    testcase,
+):
+    simu_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_output"
+    testcase_name = testcase.name
+    simu_folder = os.path.join(simu_root, testcase_name)
+    return simu_folder, testcase_name
+
+
+def run_tc(testcase, rcv_info, initial_ship_pos, debug=False, re_analysis=False):
 
     detection_metric = ["intercorr0"]
 
@@ -58,8 +68,8 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False):
         nmax_ship = 10
 
         grid_info = dict(
-            offset_cells_lon=1,
-            offset_cells_lat=1,
+            offset_cells_lon=10,
+            offset_cells_lat=10,
             dx=100,
             dy=100,
         )
@@ -76,15 +86,18 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False):
             "initial_pos": initial_ship_pos,
         }
 
-        # Run all the process
-        simu_folder, testcase_name = verlinden_main(
-            testcase=testcase,
-            src_info=src_info,
-            grid_info=grid_info,
-            rcv_info=rcv_info,
-            snr=snr,
-            detection_metric=detection_metric,
-        )
+        if not re_analysis:
+            # Run all the process
+            simu_folder, testcase_name = verlinden_main(
+                testcase=testcase,
+                src_info=src_info,
+                grid_info=grid_info,
+                rcv_info=rcv_info,
+                snr=snr,
+                detection_metric=detection_metric,
+            )
+        else:
+            simu_folder, testcase_name = get_simu_info(testcase)
 
         simulation_info = {
             "simulation_folder": simu_folder,
@@ -119,7 +132,7 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False):
         )
 
 
-def run_tests(run_mode):
+def run_tests(run_mode, re_analysis=False):
 
     if run_mode == "normal":
         debug = False
@@ -129,14 +142,15 @@ def run_tests(run_mode):
     # Receiver info for shallow water test cases
     rcv_info_sw = {
         "id": ["R0", "R1"],
-        "lons": [-4.87, -4.85],
+        "lons": [-4.87, -4.8626],
         "lats": [52.52, 52.52],
     }
     # Initial ship position for shallow water test cases
     initial_ship_pos_sw = {
-        "lon": rcv_info_sw["lons"][0] - 0.05,
-        "lat": rcv_info_sw["lats"][0] + 0.05,
+        "lon": rcv_info_sw["lons"][0] - 0.2,
+        "lat": rcv_info_sw["lats"][0] + 0.2,
         "crs": "WGS84",
+        "route_azimuth": 45 + 90,
     }
 
     # Receiver info for deep water test cases
@@ -159,79 +173,90 @@ def run_tests(run_mode):
 
     # Test case 1.0
     run_tc(
-        testcase=testcase1_0,
+        testcase=TestCase1_0(),
         rcv_info=rcv_info_sw,
         initial_ship_pos=initial_ship_pos_sw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
     # Test case 1.1
     run_tc(
-        testcase=testcase1_1,
+        testcase=TestCase1_1(),
         rcv_info=rcv_info_sw,
         initial_ship_pos=initial_ship_pos_sw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
     # Test case 1.2
     run_tc(
-        testcase=testcase1_2,
+        testcase=TestCase1_2(),
         rcv_info=rcv_info_sw,
         initial_ship_pos=initial_ship_pos_sw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
     # Test case 1.3
     run_tc(
-        testcase=testcase1_3,
+        testcase=TestCase1_3(),
         rcv_info=rcv_info_sw,
         initial_ship_pos=initial_ship_pos_sw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
     # Test case 1.4
     run_tc(
-        testcase=testcase1_4,
+        testcase=TestCase1_4(),
         rcv_info=rcv_info_sw,
         initial_ship_pos=initial_ship_pos_sw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
     # Test case 2.0
     run_tc(
-        testcase=testcase2_0,
+        testcase=TestCase2_0(),
         rcv_info=rcv_info_sw,
         initial_ship_pos=initial_ship_pos_sw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
     # Test case 2.1
     run_tc(
-        testcase=testcase2_1,
+        testcase=TestCase2_1(),
         rcv_info=rcv_info_sw,
         initial_ship_pos=initial_ship_pos_sw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
     # Test case 2.2
     run_tc(
-        testcase=testcase2_2,
+        testcase=TestCase2_2(),
         rcv_info=rcv_info_sw,
         initial_ship_pos=initial_ship_pos_sw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
     # Test case 3.1
     run_tc(
-        testcase=testcase3_1,
+        testcase=TestCase3_1(),
         rcv_info=rcv_info_dw,
         initial_ship_pos=initial_ship_pos_dw,
         debug=debug,
+        re_analysis=re_analysis,
     )
 
 
 if __name__ == "__main__":
 
-    # run_mode = "normal"
-    run_mode = "debug"
-    run_tests(run_mode)
+    run_mode = "normal"
+    re_analysis = False
+
+    # run_mode = "debug"
+    run_tests(run_mode, re_analysis)

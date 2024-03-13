@@ -1276,7 +1276,26 @@ def get_max_kraken_range(rcv_info, grid_info):
         )
 
         max_r.append(np.max(ranges))
+
     rcv_info["max_kraken_range_m"] = np.round(max_r, -2)
+
+
+def get_dist_between_rcv(rcv_info):
+    geod = Geod(ellps="WGS84")
+
+    dist_inter_rcv = []
+    for i_rcv in range(len(rcv_info["id"]) - 1):
+        # Derive distance to the 4 corners of the grid
+        _, _, dist_i = geod.inv(
+            lons1=[rcv_info["lons"][i_rcv]],
+            lats1=[rcv_info["lats"][i_rcv]],
+            lons2=[rcv_info["lons"][i_rcv + 1]],
+            lats2=[rcv_info["lats"][i_rcv + 1]],
+        )
+
+        dist_inter_rcv.append(np.round(dist_i, 0))
+
+    rcv_info["dist_inter_rcv"] = dist_inter_rcv
 
 
 def load_rhumrum_obs_pos(obs_id):
@@ -1320,6 +1339,10 @@ def print_simulation_info(src_info, rcv_info, grid_info):
         + [
             f"Receiver {i}: (lon, lat) = ({lon}°, {lat}°)"
             for i, lon, lat in zip(rcv_info["id"], rcv_info["lons"], rcv_info["lats"])
+        ]
+        + [
+            f"Distance between receivers of pair n°{i_pair}: {rcv_info['dist_inter_rcv'][i_pair]} m"
+            for i_pair in range(len(rcv_info["dist_inter_rcv"]))
         ]
     )
     max_range = "\n\t\t".join(

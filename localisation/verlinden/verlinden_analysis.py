@@ -107,15 +107,69 @@ def plot_ambiguity_surface_dist(ds, img_basepath):
     """Plot ambiguity surface distribution."""
     amb_surf = get_ambiguity_surface(ds)
 
+    # Hist
+    for i_src_time in range(ds.dims["src_trajectory_time"]):
+        amb_surf_i = amb_surf.isel(idx_rcv_pairs=0, src_trajectory_time=i_src_time)
+        # cond = np.abs(amb_surf_i - amb_surf_i.max()) < 0.00001
+        # amb_surf_i_max = xr.where(cond, amb_surf_i, np.nan)
+        # amb_surf_i = xr.where(~cond, amb_surf_i, np.nan)
+        bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+        plt.figure(figsize=(16, 10))
+        amb_surf_i.plot.hist(bins=bins)
+        # amb_surf_i_max.plot.hist(bins=bins, color="red", label="Max")
+        plt.axvline(
+            amb_surf_i.max(),
+            color="red",
+            linestyle="--",
+            label=f"Max = {amb_surf_i.max().round(1).values}dB",
+        )
+        plt.ylabel("Number of points", fontsize=LABEL_FONTSIZE)
+        plt.xlabel("Ambiguity surface [dB]", fontsize=LABEL_FONTSIZE)
+        plt.yticks(fontsize=TICKS_FONTSIZE)
+        plt.xticks(fontsize=TICKS_FONTSIZE)
+        plt.legend(loc="best")
+        plt.savefig(img_basepath + f"ambiguity_surface_dist_{i_src_time}.png")
+        plt.close()
+
     plt.figure(figsize=(16, 10))
-    amb_surf.isel(idx_rcv_pairs=0, src_trajectory_time=0).plot.hist(bins=10000)
-    plt.scatter(amb_surf.max(), 1, marker="o", color="red", label="Max")
+    bins_all = int(np.ceil(np.abs(amb_surf).max()) * amb_surf.size // 100)
+    amb_surf.isel(idx_rcv_pairs=0).plot.hist(bins=bins_all)
+    plt.axvline(
+        amb_surf.max(),
+        color="red",
+        linestyle="--",
+        label=f"Max = {amb_surf.max().round(1).values}dB",
+    )
     plt.ylabel("Number of points", fontsize=LABEL_FONTSIZE)
     plt.xlabel("Ambiguity surface [dB]", fontsize=LABEL_FONTSIZE)
     plt.yticks(fontsize=TICKS_FONTSIZE)
     plt.xticks(fontsize=TICKS_FONTSIZE)
     plt.legend(loc="best")
-    plt.savefig(img_basepath + f"ambiguity_surface_dist.png")
+    plt.savefig(img_basepath + f"ambiguity_surface_dist_allpos.png")
+    plt.close()
+
+    # Cumulative hist
+    for i_src_time in range(ds.dims["src_trajectory_time"]):
+        amb_surf_i = amb_surf.isel(idx_rcv_pairs=0, src_trajectory_time=i_src_time)
+        bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+        plt.figure(figsize=(16, 10))
+        amb_surf_i.plot.hist(bins=bins, cumulative=True, density=True)
+        plt.ylabel("Number of points", fontsize=LABEL_FONTSIZE)
+        plt.xlabel("Ambiguity surface [dB]", fontsize=LABEL_FONTSIZE)
+        plt.yticks(fontsize=TICKS_FONTSIZE)
+        plt.xticks(fontsize=TICKS_FONTSIZE)
+        plt.savefig(img_basepath + f"ambiguity_surface_cumul_dist_{i_src_time}.png")
+        plt.close()
+
+    plt.figure(figsize=(16, 10))
+    amb_surf.isel(idx_rcv_pairs=0).plot.hist(
+        bins=bins_all, cumulative=True, density=True
+    )
+    plt.ylabel("Number of points", fontsize=LABEL_FONTSIZE)
+    plt.xlabel("Ambiguity surface [dB]", fontsize=LABEL_FONTSIZE)
+    plt.yticks(fontsize=TICKS_FONTSIZE)
+    plt.xticks(fontsize=TICKS_FONTSIZE)
+    plt.savefig(img_basepath + f"ambiguity_surface_cumul_dist_allpos.png")
     plt.close()
 
 
@@ -243,6 +297,51 @@ def plot_ambiguity_surface(
                 marker="o",
                 label=f"$O_{i_rcv}$",
             )
+
+        # Plot line between rcv and display dist between rcv
+        lon_rcv = ds.lon_rcv.values
+        lat_rcv = ds.lat_rcv.values
+        dist = np.round(
+            Geod(ellps="WGS84").inv(lon_rcv[0], lat_rcv[0], lon_rcv[1], lat_rcv[1])[2],
+            0,
+        )
+        plt.plot(
+            lon_rcv,
+            lat_rcv,
+            "k",
+            linestyle="--",
+            zorder=1,
+            label=f"L = {dist}m",
+        )
+
+        # Plot line between the center of the rcv array and the ship
+        lon_rcv_center = lon_rcv.mean()
+        lat_rcv_center = lat_rcv.mean()
+        dist_center = np.round(
+            Geod(ellps="WGS84").inv(
+                lon_rcv_center,
+                lat_rcv_center,
+                ds.lon_src.isel(src_trajectory_time=i),
+                ds.lat_src.isel(src_trajectory_time=i),
+            )[2],
+            0,
+        )
+        plt.plot(
+            [lon_rcv_center, ds.lon_src.isel(src_trajectory_time=i)],
+            [lat_rcv_center, ds.lat_src.isel(src_trajectory_time=i)],
+            "k",
+            linestyle="-.",
+            zorder=1,
+            label=r"$r_{ship}$" + f" = {dist_center}m",
+        )
+        # Add point at the center of the array
+        plt.scatter(
+            lon_rcv_center,
+            lat_rcv_center,
+            marker="o",
+            color="black",
+            s=10,
+        )
 
         plt.xlim(
             [

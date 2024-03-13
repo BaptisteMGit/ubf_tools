@@ -93,6 +93,7 @@ class TestCase:
         self.azimuth = None
         self.rcv_lon = None
         self.rcv_lat = None
+        self.dr = None
         self.plot_medium = False
         self.plot_bottom = False
         self.plot_bathy = False
@@ -127,6 +128,7 @@ class TestCase:
             "azimuth": 0,
             "rcv_lon": -4.87,
             "rcv_lat": 52.22,
+            "dr": 10,
         }
 
         # Set env directory
@@ -524,6 +526,7 @@ class TestCase2_1(TestCase2):
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "azimuth": 0,
+            "dr": 100,
         }
         # Flat bottom
         self.range_dependence = True
@@ -539,9 +542,60 @@ class TestCase2_1(TestCase2):
             max_range=self.max_range_m * 1e-3,
             theta=self.azimuth,
             range_periodicity=6,
+            dr=self.dr,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
         )
+
+
+class TestCase2_2(TestCase2):
+    def __init__(self, testcase_varin={}, mode="prod"):
+        name = "testcase2_2"
+        title = "Test case 2.2: Anisotropic environment with real bathy profile extracted using MMDPM app. 1 layer bottom and realistic sound speed profile"
+        desc = "Environment: Anisotropic, Bathymetry: real bathy profile extracted using MMDPM app, SSP: Realistic sound speed profile  (from Copernicus Marine Service), Sediment: One layer bottom with constant properties"
+
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [20],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+            "azimuth": 0,
+            "rcv_lon": -4.87,
+            "rcv_lat": 52.22,
+            "dr": 500,
+        }
+        # Flat bottom
+        self.range_dependence = True
+
+        # Process all info
+        self.process_testcase()
+
+    def write_bathy(self):
+        bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\shallow_water\GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
+        # Load real profile around OBS RR48
+        extract_2D_bathy_profile(
+            bathy_nc_path=bathy_nc_path,
+            testcase_name=self.name,
+            obs_lon=self.rcv_lon,
+            obs_lat=self.rcv_lat,
+            azimuth=self.azimuth,
+            max_range_km=self.max_range_m * 1e-3,
+            range_resolution=self.dr,
+            plot=self.plot_bathy,
+            bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
+        )
+
+    def load_ssp(self):
+        # Load ssp mat file
+        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+        fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
+        ssp_mat = sio.loadmat(fpath)
+        self.z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
+        self.cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
 
 
 ##########################################################################################
@@ -558,174 +612,7 @@ class TestCase3(TestCase):
     ):
         super().__init__(name, testcase_varin, title)
         self.range_dependence = True
-
-
-##########################################################################################
-# Test case 2 : Anisotropic environment with shallow water environment
-##########################################################################################
-
-
-def testcase2_common(
-    freq, bathy, title, testcase_name="testcase2", rcv_r_max=50, ssp_profile="constant"
-):
-    """
-    Test case 2.x common properties.
-    """
-    # Create environment directory
-    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
-    if not os.path.exists(env_dir):
-        os.makedirs(env_dir)
-
-    if ssp_profile == "constant":
-        z_ssp = [0, bathy.bathy_depth.max()]
-        cp_ssp = [1500, 1500]
-    elif ssp_profile == "real":
-        # Load ssp mat file
-        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
-        fpath = os.path.join(
-            data_dir,
-            "shallow_water",
-            f"fevrier_lon_-5.87_-2.87_lat_51.02_54.02_ssp.mat",
-        )
-        ssp_mat = sio.loadmat(fpath)
-        z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
-        cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
-
-    max_depth = max(z_ssp)  # Depth at src position (m)
-    src_depth = max_depth - 1  # Assume hydrophone is 1m above the bottom
-
-    top_hs = KrakenTopHalfspace()
-    medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
-
-    # 1 layer bottom
-    bott_hs_properties = {
-        "rho": 1.9 * RHO_W / 1000,
-        "c_p": 1650,  # P-wave celerity (m/s)
-        "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
-        "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
-        "a_s": 2.5,  # Shear wave attenuation (dB/wavelength)
-    }
-    bott_hs_properties["z"] = max(z_ssp)
-    bott_hs = KrakenBottomHalfspace(halfspace_properties=bott_hs_properties)
-
-    att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
-
-    n_rcv_z = default_nb_rcv_z(max(freq), max_depth, n_per_l=15)
-    field = KrakenField(
-        src_depth=src_depth,
-        n_rcv_z=n_rcv_z,
-        rcv_z_max=max_depth,
-    )
-
-    env = KrakenEnv(
-        title=title,
-        env_root=env_dir,
-        env_filename=testcase_name,
-        freq=freq,
-        kraken_top_hs=top_hs,
-        kraken_medium=medium,
-        kraken_attenuation=att,
-        kraken_bottom_hs=bott_hs,
-        kraken_field=field,
-        kraken_bathy=bathy,
-    )
-
-    # rcv_r_max = 50
-    dr = 100  # 100m resolution
-    n_rcv_r = rcv_r_max * 1000 / dr + 1
-
-    # One receiver at 5m depth
-    flp_nrcv_z = 1
-    flp_rcv_z_min = 5
-    flp_rcv_z_max = 5
-
-    flp = KrakenFlp(
-        env=env,
-        src_depth=src_depth,
-        n_rcv_z=flp_nrcv_z,
-        rcv_z_min=flp_rcv_z_min,
-        rcv_z_max=flp_rcv_z_max,
-        rcv_r_max=rcv_r_max,
-        n_rcv_r=n_rcv_r,
-        mode_addition="coherent",
-    )
-
-    return env, flp
-
-
-def testcase2_2(
-    testcase_varin,
-    plot_bathy=False,
-    plot_medium=False,
-    plot_bottom=False,
-    plot_env=False,
-):
-    """
-    Test case 2.2:
-        Environment: Anisotropic
-        Bathymetry: real shallow water bathy profile (extracted from GEBCO grid using MMDPM app)
-        SSP: Realistic sound speed profile  (from Copernicus Marine Service)
-        Sediment: One layer bottom with constant properties
-    """
-
-    if "freq" not in testcase_varin:
-        freq = [20]
-    else:
-        freq = testcase_varin["freq"]
-
-    if "max_range_m" not in testcase_varin:
-        max_range_m = 50 * 1e3
-    else:
-        max_range_m = testcase_varin["max_range_m"]
-
-    if "azimuth" not in testcase_varin:
-        azimuth = 0
-    else:
-        azimuth = testcase_varin["azimuth"]
-
-    if "rcv_lon" not in testcase_varin:
-        rcv_lon = -4.87
-    else:
-        rcv_lon = testcase_varin["rcv_lon"]
-
-    if "rcv_lat" not in testcase_varin:
-        rcv_lat = 52.22
-    else:
-        rcv_lat = testcase_varin["rcv_lat"]
-
-    name = "testcase2_2"
-    title = "Test case 2.2: Anisotropic environment with real bathy profile extracted using MMDPM app. 1 layer bottom and realistic sound speed profile"
-
-    max_range_km = max_range_m * 1e-3
-    range_resolution = 500  # 500m resolution
-    # Load bathy bathy profile
-    bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\shallow_water\GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
-    extract_2D_bathy_profile(
-        bathy_nc_path=bathy_nc_path,
-        testcase_name=name,
-        obs_lon=rcv_lon,
-        obs_lat=rcv_lat,
-        azimuth=azimuth,
-        max_range_km=max_range_km,
-        range_resolution=range_resolution,
-        plot=plot_bathy,
-        bathy_path=get_img_path(name, type="bathy", azimuth=azimuth),
-    )
-    bathy = Bathymetry(data_file=get_bathy_path(testcase_name=name))
-
-    env, flp = testcase2_common(
-        freq=freq,
-        bathy=bathy,
-        title=title,
-        testcase_name=name,
-        rcv_r_max=max_range_km,
-        ssp_profile="real",
-    )
-
-    # Plot properties
-    plot_env_properties(env, plot_medium, plot_bottom, plot_env)
-
-    return env, flp
+        self.isotropic = False
 
 
 ##########################################################################################
@@ -902,6 +789,14 @@ if __name__ == "__main__":
             "azimuth": az,
         }
         tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
+
+    for az in range(0, 360, 30):
+        tc_varin = {
+            "freq": [20],
+            "max_range_m": 15 * 1e3,
+            "azimuth": az,
+        }
+        tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
 
     print()
 

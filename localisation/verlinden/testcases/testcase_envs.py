@@ -156,6 +156,10 @@ class TestCase:
         # Plot env
         self.plot_testcase_env()
 
+    def update_testcase(self, varin):
+        self.testcase_varin.update(varin)
+        self.process_testcase()
+
     def set_env_dir(self):
         self.env_dir = os.path.join(TC_WORKING_DIR, self.name)
         if not os.path.exists(self.env_dir):
@@ -551,8 +555,8 @@ class TestCase2_1(TestCase2):
 class TestCase2_2(TestCase2):
     def __init__(self, testcase_varin={}, mode="prod"):
         name = "testcase2_2"
-        title = "Test case 2.2: Anisotropic environment with real bathy profile extracted using MMDPM app. 1 layer bottom and realistic sound speed profile"
-        desc = "Environment: Anisotropic, Bathymetry: real bathy profile extracted using MMDPM app, SSP: Realistic sound speed profile  (from Copernicus Marine Service), Sediment: One layer bottom with constant properties"
+        title = "Test case 2.2: Anisotropic shallow water environment with real bathy profile extracted from GEBCO 2021 grid. 1 layer bottom and realistic sound speed profile"
+        desc = "Environment: Anisotropic, Bathymetry: real bathy profile extractedfrom GEBCO 2021 grid, SSP: Realistic sound speed profile  (from Copernicus Marine Service), Sediment: One layer bottom with constant properties"
 
         super().__init__(
             name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
@@ -562,7 +566,6 @@ class TestCase2_2(TestCase2):
         self.default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
-            "min_depth": 100,
             "azimuth": 0,
             "rcv_lon": -4.87,
             "rcv_lat": 52.22,
@@ -592,7 +595,11 @@ class TestCase2_2(TestCase2):
     def load_ssp(self):
         # Load ssp mat file
         data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
-        fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
+        fpath = os.path.join(
+            data_dir,
+            "shallow_water",
+            f"july_lon_-5.87_-2.87_lat_50.72_53.72_ssp.mat",
+        )
         ssp_mat = sio.loadmat(fpath)
         self.z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
         self.cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
@@ -604,15 +611,67 @@ class TestCase2_2(TestCase2):
 
 
 class TestCase3(TestCase):
+
     def __init__(
         self,
         name,
         testcase_varin={},
         title="Test case 3: Real environment (real bathy and ssp)",
+        desc="",
+        mode="prod",
     ):
-        super().__init__(name, testcase_varin, title)
+        super().__init__(name, testcase_varin, title, desc, mode)
         self.range_dependence = True
         self.isotropic = False
+
+
+class TestCase3_1(TestCase3):
+    def __init__(self, testcase_varin={}, mode="prod"):
+        name = "testcase3_1"
+        title = "Test case 3.1: Anisotropic environment with real bathy profile extracted from GEBCO 2021 global grid around OBS RR48. 1 layer bottom and realistic sound speed profile"
+        desc = "Environment: Anisotropic, Bathymetry: real bathy profile around OBS RR48 (extracted from GEBCO 2021 grid), SSP: Realistic sound speed profile  (from Copernicus Marine Service), Sediment: One layer bottom with constant properties"
+
+        super().__init__(
+            name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
+        )
+
+        # Update default values with values testcase specific values
+        self.default_varin = {
+            "freq": [20],
+            "max_range_m": 50 * 1e3,
+            "azimuth": 0,
+            "rcv_lon": 65.94,
+            "rcv_lat": -27.58,
+            "dr": 1000,
+        }
+        # Flat bottom
+        self.range_dependence = True
+
+        # Process all info
+        self.process_testcase()
+
+    def write_bathy(self):
+        bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+        # Load real profile around OBS RR48
+        extract_2D_bathy_profile(
+            bathy_nc_path=bathy_nc_path,
+            testcase_name=self.name,
+            obs_lon=self.rcv_lon,
+            obs_lat=self.rcv_lat,
+            azimuth=self.azimuth,
+            max_range_km=self.max_range_m * 1e-3,
+            range_resolution=self.dr,
+            plot=self.plot_bathy,
+            bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
+        )
+
+    def load_ssp(self):
+        # Load ssp mat file
+        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+        fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
+        ssp_mat = sio.loadmat(fpath)
+        self.z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
+        self.cp_ssp = ssp_mat["ssp"]["c"][0, 0].flatten()
 
 
 ##########################################################################################
@@ -782,23 +841,37 @@ if __name__ == "__main__":
     # tc1_4 = TestCase1_4(mode="show")
     # tc2_0 = TestCase2_0(mode="show")
 
-    for az in range(0, 360, 30):
-        tc_varin = {
-            "freq": [20],
-            "max_range_m": 15 * 1e3,
-            "azimuth": az,
-        }
-        tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
+    # for az in range(0, 360, 30):
+    #     tc_varin = {
+    #         "freq": [20],
+    #         "max_range_m": 15 * 1e3,
+    #         "azimuth": az,
+    #     }
+    #     tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
+
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    # }
+    # tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
+
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     tc2_2.update_testcase(tc_varin)
+
+    tc_varin = {
+        "freq": [20],
+        "max_range_m": 15 * 1e3,
+        "azimuth": 0,
+        "rcv_lon": 65.943,
+        "rcv_lat": -27.5792,
+    }
+    tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
 
     for az in range(0, 360, 30):
-        tc_varin = {
-            "freq": [20],
-            "max_range_m": 15 * 1e3,
-            "azimuth": az,
-        }
-        tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
-
-    print()
+        tc_varin["azimuth"] = az
+        tc3_1.update_testcase(tc_varin)
 
     # # Test case 1.0
     # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
@@ -883,7 +956,7 @@ if __name__ == "__main__":
     # env.write_env()
     # flp.write_flp()
 
-    # # Test case 3.1
+    # Test case 3.1
     # tc_varin = {
     #     "freq": [20],
     #     "max_range_m": 15 * 1e3,

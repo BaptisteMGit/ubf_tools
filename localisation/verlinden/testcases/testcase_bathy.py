@@ -51,12 +51,17 @@ def bathy_sin_slope(
     max_range=50,
     theta=94,
     range_periodicity=6,
+    dr=None,
     plot=False,
     bathy_path="",
 ):
     # Define bathymetry
     fr = 1 / range_periodicity
-    dr = 1 / (20 * fr)
+    if dr is None:
+        dr = 1 / (20 * fr)
+    else:
+        dr = dr * 1e-3
+
     r = np.arange(0, max_range + dr, dr)
 
     alpha = 50

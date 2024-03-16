@@ -47,13 +47,10 @@ from localisation.verlinden.verlinden_utils import (
 
 def populate_grid(
     library_src,
-    kraken_env,
-    kraken_flp,
     grid_info,
     rcv_info,
     src_info,
-    isotropic_env=True,
-    testcase=None,
+    testcase,
 ):
     """
     Populate grid with received signal for isotropic environment. This function is used to generate the library of received signals for the Verlinden method.
@@ -64,15 +61,16 @@ def populate_grid(
     ds = init_library_dataset(
         grid_info,
         rcv_info,
-        isotropic_env=isotropic_env,
+        isotropic_env=testcase.isotropic,
     )
 
     signal_library_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
 
     # Switch between isotropic and anisotropic environment
-    if isotropic_env:
+    if testcase.isotropic:
+        # TODO update with testcase object properties
         ds, rcv_signal_library, grid_pressure_field = populate_isotropic_env(
-            ds, library_src, kraken_env, kraken_flp, signal_library_dim
+            ds, library_src, signal_library_dim, testcase
         )
         kraken_grid = None  # TODO : update this ?
     else:
@@ -89,8 +87,8 @@ def populate_grid(
 
     ds.attrs["fullpath_populated"] = get_populated_path(
         grid_info,
-        kraken_env,
-        src_info["signal_type"],
+        kraken_env=testcase.env,
+        src_signal_type=src_info["signal_type"],
     )
     # ds.x.values, ds.y.values, kraken_env, library_src.name
 
@@ -116,7 +114,9 @@ def add_event_to_dataset(
 ):
     ds = library_dataset
 
-    ds = init_event_dataset(ds, src_info, rcv_info, interp_src_pos_on_grid=False)
+    ds = init_event_dataset(
+        ds, src_info, rcv_info, interp_src_pos_on_grid=interp_src_pos_on_grid
+    )
 
     signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
 
@@ -135,7 +135,6 @@ def add_event_to_dataset(
             ds=ds,
             snr_dB=snr_dB,
             event_src=event_src,
-            kraken_env=kraken_env,
             kraken_grid=kraken_grid,
             signal_event_dim=signal_event_dim,
             grid_pressure_field=grid_pressure_field,
@@ -176,7 +175,7 @@ def verlinden_main(
     get_dist_between_rcv(rcv_info)
 
     # Display usefull information
-    print_simulation_info(src_info, rcv_info, grid_info)
+    print_simulation_info(testcase, src_info, rcv_info, grid_info)
 
     # Define environment
     max_range_m = np.max(rcv_info["max_kraken_range_m"])
@@ -185,17 +184,23 @@ def verlinden_main(
         max_range_m=max_range_m,
         min_waveguide_depth=min_waveguide_depth,
     )
+    testcase.update(testcase_varin)
 
-    kraken_env, kraken_flp = testcase(testcase_varin)
-
+    # kraken_env, kraken_flp = testcase(testcase_varin) # Old version before testcase class introduction
+    # kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
+    #     testcase=testcase,
+    #     testcase_varin=testcase_varin,
+    #     kraken_env=kraken_env,
+    #     kraken_flp=kraken_flp,
+    #     library_src=library_src,
+    #     max_range_m=max_range_m,
+    #     dt=dt,
+    #     sig_type=src_info["signal_type"],
+    # )
     # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
-    kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
+    library_src = check_waveguide_cutoff(
         testcase=testcase,
-        testcase_varin=testcase_varin,
-        kraken_env=kraken_env,
-        kraken_flp=kraken_flp,
         library_src=library_src,
-        max_range_m=max_range_m,
         dt=dt,
         sig_type=src_info["signal_type"],
     )
@@ -211,7 +216,7 @@ def verlinden_main(
         print("## " + snr_msg + " ##")
 
         populated_path = get_populated_path(
-            grid_info, kraken_env, src_info["signal_type"]
+            grid_info, kraken_env=testcase.env, src_signal_type=src_info["signal_type"]
         )
 
         event_in_dataset = False
@@ -229,12 +234,9 @@ def verlinden_main(
             elif not os.path.exists(populated_path) or grid_pressure_field is None:
                 ds_library, grid_pressure_field, kraken_grid = populate_grid(
                     library_src,
-                    kraken_env,
-                    kraken_flp,
                     grid_info,
                     rcv_info,
                     src_info,
-                    isotropic_env=False,  # TODO : update this to switch between isotropic and anisotropic
                     testcase=testcase,
                 )
 
@@ -256,12 +258,12 @@ def verlinden_main(
                     library_dataset=ds_library,
                     grid_pressure_field=grid_pressure_field,
                     kraken_grid=kraken_grid,
-                    kraken_env=kraken_env,
+                    kraken_env=testcase.env,
                     event_src=event_src,
                     src_info=src_info,
                     rcv_info=rcv_info,
                     snr_dB=snr_i,
-                    isotropic_env=False,
+                    isotropic_env=testcase.isotropic,
                 )
                 event_in_dataset = True
 
@@ -270,7 +272,7 @@ def verlinden_main(
             # Build path to save dataset and corresponding path to save analysis results produced later on
             ds.attrs["fullpath_output"] = os.path.join(
                 VERLINDEN_OUTPUT_FOLDER,
-                kraken_env.filename,
+                testcase.env.filename,
                 library_src.name,
                 ds.src_pos,
                 det_metric,
@@ -278,7 +280,7 @@ def verlinden_main(
             )
             ds.attrs["fullpath_analysis"] = os.path.join(
                 VERLINDEN_ANALYSIS_FOLDER,
-                kraken_env.filename,
+                testcase.env.filename,
                 library_src.name,
                 ds.src_pos,
                 det_metric,
@@ -296,9 +298,9 @@ def verlinden_main(
         ds = ds.drop_vars("event_signal_time")
     print(f"### Verlinden simulation process done ###")
 
-    simu_folder = os.path.dirname(kraken_env.env_fpath)
+    simu_folder = os.path.dirname(testcase.env.env_fpath)
 
-    return simu_folder, kraken_env.filename
+    return simu_folder, testcase.env.filename
 
 
 if __name__ == "__main__":

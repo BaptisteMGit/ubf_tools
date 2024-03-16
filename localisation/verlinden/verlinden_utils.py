@@ -750,22 +750,6 @@ def check_waveguide_cutoff(
         varin["freq"] = library_src.kraken_freq
         testcase.update(varin)
 
-    # fc = waveguide_cutoff_freq(waveguide_depth=kraken_env.bathy.bathy_depth.min())
-    # propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
-    # if propagating_freq.size != library_src.kraken_freq.size:
-    #     min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
-    #     library_src = init_library_src(dt, min_waveguide_depth, sig_type=sig_type)
-
-    #     # Update env and flp
-    #     testcase_varin["freq"] = library_src.kraken_freq
-    #     testcase_varin["min_waveguide_depth"] = min_waveguide_depth
-    #     testcase_varin["max_range_m"] = max_range_m
-
-    #     kraken_env, kraken_flp = testcase(
-    #         testcase_varin=testcase_varin,
-    #     )
-
-    # return kraken_env, kraken_flp, library_src
     return library_src
 
 
@@ -839,140 +823,8 @@ def add_correlation_to_dataset(library_dataset):
                 del s0, s1, corr_01
 
     ds["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
-    # if snr_dB is None:
-    #     ds.attrs["snr_dB"] = "noiseless"
-    #     snr_tag = "noiseless"
-    # else:
-    #     ds.attrs["snr_dB"] = snr_dB
-    #     snr_tag = f"snr{snr_dB}dB"
-
-    # Build path to save populated dataset
-
-    # ds.attrs["fullpath_populated"] = os.path.join(
-    #     VERLINDEN_POPULATED_FOLDER,
-    #     kraken_env.filename,
-    #     library_src.name,
-    #     f"populated_{snr_tag}.nc",
-    # )
-
-    # ds.attrs["fullpath_populated"] = os.path.join(
-    #     VERLINDEN_POPULATED_FOLDER,
-    #     kraken_env.filename,
-    #     f"populated_{library_src.name}.nc",
-    # )
-    # if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
-    #     os.makedirs(os.path.dirname(ds.fullpath_populated))
-
-    # ds.to_netcdf(ds.fullpath_populated)
 
     return ds
-
-
-# def add_event_to_dataset(
-#     library_dataset,
-#     grid_pressure_field,
-#     kraken_env,
-#     event_src,
-#     event_t,
-#     x_event_t,
-#     y_event_t,
-#     z_event,
-#     interp_src_pos_on_grid=False,
-#     snr_dB=None,
-# ):
-#     ds = library_dataset
-
-#     r_event_t = [
-#         np.sqrt(
-#             (x_event_t - ds.x_rcv.sel(idx_rcv=i_rcv).values) ** 2
-#             + (y_event_t - ds.y_rcv.sel(idx_rcv=i_rcv).values) ** 2
-#         )
-#         for i_rcv in range(ds.dims["idx_rcv"])
-#     ]
-
-#     ds.coords["event_signal_time"] = []
-#     ds.coords["src_trajectory_time"] = event_t.astype(np.float32)
-
-#     ds["x_ship"] = (["src_trajectory_time"], x_event_t.astype(np.float32))
-#     ds["y_ship"] = (["src_trajectory_time"], y_event_t.astype(np.float32))
-#     ds["r_src_rcv"] = (
-#         ["idx_rcv", "src_trajectory_time"],
-#         np.array(r_event_t).astype(np.float32),
-#     )
-
-#     ds["event_signal_time"].attrs["units"] = "s"
-#     ds["src_trajectory_time"].attrs["units"] = "s"
-
-#     ds["x_ship"].attrs["long_name"] = "x_ship"
-#     ds["y_ship"].attrs["long_name"] = "y_ship"
-#     ds["r_src_rcv"].attrs["long_name"] = "Range from receiver to source"
-#     ds["event_signal_time"].attrs["units"] = "Time"
-#     ds["src_trajectory_time"].attrs["long_name"] = "Time"
-
-#     if interp_src_pos_on_grid:
-#         ds["x_ship"] = ds.x.sel(x=ds.x_ship, method="nearest")
-#         ds["y_ship"] = ds.y.sel(y=ds.y_ship, method="nearest")
-#         ds["r_src_rcv"].values = [
-#             np.sqrt(
-#                 (ds.x_ship - ds.x_rcv.sel(idx_rcv=i_rcv)) ** 2
-#                 + (ds.y_ship - ds.y_rcv.sel(idx_rcv=i_rcv)) ** 2
-#             )
-#             for i_rcv in range(ds.dims["idx_rcv"])
-#         ]
-#         ds.attrs["source_positions"] = "Interpolated on grid"
-#         ds.attrs["src_pos"] = "on_grid"
-#     else:
-#         ds.attrs["source_positions"] = "Not interpolated on grid"
-#         ds.attrs["src_pos"] = "not_on_grid"
-
-#     signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
-
-#     # Derive received signal for successive positions of the ship
-#     for i_rcv in tqdm(
-#         range(ds.dims["idx_rcv"]),
-#         bar_format=BAR_FORMAT,
-#         desc="Derive received signal for successive positions of the ship",
-#     ):
-#         delay_to_apply_ship = (
-#             ds.delay_rcv.min(dim="idx_rcv")
-#             .sel(x=ds.x_ship, y=ds.y_ship, method="nearest")
-#             .values.flatten()
-#         )
-
-#         (
-#             t_rcv,
-#             s_rcv,
-#             Pos,
-#         ) = postprocess_received_signal_from_broadband_pressure_field(
-#             shd_fpath=kraken_env.shd_fpath,
-#             broadband_pressure_field=grid_pressure_field,
-#             frequencies=event_src.kraken_freq,
-#             source=event_src,
-#             rcv_range=ds.r_src_rcv.sel(idx_rcv=i_rcv).values,
-#             rcv_depth=[z_event],
-#             apply_delay=True,
-#             delay=delay_to_apply_ship,
-#             minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
-#         )
-
-#         if i_rcv == 0:
-#             ds["event_signal_time"] = t_rcv.astype(np.float32)
-#             rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
-
-#         rcv_signal_event[i_rcv, :] = s_rcv[:, 0, :].T
-
-#         # Free memory
-#         del t_rcv, s_rcv, Pos
-
-#     ds["rcv_signal_event"] = (
-#         ["idx_rcv", "src_trajectory_time", "event_signal_time"],
-#         rcv_signal_event.astype(np.float32),
-#     )
-
-#     ds = add_noise_to_event(ds, snr_dB=snr_dB)
-#     ds = add_event_correlation(ds)
-
-#     return ds
 
 
 def add_noise_to_event(library_dataset, snr_dB):
@@ -1228,8 +1080,6 @@ def init_grid_around_event_src_traj(src_info, grid_info):
         dist=offset_lon,
     )
 
-    # if (min_lat < 0) and (
-    #     max_lat < 0
     # ):  # Case where the trajectory is in the southern hemisphere
     _, min_lat_grid, _ = geod.fwd(
         lons=mean_lon,
@@ -1243,21 +1093,6 @@ def init_grid_around_event_src_traj(src_info, grid_info):
         az=0,
         dist=offset_lat,
     )
-    # elif (min_lat > 0) and (
-    #     max_lat > 0
-    # ):  # Case where the trajectory is in the northern hemisphere
-    #     _, min_lat_grid, _ = geod.fwd(
-    #         lons=mean_lon,
-    #         lats=min_lat,
-    #         az=0,
-    #         dist=offset_lat,
-    #     )
-    #     _, max_lat_grid, _ = geod.fwd(
-    #         lons=mean_lon,
-    #         lats=max_lat,
-    #         az=180,
-    #         dist=offset_lat,
-    #     )
 
     grid_lons = np.array(
         geod.inv_intermediate(

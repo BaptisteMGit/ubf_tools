@@ -50,12 +50,19 @@ from localisation.verlinden.verlinden_path import (
 )
 
 
-def populate_isotropic_env(ds, library_src, kraken_env, kraken_flp, signal_library_dim):
+def populate_isotropic_env(ds, library_src, signal_library_dim, testcase):
+    # ds, library_src, kraken_env, kraken_flp, signal_library_dim
 
     delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values.flatten()
 
     # Run KRAKEN
-    grid_pressure_field, _ = runkraken(kraken_env, kraken_flp, library_src.kraken_freq)
+    grid_pressure_field, _ = runkraken(
+        env=testcase.env,
+        flp=testcase.flp,
+        frequencies=library_src.kraken_freq,
+        parallel=False,
+        verbose=False,
+    )
 
     # Loop over receivers
     for i_rcv in tqdm(
@@ -69,7 +76,7 @@ def populate_isotropic_env(ds, library_src, kraken_env, kraken_flp, signal_libra
             s_rcv,
             Pos,
         ) = postprocess_received_signal_from_broadband_pressure_field(
-            shd_fpath=kraken_env.shd_fpath,
+            shd_fpath=testcase.env.shd_fpath,
             broadband_pressure_field=grid_pressure_field,
             frequencies=library_src.kraken_freq,
             source=library_src,
@@ -77,7 +84,7 @@ def populate_isotropic_env(ds, library_src, kraken_env, kraken_flp, signal_libra
             rcv_depth=[library_src.z_src],
             apply_delay=True,
             delay=delay_to_apply,
-            minimum_waveguide_depth=kraken_env.bathy.bathy_depth.min(),
+            minimum_waveguide_depth=testcase.min_depth,
         )
 
         if i_rcv == 0:
@@ -144,21 +151,30 @@ def populate_anistropic_env(
                 rcv_lon=rcv_info["lons"][i_rcv],
                 rcv_lat=rcv_info["lats"][i_rcv],
             )
-            kraken_env, kraken_flp = testcase(testcase_varin)
+            # kraken_env, kraken_flp = testcase(testcase_varin)
+            testcase.update(testcase_varin)
 
             # Assert kraken freq is set with correct min_depth (otherwise postprocess will fail)
-            kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
+            # kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
+            #     testcase=testcase,
+            #     testcase_varin=testcase_varin,
+            #     kraken_env=kraken_env,
+            #     kraken_flp=kraken_flp,
+            #     library_src=library_src,
+            #     dt=src_info["dt"],
+            #     max_range_m=rcv_info["max_kraken_range_m"][i_rcv],
+            #     sig_type=src_info["signal_type"],
+            # )
+            library_src = check_waveguide_cutoff(
                 testcase=testcase,
-                testcase_varin=testcase_varin,
-                kraken_env=kraken_env,
-                kraken_flp=kraken_flp,
                 library_src=library_src,
                 dt=src_info["dt"],
-                max_range_m=rcv_info["max_kraken_range_m"][i_rcv],
                 sig_type=src_info["signal_type"],
             )
+
             # Store minimum waveguide depth to be used when populating env with events
-            min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
+            # min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
+            min_waveguide_depth = testcase.min_depth
             az_kraken_min_wg_depth.append(min_waveguide_depth)
 
             # Get receiver ranges for selected angle
@@ -169,9 +185,9 @@ def populate_anistropic_env(
 
             # Run kraken for selected angle
             pf, field_pos = runkraken(
-                kraken_env,
-                kraken_flp,
-                library_src.kraken_freq,
+                env=testcase.env,
+                flp=testcase.flp,
+                frequencies=library_src.kraken_freq,
                 parallel=True,
                 verbose=False,
             )
@@ -355,7 +371,6 @@ def add_event_anisotropic_env(
     ds,
     snr_dB,
     event_src,
-    kraken_env,
     kraken_grid,
     signal_event_dim,
     grid_pressure_field,
@@ -707,33 +722,51 @@ def init_event_dataset(ds, src_info, rcv_info, interp_src_pos_on_grid=False):
     return ds
 
 
+# def check_waveguide_cutoff(
+#     testcase,
+#     testcase_varin,
+#     kraken_env,
+#     kraken_flp,
+#     library_src,
+#     dt,
+#     max_range_m,
+#     sig_type,
+# ):
 def check_waveguide_cutoff(
     testcase,
-    testcase_varin,
-    kraken_env,
-    kraken_flp,
     library_src,
     dt,
-    max_range_m,
     sig_type,
 ):
 
-    fc = waveguide_cutoff_freq(max_depth=kraken_env.bathy.bathy_depth.min())
+    varin = {}
+
+    fc = waveguide_cutoff_freq(waveguide_depth=testcase.min_depth)
     propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
     if propagating_freq.size != library_src.kraken_freq.size:
-        min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
-        library_src = init_library_src(dt, min_waveguide_depth, sig_type=sig_type)
+        library_src = init_library_src(dt, testcase.min_depth, sig_type=sig_type)
 
-        # Update env and flp
-        testcase_varin["freq"] = library_src.kraken_freq
-        testcase_varin["min_waveguide_depth"] = min_waveguide_depth
-        testcase_varin["max_range_m"] = max_range_m
+        # Update testcase with new frequency vector
+        varin["freq"] = library_src.kraken_freq
+        testcase.update(varin)
 
-        kraken_env, kraken_flp = testcase(
-            testcase_varin=testcase_varin,
-        )
+    # fc = waveguide_cutoff_freq(waveguide_depth=kraken_env.bathy.bathy_depth.min())
+    # propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
+    # if propagating_freq.size != library_src.kraken_freq.size:
+    #     min_waveguide_depth = kraken_env.bathy.bathy_depth.min()
+    #     library_src = init_library_src(dt, min_waveguide_depth, sig_type=sig_type)
 
-    return kraken_env, kraken_flp, library_src
+    #     # Update env and flp
+    #     testcase_varin["freq"] = library_src.kraken_freq
+    #     testcase_varin["min_waveguide_depth"] = min_waveguide_depth
+    #     testcase_varin["max_range_m"] = max_range_m
+
+    #     kraken_env, kraken_flp = testcase(
+    #         testcase_varin=testcase_varin,
+    #     )
+
+    # return kraken_env, kraken_flp, library_src
+    return library_src
 
 
 def add_noise_to_dataset(library_dataset, snr_dB):
@@ -1307,10 +1340,10 @@ def load_rhumrum_obs_pos(obs_id):
     return pos.loc[obs_id]
 
 
-def print_simulation_info(src_info, rcv_info, grid_info):
+def print_simulation_info(testcase, src_info, rcv_info, grid_info):
     balises = "".join(["#"] * 80)
     balises_inter = "".join(["#"] * 40)
-    header_msg = "Start simulation with the following parameters:"
+    header_msg = f"Start simulation - {testcase.name}: \n{testcase.desc}"
     src_pos = "\n\t\t".join(
         [""]
         + [

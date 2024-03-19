@@ -10,17 +10,20 @@ img_path = (
 
 T = 7.2
 fc = 25
-fs = 200
+fs = 100
 
 sig = {}
 time = {}
-# sig["pulse"], time["pulse"] = pulse(T=T, f=fc, fs=fs, t0=0.5 * T)
-sig["pulse"], time["pulse"] = pulse(T=T, f=fc, fs=fs)
+sig["pulse"], time["pulse"] = pulse(T=T, f=fc, fs=fs, t0=0.5 * T)
+# sig["pulse"], time["pulse"] = pulse(T=T, f=fc, fs=fs, t)
 sig["pulse_train"], time["pulse_train"] = pulse_train(T=T, f=fc, fs=fs)
 sig["ship"], time["ship"] = ship_noise(T=T)
 
 depth = 150  # Verlinden test case
-window = "hanning"
+window = "hamming"
+# window = "hanning"
+window = None
+
 
 srcs = {}
 for i, k in enumerate(sig.keys()):
@@ -34,7 +37,7 @@ for i, k in enumerate(sig.keys()):
     )
     srcs[k] = library_src
 
-    library_src.display_source()
+    library_src.display_source(plot_spectrum=False)
 
     if window is not None:
         fname = f"source_{k}_window_{window}.png"

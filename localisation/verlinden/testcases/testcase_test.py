@@ -14,7 +14,7 @@
 # ======================================================================================================================
 import os
 from localisation.verlinden.verlinden_process import verlinden_main
-from localisation.verlinden.verlinden_analysis import analysis_main
+from localisation.verlinden.verlinden_analysis import analysis_main, compare_perf_src
 from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
 from testcase_envs import (
     TestCase1_0,
@@ -40,7 +40,8 @@ def get_simu_info(
 
 def run_tc(testcase, rcv_info, initial_ship_pos, debug=False, re_analysis=False):
 
-    detection_metric = ["intercorr0"]
+    # detection_metric = ["intercorr0"]
+    detection_metric = ["hilbert_env_intercorr0"]
 
     # depth = 150  # Depth m
     v_knots = 20  # 20 knots
@@ -63,7 +64,8 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False, re_analysis=False)
 
     else:
         src_signal_type = ["ship"]
-        snr = [0]
+        # snr = [0]
+        snr = [None]
         duration = 200  # 1000 s
         nmax_ship = 10
 
@@ -130,6 +132,7 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False, re_analysis=False)
             grid_info=grid_info,
             plot_info=plot_info,
         )
+    # compare_perf_src(src_type_list, simulation_info, testcase_name, snr=0)
 
 
 def run_tests(run_mode, re_analysis=False):
@@ -180,77 +183,77 @@ def run_tests(run_mode, re_analysis=False):
         re_analysis=re_analysis,
     )
 
-    # Test case 1.1
-    run_tc(
-        testcase=TestCase1_1(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # # Test case 1.1
+    # run_tc(
+    #     testcase=TestCase1_1(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
-    # Test case 1.2
-    run_tc(
-        testcase=TestCase1_2(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # # Test case 1.2
+    # run_tc(
+    #     testcase=TestCase1_2(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
-    # Test case 1.3
-    run_tc(
-        testcase=TestCase1_3(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # # Test case 1.3
+    # run_tc(
+    #     testcase=TestCase1_3(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
-    # Test case 1.4
-    run_tc(
-        testcase=TestCase1_4(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # # Test case 1.4
+    # run_tc(
+    #     testcase=TestCase1_4(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
-    # Test case 2.0
-    run_tc(
-        testcase=TestCase2_0(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # # Test case 2.0
+    # run_tc(
+    #     testcase=TestCase2_0(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
-    # Test case 2.1
-    run_tc(
-        testcase=TestCase2_1(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # # Test case 2.1
+    # run_tc(
+    #     testcase=TestCase2_1(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
-    # Test case 2.2
-    run_tc(
-        testcase=TestCase2_2(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # # Test case 2.2
+    # run_tc(
+    #     testcase=TestCase2_2(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
-    # Test case 3.1
-    run_tc(
-        testcase=TestCase3_1(),
-        rcv_info=rcv_info_dw,
-        initial_ship_pos=initial_ship_pos_dw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # # Test case 3.1
+    # run_tc(
+    #     testcase=TestCase3_1(),
+    #     rcv_info=rcv_info_dw,
+    #     initial_ship_pos=initial_ship_pos_dw,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
 
 if __name__ == "__main__":

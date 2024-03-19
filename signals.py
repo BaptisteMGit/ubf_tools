@@ -7,7 +7,7 @@ def pulse(T, f, fs, t0=0):
     t = np.arange(0, T, 1 / fs)
     s = np.zeros(len(t))
     idx_tpulse = np.logical_and(0 < t - t0, t - t0 < 4 / f)
-    t_pulse = t[idx_tpulse]
+    t_pulse = t[idx_tpulse] - t0
     omega = 2 * np.pi * f
     s[idx_tpulse] = (
         1 / 2 * np.sin(omega * t_pulse) * (1 - np.cos(1 / 4 * omega * t_pulse))

@@ -76,8 +76,8 @@ def default_nb_rcv_z(fmax, max_depth, n_per_l=7):
     return nz
 
 
-def waveguide_cutoff_freq(max_depth, c0=C0):
-    fc = c0 / (4 * max_depth)
+def waveguide_cutoff_freq(waveguide_depth, c0=C0):
+    fc = c0 / (4 * waveguide_depth)
     minimum_kraken_freq = 0.15
     return max(minimum_kraken_freq, fc)
 

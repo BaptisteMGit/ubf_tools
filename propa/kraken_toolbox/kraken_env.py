@@ -577,14 +577,18 @@ class Bathymetry:
                 )
 
             self.bathy_depth = data[1].values
-            self.interpolator = sp.interpolate.interp1d(
-                self.bathy_range,
-                self.bathy_depth,
-                kind=self.interpolation_method,
-                fill_value=(self.bathy_depth[0], self.bathy_depth[-1]),
-                bounds_error=False,
-            )
-            self.use_bathy = True
+            # Check if bathy is constant (i.e. no depth variation)
+            if np.all(self.bathy_depth == self.bathy_depth[0]):
+                self.use_bathy = False
+            else:
+                self.interpolator = sp.interpolate.interp1d(
+                    self.bathy_range,
+                    self.bathy_depth,
+                    kind=self.interpolation_method,
+                    fill_value=(self.bathy_depth[0], self.bathy_depth[-1]),
+                    bounds_error=False,
+                )
+                self.use_bathy = True
         else:
             raise ValueError(f"Data file '{self.data_file}' does not exist")
 
@@ -653,11 +657,9 @@ class KrakenEnv:
         if self.bathy.use_bathy and self.modes_range[0] != 0:
             self.modes_range = np.append(0, self.modes_range)
 
-        if self.bathy.use_bathy:
-            # Defined max depth of the sediment layer
-            self.bottom_hs.derive_sedim_layer_max_depth(
-                z_max=self.bathy.bathy_depth.max()
-            )
+        # if self.bathy.use_bathy:
+        # Defined max depth of the sediment layer
+        self.bottom_hs.derive_sedim_layer_max_depth(z_max=self.bathy.bathy_depth.max())
 
         self.range_dependent_env = False
 
@@ -675,9 +677,11 @@ class KrakenEnv:
         # Write medium lines
         self.medium.write_lines(bottom_hs=self.bottom_hs)
         # Write bottom halfspace lines
-        self.bottom_hs.write_lines(
-            kraken_medium=self.medium, use_bathymetry=self.bathy.use_bathy
-        )
+        self.bottom_hs.write_lines(use_bathymetry=self.bathy.use_bathy)
+
+        # self.bottom_hs.write_lines(
+        #     kraken_medium=self.medium, use_bathymetry=self.bathy.use_bathy
+        # )
         # Write field lines
         self.field.write_lines()
         self.write_lines(title=self.simulation_title, medium=self.medium)
@@ -809,7 +813,7 @@ class KrakenEnv:
         self.shd_fpath = os.path.join(self.root_, self.filename + ".shd")
 
     # Plotting tools
-    def plot_env(self):
+    def plot_env(self, plot_src=False, src_depth=None):
 
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
         axs[0].set_ylabel("Depth [m]")
@@ -844,7 +848,13 @@ class KrakenEnv:
         cs_env = np.append(cs_med, cs_bot)
         z_bottom = self.medium.z_ssp_[-1]
         z_env = np.append(self.medium.z_ssp_, self.bottom_hs.z_in_bottom + z_bottom)
-        plot_ssp(cp_ssp=cp_env, cs_ssp=cs_env, z=z_env, z_bottom=z_bottom, ax=axs[0])
+        plot_ssp(
+            cp_ssp=cp_env,
+            cs_ssp=cs_env,
+            z=z_env,
+            z_bottom=z_bottom,
+            ax=axs[0],
+        )
 
         # Plot attenuation
         if np.array(self.medium.ap_).size == 1:
@@ -875,7 +885,13 @@ class KrakenEnv:
 
         ap_env = np.append(ap_med, ap_bot)
         as_env = np.append(as_med, as_bot)
-        plot_attenuation(ap=ap_env, as_=as_env, z=z_env, z_bottom=z_bottom, ax=axs[1])
+        plot_attenuation(
+            ap=ap_env,
+            as_=as_env,
+            z=z_env,
+            z_bottom=z_bottom,
+            ax=axs[1],
+        )
 
         # Plot density
         if np.array(self.medium.rho_).size == 1:
@@ -893,6 +909,26 @@ class KrakenEnv:
 
         rho_env = np.append(rho_med, rho_bot)
         plot_density(rho=rho_env, z=z_env, z_bottom=z_bottom, ax=axs[2])
+
+        if plot_src:
+            for i in range(3):
+                xmin = axs[i].get_xlim()[0]
+                axs[i].scatter(xmin, src_depth, s=30, color="k")
+                # Circles
+                for s in [200, 500]:
+                    axs[i].scatter(
+                        xmin,
+                        src_depth,
+                        s=s,
+                        facecolors="None",
+                        edgecolors="k",
+                        linewidths=0.5,
+                    )
+
+        # if plot_rcv:
+        #     for i in range(3):
+        #         xmax = axs[i].get_xlim()[1]
+        #         axs[i].scatter(xmax, rcv_depth, s=50, color="k", marker=">")
 
         plt.suptitle("Waveguide properties")
         plt.tight_layout()

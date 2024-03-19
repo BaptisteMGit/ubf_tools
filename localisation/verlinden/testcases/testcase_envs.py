@@ -93,7 +93,8 @@ class TestCase:
         self.azimuth = None
         self.rcv_lon = None
         self.rcv_lat = None
-        self.dr = None
+        self.dr_flp = None
+        self.dr_bathy = None
         self.plot_medium = False
         self.plot_bottom = False
         self.plot_bathy = False
@@ -110,6 +111,13 @@ class TestCase:
         self.bathy = None
         self.env = None
         self.flp = None
+
+        # Flp config
+        self.flp_n_rcv_r = None
+        self.flp_n_rcv_z = None
+        self.flp_rcv_z_min = None
+        self.flp_rcv_z_max = None
+
         # Environment directory
         self.env_dir = ""
         # Max depth
@@ -128,7 +136,8 @@ class TestCase:
             "azimuth": 0,
             "rcv_lon": -4.87,
             "rcv_lat": 52.22,
-            "dr": 10,
+            "dr_flp": 10,
+            "dr_bathy": 500,
         }
 
         # Set env directory
@@ -144,21 +153,21 @@ class TestCase:
             "z": None,
         }
 
-        self.process_testcase()
+        # self.process()
 
-    def process_testcase(self):
+    def process(self):
         # Read variables
         self.read_varin()
         # Load testcase
-        self.load_testcase()
+        self.load()
         # Write flp and env files
-        self.write_testcase_files()
+        self.write_kraken_files()
         # Plot env
         self.plot_testcase_env()
 
-    def update_testcase(self, varin):
+    def update(self, varin):
         self.testcase_varin.update(varin)
-        self.process_testcase()
+        self.process()
 
     def set_env_dir(self):
         self.env_dir = os.path.join(TC_WORKING_DIR, self.name)
@@ -188,7 +197,7 @@ class TestCase:
             plot_env=self.plot_env,
         )
 
-    def load_testcase(self):
+    def load(self):
         # Load bathy
         self.write_bathy()
         self.set_bathy()
@@ -249,7 +258,10 @@ class TestCase:
         self.bathy = Bathymetry(get_bathy_path(testcase_name=self.name))
         self.max_depth = self.bathy.bathy_depth.max()
         self.min_depth = self.bathy.bathy_depth.min()
-        self.src_depth = self.max_depth - 1  # Assume hydrophone is 1m above the bottom
+        if self.src_depth is None:
+            self.src_depth = (
+                self.max_depth - 1
+            )  # Assume hydrophone is 1m above the bottom
         self.bott_hs_properties["z"] = self.max_depth
 
     def set_env(self):
@@ -267,26 +279,28 @@ class TestCase:
         )
 
     def set_flp(self):
-        dr = 10  # 10m resolution
-        n_rcv_r = self.max_range_m * 1000 / dr + 1
+        self.flp_n_rcv_r = self.max_range_m / self.dr_flp + 1
 
         # Source = ship radiating sound at 5m depth
-        flp_nrcv_z = 1
-        flp_rcv_z_min = 5
-        flp_rcv_z_max = 5
+        if self.flp_n_rcv_z is None:
+            self.flp_n_rcv_z = 1
+        if self.flp_rcv_z_min is None:
+            self.flp_rcv_z_min = 5
+        if self.flp_rcv_z_max is None:
+            self.flp_rcv_z_max = 5
 
         self.flp = KrakenFlp(
             env=self.env,
             src_depth=self.src_depth,
-            n_rcv_z=flp_nrcv_z,
-            rcv_z_min=flp_rcv_z_min,
-            rcv_z_max=flp_rcv_z_max,
+            n_rcv_z=self.flp_n_rcv_z,
+            rcv_z_min=self.flp_rcv_z_min,
+            rcv_z_max=self.flp_rcv_z_max,
             rcv_r_max=self.max_range_m * 1e-3,
-            n_rcv_r=n_rcv_r,
+            n_rcv_r=self.flp_n_rcv_r,
             mode_addition="coherent",
         )
 
-    def write_testcase_files(self):
+    def write_kraken_files(self):
         self.env.write_env()
         self.flp.write_flp()
 
@@ -321,12 +335,13 @@ class TestCase1_0(TestCase1):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
+            "dr_flp": 5,
         }
         # Flat bottom
         self.range_dependence = False
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
 
 class TestCase1_1(TestCase1):
@@ -344,12 +359,14 @@ class TestCase1_1(TestCase1):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
+            "dr_flp": 5,
+            "dr_bathy": 500,
         }
         # Flat bottom
         self.range_dependence = True
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
     def write_bathy(self):
         # Create a slope bottom
@@ -358,6 +375,7 @@ class TestCase1_1(TestCase1):
             min_depth=self.min_depth,
             max_range=self.max_range_m * 1e-3,
             theta=94,
+            dr=self.dr_bathy,
             range_periodicity=6,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
@@ -379,12 +397,14 @@ class TestCase1_2(TestCase1):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
+            "dr_flp": 5,
+            "dr_bathy": 500,
         }
         # Flat bottom
         self.range_dependence = True
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
     def write_bathy(self):
         # Create a seamount bathy profile
@@ -414,12 +434,14 @@ class TestCase1_3(TestCase1):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
+            "dr_flp": 5,
+            "dr_bathy": 500,
         }
         # Flat bottom
         self.range_dependence = True
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
     def write_bathy(self):
         # Load real profile around OBS RR48
@@ -447,12 +469,14 @@ class TestCase1_4(TestCase1):
         self.default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
+            "dr_flp": 5,
+            "dr_bathy": 500,
         }
         # Flat bottom
         self.range_dependence = True
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
     def write_bathy(self):
         # Load bathy profile
@@ -506,12 +530,14 @@ class TestCase2_0(TestCase2):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
+            "dr_flp": 5,
+            "dr_bathy": 500,
         }
         # Flat bottom
         self.range_dependence = False
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
 
 class TestCase2_1(TestCase2):
@@ -530,13 +556,14 @@ class TestCase2_1(TestCase2):
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "azimuth": 0,
-            "dr": 100,
+            "dr_flp": 5,
+            "dr_bathy": 500,
         }
         # Flat bottom
         self.range_dependence = True
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
     def write_bathy(self):
         # Create a slope bottom
@@ -546,7 +573,7 @@ class TestCase2_1(TestCase2):
             max_range=self.max_range_m * 1e-3,
             theta=self.azimuth,
             range_periodicity=6,
-            dr=self.dr,
+            dr=self.dr_bathy,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
         )
@@ -569,13 +596,14 @@ class TestCase2_2(TestCase2):
             "azimuth": 0,
             "rcv_lon": -4.87,
             "rcv_lat": 52.22,
-            "dr": 500,
+            "dr_flp": 5,
+            "dr_bathy": 500,
         }
         # Flat bottom
         self.range_dependence = True
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
     def write_bathy(self):
         bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\shallow_water\GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
@@ -587,7 +615,7 @@ class TestCase2_2(TestCase2):
             obs_lat=self.rcv_lat,
             azimuth=self.azimuth,
             max_range_km=self.max_range_m * 1e-3,
-            range_resolution=self.dr,
+            range_resolution=self.dr_bathy,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
         )
@@ -630,7 +658,6 @@ class TestCase3_1(TestCase3):
         name = "testcase3_1"
         title = "Test case 3.1: Anisotropic environment with real bathy profile extracted from GEBCO 2021 global grid around OBS RR48. 1 layer bottom and realistic sound speed profile"
         desc = "Environment: Anisotropic, Bathymetry: real bathy profile around OBS RR48 (extracted from GEBCO 2021 grid), SSP: Realistic sound speed profile  (from Copernicus Marine Service), Sediment: One layer bottom with constant properties"
-
         super().__init__(
             name, testcase_varin=testcase_varin, title=title, desc=desc, mode=mode
         )
@@ -642,13 +669,15 @@ class TestCase3_1(TestCase3):
             "azimuth": 0,
             "rcv_lon": 65.94,
             "rcv_lat": -27.58,
-            "dr": 1000,
+            "dr_flp": 5,
+            "dr_bathy": 1000,
         }
+
         # Flat bottom
         self.range_dependence = True
 
         # Process all info
-        self.process_testcase()
+        self.process()
 
     def write_bathy(self):
         bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
@@ -660,7 +689,7 @@ class TestCase3_1(TestCase3):
             obs_lat=self.rcv_lat,
             azimuth=self.azimuth,
             max_range_km=self.max_range_m * 1e-3,
-            range_resolution=self.dr,
+            range_resolution=self.dr_bathy,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
         )
@@ -677,31 +706,34 @@ class TestCase3_1(TestCase3):
 if __name__ == "__main__":
 
     # Test class
-    # tc1_0 = TestCase1_0(mode="show")
+    tc1_0 = TestCase1_0(mode="show")
     # tc1_1 = TestCase1_1(mode="show")
     # tc1_2 = TestCase1_2(mode="show")
     # tc1_3 = TestCase1_3(mode="show")
     # tc1_4 = TestCase1_4(mode="show")
     # tc2_0 = TestCase2_0(mode="show")
 
-    # for az in range(0, 360, 30):
-    #     tc_varin = {
-    #         "freq": [20],
-    #         "max_range_m": 15 * 1e3,
-    #         "azimuth": az,
-    #     }
-    #     tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
+    tc_varin = {
+        "freq": [20, 30, 40],
+        "max_range_m": 15 * 1e3,
+        "azimuth": 0,
+    }
+    tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
 
-    # tc_varin = {
-    #     "freq": [20],
-    #     "max_range_m": 15 * 1e3,
-    #     "azimuth": 0,
-    # }
-    # tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
+    for az in range(0, 360, 30):
+        tc_varin["azimuth"] = az
+        tc2_1.update(tc_varin)
 
-    # for az in range(0, 360, 30):
-    #     tc_varin["azimuth"] = az
-    #     tc2_2.update_testcase(tc_varin)
+    tc_varin = {
+        "freq": [20],
+        "max_range_m": 15 * 1e3,
+        "azimuth": 0,
+    }
+    tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
+
+    for az in range(0, 360, 30):
+        tc_varin["azimuth"] = az
+        tc2_2.update(tc_varin)
 
     tc_varin = {
         "freq": [20],
@@ -714,7 +746,7 @@ if __name__ == "__main__":
 
     for az in range(0, 360, 30):
         tc_varin["azimuth"] = az
-        tc3_1.update_testcase(tc_varin)
+        tc3_1.update(tc_varin)
 
     # # Test case 1.0
     # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}

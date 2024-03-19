@@ -2,6 +2,7 @@ import os
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
+from scipy import signal
 
 from localisation.verlinden.AcousticComponent import AcousticSource
 from propa.kraken_toolbox.post_process import (
@@ -30,6 +31,7 @@ T = 7.2
 fc = 25
 fs = 100
 window = "hanning"
+# window = None
 
 # Receiver position
 rcv_depth = [20]
@@ -37,9 +39,9 @@ rcv_range = np.array([20000])
 delays = rcv_range / 1500
 
 delay = list([rcv_range[0] / 1500]) * len(rcv_range)
+s, t = ship_noise(T=T)
 
 plt.figure(figsize=figsize)
-s, t = ship_noise(T=T)
 plt.plot(t, s, color="b", label=r"$s(t)$")
 plt.xlabel("Time [s]", fontsize=label_fontsize)
 plt.ylabel("Amplitude", fontsize=label_fontsize)

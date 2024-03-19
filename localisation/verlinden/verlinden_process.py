@@ -42,6 +42,7 @@ from localisation.verlinden.verlinden_utils import (
     print_simulation_info,
     add_event_isotropic_env,
     add_event_anisotropic_env,
+    plot_src,
 )
 
 
@@ -84,6 +85,7 @@ def populate_grid(
         signal_library_dim,
         rcv_signal_library.astype(np.float32),
     )
+    ds["rcv_signal_library"].attrs["long_name"] = r"$s_{i}$"
 
     ds.attrs["fullpath_populated"] = get_populated_path(
         grid_info,
@@ -155,13 +157,16 @@ def verlinden_main(
     if dt is None:
         dt = (
             min(grid_info["dx"], grid_info["dy"]) / src_info["speed"]
-        )  # Minimum time spent by the source in a single grid box (s)
+        )  # Minimum time spent by the source in a single grid cell (s)
 
     # Initialize source
     min_waveguide_depth = 150  # Dummy value updated once bathy is loaded
     library_src = init_library_src(
         dt, min_waveguide_depth=min_waveguide_depth, sig_type=src_info["signal_type"]
     )
+    # Plot source signal and spectrum
+    plot_src(library_src, testcase)
+
     # Define ship trajectory
     init_event_src_traj(src_info, dt)
 

@@ -2,17 +2,21 @@ import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from publication.PublicationFigure import PubFigure
+
+PFIG = PubFigure()
 
 
 def plot_localisation_performance(
-    data, detection_metric_list, metrics_to_plot, img_path
+    data, testcase_name, detection_metric_list, metrics_to_plot, img_path
 ):
     # Sort data by SNR
     noisy_data = data[data["SNR"] != " None"].astype({"SNR": np.float32})
     noisy_data = noisy_data.sort_values(by=["SNR"])
     data = pd.concat([noisy_data, data[data["SNR"] == " None"]])
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=PFIG.size)
+    PFIG.set_all_fontsize()
     bar_width = 0.2
 
     # Define positions of the bars
@@ -32,7 +36,7 @@ def plot_localisation_performance(
                     positions + alpha[i_dm] * bar_width,
                     bar.values,
                     width=bar_width,
-                    label=f"{detection_metric} - {metric}",
+                    label=detection_metric,
                 )
 
                 # Add value labels to bars
@@ -56,11 +60,24 @@ def plot_localisation_performance(
             # color=colors[i],
             bbox=dict(facecolor=colors[i], alpha=0.8),
         )
+
+    title = f"{testcase_name} - performance analysis"
+    if metrics_to_plot[0] == "95_percentile":
+        ylabel = "Position error 95 % percentile [m]"
+    elif metrics_to_plot[0] == "99_percentile":
+        ylabel = "Position error 99 % percentile [m]"
+    elif metrics_to_plot[0] == "MEDIAN":
+        ylabel = "Position median error [m]"
+    elif metrics_to_plot[0] == "dynamic_range":
+        ylabel = "Ambiguity surface dynamic range [dB]"
+    else:
+        pass
+
     plt.ylim([0, max(bar_values) + 5 * val_offset])
     img_name = f"localisation_performance_" + "".join(metric) + ".png"
     plt.xlabel("SNR")
-    plt.ylabel("m")
-    plt.title("Verlinden process localisation performance")
+    plt.ylabel(ylabel)
+    plt.title(title)
     plt.xticks(positions, data["SNR"].unique())
     plt.legend(ncol=2)
     plt.tight_layout()

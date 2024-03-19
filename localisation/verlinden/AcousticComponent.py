@@ -59,9 +59,10 @@ class AcousticSource:
     def get_spectrum(self):
         """Derive spectrum from source signal"""
 
-        self.psd_freq, self.psd = signal.welch(
-            self.signal, fs=self.fs, window="hamming", scaling="spectrum"
-        )
+        # self.psd_freq, self.psd = signal.welch(
+        #     self.signal, fs=self.fs, window="hamming", scaling="spectrum"
+        # )
+        self.psd_freq, self.psd = signal.welch(self.signal, fs=self.fs)
 
         if self.nfft is None:
             # self.nfft = 2 ** int(np.log2(self.ns) + 1)  # Next power of 2
@@ -72,7 +73,8 @@ class AcousticSource:
         max_nfreq_kraken = 1000  # Maximum number of frequencies allowed for kraken run
         self.positive_freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
         self.kraken_freq = self.positive_freq[
-            self.positive_freq > waveguide_cutoff_freq(max_depth=self.waveguide_depth)
+            self.positive_freq
+            > waveguide_cutoff_freq(waveguide_depth=self.waveguide_depth)
         ]
 
         # Ensure that the number of frequencies is not too large for kraken run
@@ -81,7 +83,7 @@ class AcousticSource:
             self.positive_freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
             self.kraken_freq = self.positive_freq[
                 self.positive_freq
-                > waveguide_cutoff_freq(max_depth=self.waveguide_depth)
+                > waveguide_cutoff_freq(waveguide_depth=self.waveguide_depth)
             ]
 
         # Real FFT
@@ -143,18 +145,34 @@ class AcousticSource:
         ax.set_ylabel("Amplitude")
         ax.set_title("Source signal")
 
-    def display_source(self, ax_signal=None, ax_spectrum=None, ax_psd=None):
+    def display_source(
+        self,
+        ax_signal=None,
+        ax_spectrum=None,
+        ax_psd=None,
+        plot_psd=True,
+        plot_spectrum=True,
+    ):
         """Display source signal and spectrum"""
-        if ax_signal is not None and ax_spectrum is not None:
+        if ax_signal is not None and ax_spectrum is not None and ax_psd is not None:
             self.plot_signal(ax=ax_signal)
-            self.plot_psd(ax=ax_psd)
-            self.plot_spectrum_magnitude(ax=ax_spectrum)
+            if plot_psd:
+                self.plot_psd(ax=ax_psd)
+            if plot_spectrum:
+                self.plot_spectrum_magnitude(ax=ax_spectrum)
             plt.suptitle(self.name)
             plt.tight_layout()
         else:
-            __, ax = plt.subplots(1, 3, figsize=(10, 8))
+            n_ax = int(plot_psd) + int(plot_spectrum) + 1
+            if n_ax == 2:
+                s = (2, 1)
+            elif n_ax == 3:
+                s = (1, 3)
+            __, ax = plt.subplots(s[0], s[1], figsize=(10, 8))
             self.plot_signal(ax=ax[0])
-            self.plot_psd(ax=ax[1])
-            self.plot_spectrum_magnitude(ax=ax[2])
+            if plot_psd:
+                self.plot_psd(ax=ax[1])
+            if plot_spectrum:
+                self.plot_spectrum_magnitude(ax=ax[2])
             plt.suptitle(self.name)
             plt.tight_layout()

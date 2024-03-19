@@ -30,6 +30,16 @@ from localisation.verlinden.verlinden_path import (
     VERLINDEN_POPULATED_FOLDER,
 )
 
+from publication.PublicationFigure import PubFigure
+
+PFIG = PubFigure(
+    label_fontsize=40,
+    title_fontsize=40,
+    ticks_fontsize=40,
+    legend_fontsize=30,
+)
+PFIG.set_all_fontsize()
+
 
 def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
     """Plot received signal for each receiver pair and each source position."""
@@ -46,7 +56,8 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
             xr_dataset.dims["idx_rcv"],
             1,
             figsize=(16, 8),
-            sharey=True,
+            # sharey=True,
+            sharex=True,
         )
 
         for i_rcv in range(xr_dataset.dims["idx_rcv"]):
@@ -91,6 +102,7 @@ def plot_received_signal(xr_dataset, img_basepath, n_instant_to_plot=None):
         fig.supxlabel("Time [s]", fontsize=SUPLABEL_FONTSIZE)
         plt.tight_layout()
         plt.savefig(img_basepath + f"received_signals_{i_ship}.png")
+        # plt.show()
         plt.close()
 
 
@@ -216,9 +228,11 @@ def plot_ambiguity_surface(
     """Plot ambiguity surface for each source position."""
 
     amb_surf = get_ambiguity_surface(ds)
+    amb_surf.attrs["long_name"] = "Ambiguity surface"
+    amb_surf.attrs["units"] = "dB"
 
     for i in range(nb_instant_to_plot):
-        plt.figure(figsize=(10, 8))
+        plt.figure(figsize=PFIG.size)
 
         vmin = (
             amb_surf.isel(idx_rcv_pairs=0, src_trajectory_time=i).quantile(0.35).values
@@ -271,9 +285,12 @@ def plot_ambiguity_surface(
         plt.scatter(
             ds.lon_src.isel(src_trajectory_time=i),
             ds.lat_src.isel(src_trajectory_time=i),
-            color="k",
+            color="lime",
+            # facecolors="magenta",
+            # edgecolors="k",
             marker="+",
-            s=90,
+            s=130,
+            linewidths=2.5,
             label=r"$X_{ship}$",
             zorder=2,
         )
@@ -281,11 +298,11 @@ def plot_ambiguity_surface(
         plt.scatter(
             ds.detected_pos_lon.isel(idx_rcv_pairs=0, src_trajectory_time=i),
             ds.detected_pos_lat.isel(idx_rcv_pairs=0, src_trajectory_time=i),
-            marker="o",
+            marker="s",
             facecolors="none",
-            edgecolors="black",
-            s=120,
-            linewidths=2.2,
+            edgecolors="magenta",
+            s=200,
+            linewidths=2.5,
             label="Estimated position",
             zorder=3,
         )
@@ -677,6 +694,135 @@ def check_folder_creation(plot_info):
     )
 
 
+def compare_perf_src(src_type_list, simulation_info, testcase_name, snr=0):
+
+    for i_src, src_type in enumerate(src_type_list):
+        # Read global report
+        global_report_fpath = os.path.join(
+            VERLINDEN_ANALYSIS_FOLDER,
+            testcase_name,
+            src_type,
+            simulation_info["src_pos"],
+            "global_report.txt",
+        )
+
+        data = pd.read_csv(
+            global_report_fpath,
+            sep=",",
+            dtype={
+                "SNR": float,
+                "MEDIAN": float,
+                "MEAN": float,
+                "STD": float,
+                "RMSE": float,
+                "MAX": float,
+                "MIN": float,
+                "95_percentile": float,
+                "99_percentile": float,
+                "dynamic_range": float,
+            },
+        )
+        data["src_type"] = [src_type] * data.shape[0]
+
+        if i_src == 0:
+            all_src_data = data
+        else:
+            all_src_data = pd.concat([all_src_data, data])
+
+    all_src_data = all_src_data[all_src_data["SNR"] == snr]
+    """ Plot perf for the different detection metrics """
+    bar_width = 0.2
+
+    # Define positions of the bars
+    positions = np.arange(len(all_src_data["src_type"].unique()))
+    m = len(all_src_data["Detection metric"].unique())
+    alpha = np.arange(-(m // 2), (m // 2) + m % 2, 1) + ((m + 1) % 2) / 2
+
+    # Create bar plot
+    metrics_to_plot = all_src_data.columns[2:-1]
+    detection_metric_list = all_src_data["Detection metric"].unique()
+    root_img = r"C:\\Users\\baptiste.menetrier\\Desktop\\devPy\\phd\\img\\localisation\\verlinden_process_analysis"
+    img_path = os.path.join(root_img, testcase_name)
+
+    for i_m, metric in enumerate(metrics_to_plot):
+        bar_values = np.array([])
+        all_pos = np.array([])
+        colors = []
+
+        # PFIG.set_all_fontsize()
+        plt.figure(figsize=PFIG.size)
+        for i_dm, detection_metric in enumerate(detection_metric_list):
+            # for i_src, src_type in enumerate(src_type_list):
+            bar = all_src_data[all_src_data["Detection metric"] == detection_metric][
+                metric
+            ]
+            if not bar.empty:
+                b = plt.bar(
+                    positions + alpha[i_dm] * bar_width,
+                    bar.values,
+                    width=bar_width,
+                    label=detection_metric,
+                )
+
+                # Add value labels to bars
+                # +3 / 4 * bar_width * np.sign(alpha[i_dm])
+            pos = (
+                positions
+                + alpha[i_dm] * bar_width
+                + 3 / 4 * bar_width * np.sign(alpha[i_dm])
+            )
+            all_pos = np.concatenate((all_pos, pos))
+            bar_values = np.concatenate((bar_values, bar.values))
+            colors += [b.patches[0].get_facecolor()] * len(bar)
+
+        val_offset = 0.03 * max(bar_values)
+        for i in range(len(bar_values)):
+            plt.text(
+                all_pos[i],
+                bar_values[i] + val_offset,
+                bar_values[i],
+                ha="center",
+                # color=colors[i],
+                bbox=dict(facecolor=colors[i], alpha=0.8),
+            )
+
+        plt.legend()
+        plt.xticks(positions, all_src_data["src_type"].unique())
+        plt.legend(ncol=2)
+
+        title = f"{testcase_name} - performance analysis"
+        if metric == "95_percentile":
+            ylabel = "Position error 95 % percentile [m]"
+        elif metric == "99_percentile":
+            ylabel = "Position error 99 % percentile [m]"
+        elif metric == "MEDIAN":
+            ylabel = "Position median error [m]"
+        elif metric == "MIN":
+            ylabel = "Position minimum error [m]"
+        elif metric == "MAX":
+            ylabel = "Position maximum error [m]"
+        elif metric == "STD":
+            ylabel = "Position std error [m]"
+        elif metric == "MEAN":
+            ylabel = "Position mean error [m]"
+        elif metric == "RMSE":
+            ylabel = "Position rmse [m]"
+        elif metric == "dynamic_range":
+            ylabel = "Ambiguity surface dynamic range [dB]"
+        else:
+            pass
+
+        plt.ylim([0, max(bar_values) + 5 * val_offset])
+        img_name = f"localisation_performance_src_type_" + "".join(metric) + ".png"
+        plt.xlabel("Source type")
+        plt.ylabel(ylabel)
+        plt.title(title)
+        plt.tight_layout()
+        plt.savefig(os.path.join(img_path, img_name))
+
+    print()
+
+
 def analysis_main(
     snr_list,
     detection_metric_list,
@@ -685,6 +831,7 @@ def analysis_main(
     simulation_info={},
     grid_info={},
 ):
+    """Main function to analyse the localisation performance."""
     global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN,95_percentile,99_percentile,dynamic_range"
     global_log = [global_header_log]
 
@@ -856,6 +1003,7 @@ def analysis_main(
     for perf_metrics in list_perf_metrics:
         plot_localisation_performance(
             data=data,
+            testcase_name=testcase_name,
             detection_metric_list=detection_metric_list,
             metrics_to_plot=perf_metrics,
             img_path=os.path.dirname(global_report_fpath),

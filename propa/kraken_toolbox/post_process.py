@@ -26,7 +26,7 @@ def postprocess_ir(shd_fpath, source, rcv_range, rcv_depth):
     pressure_field = pressure_field[:, zz, rr]
 
     # Get rid of frequencies below the cutoff frequency
-    fc = waveguide_cutoff_freq(max_depth=field_pos["r"]["z"].max())
+    fc = waveguide_cutoff_freq(waveguide_depth=field_pos["r"]["z"].max())
     propagating_freq = source.positive_freq[source.positive_freq > fc]
 
     if (
@@ -55,7 +55,7 @@ def postprocess_received_signal(
     )
 
     # Extract propagating spectrum from entire spectrum
-    fc = waveguide_cutoff_freq(max_depth=field_pos["r"]["z"].max())
+    fc = waveguide_cutoff_freq(waveguide_depth=field_pos["r"]["z"].max())
     propagating_spectrum = source.positive_spectrum[source.positive_freq > fc]
 
     # TODO : check which factor to apply
@@ -136,7 +136,7 @@ def postprocess_ir_from_broadband_pressure_field(
     pressure_field = pressure_field[:, zz, rr]
 
     # Get rid of frequencies below the cutoff frequency
-    fc = waveguide_cutoff_freq(max_depth=minimum_waveguide_depth)
+    fc = waveguide_cutoff_freq(waveguide_depth=minimum_waveguide_depth)
     propagating_freq = source.positive_freq[source.positive_freq > fc]
 
     # # TODO need to be fixed
@@ -190,7 +190,7 @@ def postprocess_received_signal_from_broadband_pressure_field(
     )
 
     # Extract propagating spectrum from entire spectrum
-    fc = waveguide_cutoff_freq(max_depth=minimum_waveguide_depth)
+    fc = waveguide_cutoff_freq(waveguide_depth=minimum_waveguide_depth)
     propagating_spectrum = source.positive_spectrum[source.positive_freq > fc]
 
     # TODO : check which factor to apply

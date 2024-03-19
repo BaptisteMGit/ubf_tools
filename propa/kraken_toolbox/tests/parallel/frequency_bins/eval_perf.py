@@ -2,9 +2,10 @@ import time
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from propa.kraken_toolbox.run_kraken import runkraken
-from localisation.verlinden.testcases.testcase_envs import testcase2_1
+
+from publication.PublicationFigure import PubFigure
 from scipy.optimize import minimize
+
 
 # run_test = False
 # if run_test:
@@ -101,7 +102,7 @@ def fit_cpu_time(fpath, win=10):
 
     plt.figure()
     plt.plot(frequencies, cpu_time)
-    plt.plot(frequencies, filtered_cpu, label="filtered")
+    plt.plot(frequencies, filtered_cpu, label=f"Median rolling filter (win = {win})")
     plt.plot(
         frequencies,
         poly_fit_cpu(frequencies),
@@ -111,6 +112,7 @@ def fit_cpu_time(fpath, win=10):
     plt.ylabel("CPU time (s)")
     plt.grid()
     plt.legend()
+    plt.tight_layout()
 
     img_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\kraken_perf\cpu_time_vs_frequency.png"
     plt.savefig(img_path)
@@ -158,14 +160,42 @@ def g(fi, alpha, k, z, fmin, fmax):
 
 
 if __name__ == "__main__":
+    pfig = PubFigure()
+
     fmin = 1
     fmax = 100
     nf = 100
-    n_workers = 4
+    n_workers = 8
 
     fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\parallel\frequency_bins\cpu_time.csv"
-    frequencies, filtered_cpu, poly_fit_cpu, z = fit_cpu_time(fpath, win=50)
-    print(z)
-    res = find_optimal_intervals(fmin, fmax, nf, z, n_workers, np.mean(filtered_cpu))
+    frequencies, filtered_cpu, poly_fit_cpu, z = fit_cpu_time(fpath, win=25)
+    # print(z)
+    # res = find_optimal_intervals(fmin, fmax, nf, z, n_workers, np.mean(filtered_cpu))
 
-    print(res)
+    from propa.kraken_toolbox.run_kraken import assign_frequency_intervalls
+
+    assigned_frequency_ranges, nb_used_workers = assign_frequency_intervalls(
+        frequencies, n_workers, mode="optimal"
+    )
+
+    plt.figure()
+    plt.plot(frequencies, poly_fit_cpu(frequencies), label="$af^2 + bf + c$")
+    # Color the frequency ranges
+    for i, freqs in enumerate(assigned_frequency_ranges):
+        fmin, fmax = freqs.min(), freqs.max()
+        plt.fill_between(
+            frequencies,
+            poly_fit_cpu(frequencies),
+            where=(frequencies >= fmin) & (frequencies <= fmax),
+            color=f"C{i}",
+            alpha=0.3,
+        )
+
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("CPU time (s)")
+    plt.grid()
+    plt.legend()
+    plt.tight_layout()
+    img_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\kraken_perf\freq_bands_repartition_parallel.png"
+    plt.savefig(img_path)
+    # print(assigned_frequency_ranges)

@@ -14,22 +14,24 @@
 # ======================================================================================================================
 
 import os
-import time
+
+# import time
 import sparse
 import numpy as np
 import xarray as xr
 import pandas as pd
 import scipy.signal as signal
-
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 from tqdm import tqdm
 from pyproj import Geod
-from scipy.sparse import csr_matrix
+
+# from scipy.sparse import csr_matrix
 
 from cst import BAR_FORMAT, C0
 from misc import mult_along_axis
 from signals import ship_noise, pulse, pulse_train
+from publication.PublicationFigure import PubFigure
 
 # from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
@@ -823,6 +825,7 @@ def add_correlation_to_dataset(library_dataset):
                 del s0, s1, corr_01
 
     ds["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
+    ds["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
 
     return ds
 
@@ -984,6 +987,8 @@ def build_ambiguity_surf(ds, detection_metric):
         ambiguity_surface_dim,
         ambiguity_surface,
     )
+    ds.attrs["long_name"] = "Ambiguity surface"
+    ds.attrs["units"] = "dB"
 
     # Derive src position
     ds["detected_pos_lon"] = ds.lon.isel(
@@ -1028,6 +1033,21 @@ def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
     )
 
     return library_src
+
+
+def plot_src(library_src, testcase):
+    pfig = PubFigure()
+    library_src.display_source(plot_spectrum=False)
+    fig = plt.gcf()
+    fig.set_size_inches(pfig.size)
+    axs = fig.axes
+    axs[0].set_title("")
+    axs[1].set_title("")
+    fig.suptitle("Source signal")
+    plt.tight_layout()
+    plt.savefig(
+        os.path.join(testcase.env_dir, "env_desc_img", f"src_{testcase.name}.png")
+    )
 
 
 def init_event_src_traj(src_info, dt):

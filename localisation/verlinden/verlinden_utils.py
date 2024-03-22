@@ -14,13 +14,13 @@
 # ======================================================================================================================
 
 import os
-
-# import time
+import time
 import sparse
 import numpy as np
 import xarray as xr
 import pandas as pd
 import scipy.signal as signal
+import scipy.fft as sp_fft
 import matplotlib.pyplot as plt
 
 from tqdm import tqdm
@@ -28,7 +28,7 @@ from pyproj import Geod
 
 # from scipy.sparse import csr_matrix
 
-from cst import BAR_FORMAT, C0
+from cst import BAR_FORMAT, C0, N_CORES
 from misc import mult_along_axis
 from signals import ship_noise, pulse, pulse_train
 from publication.PublicationFigure import PubFigure
@@ -772,6 +772,16 @@ def add_noise_to_dataset(library_dataset, snr_dB):
     return ds
 
 
+def fft_convolve_f(a0, a1, axis=-1, workers=8):
+
+    # Compute the cross-correlation of a0 and a1 using the FFT
+    corr_01 = sp_fft.irfft(a0 * np.conj(a1), axis=axis, workers=workers)
+    # Reorganise so that tau = 0 corresponds to the center of the array
+    nmid = corr_01.shape[-1] // 2 + 1
+    corr_01 = np.concatenate((corr_01[..., nmid:], corr_01[..., :nmid]), axis=axis)
+    return corr_01
+
+
 def add_correlation_to_dataset(library_dataset):
     ds = library_dataset
     ds.coords["library_corr_lags"] = signal.correlation_lags(
@@ -784,45 +794,100 @@ def add_correlation_to_dataset(library_dataset):
     library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
     library_corr = np.empty(tuple(ds.dims[d] for d in library_corr_dim))
 
-    # May be way faster with a FFT based approach
-    ns = ds.dims["library_signal_time"]
+    # Faster FFT approach
+    ax = 2
+    nlag = ds.dims["library_corr_lags"]
     for i_pair in tqdm(
         range(ds.dims["idx_rcv_pairs"]),
         bar_format=BAR_FORMAT,
         desc="Derive correlation vector for each grid pixel",
     ):
         rcv_pair = ds.rcv_pairs.isel(idx_rcv_pairs=i_pair)
-        for i_lon in tqdm(
-            range(ds.dims["lon"]),
-            bar_format=BAR_FORMAT,
-            desc="Scanning longitude axis",
-            leave=False,
-        ):
-            for i_lat in tqdm(
-                range(ds.dims["lat"]),
-                bar_format=BAR_FORMAT,
-                desc="Scanning latitude axis",
-                leave=False,
-            ):
-                s0 = ds.rcv_signal_library.sel(
-                    idx_rcv=rcv_pair[0],
-                    lon=ds.lon.isel(lon=i_lon),
-                    lat=ds.lat.isel(lat=i_lat),
-                )
-                s1 = ds.rcv_signal_library.sel(
-                    idx_rcv=rcv_pair[1],
-                    lon=ds.lon.isel(lon=i_lon),
-                    lat=ds.lat.isel(lat=i_lat),
-                )
-                corr_01 = signal.correlate(s0, s1)
-                n0 = corr_01.shape[0] // 2
-                autocorr0 = signal.correlate(s0, s0)
-                autocorr1 = signal.correlate(s1, s1)
-                corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
+        in1 = ds.rcv_signal_library.sel(idx_rcv=rcv_pair[0]).values
+        in2 = ds.rcv_signal_library.sel(idx_rcv=rcv_pair[1]).values
 
-                library_corr[i_pair, i_lat, i_lon, :] = corr_01
+        nfft = sp_fft.next_fast_len(nlag, True)
 
-                del s0, s1, corr_01
+        sig_0 = sp_fft.rfft(
+            in1,
+            n=nfft,
+            axis=-1,
+        )
+        sig_1 = sp_fft.rfft(
+            in2,
+            n=nfft,
+            axis=-1,
+        )
+
+        corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=N_CORES)
+        corr_01_fft = corr_01_fft[:, :, slice(nlag)]
+
+        autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=N_CORES)
+        autocorr0 = autocorr0[:, :, slice(nlag)]
+
+        autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=N_CORES)
+        autocorr1 = autocorr1[:, :, slice(nlag)]
+
+        n0 = corr_01_fft.shape[-1] // 2
+        corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
+        corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
+        corr_01_fft /= corr_norm
+        library_corr[i_pair, ...] = corr_01_fft
+
+    # library_corr_fft = library_corr
+
+    # t1 = time.time()
+    # t_fft = t1 - t0
+    # print("Correlation FFT approach : ", t_fft)
+
+    # # t0 = time.time()
+    # # Should be faster with a FFT based approach
+    # ns = ds.dims["library_signal_time"]
+    # for i_pair in tqdm(
+    #     range(ds.dims["idx_rcv_pairs"]),
+    #     bar_format=BAR_FORMAT,
+    #     desc="Derive correlation vector for each grid pixel",
+    # ):
+    #     rcv_pair = ds.rcv_pairs.isel(idx_rcv_pairs=i_pair)
+    #     for i_lon in tqdm(
+    #         range(ds.dims["lon"]),
+    #         bar_format=BAR_FORMAT,
+    #         desc="Scanning longitude axis",
+    #         leave=False,
+    #     ):
+    #         for i_lat in tqdm(
+    #             range(ds.dims["lat"]),
+    #             bar_format=BAR_FORMAT,
+    #             desc="Scanning latitude axis",
+    #             leave=False,
+    #         ):
+    #             s0 = ds.rcv_signal_library.sel(
+    #                 idx_rcv=rcv_pair[0],
+    #                 lon=ds.lon.isel(lon=i_lon),
+    #                 lat=ds.lat.isel(lat=i_lat),
+    #             )
+    #             s1 = ds.rcv_signal_library.sel(
+    #                 idx_rcv=rcv_pair[1],
+    #                 lon=ds.lon.isel(lon=i_lon),
+    #                 lat=ds.lat.isel(lat=i_lat),
+    #             )
+    #             # corr_01 = signal.correlate(s0, s1, mode="full", method="fft")
+    #             corr_01 = signal.correlate(s0, s1)
+    #             # Signals are computed from FFT : signal length is necessary even -> n0 = ns//2
+    #             n0 = corr_01.shape[0] // 2
+    #             autocorr0 = signal.correlate(s0, s0)
+    #             autocorr1 = signal.correlate(s1, s1)
+    #             corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
+
+    #             library_corr[i_pair, i_lat, i_lon, :] = corr_01
+
+    #             del s0, s1, corr_01
+
+    # t1 = time.time()
+    # t_direct = t1 - t0
+    # print("Correlation direct approach : ", t_direct)
+    # print("Speedup : ", t_direct / t_fft)
+    # print("Difference : ", np.max(np.abs(library_corr - library_corr_fft)))
 
     ds["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
     ds["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
@@ -887,33 +952,44 @@ def add_event_correlation(library_dataset):
     return ds
 
 
-def add_noise_to_signal(sig, snr_dB):
-    # Add noise to signal assuming sig is either a 1D (like event signal (t)) or a 3D (like library signal (x, y, t)) array
-    if snr_dB is not None:
-        # First simple implementation : same noise level for all positions
-        # TODO : This need to be improved to take into account the propagation loss
+def add_noise_to_signal(sig, snr_dB, noise_type="gaussian"):
+    """Add noise to signal assuming sig is either a 3D array (event signal (pos_idx, t)) or a 3D (library signal (x, y, t)) array.
+    The noise level is adjusted to garantee the desired SNR at all positions.
+    sig : np.array (2D or 3D)
+    snr_dB : float
+    noise_type : str
+    """
 
+    if snr_dB is not None:
+        # The further the grid point is from the source, the lower the signal power is and the lower the noise level should be
         P_sig = (
             1 / sig.shape[-1] * np.sum(sig**2, axis=-1)
-        )  # Signal power for each position
+        )  # Signal power for each position (last dimension is assumed to be time)
         sigma_noise = np.sqrt(
             P_sig * 10 ** (-snr_dB / 10)
         )  # Noise level for each position
 
         if sig.ndim == 2:  # 2D array (event signal) (pos, time)
-            # Generate gaussian noise
-            for i_ship in range(sig.shape[0]):
-                noise = np.random.normal(0, sigma_noise[i_ship], sig.shape[-1])
-                sig[i_ship, :] += noise
+
+            if noise_type == "gaussian":
+                # Generate gaussian noise
+                for i_ship in range(sig.shape[0]):
+                    noise = np.random.normal(0, sigma_noise[i_ship], sig.shape[-1])
+                    sig[i_ship, :] += noise
+            else:
+                raise ValueError("Noise type not supported")
 
         elif sig.ndim == 3:  # 3D array (library signal) -> (x, y, time)
-            # Generate gaussian noise
-            for i_lon in range(sig.shape[0]):
-                for i_lat in range(sig.shape[1]):
-                    noise = np.random.normal(
-                        0, sigma_noise[i_lon, i_lat], sig.shape[-1]
-                    )
-                    sig[i_lon, i_lat, :] += noise
+            if noise_type == "gaussian":
+                # Generate gaussian noise
+                for i_lon in range(sig.shape[0]):
+                    for i_lat in range(sig.shape[1]):
+                        noise = np.random.normal(
+                            0, sigma_noise[i_lon, i_lat], sig.shape[-1]
+                        )
+                        sig[i_lon, i_lat, :] += noise
+            else:
+                raise ValueError("Noise type not supported")
 
     return sig
 
@@ -939,11 +1015,11 @@ def build_ambiguity_surf(ds, detection_metric):
                     event_vector,
                     axis=2,
                 )
-                autocorr_lib = np.sum(lib_data.values**2, axis=2)
-                autocorr_event = np.sum(event_vector.values**2)
+                autocorr_lib_0 = np.sum(lib_data.values**2, axis=2)
+                autocorr_event_0 = np.sum(event_vector.values**2)
                 del lib_data, event_vector
 
-                norm = np.sqrt(autocorr_lib * autocorr_event)
+                norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
                 ambiguity_surface[i_pair, i_ship, ...] = amb_surf
@@ -972,11 +1048,11 @@ def build_ambiguity_surf(ds, detection_metric):
                     axis=2,
                 )
 
-                autocorr_lib = np.sum(lib_env**2, axis=2)
-                autocorr_event = np.sum(event_env**2)
+                autocorr_lib_0 = np.sum(lib_env**2, axis=2)
+                autocorr_event_0 = np.sum(event_env**2)
                 del lib_env, event_env
 
-                norm = np.sqrt(autocorr_lib * autocorr_event)
+                norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
                 ambiguity_surface[i_pair, i_ship, ...] = amb_surf

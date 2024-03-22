@@ -65,26 +65,31 @@ def task_wraper_queue(queue, freq_ranges):
 N_CORES = 8
 
 if __name__ == "__main__":
+
+    from propa.kraken_toolbox.plot_utils import plotshd
+
+    shd_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\sturm\sturm_testcase.shd"
+    plotshd(shd_fpath, freq=f, units="km")
     # Example usage:
 
-    num_workers = 3
-    frequencies = np.arange(1, 100)
-    assigned_ranges = assign_frequency_ranges(frequencies, num_workers)
+    # num_workers = 3
+    # frequencies = np.arange(1, 100)
+    # assigned_ranges = assign_frequency_ranges(frequencies, num_workers)
 
-    processes = []
-    rets = []
-    # create the queue
-    queue = multiprocessing.Queue()
-    for i in range(num_workers):
-        process = multiprocessing.Process(
-            target=task_wraper_queue, args=(queue, assigned_ranges[i])
-        )
-        processes.append(process)
-        process.start()
+    # processes = []
+    # rets = []
+    # # create the queue
+    # queue = multiprocessing.Queue()
+    # for i in range(num_workers):
+    #     process = multiprocessing.Process(
+    #         target=task_wraper_queue, args=(queue, assigned_ranges[i])
+    #     )
+    #     processes.append(process)
+    #     process.start()
 
-    for p in processes:
-        ret = queue.get()  # will block
-        rets.append(ret)
-    for p in processes:
-        p.join()
-    print(rets)
+    # for p in processes:
+    #     ret = queue.get()  # will block
+    #     rets.append(ret)
+    # for p in processes:
+    #     p.join()
+    # print(rets)

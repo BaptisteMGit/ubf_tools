@@ -160,8 +160,10 @@ def plotshd(
     plt.xticks(fontsize=TICKS_FONTSIZE)
 
     if title is None:
-        title = PlotTitle.replace("_", " ")
-        +f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
+        title = (
+            PlotTitle.replace("_", " ")
+            + f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
+        )
     plt.title(title, fontsize=TITLE_FONTSIZE)
 
     plt.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)

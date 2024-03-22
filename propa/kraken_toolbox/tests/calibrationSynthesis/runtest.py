@@ -53,7 +53,7 @@ class CalibTestCase(TestCase):
 
 if __name__ == "__main__":
 
-    run_k = False
+    run_k = True
 
     # Source
     T = 7.2
@@ -158,7 +158,6 @@ if __name__ == "__main__":
         plt.title(
             f"Received signal (r={r}m)\n",
         )
-        plt.legend(loc="upper right")
         plt.tight_layout()
         plt.savefig(os.path.join(ROOT, f"rcv_sig_r{r}m.png"))
 

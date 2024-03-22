@@ -202,17 +202,17 @@ def run_tests(run_mode, re_analysis=False):
     snr = [-10, -5, 0, 5, 10, None]
     grid_offset_cells = 80
 
-    # run_tc(
-    #     testcase=TestCase1_0(),
-    #     rcv_info=rcv_info_sw,
-    #     initial_ship_pos=initial_ship_pos_sw,
-    #     snr=snr,
-    #     src_signal_type=src_signal_type,
-    #     detection_metric=detection_metric,
-    #     grid_offset_cells=grid_offset_cells,
-    #     debug=debug,
-    #     re_analysis=re_analysis,
-    # )
+    run_tc(
+        testcase=TestCase1_0(),
+        rcv_info=rcv_info_sw,
+        initial_ship_pos=initial_ship_pos_sw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        detection_metric=detection_metric,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+    )
 
     # Test case 1.1
     # run_tc(
@@ -290,23 +290,30 @@ def run_tests(run_mode, re_analysis=False):
     detection_metric = ["hilbert_env_intercorr0"]
     snr = [-10, -5, 0, 5, 10, None]
     # snr = [None]
-    run_tc(
-        testcase=TestCase3_1(),
-        rcv_info=rcv_info_dw,
-        initial_ship_pos=initial_ship_pos_dw,
-        snr=snr,
-        src_signal_type=src_signal_type,
-        detection_metric=detection_metric,
-        grid_offset_cells=grid_offset_cells,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # run_tc(
+    #     testcase=TestCase3_1(),
+    #     rcv_info=rcv_info_dw,
+    #     initial_ship_pos=initial_ship_pos_dw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     detection_metric=detection_metric,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
 
 if __name__ == "__main__":
 
-    run_mode = "normal"
-    re_analysis = True
+    # run_mode = "normal"
+    re_analysis = False
 
-    # run_mode = "debug"
+    run_mode = "debug"
+    import sys
+
+    if hasattr(sys, "gettrace") and (sys.gettrace() is not None):
+        run_mode = "debug"
+    else:
+        run_mode = "normal"
+
     run_tests(run_mode, re_analysis)

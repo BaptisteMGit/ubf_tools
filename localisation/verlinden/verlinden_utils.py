@@ -724,16 +724,6 @@ def init_event_dataset(ds, src_info, rcv_info, interp_src_pos_on_grid=False):
     return ds
 
 
-# def check_waveguide_cutoff(
-#     testcase,
-#     testcase_varin,
-#     kraken_env,
-#     kraken_flp,
-#     library_src,
-#     dt,
-#     max_range_m,
-#     sig_type,
-# ):
 def check_waveguide_cutoff(
     testcase,
     library_src,
@@ -833,61 +823,6 @@ def add_correlation_to_dataset(library_dataset):
         corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
         corr_01_fft /= corr_norm
         library_corr[i_pair, ...] = corr_01_fft
-
-    # library_corr_fft = library_corr
-
-    # t1 = time.time()
-    # t_fft = t1 - t0
-    # print("Correlation FFT approach : ", t_fft)
-
-    # # t0 = time.time()
-    # # Should be faster with a FFT based approach
-    # ns = ds.dims["library_signal_time"]
-    # for i_pair in tqdm(
-    #     range(ds.dims["idx_rcv_pairs"]),
-    #     bar_format=BAR_FORMAT,
-    #     desc="Derive correlation vector for each grid pixel",
-    # ):
-    #     rcv_pair = ds.rcv_pairs.isel(idx_rcv_pairs=i_pair)
-    #     for i_lon in tqdm(
-    #         range(ds.dims["lon"]),
-    #         bar_format=BAR_FORMAT,
-    #         desc="Scanning longitude axis",
-    #         leave=False,
-    #     ):
-    #         for i_lat in tqdm(
-    #             range(ds.dims["lat"]),
-    #             bar_format=BAR_FORMAT,
-    #             desc="Scanning latitude axis",
-    #             leave=False,
-    #         ):
-    #             s0 = ds.rcv_signal_library.sel(
-    #                 idx_rcv=rcv_pair[0],
-    #                 lon=ds.lon.isel(lon=i_lon),
-    #                 lat=ds.lat.isel(lat=i_lat),
-    #             )
-    #             s1 = ds.rcv_signal_library.sel(
-    #                 idx_rcv=rcv_pair[1],
-    #                 lon=ds.lon.isel(lon=i_lon),
-    #                 lat=ds.lat.isel(lat=i_lat),
-    #             )
-    #             # corr_01 = signal.correlate(s0, s1, mode="full", method="fft")
-    #             corr_01 = signal.correlate(s0, s1)
-    #             # Signals are computed from FFT : signal length is necessary even -> n0 = ns//2
-    #             n0 = corr_01.shape[0] // 2
-    #             autocorr0 = signal.correlate(s0, s0)
-    #             autocorr1 = signal.correlate(s1, s1)
-    #             corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
-
-    #             library_corr[i_pair, i_lat, i_lon, :] = corr_01
-
-    #             del s0, s1, corr_01
-
-    # t1 = time.time()
-    # t_direct = t1 - t0
-    # print("Correlation direct approach : ", t_direct)
-    # print("Speedup : ", t_direct / t_fft)
-    # print("Difference : ", np.max(np.abs(library_corr - library_corr_fft)))
 
     ds["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
     ds["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"

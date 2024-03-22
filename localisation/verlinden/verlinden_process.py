@@ -191,17 +191,6 @@ def verlinden_main(
     )
     testcase.update(testcase_varin)
 
-    # kraken_env, kraken_flp = testcase(testcase_varin) # Old version before testcase class introduction
-    # kraken_env, kraken_flp, library_src = check_waveguide_cutoff(
-    #     testcase=testcase,
-    #     testcase_varin=testcase_varin,
-    #     kraken_env=kraken_env,
-    #     kraken_flp=kraken_flp,
-    #     library_src=library_src,
-    #     max_range_m=max_range_m,
-    #     dt=dt,
-    #     sig_type=src_info["signal_type"],
-    # )
     # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
     library_src = check_waveguide_cutoff(
         testcase=testcase,

@@ -38,10 +38,25 @@ def get_simu_info(
     return simu_folder, testcase_name
 
 
-def run_tc(testcase, rcv_info, initial_ship_pos, debug=False, re_analysis=False):
+def run_tc(
+    testcase,
+    rcv_info,
+    initial_ship_pos,
+    snr=[],
+    src_signal_type=[],
+    detection_metric=[],
+    grid_offset_cells=35,
+    debug=False,
+    re_analysis=False,
+):
 
     # detection_metric = ["intercorr0"]
-    detection_metric = ["hilbert_env_intercorr0"]
+    if not detection_metric:
+        detection_metric = ["hilbert_env_intercorr0"]
+    if not snr:
+        snr = [None]
+    if not src_signal_type:
+        src_signal_type = ["ship"]
 
     # depth = 150  # Depth m
     v_knots = 20  # 20 knots
@@ -63,15 +78,15 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False, re_analysis=False)
         )
 
     else:
-        src_signal_type = ["ship"]
+        # src_signal_type = ["ship"]
         # snr = [0]
-        snr = [None]
+        # snr = [None]
         duration = 200  # 1000 s
         nmax_ship = 10
 
         grid_info = dict(
-            offset_cells_lon=10,
-            offset_cells_lat=10,
+            offset_cells_lon=grid_offset_cells,
+            offset_cells_lat=grid_offset_cells,
             dx=100,
             dy=100,
         )
@@ -111,8 +126,8 @@ def run_tc(testcase, rcv_info, initial_ship_pos, debug=False, re_analysis=False)
 
         plot_info = {
             "plot_video": False,
-            "plot_one_tl_profile": False,
-            "plot_ambiguity_surface_dist": True,
+            "plot_one_tl_profile": True,
+            "plot_ambiguity_surface_dist": False,
             "plot_received_signal": True,
             "plot_ambiguity_surface": True,
             "plot_ship_trajectory": True,
@@ -149,9 +164,16 @@ def run_tests(run_mode, re_analysis=False):
         "lats": [52.52, 52.52],
     }
     # Initial ship position for shallow water test cases
+    # initial_ship_pos_sw = {
+    #     "lon": rcv_info_sw["lons"][0] - 0.2,
+    #     "lat": rcv_info_sw["lats"][0] + 0.2,
+    #     "crs": "WGS84",
+    #     "route_azimuth": 45 + 90,
+    # }
+
     initial_ship_pos_sw = {
-        "lon": rcv_info_sw["lons"][0] - 0.2,
-        "lat": rcv_info_sw["lats"][0] + 0.2,
+        "lon": rcv_info_sw["lons"][0] - 0.04,
+        "lat": rcv_info_sw["lats"][0] + 0.04,
         "crs": "WGS84",
         "route_azimuth": 45 + 90,
     }
@@ -175,19 +197,32 @@ def run_tests(run_mode, re_analysis=False):
     }
 
     # Test case 1.0
-    run_tc(
-        testcase=TestCase1_0(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    src_signal_type = ["ship"]
+    detection_metric = ["hilbert_env_intercorr0"]
+    snr = [-10, -5, 0, 5, 10, None]
+    grid_offset_cells = 80
 
-    # # Test case 1.1
+    # run_tc(
+    #     testcase=TestCase1_0(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     detection_metric=detection_metric,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
+
+    # Test case 1.1
     # run_tc(
     #     testcase=TestCase1_1(),
     #     rcv_info=rcv_info_sw,
     #     initial_ship_pos=initial_ship_pos_sw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     detection_metric=detection_metric,
+    #     grid_offset_cells=grid_offset_cells,
     #     debug=debug,
     #     re_analysis=re_analysis,
     # )
@@ -215,6 +250,10 @@ def run_tests(run_mode, re_analysis=False):
     #     testcase=TestCase1_4(),
     #     rcv_info=rcv_info_sw,
     #     initial_ship_pos=initial_ship_pos_sw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     detection_metric=detection_metric,
+    #     grid_offset_cells=grid_offset_cells,
     #     debug=debug,
     #     re_analysis=re_analysis,
     # )
@@ -246,20 +285,28 @@ def run_tests(run_mode, re_analysis=False):
     #     re_analysis=re_analysis,
     # )
 
-    # # Test case 3.1
-    # run_tc(
-    #     testcase=TestCase3_1(),
-    #     rcv_info=rcv_info_dw,
-    #     initial_ship_pos=initial_ship_pos_dw,
-    #     debug=debug,
-    #     re_analysis=re_analysis,
-    # )
+    # Test case 3.1
+    src_signal_type = ["ship"]
+    detection_metric = ["hilbert_env_intercorr0"]
+    snr = [-10, -5, 0, 5, 10, None]
+    # snr = [None]
+    run_tc(
+        testcase=TestCase3_1(),
+        rcv_info=rcv_info_dw,
+        initial_ship_pos=initial_ship_pos_dw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        detection_metric=detection_metric,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+    )
 
 
 if __name__ == "__main__":
 
     run_mode = "normal"
-    re_analysis = False
+    re_analysis = True
 
     # run_mode = "debug"
     run_tests(run_mode, re_analysis)

@@ -141,6 +141,8 @@ field.exe.stackdump
 
 # Parallel working dir 
 parallel_working_dir/
+# Test case working dir 
+testcase_working_directory/
 bathy.csv
 
 # bellhop 

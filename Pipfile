@@ -19,6 +19,8 @@ pathos = "*"
 psutil = "*"
 pylint = "*"
 scikit-learn = "*"
+dask = "*"
+distributed = "*"
 
 [dev-packages]
 ipykernel = "*"

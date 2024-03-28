@@ -16,6 +16,8 @@
 import os
 import time
 import sparse
+import multiprocessing
+
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -790,7 +792,7 @@ def add_correlation_to_dataset(library_dataset):
     for i_pair in tqdm(
         range(ds.dims["idx_rcv_pairs"]),
         bar_format=BAR_FORMAT,
-        desc="Derive correlation vector for each grid pixel",
+        desc="Receiver pair cross-correlation computation",
     ):
         rcv_pair = ds.rcv_pairs.isel(idx_rcv_pairs=i_pair)
         in1 = ds.rcv_signal_library.sel(idx_rcv=rcv_pair[0]).values
@@ -809,13 +811,13 @@ def add_correlation_to_dataset(library_dataset):
             axis=-1,
         )
 
-        corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=N_CORES)
+        corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
         corr_01_fft = corr_01_fft[:, :, slice(nlag)]
 
-        autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=N_CORES)
+        autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
         autocorr0 = autocorr0[:, :, slice(nlag)]
 
-        autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=N_CORES)
+        autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
         autocorr1 = autocorr1[:, :, slice(nlag)]
 
         n0 = corr_01_fft.shape[-1] // 2
@@ -873,9 +875,9 @@ def add_event_correlation(library_dataset):
             )
 
             corr_01 = signal.correlate(s0, s1)
-            n0 = corr_01.shape[0] // 2
             autocorr0 = signal.correlate(s0, s0)
             autocorr1 = signal.correlate(s1, s1)
+            n0 = corr_01.shape[0] // 2
             corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
 
             event_corr[i_pair, i_ship, :] = corr_01
@@ -929,20 +931,121 @@ def add_noise_to_signal(sig, snr_dB, noise_type="gaussian"):
     return sig
 
 
+def derive_ambiguity(lib_data, event_data, src_traj_times, detection_metric):
+
+    ambiguity_surface_dim = ["idx_rcv_pairs", "src_trajectory_time", "lat", "lon"]
+    ambiguity_surface = np.empty(
+        (1, len(src_traj_times)) + tuple(lib_data.sizes[d] for d in ["lat", "lon"])
+    )
+
+    da_amb_surf = xr.DataArray(
+        data=ambiguity_surface,
+        dims=ambiguity_surface_dim,
+        coords={
+            "idx_rcv_pairs": [lib_data.idx_rcv_pairs.values],
+            "src_trajectory_time": src_traj_times,
+            "lat": lib_data.lat.values,
+            "lon": lib_data.lon.values,
+        },
+        name="ambiguity_surface",
+    )
+
+    for i_src_time, src_time in enumerate(src_traj_times):
+
+        event_vector = event_data.sel(src_trajectory_time=src_time)
+
+        if detection_metric == "intercorr0":
+            amb_surf = mult_along_axis(
+                lib_data,
+                event_vector,
+                axis=2,
+            )
+            autocorr_lib_0 = np.sum(lib_data.values**2, axis=2)
+            autocorr_event_0 = np.sum(event_vector.values**2)
+            # del lib_data, event_vector
+
+            norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
+            amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
+            amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
+            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
+
+        elif detection_metric == "lstsquares":
+            lib_data = lib_data.values
+            event = event_vector.values
+
+            diff = lib - event
+            amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
+            amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
+            amb_surf = (
+                1 - amb_surf
+            )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface
+            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
+
+        elif detection_metric == "hilbert_env_intercorr0":
+            lib_env = np.abs(signal.hilbert(lib_data))
+            event_env = np.abs(signal.hilbert(event_vector))
+
+            amb_surf = mult_along_axis(
+                lib_env,
+                event_env,
+                axis=2,
+            )
+
+            autocorr_lib_0 = np.sum(lib_env**2, axis=2)
+            autocorr_event_0 = np.sum(event_env**2)
+            del lib_env, event_env
+
+            norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
+            amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
+            amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
+            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
+
+    return da_amb_surf
+
+
 def build_ambiguity_surf(ds, detection_metric):
+    """Build ambiguity surface for each receiver pair and ship position."""
+
+    t0 = time.time()
     ambiguity_surface_dim = ["idx_rcv_pairs", "src_trajectory_time", "lat", "lon"]
     ambiguity_surface = np.empty(tuple(ds.dims[d] for d in ambiguity_surface_dim))
 
-    for i_ship in tqdm(
-        range(ds.dims["src_trajectory_time"]),
-        bar_format=BAR_FORMAT,
-        desc="Build ambiguity surface",
-    ):
-        for i_pair in ds.idx_rcv_pairs:
-            lib_data = ds.library_corr.sel(idx_rcv_pairs=i_pair)
-            event_vector = ds.event_corr.sel(idx_rcv_pairs=i_pair).isel(
-                src_trajectory_time=i_ship
-            )
+    # Store all ambiguity surfaces in a list
+    ambiguity_surfaces = []
+
+    for i_pair in ds.idx_rcv_pairs:
+        lib_data = ds.library_corr.sel(idx_rcv_pairs=i_pair)
+        event_data = ds.event_corr.sel(idx_rcv_pairs=i_pair)
+
+        # Init pool
+        pool = multiprocessing.Pool(processes=N_CORES)
+        # Build the parameter pool
+        idx_ship_intervalls = np.array_split(
+            np.arange(ds.dims["src_trajectory_time"]), N_CORES
+        )
+        src_traj_time_intervalls = np.array_split(ds["src_trajectory_time"], N_CORES)
+        param_pool = [
+            (lib_data, event_data, src_traj_time_intervalls[i], detection_metric)
+            for i in range(len(idx_ship_intervalls))
+        ]
+        # Run parallel processes
+        results = pool.starmap(derive_ambiguity, param_pool)
+        # Close pool
+        pool.close()
+        # Wait for all processes to finish
+        pool.join()
+
+        ambiguity_surfaces += results
+
+        print(f"Elapsed time (parallel) : {time.time() - t0}")
+        t0 = time.time()
+
+        for i_ship in tqdm(
+            range(ds.dims["src_trajectory_time"]),
+            bar_format=BAR_FORMAT,
+            desc="Build ambiguity surface",
+        ):
+            event_vector = event_data.isel(src_trajectory_time=i_ship)
 
             if detection_metric == "intercorr0":
                 amb_surf = mult_along_axis(
@@ -952,7 +1055,7 @@ def build_ambiguity_surf(ds, detection_metric):
                 )
                 autocorr_lib_0 = np.sum(lib_data.values**2, axis=2)
                 autocorr_event_0 = np.sum(event_vector.values**2)
-                del lib_data, event_vector
+                # del lib_data, event_vector
 
                 norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
                 amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
@@ -962,7 +1065,7 @@ def build_ambiguity_surf(ds, detection_metric):
             elif detection_metric == "lstsquares":
                 lib = lib_data.values
                 event = event_vector.values
-                del lib_data, event_vector
+                # del lib_data, event_vector
 
                 diff = lib - event
                 amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
@@ -975,7 +1078,7 @@ def build_ambiguity_surf(ds, detection_metric):
             elif detection_metric == "hilbert_env_intercorr0":
                 lib_env = np.abs(signal.hilbert(lib_data))
                 event_env = np.abs(signal.hilbert(event_vector))
-                del lib_data, event_vector
+                # del lib_data, event_vector
 
                 amb_surf = mult_along_axis(
                     lib_env,
@@ -994,12 +1097,20 @@ def build_ambiguity_surf(ds, detection_metric):
 
             del amb_surf
 
+        print(f"Elapsed time (for loop) : {time.time() - t0}")
+
     ds["ambiguity_surface"] = (
         ambiguity_surface_dim,
         ambiguity_surface,
     )
-    ds.attrs["long_name"] = "Ambiguity surface"
-    ds.attrs["units"] = "dB"
+
+    # # Merge dataarrays
+    # amb_surf_merged = xr.merge(ambiguity_surfaces)
+    # ds["ambiguity_surface"] = amb_surf_merged["ambiguity_surface"]
+    # ds = xr.merge([ds, amb_surf_merged])
+
+    ds.ambiguity_surface.attrs["long_name"] = "Ambiguity surface"
+    ds.ambiguity_surface.attrs["units"] = "dB"
 
     # Derive src position
     ds["detected_pos_lon"] = ds.lon.isel(

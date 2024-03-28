@@ -22,12 +22,13 @@ import shutil
 import multiprocessing
 import numpy as np
 
-from tqdm import tqdm
+# from tqdm import tqdm
 from cst import BAR_FORMAT, N_CORES
 from propa.kraken_toolbox.usefull_path import KRAKEN_BIN_DIRECTORY
 from propa.kraken_toolbox.kraken_env import KrakenEnv, KrakenFlp
 from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import find_optimal_intervals
+
 
 def runkraken(env, flp, frequencies, parallel=False, verbose=False):
     if verbose:

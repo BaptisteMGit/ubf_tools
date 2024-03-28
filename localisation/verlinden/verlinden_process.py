@@ -43,6 +43,7 @@ from localisation.verlinden.verlinden_utils import (
     add_event_isotropic_env,
     add_event_anisotropic_env,
     plot_src,
+    save_dataset,
 )
 
 
@@ -103,7 +104,7 @@ def populate_grid(
 
 
 def add_event_to_dataset(
-    library_dataset,
+    xr_dataset,
     grid_pressure_field,
     kraken_grid,
     kraken_env,
@@ -114,17 +115,16 @@ def add_event_to_dataset(
     isotropic_env=True,
     interp_src_pos_on_grid=False,
 ):
-    ds = library_dataset
 
-    ds = init_event_dataset(
-        ds, src_info, rcv_info, interp_src_pos_on_grid=interp_src_pos_on_grid
+    init_event_dataset(
+        xr_dataset, src_info, rcv_info, interp_src_pos_on_grid=interp_src_pos_on_grid
     )
 
     signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
 
     if isotropic_env:
-        ds = add_event_isotropic_env(
-            ds=ds,
+        add_event_isotropic_env(
+            ds=xr_dataset,
             snr_dB=snr_dB,
             event_src=event_src,
             kraken_env=kraken_env,
@@ -133,16 +133,14 @@ def add_event_to_dataset(
         )
     else:
 
-        ds = add_event_anisotropic_env(
-            ds=ds,
+        add_event_anisotropic_env(
+            ds=xr_dataset,
             snr_dB=snr_dB,
             event_src=event_src,
             kraken_grid=kraken_grid,
             signal_event_dim=signal_event_dim,
             grid_pressure_field=grid_pressure_field,
         )
-
-    return ds
 
 
 def verlinden_main(
@@ -224,10 +222,10 @@ def verlinden_main(
                 and not complete_dataset_loaded
                 and grid_pressure_field is not None
             ):
-                ds_library = xr.open_dataset(populated_path)
+                verlinden_dataset = xr.open_dataset(populated_path)
             elif not os.path.exists(populated_path) or grid_pressure_field is None:
                 # Populate grid with received signal
-                ds_library, grid_pressure_field, kraken_grid = populate_grid(
+                verlinden_dataset, grid_pressure_field, kraken_grid = populate_grid(
                     library_src,
                     grid_info,
                     rcv_info,
@@ -238,10 +236,10 @@ def verlinden_main(
             # 10/01/2024 No more 1 save/snr to save memory
             if not complete_dataset_loaded:
                 # Add noise to dataset
-                ds_library = add_noise_to_dataset(ds_library, snr_dB=snr_i)
+                add_noise_to_dataset(verlinden_dataset, snr_dB=snr_i)
 
                 # Derive correlation vector for the entire grid
-                ds_library = add_correlation_to_dataset(ds_library)
+                add_correlation_to_dataset(verlinden_dataset)
 
                 # Switch flag to avoid redundancy
                 complete_dataset_loaded = True
@@ -249,8 +247,8 @@ def verlinden_main(
             event_src = library_src
             event_src.z_src = src_info["depth"]
             if not event_in_dataset:
-                ds = add_event_to_dataset(
-                    library_dataset=ds_library,
+                add_event_to_dataset(
+                    xr_dataset=verlinden_dataset,
                     grid_pressure_field=grid_pressure_field,
                     kraken_grid=kraken_grid,
                     kraken_env=testcase.env,
@@ -262,35 +260,21 @@ def verlinden_main(
                 )
                 event_in_dataset = True
 
-            ds = build_ambiguity_surf(ds, det_metric)
+            build_ambiguity_surf(verlinden_dataset, det_metric)
 
-            # Build path to save dataset and corresponding path to save analysis results produced later on
-            ds.attrs["fullpath_output"] = os.path.join(
-                VERLINDEN_OUTPUT_FOLDER,
-                testcase.env.filename,
-                library_src.name,
-                ds.src_pos,
-                det_metric,
-                f"output_{det_metric}_{snr_tag}.nc",
-            )
-            ds.attrs["fullpath_analysis"] = os.path.join(
-                VERLINDEN_ANALYSIS_FOLDER,
-                testcase.env.filename,
-                library_src.name,
-                ds.src_pos,
-                det_metric,
-                snr_tag,
+            # Save dataset
+            save_dataset(
+                verlinden_dataset,
+                output_folder=VERLINDEN_OUTPUT_FOLDER,
+                analysis_folder=VERLINDEN_ANALYSIS_FOLDER,
+                env_filename=testcase.env.filename,
+                src_name=library_src.name,
+                det_metric=det_metric,
+                snr_tag=snr_tag,
             )
 
-            if not os.path.exists(os.path.dirname(ds.fullpath_output)):
-                os.makedirs(os.path.dirname(ds.fullpath_output))
+        verlinden_dataset = verlinden_dataset.drop_vars("event_signal_time")
 
-            if not os.path.exists(ds.fullpath_analysis):
-                os.makedirs(ds.fullpath_analysis)
-
-            ds.to_netcdf(ds.fullpath_output)
-
-        ds = ds.drop_vars("event_signal_time")
     print(f"### Verlinden simulation process done ###")
 
     simu_folder = os.path.dirname(testcase.env.env_fpath)

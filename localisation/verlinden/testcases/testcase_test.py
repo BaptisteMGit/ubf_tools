@@ -81,8 +81,10 @@ def run_tc(
         # src_signal_type = ["ship"]
         # snr = [0]
         # snr = [None]
+        # duration = 200  # 1000 s
+        # nmax_ship = 10
         duration = 200  # 1000 s
-        nmax_ship = 10
+        nmax_ship = 1000
 
         grid_info = dict(
             offset_cells_lon=grid_offset_cells,
@@ -126,7 +128,7 @@ def run_tc(
 
         plot_info = {
             "plot_video": False,
-            "plot_one_tl_profile": True,
+            "plot_one_tl_profile": False,
             "plot_ambiguity_surface_dist": False,
             "plot_received_signal": True,
             "plot_ambiguity_surface": True,
@@ -198,8 +200,12 @@ def run_tests(run_mode, re_analysis=False):
 
     # Test case 1.0
     src_signal_type = ["ship"]
-    detection_metric = ["hilbert_env_intercorr0"]
-    snr = [-10, -5, 0, 5, 10, None]
+    detection_metric = ["intercorr0"]
+    # detection_metric = ["hilbert_env_intercorr0"]
+
+    # snr = [-10, -5, 0, 5, 10, None]
+    # grid_offset_cells = 80
+    snr = [0]
     grid_offset_cells = 80
 
     run_tc(
@@ -304,6 +310,11 @@ def run_tests(run_mode, re_analysis=False):
 
 
 if __name__ == "__main__":
+
+    # from dask.distributed import LocalCluster
+
+    # cluster = LocalCluster()  # Fully-featured local Dask cluster
+    # client = cluster.get_client()
 
     # run_mode = "normal"
     re_analysis = False

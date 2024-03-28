@@ -226,6 +226,7 @@ def verlinden_main(
             ):
                 ds_library = xr.open_dataset(populated_path)
             elif not os.path.exists(populated_path) or grid_pressure_field is None:
+                # Populate grid with received signal
                 ds_library, grid_pressure_field, kraken_grid = populate_grid(
                     library_src,
                     grid_info,

@@ -23,28 +23,7 @@ from localisation.verlinden.verlinden_path import (
     VERLINDEN_POPULATED_FOLDER,
 )
 
-
-from localisation.verlinden.verlinden_utils import (
-    add_correlation_to_dataset,
-    add_noise_to_dataset,
-    build_ambiguity_surf,
-    get_populated_path,
-    init_event_src_traj,
-    init_grid_around_event_src_traj,
-    init_library_src,
-    init_library_dataset,
-    init_event_dataset,
-    populate_isotropic_env,
-    populate_anistropic_env,
-    check_waveguide_cutoff,
-    get_max_kraken_range,
-    get_dist_between_rcv,
-    print_simulation_info,
-    add_event_isotropic_env,
-    add_event_anisotropic_env,
-    plot_src,
-    save_dataset,
-)
+from localisation.verlinden.verlinden_utils import *
 
 
 def populate_grid(
@@ -53,6 +32,8 @@ def populate_grid(
     rcv_info,
     src_info,
     testcase,
+    n_noise_realisations,
+    similarity_metrics,
 ):
     """
     Populate grid with received signal for isotropic environment. This function is used to generate the library of received signals for the Verlinden method.
@@ -60,9 +41,11 @@ def populate_grid(
     """
 
     # Init Dataset
-    ds = init_library_dataset(
+    xr_dataset = init_library_dataset(
         grid_info,
         rcv_info,
+        n_noise_realisations,
+        similarity_metrics,
         isotropic_env=testcase.isotropic,
     )
 
@@ -71,36 +54,42 @@ def populate_grid(
     # Switch between isotropic and anisotropic environment
     if testcase.isotropic:
         # TODO update with testcase object properties
-        ds, rcv_signal_library, grid_pressure_field = populate_isotropic_env(
-            ds, library_src, signal_library_dim, testcase
+        xr_dataset, rcv_signal_library, grid_pressure_field = populate_isotropic_env(
+            xr_dataset, library_src, signal_library_dim, testcase
         )
         kraken_grid = None  # TODO : update this ?
     else:
-        ds, rcv_signal_library, grid_pressure_field, kraken_grid = (
+        xr_dataset, rcv_signal_library, grid_pressure_field, kraken_grid = (
             populate_anistropic_env(
-                ds, library_src, signal_library_dim, testcase, rcv_info, src_info
+                xr_dataset,
+                library_src,
+                signal_library_dim,
+                testcase,
+                rcv_info,
+                src_info,
             )
         )
 
-    ds["rcv_signal_library"] = (
+    xr_dataset["rcv_signal_library"] = (
         signal_library_dim,
         rcv_signal_library.astype(np.float32),
     )
-    ds["rcv_signal_library"].attrs["long_name"] = r"$s_{i}$"
+    xr_dataset["rcv_signal_library"].attrs["long_name"] = r"$s_{i}$"
 
-    ds.attrs["fullpath_populated"] = get_populated_path(
+    xr_dataset.attrs["fullpath_populated"] = get_populated_path(
         grid_info,
         kraken_env=testcase.env,
         src_signal_type=src_info["signal_type"],
     )
-    # ds.x.values, ds.y.values, kraken_env, library_src.name
 
-    if not os.path.exists(os.path.dirname(ds.fullpath_populated)):
-        os.makedirs(os.path.dirname(ds.fullpath_populated))
+    if not os.path.exists(os.path.dirname(xr_dataset.fullpath_populated)):
+        os.makedirs(os.path.dirname(xr_dataset.fullpath_populated))
 
-    ds.to_netcdf(ds.fullpath_populated)
+    populated_dataset = xr_dataset.copy(deep=True)
+    populated_dataarray = populated_dataset.rcv_signal_library
+    populated_dataarray.to_netcdf(xr_dataset.fullpath_populated)
 
-    return ds, grid_pressure_field, kraken_grid
+    return xr_dataset, grid_pressure_field, kraken_grid
 
 
 def add_event_to_dataset(
@@ -111,14 +100,19 @@ def add_event_to_dataset(
     event_src,
     src_info,
     rcv_info,
+    i_noise,
     snr_dB=None,
     isotropic_env=True,
     interp_src_pos_on_grid=False,
 ):
 
-    init_event_dataset(
-        xr_dataset, src_info, rcv_info, interp_src_pos_on_grid=interp_src_pos_on_grid
-    )
+    if i_noise == 0:
+        init_event_dataset(
+            xr_dataset,
+            src_info,
+            rcv_info,
+            interp_src_pos_on_grid=interp_src_pos_on_grid,
+        )
 
     signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
 
@@ -143,13 +137,18 @@ def add_event_to_dataset(
         )
 
 
+def load_noiseless_data(xr_dataset, populated_path):
+    noiseless_dataarray = xr.open_dataarray(populated_path)
+    xr_dataset["rcv_signal_library"] = noiseless_dataarray
+
+
 def verlinden_main(
     testcase,
     src_info,
     grid_info,
     rcv_info,
     snr,
-    detection_metric,
+    similarity_metrics,
     dt=None,
 ):
     if dt is None:
@@ -197,83 +196,76 @@ def verlinden_main(
         sig_type=src_info["signal_type"],
     )
 
-    grid_pressure_field = None  # Init to None to avoid redundancy
-    for snr_i in snr:
-        if snr_i is None:
-            snr_tag = "noiseless"
-            snr_msg = "Performing localisation process without noise"
-        else:
-            snr_tag = f"snr{snr_i}dB"
-            snr_msg = f"Performing localisation process with additive gaussian white noise SNR = {snr_i}dB"
-        print("## " + snr_msg + " ##")
+    # grid_pressure_field = None  # Init to None to avoid redundancy
+    for idx_snr, snr_i in enumerate(snr):
+        snr_tag = get_snr_tag(snr_dB=snr_i)
 
         populated_path = get_populated_path(
             grid_info, kraken_env=testcase.env, src_signal_type=src_info["signal_type"]
         )
 
-        event_in_dataset = False
-        complete_dataset_loaded = False
-        for det_metric in detection_metric:
-            det_msg = f"Detection metric: {det_metric}"
-            print("# " + det_msg + " #")
+        # Loop over different realisation of noise for a given SNR
+        n_noise_realisations = 1000  # TODO pass as param
+        for i in range(n_noise_realisations):
+            print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
 
-            if (
-                os.path.exists(populated_path)
-                and not complete_dataset_loaded
-                and grid_pressure_field is not None
-            ):
-                verlinden_dataset = xr.open_dataset(populated_path)
-            elif not os.path.exists(populated_path) or grid_pressure_field is None:
-                # Populate grid with received signal
+            if i == 0 and idx_snr == 0:
+                # Populate grid with received signal at the very first iteration
                 verlinden_dataset, grid_pressure_field, kraken_grid = populate_grid(
                     library_src,
                     grid_info,
                     rcv_info,
                     src_info,
                     testcase=testcase,
+                    n_noise_realisations=n_noise_realisations,
+                    similarity_metrics=similarity_metrics,
                 )
 
-            # 10/01/2024 No more 1 save/snr to save memory
-            if not complete_dataset_loaded:
-                # Add noise to dataset
-                add_noise_to_dataset(verlinden_dataset, snr_dB=snr_i)
+            else:
+                # Load noiseless data
+                load_noiseless_data(verlinden_dataset, populated_path)
+                # verlinden_dataset = xr.open_dataset(populated_path)
 
-                # Derive correlation vector for the entire grid
-                add_correlation_to_dataset(verlinden_dataset)
+            # Process localisation
+            # Add noise to dataset
+            add_noise_to_dataset(verlinden_dataset, snr_dB=snr_i)
 
-                # Switch flag to avoid redundancy
-                complete_dataset_loaded = True
+            # Derive correlation vector for the entire grid
+            add_correlation_to_dataset(verlinden_dataset)
 
+            # Add event to dataset
             event_src = library_src
             event_src.z_src = src_info["depth"]
-            if not event_in_dataset:
-                add_event_to_dataset(
-                    xr_dataset=verlinden_dataset,
-                    grid_pressure_field=grid_pressure_field,
-                    kraken_grid=kraken_grid,
-                    kraken_env=testcase.env,
-                    event_src=event_src,
-                    src_info=src_info,
-                    rcv_info=rcv_info,
-                    snr_dB=snr_i,
-                    isotropic_env=testcase.isotropic,
-                )
-                event_in_dataset = True
-
-            build_ambiguity_surf(verlinden_dataset, det_metric)
-
-            # Save dataset
-            save_dataset(
-                verlinden_dataset,
-                output_folder=VERLINDEN_OUTPUT_FOLDER,
-                analysis_folder=VERLINDEN_ANALYSIS_FOLDER,
-                env_filename=testcase.env.filename,
-                src_name=library_src.name,
-                det_metric=det_metric,
-                snr_tag=snr_tag,
+            add_event_to_dataset(
+                xr_dataset=verlinden_dataset,
+                grid_pressure_field=grid_pressure_field,
+                kraken_grid=kraken_grid,
+                kraken_env=testcase.env,
+                event_src=event_src,
+                src_info=src_info,
+                rcv_info=rcv_info,
+                snr_dB=snr_i,
+                isotropic_env=testcase.isotropic,
+                i_noise=i,
             )
 
-        verlinden_dataset = verlinden_dataset.drop_vars("event_signal_time")
+            for i_sim_metric in range(len(similarity_metrics)):
+
+                build_ambiguity_surf(
+                    verlinden_dataset, idx_similarity_metric=i_sim_metric, i_noise=i
+                )
+
+        # Save dataset
+        save_dataset(
+            verlinden_dataset,
+            output_folder=VERLINDEN_OUTPUT_FOLDER,
+            analysis_folder=VERLINDEN_ANALYSIS_FOLDER,
+            env_filename=testcase.env.filename,
+            src_name=library_src.name,
+            snr_tag=snr_tag,
+        )
+
+    # verlinden_dataset = verlinden_dataset.drop_vars("event_signal_time")
 
     print(f"### Verlinden simulation process done ###")
 
@@ -283,43 +275,4 @@ def verlinden_main(
 
 
 if __name__ == "__main__":
-    v_ship = 50 / 3.6  # m/s
-    src_info = dict(
-        x_pos=[-1000, 2500],
-        y_pos=[3000, 2000],
-        v_src=v_ship,
-        nmax_ship=100,
-        src_signal_type="pulse_train",
-        z_src=5,
-        on_grid=False,
-    )
-
-    grid_info = dict(
-        Lx=5 * 1e3,
-        Ly=5 * 1e3,
-        dx=100,
-        dy=100,
-    )
-
-    obs_info = dict(
-        x_obs=[0, 1500],
-        y_obs=[0, 0],
-    )
-
-    snr = [-30, 0]
-    detection_metric = ["intercorr0"]
-    # detection_metric = ["intercorr0", "lstsquares", "hilbert_env_intercorr0"]
-
-    depth = 150  # Depth m
-    env_fname = "verlinden_1_test_case"
-    env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case"
-    verlinden_main(
-        env_fname=env_fname,
-        env_root=env_root,
-        src_info=src_info,
-        grid_info=grid_info,
-        rcv_info=obs_info,
-        snr=snr,
-        detection_metric=detection_metric,
-        depth_max=depth,
-    )
+    pass

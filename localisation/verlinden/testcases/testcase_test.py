@@ -44,15 +44,15 @@ def run_tc(
     initial_ship_pos,
     snr=[],
     src_signal_type=[],
-    detection_metric=[],
+    similarity_metrics=[],
     grid_offset_cells=35,
     debug=False,
     re_analysis=False,
 ):
 
-    # detection_metric = ["intercorr0"]
-    if not detection_metric:
-        detection_metric = ["hilbert_env_intercorr0"]
+    # similarity_metrics = ["intercorr0"]
+    if not similarity_metrics:
+        similarity_metrics = ["hilbert_env_intercorr0"]
     if not snr:
         snr = [None]
     if not src_signal_type:
@@ -69,10 +69,10 @@ def run_tc(
         src_signal_type = ["debug_pulse"]
         snr = [0]
         duration = 200  # 1000 s
-        nmax_ship = 10
+        nmax_ship = 1
         grid_info = dict(
-            offset_cells_lon=1,
-            offset_cells_lat=1,
+            offset_cells_lon=10,
+            offset_cells_lat=10,
             dx=100,
             dy=100,
         )
@@ -84,7 +84,7 @@ def run_tc(
         # duration = 200  # 1000 s
         # nmax_ship = 10
         duration = 200  # 1000 s
-        nmax_ship = 1000
+        nmax_ship = 1
 
         grid_info = dict(
             offset_cells_lon=grid_offset_cells,
@@ -113,7 +113,7 @@ def run_tc(
                 grid_info=grid_info,
                 rcv_info=rcv_info,
                 snr=snr,
-                detection_metric=detection_metric,
+                similarity_metrics=similarity_metrics,
             )
         else:
             simu_folder, testcase_name = get_simu_info(testcase)
@@ -143,7 +143,7 @@ def run_tc(
         # Analyse the results
         analysis_main(
             snr,
-            detection_metric,
+            similarity_metrics=similarity_metrics,
             testcase_name=testcase_name,
             simulation_info=simulation_info,
             grid_info=grid_info,
@@ -200,25 +200,25 @@ def run_tests(run_mode, re_analysis=False):
 
     # Test case 1.0
     src_signal_type = ["ship"]
-    detection_metric = ["intercorr0"]
-    # detection_metric = ["hilbert_env_intercorr0"]
+    similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
+    # similarity_metrics = ["hilbert_env_intercorr0"]
 
     # snr = [-10, -5, 0, 5, 10, None]
     # grid_offset_cells = 80
     snr = [0]
-    grid_offset_cells = 80
+    grid_offset_cells = 40
 
-    run_tc(
-        testcase=TestCase1_0(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        snr=snr,
-        src_signal_type=src_signal_type,
-        detection_metric=detection_metric,
-        grid_offset_cells=grid_offset_cells,
-        debug=debug,
-        re_analysis=re_analysis,
-    )
+    # run_tc(
+    #     testcase=TestCase1_0(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    # )
 
     # Test case 1.1
     # run_tc(
@@ -227,7 +227,7 @@ def run_tests(run_mode, re_analysis=False):
     #     initial_ship_pos=initial_ship_pos_sw,
     #     snr=snr,
     #     src_signal_type=src_signal_type,
-    #     detection_metric=detection_metric,
+    #     similarity_metrics=similarity_metrics,
     #     grid_offset_cells=grid_offset_cells,
     #     debug=debug,
     #     re_analysis=re_analysis,
@@ -251,18 +251,18 @@ def run_tests(run_mode, re_analysis=False):
     #     re_analysis=re_analysis,
     # )
 
-    # # Test case 1.4
-    # run_tc(
-    #     testcase=TestCase1_4(),
-    #     rcv_info=rcv_info_sw,
-    #     initial_ship_pos=initial_ship_pos_sw,
-    #     snr=snr,
-    #     src_signal_type=src_signal_type,
-    #     detection_metric=detection_metric,
-    #     grid_offset_cells=grid_offset_cells,
-    #     debug=debug,
-    #     re_analysis=re_analysis,
-    # )
+    # Test case 1.4
+    run_tc(
+        testcase=TestCase1_4(),
+        rcv_info=rcv_info_sw,
+        initial_ship_pos=initial_ship_pos_sw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        similarity_metrics=similarity_metrics,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+    )
 
     # # Test case 2.0
     # run_tc(
@@ -293,7 +293,7 @@ def run_tests(run_mode, re_analysis=False):
 
     # Test case 3.1
     src_signal_type = ["ship"]
-    detection_metric = ["hilbert_env_intercorr0"]
+    similarity_metrics = ["hilbert_env_intercorr0"]
     snr = [-10, -5, 0, 5, 10, None]
     # snr = [None]
     # run_tc(
@@ -302,7 +302,7 @@ def run_tests(run_mode, re_analysis=False):
     #     initial_ship_pos=initial_ship_pos_dw,
     #     snr=snr,
     #     src_signal_type=src_signal_type,
-    #     detection_metric=detection_metric,
+    #     similarity_metrics=similarity_metrics,
     #     grid_offset_cells=grid_offset_cells,
     #     debug=debug,
     #     re_analysis=re_analysis,
@@ -319,12 +319,13 @@ if __name__ == "__main__":
     # run_mode = "normal"
     re_analysis = False
 
-    run_mode = "debug"
     import sys
 
     if hasattr(sys, "gettrace") and (sys.gettrace() is not None):
         run_mode = "debug"
     else:
         run_mode = "normal"
+
+    # run_mode = "normal"
 
     run_tests(run_mode, re_analysis)

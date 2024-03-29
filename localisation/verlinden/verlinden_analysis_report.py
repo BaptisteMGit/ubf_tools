@@ -8,7 +8,7 @@ PFIG = PubFigure()
 
 
 def plot_localisation_performance(
-    data, testcase_name, detection_metric_list, metrics_to_plot, img_path
+    data, testcase_name, similarity_metrics, metrics_to_plot, img_path
 ):
     # Sort data by SNR
     noisy_data = data[data["SNR"] != " None"].astype({"SNR": np.float32})
@@ -21,7 +21,7 @@ def plot_localisation_performance(
 
     # Define positions of the bars
     positions = np.arange(len(data["SNR"].unique()))
-    m = len(detection_metric_list)
+    m = len(similarity_metrics)
     alpha = np.arange(-(m // 2), (m // 2) + m % 2, 1) + ((m + 1) % 2) / 2
 
     # Create bar plot
@@ -29,14 +29,14 @@ def plot_localisation_performance(
     all_pos = np.array([])
     colors = []
     for i_m, metric in enumerate(metrics_to_plot):
-        for i_dm, detection_metric in enumerate(detection_metric_list):
-            bar = data[data["Detection metric"] == detection_metric][metric]
+        for i_dm, similarity_metric in enumerate(similarity_metrics):
+            bar = data[data["Detection metric"] == similarity_metric][metric]
             if not bar.empty:
                 b = plt.bar(
                     positions + alpha[i_dm] * bar_width,
                     bar.values,
                     width=bar_width,
-                    label=detection_metric,
+                    label=similarity_metric,
                 )
 
                 # Add value labels to bars
@@ -68,6 +68,16 @@ def plot_localisation_performance(
         ylabel = "Position error 99 % percentile [m]"
     elif metrics_to_plot[0] == "MEDIAN":
         ylabel = "Position median error [m]"
+    elif metrics_to_plot[0] == "MEAN":
+        ylabel = "Position mean error [m]"
+    elif metrics_to_plot[0] == "STD":
+        ylabel = "Position error standard deviation [m]"
+    elif metrics_to_plot[0] == "RMSE":
+        ylabel = "Position error RMSE [m]"
+    elif metrics_to_plot[0] == "MIN":
+        ylabel = "Position error min [m]"
+    elif metrics_to_plot[0] == "MAX":
+        ylabel = "Position error max [m]"
     elif metrics_to_plot[0] == "dynamic_range":
         ylabel = "Ambiguity surface dynamic range [dB]"
     else:
@@ -82,3 +92,7 @@ def plot_localisation_performance(
     plt.legend(ncol=2)
     plt.tight_layout()
     plt.savefig(os.path.join(img_path, img_name))
+
+
+if __name__ == "__main__":
+    pass

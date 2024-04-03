@@ -48,6 +48,7 @@ def run_tc(
     grid_offset_cells=35,
     debug=False,
     re_analysis=False,
+    nb_noise_realisations_per_snr=100,
 ):
 
     # similarity_metrics = ["intercorr0"]
@@ -114,6 +115,7 @@ def run_tc(
                 rcv_info=rcv_info,
                 snr=snr,
                 similarity_metrics=similarity_metrics,
+                nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
             )
         else:
             simu_folder, testcase_name = get_simu_info(testcase)
@@ -136,8 +138,8 @@ def run_tc(
             "plot_pos_error": True,
             "plot_correlation": True,
             "tl_freq_to_plot": [20],
-            "lon_offset": 0.05,
-            "lat_offset": 0.05,
+            "lon_offset": 0.001,
+            "lat_offset": 0.001,
         }
 
         # Analyse the results
@@ -199,26 +201,29 @@ def run_tests(run_mode, re_analysis=False):
     }
 
     # Test case 1.0
+    nb_noise_realisations_per_snr = 100
     src_signal_type = ["ship"]
     similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
+    snr = [-10, -5, 0, 5]
     # similarity_metrics = ["hilbert_env_intercorr0"]
 
     # snr = [-10, -5, 0, 5, 10, None]
     # grid_offset_cells = 80
-    snr = [0]
+    # snr = [0, -5]
     grid_offset_cells = 40
 
-    # run_tc(
-    #     testcase=TestCase1_0(),
-    #     rcv_info=rcv_info_sw,
-    #     initial_ship_pos=initial_ship_pos_sw,
-    #     snr=snr,
-    #     src_signal_type=src_signal_type,
-    #     similarity_metrics=similarity_metrics,
-    #     grid_offset_cells=grid_offset_cells,
-    #     debug=debug,
-    #     re_analysis=re_analysis,
-    # )
+    run_tc(
+        testcase=TestCase1_0(),
+        rcv_info=rcv_info_sw,
+        initial_ship_pos=initial_ship_pos_sw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        similarity_metrics=similarity_metrics,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    )
 
     # Test case 1.1
     # run_tc(
@@ -262,6 +267,7 @@ def run_tests(run_mode, re_analysis=False):
         grid_offset_cells=grid_offset_cells,
         debug=debug,
         re_analysis=re_analysis,
+        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
     )
 
     # # Test case 2.0
@@ -294,19 +300,20 @@ def run_tests(run_mode, re_analysis=False):
     # Test case 3.1
     src_signal_type = ["ship"]
     similarity_metrics = ["hilbert_env_intercorr0"]
-    snr = [-10, -5, 0, 5, 10, None]
+    snr = [-10, -5, 0, 5]
     # snr = [None]
-    # run_tc(
-    #     testcase=TestCase3_1(),
-    #     rcv_info=rcv_info_dw,
-    #     initial_ship_pos=initial_ship_pos_dw,
-    #     snr=snr,
-    #     src_signal_type=src_signal_type,
-    #     similarity_metrics=similarity_metrics,
-    #     grid_offset_cells=grid_offset_cells,
-    #     debug=debug,
-    #     re_analysis=re_analysis,
-    # )
+    run_tc(
+        testcase=TestCase3_1(),
+        rcv_info=rcv_info_dw,
+        initial_ship_pos=initial_ship_pos_dw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        similarity_metrics=similarity_metrics,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    )
 
 
 if __name__ == "__main__":
@@ -326,6 +333,6 @@ if __name__ == "__main__":
     else:
         run_mode = "normal"
 
-    # run_mode = "normal"
+    # run_mode = "debug"
 
     run_tests(run_mode, re_analysis)

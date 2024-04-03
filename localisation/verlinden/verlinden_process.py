@@ -100,13 +100,13 @@ def add_event_to_dataset(
     event_src,
     src_info,
     rcv_info,
-    i_noise,
+    init_event=True,
     snr_dB=None,
     isotropic_env=True,
     interp_src_pos_on_grid=False,
 ):
 
-    if i_noise == 0:
+    if init_event:
         init_event_dataset(
             xr_dataset,
             src_info,
@@ -149,6 +149,7 @@ def verlinden_main(
     rcv_info,
     snr,
     similarity_metrics,
+    nb_noise_realisations_per_snr=10,
     dt=None,
 ):
     if dt is None:
@@ -205,35 +206,36 @@ def verlinden_main(
         )
 
         # Loop over different realisation of noise for a given SNR
-        n_noise_realisations = 1000  # TODO pass as param
+        n_noise_realisations = nb_noise_realisations_per_snr  # TODO pass as param
         for i in range(n_noise_realisations):
             print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
 
-            if i == 0 and idx_snr == 0:
-                # Populate grid with received signal at the very first iteration
-                verlinden_dataset, grid_pressure_field, kraken_grid = populate_grid(
-                    library_src,
-                    grid_info,
-                    rcv_info,
-                    src_info,
-                    testcase=testcase,
-                    n_noise_realisations=n_noise_realisations,
-                    similarity_metrics=similarity_metrics,
-                )
+            if i == 0:
+                if idx_snr == 0:
+                    # Populate grid with received signal at the very first iteration
+                    verlinden_dataset, grid_pressure_field, kraken_grid = populate_grid(
+                        library_src,
+                        grid_info,
+                        rcv_info,
+                        src_info,
+                        testcase=testcase,
+                        n_noise_realisations=n_noise_realisations,
+                        similarity_metrics=similarity_metrics,
+                    )
+                else:
+                    # Load noiseless data
+                    load_noiseless_data(verlinden_dataset, populated_path)
 
-            else:
-                # Load noiseless data
-                load_noiseless_data(verlinden_dataset, populated_path)
-                # verlinden_dataset = xr.open_dataset(populated_path)
+                # Add noise to dataset
+                add_noise_to_dataset(verlinden_dataset, snr_dB=snr_i)
 
-            # Process localisation
-            # Add noise to dataset
-            add_noise_to_dataset(verlinden_dataset, snr_dB=snr_i)
-
-            # Derive correlation vector for the entire grid
-            add_correlation_to_dataset(verlinden_dataset)
+                # Derive correlation vector for the entire grid
+                add_correlation_to_dataset(verlinden_dataset)
 
             # Add event to dataset
+            init_event = (i == 0) and (
+                idx_snr == 0
+            )  # Init event only at the first iteration
             event_src = library_src
             event_src.z_src = src_info["depth"]
             add_event_to_dataset(
@@ -246,7 +248,7 @@ def verlinden_main(
                 rcv_info=rcv_info,
                 snr_dB=snr_i,
                 isotropic_env=testcase.isotropic,
-                i_noise=i,
+                init_event=init_event,
             )
 
             for i_sim_metric in range(len(similarity_metrics)):

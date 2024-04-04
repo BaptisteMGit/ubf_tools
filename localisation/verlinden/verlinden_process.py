@@ -35,8 +35,37 @@ def populate_grid(
     similarity_metrics,
 ):
     """
-    Populate grid with received signal for isotropic environment. This function is used to generate the library of received signals for the Verlinden method.
-    In this specific case, the environment is isotropic and the received signal only depends on the range from the source to the receiver.
+    Populate grid with received signal.
+    This function is used to generate the library of received signals.
+    This library is meant to be used as a reference to compare the received signal of an event.
+
+    Parameters
+    ----------
+    library_src : LibrarySrc
+        LibrarySrc object containing the source signal
+    grid_info : dict
+        Dictionary containing the grid information
+    rcv_info : dict
+        Dictionary containing the receiver information
+    src_info : dict
+        Dictionary containing the source information
+    testcase : TestCase
+        TestCase object containing the environment information
+    n_noise_realisations : int
+        Number of noise realisations
+    similarity_metrics : list
+        List of similarity metrics to be computed
+
+    Returns
+    -------
+    xr_dataset : xarray.Dataset
+        Dataset containing the populated grid
+    grid_pressure_field : np.ndarray
+        Pressure field of the grid
+    kraken_grid : np.ndarray
+        Kraken grid
+
+
     """
 
     # Init Dataset
@@ -104,6 +133,39 @@ def add_event_to_dataset(
     isotropic_env=True,
     interp_src_pos_on_grid=False,
 ):
+    """
+    Add event to dataset.
+
+    Parameters
+    ----------
+    xr_dataset : xarray.Dataset
+        Dataset containing the populated grid
+    grid_pressure_field : np.ndarray
+        Pressure field of the grid
+    kraken_grid : np.ndarray
+        Kraken grid
+    kraken_env : KrakenEnv
+        KrakenEnv object containing the environment information
+    event_src : LibrarySrc
+        LibrarySrc object containing the source signal
+    src_info : dict
+        Dictionary containing the source information
+    rcv_info : dict
+        Dictionary containing the receiver information
+    init_event : bool
+        Boolean to initialize the event
+    snr_dB : float
+        Signal to noise ratio in dB
+    isotropic_env : bool
+        Boolean to switch between isotropic and anisotropic environment
+    interp_src_pos_on_grid : bool
+        Boolean to interpolate the source position on the grid
+
+    Returns
+    -------
+    None
+
+    """
 
     if init_event:
         init_event_dataset(
@@ -137,6 +199,21 @@ def add_event_to_dataset(
 
 
 def load_noiseless_data(xr_dataset, populated_path):
+    """
+    Load noiseless data.
+
+    Parameters
+    ----------
+    xr_dataset : xarray.Dataset
+        Dataset containing the populated grid
+    populated_path : str
+        Path to the populated grid
+
+    Returns
+    -------
+    None
+
+    """
     noiseless_dataarray = xr.open_dataarray(populated_path)
     xr_dataset["rcv_signal_library"] = noiseless_dataarray
 
@@ -151,6 +228,36 @@ def verlinden_main(
     nb_noise_realisations_per_snr=10,
     dt=None,
 ):
+    """
+    Main function to run the Verlinden simulation process.
+
+    Parameters
+    ----------
+    testcase : TestCase
+        TestCase object containing the environment information
+    src_info : dict
+        Dictionary containing the source information
+    grid_info : dict
+        Dictionary containing the grid information
+    rcv_info : dict
+        Dictionary containing the receiver information
+    snr : list
+        List of signal to noise ratio in dB
+    similarity_metrics : list
+        List of similarity metrics to be computed
+    nb_noise_realisations_per_snr : int
+        Number of noise realisations per SNR
+    dt : float
+        Time step
+
+    Returns
+    -------
+    simu_folder : str
+        Simulation folder
+    env_filename : str
+        Environment filename
+
+    """
     if dt is None:
         dt = (
             min(grid_info["dx"], grid_info["dy"]) / src_info["speed"]

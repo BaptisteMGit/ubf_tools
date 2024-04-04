@@ -843,13 +843,14 @@ def plot_pos_error(ds, img_root):
                 linestyle="--",
                 label=mean_label,
             )
-            for sgn in [-1, 1]:
-                plt.axvline(
-                    position_error.mean() + sgn * position_error.std(),
-                    color="green",
-                    linestyle="--",
-                    label=std_label,
-                )
+            # for sgn in [-1, 1]:
+            # One sided (error > 0)
+            plt.axvline(
+                position_error.mean() + position_error.std(),
+                color="green",
+                linestyle="--",
+                label=std_label,
+            )
 
             plt.xlabel("Position error [m]")
             plt.ylabel("Number of simulations")

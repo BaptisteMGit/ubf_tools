@@ -13,6 +13,8 @@
 # Import
 # ======================================================================================================================
 import os
+import numpy as np
+from pyproj import Geod
 from localisation.verlinden.verlinden_process import verlinden_main
 from localisation.verlinden.verlinden_analysis import analysis_main, compare_perf_src
 from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
@@ -66,6 +68,31 @@ def run_tc(
     z_src = 5
     route_azimuth = 45  # North-East route
 
+    # Derive bathy grid size
+    lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
+    lat_rad = np.radians(lat)  # Latitude en radians
+    lon_rad = np.radians(lon)  # Longitude en radians
+
+    grid_size = 15 / 3600 * np.pi / 180  # 15" (secondes d'arc)
+    lat_0 = lat_rad - grid_size
+    lat_1 = lat_rad + grid_size
+    lon_0 = lon_rad - grid_size
+    lon_1 = lon_rad + grid_size
+
+    geod = Geod(ellps="WGS84")
+    _, _, dlat = geod.inv(
+        lons1=lon,
+        lats1=np.degrees(lat_0),
+        lons2=lon,
+        lats2=np.degrees(lat_1),
+    )
+    _, _, dlon = geod.inv(
+        lons1=np.degrees(lon_0),
+        lats1=lat,
+        lons2=np.degrees(lon_1),
+        lats2=lat,
+    )
+
     if debug:
         src_signal_type = ["debug_pulse"]
         snr = [0]
@@ -76,6 +103,8 @@ def run_tc(
             offset_cells_lat=10,
             dx=100,
             dy=100,
+            dlat_bathy=dlat,
+            dlon_bathy=dlon,
         )
 
     else:
@@ -92,6 +121,8 @@ def run_tc(
             offset_cells_lat=grid_offset_cells,
             dx=100,
             dy=100,
+            dlat_bathy=dlat,
+            dlon_bathy=dlon,
         )
 
     for src_stype in src_signal_type:
@@ -203,27 +234,27 @@ def run_tests(run_mode, re_analysis=False):
     # Test case 1.0
     nb_noise_realisations_per_snr = 100
     src_signal_type = ["ship"]
-    similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
-    snr = [-10, -5, 0, 5]
-    # similarity_metrics = ["hilbert_env_intercorr0"]
+    # similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
+    # snr = [-10, -5, 0, 5]
+    similarity_metrics = ["hilbert_env_intercorr0"]
 
     # snr = [-10, -5, 0, 5, 10, None]
     # grid_offset_cells = 80
-    # snr = [0, -5]
+    snr = [0, -5]
     grid_offset_cells = 40
 
-    run_tc(
-        testcase=TestCase1_0(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        snr=snr,
-        src_signal_type=src_signal_type,
-        similarity_metrics=similarity_metrics,
-        grid_offset_cells=grid_offset_cells,
-        debug=debug,
-        re_analysis=re_analysis,
-        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
-    )
+    # run_tc(
+    #     testcase=TestCase1_0(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    # )
 
     # Test case 1.1
     # run_tc(
@@ -257,18 +288,18 @@ def run_tests(run_mode, re_analysis=False):
     # )
 
     # Test case 1.4
-    run_tc(
-        testcase=TestCase1_4(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        snr=snr,
-        src_signal_type=src_signal_type,
-        similarity_metrics=similarity_metrics,
-        grid_offset_cells=grid_offset_cells,
-        debug=debug,
-        re_analysis=re_analysis,
-        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
-    )
+    # run_tc(
+    #     testcase=TestCase1_4(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    # )
 
     # # Test case 2.0
     # run_tc(
@@ -333,6 +364,6 @@ if __name__ == "__main__":
     else:
         run_mode = "normal"
 
-    # run_mode = "debug"
+    run_mode = "debug"
 
     run_tests(run_mode, re_analysis)

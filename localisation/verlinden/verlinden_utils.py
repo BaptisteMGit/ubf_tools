@@ -630,7 +630,8 @@ def init_library_dataset(
 
         # Build list of angles to be used in kraken
         dmax = ds.r_from_rcv.min(dim=["lat", "lon", "idx_rcv"]).round(0).values
-        delta = min(ds.dx, ds.dy)
+        delta = np.sqrt(grid_info["dlat_bathy"] ** 2 + grid_info["dlon_bathy"] ** 2)
+        # delta = min(ds.dx, ds.dy)
         d_az = np.arctan(delta / dmax) * 180 / np.pi
         list_az_th = np.arange(ds.az_rcv.min(), ds.az_rcv.max(), d_az)
 
@@ -1305,7 +1306,6 @@ def init_grid_around_event_src_traj(src_info, grid_info):
         dist=offset_lon,
     )
 
-    # ):  # Case where the trajectory is in the southern hemisphere
     _, min_lat_grid, _ = geod.fwd(
         lons=mean_lon,
         lats=min_lat,

@@ -20,7 +20,6 @@ import xarray as xr
 from localisation.verlinden.verlinden_path import (
     VERLINDEN_OUTPUT_FOLDER,
     VERLINDEN_ANALYSIS_FOLDER,
-    VERLINDEN_POPULATED_FOLDER,
 )
 
 from localisation.verlinden.verlinden_utils import *
@@ -160,6 +159,10 @@ def verlinden_main(
     # Initialize source
     min_waveguide_depth = 150  # Dummy value updated once bathy is loaded
     library_src = init_library_src(
+        dt, min_waveguide_depth=min_waveguide_depth, sig_type=src_info["signal_type"]
+    )
+
+    event_src = init_library_src(
         dt, min_waveguide_depth=min_waveguide_depth, sig_type=src_info["signal_type"]
     )
     # Plot source signal and spectrum

@@ -265,13 +265,14 @@ def verlinden_main(
 
     # Initialize source
     min_waveguide_depth = 150  # Dummy value updated once bathy is loaded
-    library_src = init_library_src(
-        dt, min_waveguide_depth=min_waveguide_depth, sig_type=src_info["signal_type"]
+    library_src = init_src(
+        dt, min_waveguide_depth=min_waveguide_depth, src_info=src_info["library"]
     )
 
-    event_src = init_library_src(
-        dt, min_waveguide_depth=min_waveguide_depth, sig_type=src_info["signal_type"]
+    event_src = init_src(
+        dt, min_waveguide_depth=min_waveguide_depth, src_info=src_info["event"]
     )
+
     # Plot source signal and spectrum
     plot_src(library_src, testcase)
 
@@ -302,9 +303,16 @@ def verlinden_main(
     # Assert kraken freq set with correct min_depth (otherwise postprocess will fail)
     library_src = check_waveguide_cutoff(
         testcase=testcase,
-        library_src=library_src,
+        src=library_src,
         dt=dt,
-        sig_type=src_info["signal_type"],
+        src_info=src_info["library"],
+    )
+
+    event_src = check_waveguide_cutoff(
+        testcase=testcase,
+        src=event_src,
+        dt=dt,
+        src_info=src_info["event"],
     )
 
     # grid_pressure_field = None  # Init to None to avoid redundancy
@@ -346,7 +354,7 @@ def verlinden_main(
             init_event = (i == 0) and (
                 idx_snr == 0
             )  # Init event only at the first iteration
-            event_src = library_src
+            # event_src = library_src
             event_src.z_src = src_info["depth"]
             add_event_to_dataset(
                 xr_dataset=verlinden_dataset,
@@ -366,6 +374,9 @@ def verlinden_main(
                 build_ambiguity_surf(
                     verlinden_dataset, idx_similarity_metric=i_sim_metric, i_noise=i
                 )
+
+        # Add source and event to dataset
+        add_src_to_dataset(verlinden_dataset, library_src, event_src, src_info)
 
         # Save dataset
         save_dataset(

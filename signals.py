@@ -67,6 +67,55 @@ def ship_noise(T):
     return s, t
 
 
+def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100):
+
+    if std_fi is None:
+        std_fi = f0 * 1 / 100
+    if tau_corr_fi is None:
+        tau_corr_fi = 1 / f0
+
+    # source signal parameters
+    Nh = int(np.floor(fs / 2 / f0) - 1)
+    A_harmonics = np.ones(Nh)
+
+    # signal variables
+    t = np.arange(0, Ttot, 1 / fs)
+    f = np.arange(0, fs, 1 / Ttot)
+    Nt = len(t)
+
+    # random instant frequency perturbation delta_fi with Gaussian power spectrum
+    Gaussian = np.zeros_like(f)
+
+    Gaussian[0 : int(np.floor(Nt / 2))] = (
+        np.sqrt(2 * np.pi)
+        * tau_corr_fi
+        * std_fi**2
+        * np.exp(-2 * (np.pi * f[0 : int(np.floor(Nt / 2))] * tau_corr_fi) ** 2)
+    )
+    Gaussian[-1 : int(np.floor(Nt / 2)) : -1] = np.conj(
+        Gaussian[1 : int(np.ceil(Nt / 2))]
+    )
+    delta_fi = np.random.randn(len(t))
+    delta_fi = np.fft.ifft(np.fft.fft(delta_fi) * np.sqrt(Gaussian * Nt / Ttot))
+    delta_ph = np.cumsum(delta_fi) / fs  # random instant phase perturbation
+
+    # Derive ship signal from harmonics
+    s = np.zeros_like(t, dtype=complex)
+    for l in range(1, Nh + 1):
+        s += (
+            A_harmonics[l - 1]
+            * ship_spectrum(f0 * l)
+            * np.exp(1j * 2 * np.pi * l * (f0 * t + delta_ph))
+        )
+
+    # Real
+    s = s.real
+    # Normalize to 1
+    s /= np.max(np.abs(s))
+
+    return s, t
+
+
 def ship_spectrum(f):
     f = np.array(f)
     fc = 15
@@ -88,9 +137,33 @@ def ricker_pulse(fc, fs, T, t0=0, center=True):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
-    s, t = ricker_pulse(fc=200, T=0.05, fs=20 * 200, center=True)
+    # s, t = ricker_pulse(fc=200, T=0.05, fs=20 * 200, center=True)
+    # plt.figure()
+    # plt.plot(t, s)
+    # plt.xlabel("Time (s)")
+    # plt.ylabel("Amplitude")
+    # plt.show()
+
+    # Exemple d'utilisation de la fonction
+    Ttot = 50  # Durée totale du signal en secondes
+    f0 = 0.5  # Fréquence fondamentale
+    std_fi = f0 * 1 / 100  # Écart-type de la fluctuation de fréquence
+    tau_corr_fi = 1 / f0  # frequency fluctuation correlation time
+
+    std_fi_1 = f0 * 10 / 100  # Écart-type de la fluctuation de fréquence
+
+    std_fi_2 = f0 * 1 / 100  # Écart-type de la fluctuation de fréquence
+    tau_corr_fi_2 = 0.0001 / f0  # frequency fluctuation correlation time
+
+    signal, time = generate_ship_signal(Ttot, f0, std_fi)
+    signal_1, time = generate_ship_signal(Ttot, f0, std_fi_1)
+    signal_2, time = generate_ship_signal(Ttot, f0, std_fi_2, tau_corr_fi_2)
+
     plt.figure()
-    plt.plot(t, s)
+    plt.plot(time, signal, label=f"std_fi={std_fi}")
+    plt.plot(time, signal_1, label=f"std_fi={std_fi_1}")
+    plt.plot(time, signal_2, label=f"std_fi={std_fi_2}, tau_corr_fi={tau_corr_fi_2}")
     plt.xlabel("Time (s)")
     plt.ylabel("Amplitude")
+    plt.legend()
     plt.show()

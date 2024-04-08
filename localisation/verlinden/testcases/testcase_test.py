@@ -106,6 +106,7 @@ def run_tc(
             dlat_bathy=dlat,
             dlon_bathy=dlon,
         )
+        nb_noise_realisations_per_snr = 5
 
     else:
         # src_signal_type = ["ship"]
@@ -137,6 +138,60 @@ def run_tc(
             "initial_pos": initial_ship_pos,
         }
 
+        # Build dict with info about ship signal to be used to populated the grid and èship signal used as event signal
+        if src_stype == "debug_pulse":
+            # no specific param
+            lib_src_info = {
+                "sig_type": "debug_pulse",
+            }
+            event_src_info = {
+                "sig_type": "debug_pulse",
+            }
+
+        elif src_stype == "pulse":
+            # Library
+            fc = 25  # Carrier frequency of the pulse signal
+            fs = 100  # Sampling frequency
+            lib_src_info = {
+                "sig_type": "pulse",
+                "fc": fc,
+                "fs": fs,
+            }
+
+            # Event
+            fc = 10  # Carrier frequency of the pulse signal
+            fs = 40  # Sampling frequency
+            event_src_info = {
+                "sig_type": "pulse",
+                "fc": fc,
+                "fs": fs,
+            }
+
+        elif src_stype == "ship":
+            fs = 100  # Sampling frequency
+            # Library
+            f0_lib = 0.5  # Fundamental frequency of the ship signal
+            lib_src_info = {
+                "sig_type": "ship",
+                "f0": f0_lib,
+                "std_fi": f0_lib * 1 / 100,
+                "tau_corr_fi": 1 / f0_lib,
+                "fs": fs,
+            }
+
+            # Event
+            f0_event = 0.5  # Fundamental frequency of the ship signal
+            event_src_info = {
+                "sig_type": "ship",
+                "f0": f0_event,
+                "std_fi": f0_event * 10 / 100,
+                "tau_corr_fi": 0.1 / f0_event,
+                "fs": fs,
+            }
+
+        src_info["library"] = lib_src_info
+        src_info["event"] = event_src_info
+
         if not re_analysis:
             # Run all the process
             simu_folder, testcase_name = verlinden_main(
@@ -162,12 +217,13 @@ def run_tc(
         plot_info = {
             "plot_video": False,
             "plot_one_tl_profile": False,
-            "plot_ambiguity_surface_dist": False,
-            "plot_received_signal": True,
-            "plot_ambiguity_surface": True,
-            "plot_ship_trajectory": True,
-            "plot_pos_error": True,
-            "plot_correlation": True,
+            "plot_ambiguity_surface_dist": True,
+            "plot_received_signal": False,
+            "plot_emmited_signal": False,
+            "plot_ambiguity_surface": False,
+            "plot_ship_trajectory": False,
+            "plot_pos_error": False,
+            "plot_correlation": False,
             "tl_freq_to_plot": [20],
             "lon_offset": 0.001,
             "lat_offset": 0.001,
@@ -232,7 +288,7 @@ def run_tests(run_mode, re_analysis=False):
     }
 
     # Test case 1.0
-    nb_noise_realisations_per_snr = 100
+    nb_noise_realisations_per_snr = 20
     src_signal_type = ["ship"]
     # similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
     # snr = [-10, -5, 0, 5]
@@ -240,7 +296,7 @@ def run_tests(run_mode, re_analysis=False):
 
     # snr = [-10, -5, 0, 5, 10, None]
     # grid_offset_cells = 80
-    snr = [0, -5]
+    snr = [0]
     grid_offset_cells = 40
 
     # run_tc(
@@ -330,8 +386,12 @@ def run_tests(run_mode, re_analysis=False):
 
     # Test case 3.1
     src_signal_type = ["ship"]
-    similarity_metrics = ["hilbert_env_intercorr0"]
-    snr = [-10, -5, 0, 5]
+    similarity_metrics = ["hilbert_env_intercorr0", "intercorr0"]
+    snr = np.arange(-15, 5, 0.5).tolist()
+    # snr = snr[0:3]
+    grid_offset_cells = 80
+    nb_noise_realisations_per_snr = 100
+
     # snr = [None]
     run_tc(
         testcase=TestCase3_1(),
@@ -355,7 +415,7 @@ if __name__ == "__main__":
     # client = cluster.get_client()
 
     # run_mode = "normal"
-    re_analysis = False
+    re_analysis = True
 
     import sys
 
@@ -364,6 +424,7 @@ if __name__ == "__main__":
     else:
         run_mode = "normal"
 
-    run_mode = "debug"
+    # run_mode = "debug"
+    run_mode = "normal"
 
     run_tests(run_mode, re_analysis)

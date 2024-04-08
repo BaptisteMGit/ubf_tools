@@ -31,7 +31,7 @@ from pyproj import Geod
 
 from cst import BAR_FORMAT, C0, N_CORES
 from misc import mult_along_axis
-from signals import ship_noise, pulse, pulse_train
+from signals import ship_noise, pulse, pulse_train, generate_ship_signal
 from publication.PublicationFigure import PubFigure
 
 # from propa.kraken_toolbox.read_shd import readshd
@@ -218,9 +218,9 @@ def populate_anistropic_env(
             # )
             library_src = check_waveguide_cutoff(
                 testcase=testcase,
-                library_src=library_src,
+                src=library_src,
                 dt=src_info["dt"],
-                sig_type=src_info["signal_type"],
+                src_info=src_info["library"],
             )
 
             # Store minimum waveguide depth to be used when populating env with events
@@ -974,9 +974,9 @@ def init_event_dataset(ds, src_info, rcv_info, interp_src_pos_on_grid=False):
 
 def check_waveguide_cutoff(
     testcase,
-    library_src,
+    src,
     dt,
-    sig_type,
+    src_info,
 ):
     """
     Check if the waveguide cutoff frequency is set correctly in the source library.
@@ -985,12 +985,12 @@ def check_waveguide_cutoff(
     ----------
     testcase : Testcase
         Testcase.
-    library_src : AcouticSource
+    src : AcouticSource
         Acoustic source.
     dt : float
         Time step.
-    sig_type : str
-        Signal type.
+    src_info : dict
+        Source information.
 
     Returns
     -------
@@ -1002,15 +1002,15 @@ def check_waveguide_cutoff(
     varin = {}
 
     fc = waveguide_cutoff_freq(waveguide_depth=testcase.min_depth)
-    propagating_freq = library_src.positive_freq[library_src.positive_freq > fc]
-    if propagating_freq.size != library_src.kraken_freq.size:
-        library_src = init_library_src(dt, testcase.min_depth, sig_type=sig_type)
+    propagating_freq = src.positive_freq[src.positive_freq > fc]
+    if propagating_freq.size != src.kraken_freq.size:
+        src = init_src(dt, testcase.min_depth, src_info)
 
         # Update testcase with new frequency vector
-        varin["freq"] = library_src.kraken_freq
+        varin["freq"] = src.kraken_freq
         testcase.update(varin)
 
-    return library_src
+    return src
 
 
 def add_noise_to_dataset(xr_dataset, snr_dB):
@@ -1603,9 +1603,9 @@ def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"
     xr_dataset.detected_pos_lat[dict_sel] = detected_lat
 
 
-def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
+def init_src(dt, min_waveguide_depth, src_info):
     """
-    Initialize the library source signal.
+    Initialize source signal.
 
     Parameters
     ----------
@@ -1622,36 +1622,43 @@ def init_library_src(dt, min_waveguide_depth, sig_type="pulse"):
         Acoustic source.
 
     """
+    sig_type = src_info["sig_type"]
 
     nfft = None
     if sig_type == "ship":
-        library_src_sig, t_library_src_sig = ship_noise(T=dt)
-        # nfft = fs * dt
+        # library_src_sig, t_library_src_sig = ship_noise(T=dt)
+        src_sig, t_src_sig = generate_ship_signal(
+            Ttot=dt,
+            f0=src_info["f0"],
+            std_fi=src_info["std_fi"],
+            tau_corr_fi=src_info["tau_corr_fi"],
+            fs=src_info["fs"],
+        )
 
     elif sig_type == "pulse":
-        library_src_sig, t_library_src_sig = pulse(T=dt, f=25, fs=100)
+        src_sig, t_src_sig = pulse(T=dt, f=25, fs=100)
 
     elif sig_type == "pulse_train":
-        library_src_sig, t_library_src_sig = pulse_train(T=dt, f=25, fs=100)
+        src_sig, t_src_sig = pulse_train(T=dt, f=25, fs=100)
 
     elif sig_type == "debug_pulse":
         fs = 40
-        library_src_sig, t_library_src_sig = pulse(T=0.1, f=10, fs=fs)
+        src_sig, t_src_sig = pulse(T=0.1, f=10, fs=fs)
         nfft = int(fs * dt)
 
     if sig_type in ["ship", "pulse_train"]:
         # Apply hanning window
-        library_src_sig *= np.hanning(len(library_src_sig))
+        src_sig *= np.hanning(len(src_sig))
 
-    library_src = AcousticSource(
-        signal=library_src_sig,
-        time=t_library_src_sig,
+    src = AcousticSource(
+        signal=src_sig,
+        time=t_src_sig,
         name=sig_type,
         waveguide_depth=min_waveguide_depth,
         nfft=nfft,
     )
 
-    return library_src
+    return src
 
 
 def plot_src(library_src, testcase):
@@ -2125,6 +2132,51 @@ def get_snr_tag(snr_dB, verbose=True):
         print("## " + snr_msg + " ##")
 
     return snr_tag
+
+
+def add_src_to_dataset(xr_dataset, library_src, event_src, src_info):
+    """
+    Add source information to dataset.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+    library_src : AcousticSource
+        Library source.
+    event_src : AcousticSource
+        Event source.
+    src_info : dict
+        Source information.
+
+    Returns
+    -------
+    None
+
+    """
+
+    xr_dataset.coords["library_src_time"] = library_src.time
+    xr_dataset["library_src_time"].attrs["units"] = "s"
+    xr_dataset["library_src_time"].attrs["long_name"] = "Time"
+
+    xr_dataset.coords["event_src_time"] = event_src.time
+    xr_dataset["event_src_time"].attrs["units"] = "s"
+    xr_dataset["event_src_time"].attrs["long_name"] = "Time"
+
+    xr_dataset["library_src"] = (["library_src_time"], library_src.signal)
+    xr_dataset["library_src"].attrs["long_name"] = "Library source signal"
+    xr_dataset["library_src"].attrs["short_name"] = "Library"
+    xr_dataset["event_src"] = (["event_src_time"], event_src.signal)
+    xr_dataset["event_src"].attrs["long_name"] = "Event source signal"
+    xr_dataset["event_src"].attrs["short_name"] = "Event"
+
+    param = src_info["library"].keys()
+    for p in param:
+        xr_dataset["library_src"].attrs[p] = src_info["library"][p]
+
+    param = src_info["event"].keys()
+    for p in param:
+        xr_dataset["event_src"].attrs[p] = src_info["event"][p]
 
 
 if __name__ == "__main__":

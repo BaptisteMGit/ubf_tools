@@ -40,15 +40,155 @@ PFIG = PubFigure(
     ticks_fontsize=40,
     legend_fontsize=30,
 )
-PFIG.set_all_fontsize()
+PFIG.set_all_params()
+
+
+def plot_emmited_signal(xr_dataset, img_root):
+    """
+    Plot emmited signal for each source position.
+
+    Parameters
+    ----------
+    xr_dataset : xarray.Dataset
+        Dataset containing the emmited signal.
+    img_root : str
+        Path to the folder where the images will be saved.
+
+    Returns
+    -------
+    None
+
+    """
+    # Init folders
+    img_folder = os.path.join(img_root, "emmited_signals")
+    if not os.path.exists(img_folder):
+        os.makedirs(img_folder)
+
+    def build_label_detail(xr_dataset, src):
+        detail_label = ""
+        for p, val_p in xr_dataset[src].attrs.items():
+            if p not in ["short_name", "long_name", "sig_type"]:
+                if p == "fs":
+                    p_tag = r"$f_s$"
+                elif p == "fc":
+                    p_tag = r"$f_c$"
+                elif p == "std_fi":
+                    p_tag = r"$\sigma_{fi}$"
+                elif p == "tau_corr_fi":
+                    p_tag = r"$\tau_{corr_{fi}}$"
+                else:
+                    p_tag = p
+                detail_label += f"{p_tag}={val_p}, "
+        return detail_label[:-2]
+
+    # Plot time series
+    plt.figure()
+    for src in ["library_src", "event_src"]:
+        label = xr_dataset[src].attrs["short_name"]
+        detail_label = build_label_detail(xr_dataset, src)
+        label += f"({detail_label})"
+        xr_dataset[src].plot(label=label)
+
+    plt.ylabel("Amplitude")
+    # # plt.tight_layout()
+    plt.legend()
+    img_fpath = os.path.join(img_folder, "emmited_signals.png")
+    plt.savefig(img_fpath)
+    plt.close()
+
+    # Plot spectrogram
+    # for src in ["library_src", "event_src"]:
+    #     plt.figure()
+    #     label = xr_dataset[src].attrs["long_name"]
+    #     f, t, Sxx = signal.spectrogram(
+    #         xr_dataset[src].values,
+    #         fs=xr_dataset[src].attrs["fs"],
+    #         window="hamming",
+    #         # nperseg=256,
+    #         # noverlap=int(0.75 * 256),
+    #     )
+    #     plt.pcolormesh(t, f, 10 * np.log10(Sxx), shading="gouraud")
+    #     plt.ylabel("Frequency [Hz]")
+    #     plt.xlabel("Time [s]")
+    #     plt.title(f"Spectrogram of {label}")
+    #     plt.colorbar(label="Intensity [dB]")
+    #     # plt.tight_layout()
+    #     img_fpath = os.path.join(img_folder, f"spectrogram_{src}.png")
+    #     plt.savefig(img_fpath)
+    #     plt.close()
+
+    # Plot PSD
+    plt.figure()
+    for src in ["library_src", "event_src"]:
+        label = xr_dataset[src].attrs["short_name"]
+        detail_label = build_label_detail(xr_dataset, src)
+        label += f"({detail_label})"
+        f, Pxx = signal.welch(xr_dataset[src].values, fs=xr_dataset[src].attrs["fs"])
+        # plt.semilogy(f, Pxx, label=label)
+        plt.plot(f, 10 * np.log(Pxx), label=label)
+
+    plt.ylabel(r"$S_{xx}(f)$")
+    plt.xlabel("Frequency [Hz]")
+    plt.title(f"PSD")
+    # plt.tight_layout()
+    plt.legend()
+    img_fpath = os.path.join(img_folder, f"psd.png")
+    plt.savefig(img_fpath)
+    plt.close()
+
+    # Plot auto-correlation
+    plt.figure()
+    for src in ["library_src", "event_src"]:
+        label = xr_dataset[src].attrs["short_name"]
+        detail_label = build_label_detail(xr_dataset, src)
+        label += f"({detail_label})"
+        s = xr_dataset[src].values
+        ns = len(s)
+        Rxx = signal.correlate(s, s)
+        tau_idx = signal.correlation_lags(ns, ns)
+
+        Ts = 1 / xr_dataset[src].attrs["fs"]
+        tau = tau_idx * Ts
+
+        plt.plot(tau, Rxx, label=label)
+
+    plt.ylabel(r"$R_{xx}(\tau)$")
+    plt.xlabel(r"$\tau \, [s]$")
+    plt.title(f"Auto-correlation")
+    # plt.tight_layout()
+    plt.legend()
+    img_fpath = os.path.join(img_folder, f"auto_correlation.png")
+    plt.savefig(img_fpath)
+    plt.close()
+
+    # # Plot auto-correlation psd
+    # plt.figure()
+    # for src in ["library_src", "event_src"]:
+    #     label = xr_dataset[src].attrs["short_name"]
+    #     detail_label = build_label_detail(xr_dataset, src)
+    #     label += f"({detail_label})"
+    #     s = xr_dataset[src].values
+    #     ns = len(s)
+    #     Rxx = signal.correlate(s, s)
+    #     tau = signal.correlation_lags(ns, ns)
+    #     f, Pxx = signal.welch(Rxx, fs=xr_dataset[src].attrs["fs"])
+    #     plt.plot(f, 10 * np.log(Pxx), label=label)
+    # plt.ylabel(r"$S_{xx}(\tau)$")
+    # plt.xlabel("Frequency [Hz]")
+    # plt.title(f"Auto-correlation PSD")
+    # # plt.tight_layout()
+    # plt.legend()
+    # img_fpath = os.path.join(img_folder, f"auto_correlation_psd.png")
+    # plt.savefig(img_fpath)
+    # plt.close()
 
 
 def plot_received_signal(xr_dataset, img_root, n_instant_to_plot=None):
     """Plot received signal for each receiver pair and each source position."""
     # Init folders
-    img_folder = init_plot_folders(
-        img_root, "received_signals", xr_dataset.similarity_metric.values
-    )
+    img_folder = os.path.join(img_root, "received_signals")
+    if not os.path.exists(img_folder):
+        os.makedirs(img_folder)
 
     if n_instant_to_plot is None:
         n_instant_to_plot = xr_dataset.dims["src_trajectory_time"]
@@ -61,8 +201,6 @@ def plot_received_signal(xr_dataset, img_root, n_instant_to_plot=None):
         fig, axes = plt.subplots(
             xr_dataset.dims["idx_rcv"],
             1,
-            figsize=(16, 8),
-            # sharey=True,
             sharex=True,
         )
 
@@ -85,29 +223,73 @@ def plot_received_signal(xr_dataset, img_root, n_instant_to_plot=None):
 
             lib_sig.plot(
                 ax=axes[i_rcv],
-                label=f"library - obs {i_rcv}",
+                label=f"library",
                 color=LIBRARY_COLOR,
                 zorder=lib_zorder,
             )
             event_sig.plot(
                 ax=axes[i_rcv],
-                label=f"event - obs {i_rcv}",
+                label=f"event",
                 color=EVENT_COLOR,
                 zorder=event_zorder,
             )
 
             axes[i_rcv].set_xlabel("")
             axes[i_rcv].set_ylabel("")
+            axes[i_rcv].set_title("")
             axes[i_rcv].legend(loc="upper right")
-            axes[i_rcv].tick_params(labelsize=TICKS_FONTSIZE)
 
         for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_rcv.values]):
-            ax.set_title(col, fontsize=TITLE_FONTSIZE)
+            ax.set_title(col, loc="right")
 
-        fig.supylabel("Received signal", fontsize=SUPLABEL_FONTSIZE)
-        fig.supxlabel("Time [s]", fontsize=SUPLABEL_FONTSIZE)
-        plt.tight_layout()
+        fig.supylabel("Received signal")
+        fig.supxlabel("Time [s]")
         img_fpath = os.path.join(img_folder, f"received_signals_time_{i_ship}.png")
+        plt.savefig(img_fpath)
+        plt.close()
+
+    # Plot auto-correlation
+    for i_ship in range(n_instant_to_plot):
+        fig, axes = plt.subplots(
+            xr_dataset.dims["idx_rcv"],
+            1,
+            sharex=True,
+        )
+
+        for i_rcv in range(xr_dataset.dims["idx_rcv"]):
+            lib_sig = xr_dataset.rcv_signal_library.sel(
+                lon=xr_dataset.lon_src.isel(src_trajectory_time=i_ship),
+                lat=xr_dataset.lat_src.isel(src_trajectory_time=i_ship),
+                method="nearest",
+            ).isel(idx_rcv=i_rcv)
+            event_sig = xr_dataset.rcv_signal_event.isel(
+                src_trajectory_time=i_ship, idx_rcv=i_rcv
+            )
+            # plt.tight_layout()
+
+            lib_corr = signal.correlate(lib_sig.values, lib_sig.values)
+            event_corr = signal.correlate(event_sig.values, event_sig.values)
+            tau_idx = signal.correlation_lags(len(lib_sig), len(lib_sig))
+            Ts = xr_dataset.library_signal_time.diff(dim="library_signal_time").values[
+                0
+            ]
+            tau = tau_idx * Ts
+
+            axes[i_rcv].plot(tau, lib_corr, label="library", color=LIBRARY_COLOR)
+            axes[i_rcv].plot(tau, event_corr, label="event", color=EVENT_COLOR)
+
+            axes[i_rcv].set_xlabel("")
+            axes[i_rcv].set_ylabel("")
+            axes[i_rcv].legend(loc="upper right")
+            # axes[i_rcv].tick_params(labelsize=TICKS_FONTSIZE)
+
+        for ax, col in zip(axes, [f"Receiver {i}" for i in xr_dataset.idx_rcv.values]):
+            ax.set_title(col, loc="right")
+
+        fig.supylabel(r"$R_{xx}(\tau)$")
+        fig.supxlabel(r"$\tau$ [s]")
+        # # plt.tight_layout()
+        img_fpath = os.path.join(img_folder, f"auto_correlation_time_{i_ship}.png")
         plt.savefig(img_fpath)
         # plt.show()
         plt.close()
@@ -269,9 +451,8 @@ def plot_ambiguity_surface(
 ):
     """Plot ambiguity surface for each source position."""
     # Init folders
-    img_folder = init_plot_folders(
-        img_root, "ambiguity_surface", ds.similarity_metric.values
-    )
+    sim_metric = ds.similarity_metric.values
+    img_folder = init_plot_folders(img_root, "ambiguity_surface", sim_metric)
 
     amb_surf = get_ambiguity_surface(ds)
     amb_surf.attrs["long_name"] = "Ambiguity surface"
@@ -280,7 +461,7 @@ def plot_ambiguity_surface(
     for i_src_time in range(nb_instant_to_plot):
         for i_rcv_pair in range(ds.dims["idx_rcv_pairs"]):
 
-            plt.figure(figsize=PFIG.size)
+            plt.figure()
 
             vmin = (
                 amb_surf.isel(idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time)
@@ -293,13 +474,14 @@ def plot_ambiguity_surface(
             amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             ).plot(x="lon", y="lat", zorder=0, vmin=vmin, vmax=vmax, cmap="jet")
-            ax = plt.gca()
-            for item in (
-                [ax.xaxis.label, ax.yaxis.label]
-                + ax.get_xticklabels()
-                + ax.get_yticklabels()
-            ):
-                item.set_fontsize(20)
+
+            # ax = plt.gca()
+            # for item in (
+            #     [ax.xaxis.label, ax.yaxis.label]
+            #     + ax.get_xticklabels()
+            #     + ax.get_yticklabels()
+            # ):
+            #     item.set_fontsize(20)
 
             # if plot_beampattern:
             #     # bp_offset = np.sqrt(
@@ -340,10 +522,11 @@ def plot_ambiguity_surface(
             plt.scatter(
                 ds.lon_src.isel(src_trajectory_time=i_src_time),
                 ds.lat_src.isel(src_trajectory_time=i_src_time),
-                color="lime",
-                # facecolors="magenta",
-                # edgecolors="k",
-                marker="+",
+                # color="magenta",
+                facecolors="none",
+                edgecolors="magenta",
+                # fillstyle="none",
+                marker="o",
                 s=130,
                 linewidths=2.5,
                 label=r"$X_{ship}$",
@@ -439,11 +622,10 @@ def plot_ambiguity_surface(
                     max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
                 ]
             )
-
-            plt.yticks(fontsize=TICKS_FONTSIZE)
-            plt.xticks(fontsize=TICKS_FONTSIZE)
-            plt.legend(ncol=2, loc="best", fontsize=LEGEND_FONTSIZE)
-            plt.tight_layout()
+            plt.title(
+                f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair n°{i_rcv_pair})",
+            )
+            plt.legend(ncol=2)
             img_fpath = os.path.join(
                 img_folder, f"ambiguity_surface_time_{i_src_time}_pair_{i_rcv_pair}.png"
             )
@@ -647,11 +829,10 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1
                 ]
             )
 
-            plt.xlabel("Longitude [°]", fontsize=LABEL_FONTSIZE)
-            plt.ylabel("Latitude [°]", fontsize=LABEL_FONTSIZE)
+            plt.xlabel("Longitude [°]")
+            plt.ylabel("Latitude [°]")
             plt.grid(True)
-            plt.legend(loc="best", fontsize=LEGEND_FONTSIZE)
-            plt.tight_layout()
+            plt.legend()
             img_fpath = os.path.join(img_folder, f"ship_trajectory_noise_{i_noise}.png")
             plt.savefig(img_fpath)
             plt.close()
@@ -735,11 +916,10 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1
             ]
         )
 
-        plt.xlabel("Longitude [°]", fontsize=LABEL_FONTSIZE)
-        plt.ylabel("Latitude [°]", fontsize=LABEL_FONTSIZE)
+        plt.xlabel("Longitude [°]")
+        plt.ylabel("Latitude [°]")
         plt.grid(True)
-        plt.legend(loc="best", fontsize=LEGEND_FONTSIZE)
-        plt.tight_layout()
+        plt.legend()
         img_fpath = os.path.join(img_folder, f"ship_trajectory_pos_0_alldet.png")
         plt.savefig(img_fpath)
         plt.close()
@@ -866,13 +1046,10 @@ def plot_pos_error(ds, img_root):
         #     label=f"Median error for obs pair {i_rcv_pair.values} = {pos_error.median().round(0).values}m",
         # )
 
-    plt.gca().xaxis.label.set_fontsize(LABEL_FONTSIZE)
+    # plt.gca().xaxis.label.set_fontsize(LABEL_FONTSIZE)
 
-    plt.legend(loc="upper right", fontsize=LEGEND_FONTSIZE)
-    plt.xticks(fontsize=TICKS_FONTSIZE)
-    plt.yticks(fontsize=TICKS_FONTSIZE)
+    plt.legend(loc="upper right")
     plt.title("Position error")
-    plt.tight_layout()
     img_fpath = os.path.join(img_folder, f"pos_error.png")
     plt.savefig(img_fpath)
     plt.close()
@@ -934,16 +1111,14 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
             )
             axes[i_ship, i_rcv_pair].set_xlabel("")
             axes[i_ship, i_rcv_pair].set_ylabel("")
-            axes[i_ship, i_rcv_pair].set_title(
-                f"Source pos n°{i_ship}", fontsize=TITLE_FONTSIZE
-            )
-            axes[i_ship, i_rcv_pair].legend(loc="upper right", fontsize=LEGEND_FONTSIZE)
-            axes[i_ship, i_rcv_pair].tick_params(labelsize=TICKS_FONTSIZE)
+            axes[i_ship, i_rcv_pair].set_title(f"Source pos n°{i_ship}")
+            axes[i_ship, i_rcv_pair].legend(loc="upper right")
+            # axes[i_ship, i_rcv_pair].tick_params(labelsize=TICKS_FONTSIZE)
 
-    fig.supxlabel(r"$\tau (s)$", fontsize=SUPLABEL_FONTSIZE)
-    fig.supylabel(ylabel, fontsize=SUPLABEL_FONTSIZE)
+    fig.supxlabel(r"$\tau$ [s]")
+    fig.supylabel(ylabel)
 
-    plt.tight_layout()
+    # plt.tight_layout()
     img_fpath = os.path.join(img_folder, f"signal_corr.png")
     plt.savefig(img_fpath)
     plt.close()
@@ -1085,7 +1260,7 @@ def compare_perf_src(src_type_list, simulation_info, testcase_name, snr=0):
         plt.xlabel("Source type")
         plt.ylabel(ylabel)
         plt.title(title)
-        plt.tight_layout()
+        # plt.tight_layout()
         plt.savefig(os.path.join(img_path, img_name))
 
     print()
@@ -1098,10 +1273,13 @@ def analysis_main(
     plot_info={},
     simulation_info={},
     grid_info={},
+    img_format="png",
 ):
     """Main function to analyse the localisation performance."""
     global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN,95_percentile,99_percentile,dynamic_range"
     global_log = [global_header_log]
+
+    # PFIG.fmt = img_format
 
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 
@@ -1129,28 +1307,37 @@ def analysis_main(
                 if s in xr_dataset.similarity_metric.values
             ]
 
+        # Image folder
+        root_img = xr_dataset.fullpath_analysis
+        img_basepath = os.path.join(root_img, now, testcase_name + "_")
+        img_root = os.path.dirname(img_basepath)
+
+        # Assert at least one plot will be created to avoid creating empty folders
+        create_folder = check_folder_creation(plot_info)
+        if create_folder and not os.path.exists(img_root):
+            os.makedirs(img_root)
+
+        n_instant_to_plot = min(
+            simulation_info["n_instant_to_plot"],
+            xr_dataset.sizes["src_trajectory_time"],
+        )
+        n_rcv_signals_to_plot = min(
+            simulation_info["n_rcv_signals_to_plot"],
+            xr_dataset.sizes["src_trajectory_time"],
+        )
+
+        # Plot figures independent of the similarity metric
+        # Plot received signal
+        if plot_info["plot_received_signal"]:
+            plot_received_signal(xr_dataset, img_root, n_instant_to_plot)
+
+        # Plot emmited signal
+        if plot_info["plot_emmited_signal"]:
+            plot_emmited_signal(xr_dataset, img_root)
+
         for i_sim_metric, similarity_metric in enumerate(similarity_metrics):
 
             ds = xr_dataset.sel(idx_similarity_metric=i_sim_metric)
-            # Image folder
-            root_img = ds.fullpath_analysis
-            img_basepath = os.path.join(root_img, now, testcase_name + "_")
-            img_root = os.path.dirname(img_basepath)
-
-            create_folder = check_folder_creation(
-                plot_info
-            )  # Assert at least one plot will be created to avoid creating empty folders
-            if create_folder and not os.path.exists(img_root):
-                os.makedirs(img_root)
-
-            n_instant_to_plot = min(
-                simulation_info["n_instant_to_plot"],
-                ds.sizes["src_trajectory_time"],
-            )
-            n_rcv_signals_to_plot = min(
-                simulation_info["n_rcv_signals_to_plot"],
-                ds.sizes["src_trajectory_time"],
-            )
 
             # Plot one TL profile
             if plot_info["plot_one_tl_profile"]:
@@ -1165,10 +1352,6 @@ def analysis_main(
             # Plot ambiguity surface distribution
             if plot_info["plot_ambiguity_surface_dist"]:
                 plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot)
-
-            # Plot received signal
-            if plot_info["plot_received_signal"]:
-                plot_received_signal(ds, img_root, n_instant_to_plot)
 
             # Plot ambiguity surface
             if plot_info["plot_ambiguity_surface"]:
@@ -1280,25 +1463,37 @@ def analysis_main(
             "dynamic_range": float,
         },
     )
+    # list_perf_metrics = [
+    #     ["95_percentile"],
+    #     ["99_percentile"],
+    #     ["MEDIAN"],
+    #     ["MEAN"],
+    #     ["STD"],
+    #     ["RMSE"],
+    #     ["MAX"],
+    #     ["MIN"],
+    #     ["dynamic_range"],
+    # ]
+
     list_perf_metrics = [
-        ["95_percentile"],
-        ["99_percentile"],
-        ["MEDIAN"],
-        ["MEAN"],
-        ["STD"],
-        ["RMSE"],
-        ["MAX"],
-        ["MIN"],
-        ["dynamic_range"],
+        "95_percentile",
+        "99_percentile",
+        "MEDIAN",
+        "MEAN",
+        "STD",
+        "RMSE",
+        "MAX",
+        "MIN",
+        "dynamic_range",
     ]
-    for perf_metrics in list_perf_metrics:
-        plot_localisation_performance(
-            data=data,
-            testcase_name=testcase_name,
-            similarity_metrics=similarity_metrics,
-            metrics_to_plot=perf_metrics,
-            img_path=os.path.dirname(global_report_fpath),
-        )
+    # for perf_metrics in list_perf_metrics:
+    plot_localisation_performance(
+        data=data,
+        testcase_name=testcase_name,
+        similarity_metrics=similarity_metrics,
+        metrics_to_plot=list_perf_metrics,
+        img_path=os.path.dirname(global_report_fpath),
+    )
 
 
 if __name__ == "__main__":

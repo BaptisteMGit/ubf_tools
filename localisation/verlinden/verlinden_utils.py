@@ -49,13 +49,13 @@ from propa.kraken_toolbox.run_kraken import runkraken
 from localisation.verlinden.verlinden_path import VERLINDEN_POPULATED_FOLDER
 
 
-def populate_isotropic_env(ds, library_src, signal_library_dim, testcase):
+def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase):
     """
     Populate the dataset with received signals in isotropic environment.
 
     Parameters
     ----------
-    ds : xr.Dataset
+    xr_dataset : xr.Dataset
         Dataset to populate.
     library_src : AcousticSource
         Acoustic source.
@@ -74,9 +74,9 @@ def populate_isotropic_env(ds, library_src, signal_library_dim, testcase):
         Grid pressure field.
 
     """
-    # ds, library_src, kraken_env, kraken_flp, signal_library_dim
+    # xr_dataset, library_src, kraken_env, kraken_flp, signal_library_dim
 
-    delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values.flatten()
+    delay_to_apply = xr_dataset.delay_rcv.min(dim="idx_rcv").values.flatten()
 
     # Run KRAKEN
     grid_pressure_field, _ = runkraken(
@@ -89,10 +89,12 @@ def populate_isotropic_env(ds, library_src, signal_library_dim, testcase):
 
     # Loop over receivers
     for i_rcv in tqdm(
-        ds.idx_rcv, bar_format=BAR_FORMAT, desc="Populate grid with received signal"
+        xr_dataset.idx_rcv,
+        bar_format=BAR_FORMAT,
+        desc="Populate grid with received signal",
     ):
 
-        rr_from_rcv_flat = ds.r_from_rcv.sel(idx_rcv=i_rcv).values.flatten()
+        rr_from_rcv_flat = xr_dataset.r_from_rcv.sel(idx_rcv=i_rcv).values.flatten()
 
         (
             t_rcv,
@@ -111,35 +113,42 @@ def populate_isotropic_env(ds, library_src, signal_library_dim, testcase):
         )
 
         if i_rcv == 0:
-            ds["library_signal_time"] = t_rcv.astype(np.float32)
-            ds["library_signal_time"].attrs["units"] = "s"
-            ds["library_signal_time"].attrs["long_name"] = "Time"
+            xr_dataset["library_signal_time"] = t_rcv.astype(np.float32)
+            xr_dataset["library_signal_time"].attrs["units"] = "s"
+            xr_dataset["library_signal_time"].attrs["long_name"] = "Time"
 
-            rcv_signal_library = np.empty(tuple(ds.dims[d] for d in signal_library_dim))
+            rcv_signal_library = np.empty(
+                tuple(xr_dataset.sizes[d] for d in signal_library_dim),
+                dtype=np.float32,
+            )
 
         # Time domain signal
         s_rcv = s_rcv[:, 0, :].T
         s_rcv = s_rcv.reshape(
-            ds.dims["lat"], ds.dims["lon"], ds.dims["library_signal_time"]
+            xr_dataset.sizes["lat"],
+            xr_dataset.sizes["lon"],
+            xr_dataset.sizes["library_signal_time"],
         )
 
-        rcv_signal_library[i_rcv, :] = s_rcv
+        # Add 1 dimension for snrs
+        rcv_signal_library[i_rcv, ...] = s_rcv
 
-        # Free memory
-        del s_rcv, rr_from_rcv_flat
+        # # Add 1 dimension for snrs
+        # s_rcv = np.repeat(s_rcv[np.newaxis, :, :], xr_dataset.sizes["snr"], axis=0)
+        # rcv_signal_library[:, i_rcv, ...] = s_rcv
 
-    return ds, rcv_signal_library, grid_pressure_field
+    return xr_dataset, rcv_signal_library, grid_pressure_field
 
 
 def populate_anistropic_env(
-    ds, library_src, signal_library_dim, testcase, rcv_info, src_info
+    xr_dataset, library_src, signal_library_dim, testcase, rcv_info, src_info
 ):
     """
     Populate the dataset with received signals in anisotropic environment.
 
     Parameters
     ----------
-    ds : xr.Dataset
+    xr_dataset : xr.Dataset
         Dataset to populate.
     library_src : AcousticSource
         Acoustic source.
@@ -164,7 +173,7 @@ def populate_anistropic_env(
     """
 
     # Array of receiver indexes
-    idx_rcv = ds.idx_rcv.values
+    idx_rcv = xr_dataset.idx_rcv.values
 
     # Grid pressure field for all azimuths : list of nested lists required due to inhomogeneous sizes (depending on the azimuths)
     grid_pressure_field = []
@@ -182,7 +191,7 @@ def populate_anistropic_env(
     ):
 
         # Loop over possible azimuths
-        azimuths_rcv = get_unique_azimuths(ds, i_rcv)
+        azimuths_rcv = get_unique_azimuths(xr_dataset, i_rcv)
         az_pressure_field = []
         az_kraken_min_wg_depth = []
 
@@ -229,10 +238,14 @@ def populate_anistropic_env(
             az_kraken_min_wg_depth.append(min_waveguide_depth)
 
             # Get receiver ranges for selected angle
-            idx_az = ds.az_propa.sel(idx_rcv=i_rcv).values == az
-            rr_from_rcv_az = ds.r_from_rcv.sel(idx_rcv=i_rcv).values[idx_az].flatten()
+            idx_az = xr_dataset.az_propa.sel(idx_rcv=i_rcv).values == az
+            rr_from_rcv_az = (
+                xr_dataset.r_from_rcv.sel(idx_rcv=i_rcv).values[idx_az].flatten()
+            )
             # Get received signal for selected angle
-            delay_to_apply = ds.delay_rcv.min(dim="idx_rcv").values[idx_az].flatten()
+            delay_to_apply = (
+                xr_dataset.delay_rcv.min(dim="idx_rcv").values[idx_az].flatten()
+            )
 
             # Run kraken for selected angle
             pf, field_pos = runkraken(
@@ -269,7 +282,7 @@ def populate_anistropic_env(
             pf = np.squeeze(pf, axis=(1, 2))
 
             # Values outside of the grid range are set to 0j and the sparse pressure field is stored to save memory
-            r_offset = 5 * ds.dx
+            r_offset = 5 * xr_dataset.dx
             r_min_usefull = np.min(rr_from_rcv_az) - r_offset
             r_max_usefull = np.max(rr_from_rcv_az) + r_offset
             idx_r_min_usefull = np.argmin(np.abs(r_rcv - r_min_usefull))
@@ -284,18 +297,25 @@ def populate_anistropic_env(
             az_pressure_field.append(sparse_pf)
             # az_pressure_field[i_az] = sparse_pf
 
-            # Store received signal in dataset
+            # Init dataset variable
             if i_rcv == 0 and i_az == 0:
-                ds["library_signal_time"] = t_rcv.astype(np.float32)
-                ds["library_signal_time"].attrs["units"] = "s"
-                ds["library_signal_time"].attrs["long_name"] = "Time"
-                rcv_signal_library = np.zeros(
-                    tuple(ds.dims[d] for d in signal_library_dim)
+                xr_dataset["library_signal_time"] = t_rcv.astype(np.float32)
+                xr_dataset["library_signal_time"].attrs["units"] = "s"
+                xr_dataset["library_signal_time"].attrs["long_name"] = "Time"
+                rcv_signal_library = np.empty(
+                    tuple(xr_dataset.sizes[d] for d in signal_library_dim),
+                    dtype=np.float32,
                 )
 
             # Time domain signal
             s_rcv = s_rcv[:, 0, :].T
-            rcv_signal_library[i_rcv, idx_az, :] = s_rcv
+            # 1 dataset / snr version
+            rcv_signal_library[i_rcv, idx_az, ...] = s_rcv
+
+            # 1 dataset for all snrs version
+            # # Add 1 dimension for snrs
+            # s_rcv = np.repeat(s_rcv[np.newaxis, :, :], xr_dataset.sizes["snr"], axis=0)
+            # rcv_signal_library[:, i_rcv, idx_az, ...] = s_rcv
 
             # print(f"Contains nans ? : {np.any(np.isnan(s_rcv.astype(np.float32)))}")
             # if np.any(np.abs(s_rcv) > 1e20):
@@ -311,11 +331,15 @@ def populate_anistropic_env(
         kraken_min_wg_depth_rcv.append(az_kraken_min_wg_depth)
 
     # Cast kraken grid range/depth arrays to the same size
-    nr_max = np.max([kraken_range_rcv[i_rcv].size for i_rcv in ds.idx_rcv.values])
-    nz_max = np.max([kraken_depth_rcv[i_rcv].size for i_rcv in ds.idx_rcv.values])
+    nr_max = np.max(
+        [kraken_range_rcv[i_rcv].size for i_rcv in xr_dataset.idx_rcv.values]
+    )
+    nz_max = np.max(
+        [kraken_depth_rcv[i_rcv].size for i_rcv in xr_dataset.idx_rcv.values]
+    )
 
     # Store kraken range and depth for rcv
-    for i_rcv in ds.idx_rcv.values:
+    for i_rcv in xr_dataset.idx_rcv.values:
         if kraken_range_rcv[i_rcv].size < nr_max:
             kraken_range_rcv[i_rcv] = np.pad(
                 kraken_range_rcv[i_rcv],
@@ -349,7 +373,7 @@ def populate_anistropic_env(
     kraken_range_rcv = sparse.COO(kraken_range_rcv, fill_value=np.nan)
     kraken_depth_rcv = sparse.COO(kraken_depth_rcv, fill_value=np.nan)
 
-    for i_rcv in ds.idx_rcv.values:
+    for i_rcv in xr_dataset.idx_rcv.values:
         kraken_grid[i_rcv] = {
             "range": kraken_range_rcv[i_rcv, :],
             "depth": kraken_depth_rcv[i_rcv, :],
@@ -359,23 +383,24 @@ def populate_anistropic_env(
             },
         }
 
-    return ds, rcv_signal_library, grid_pressure_field, kraken_grid
+    return xr_dataset, rcv_signal_library, grid_pressure_field, kraken_grid
 
 
 def add_event_isotropic_env(
-    ds,
-    snr_dB,
+    xr_dataset,
+    # snr_dB,
     event_src,
     kraken_env,
     signal_event_dim,
     grid_pressure_field,
+    # init_corr=False,
 ):
     """
     Add event in isotropic environment.
 
     Parameters
     ----------
-    ds : xr.Dataset
+    xr_dataset : xr.Dataset
         Dataset to populate.
     snr_dB : float
         Signal to noise ratio.
@@ -398,14 +423,14 @@ def add_event_isotropic_env(
 
     # Derive received signal for successive positions of the ship
     for i_rcv in tqdm(
-        range(ds.dims["idx_rcv"]),
+        range(xr_dataset.sizes["idx_rcv"]),
         bar_format=BAR_FORMAT,
         desc="Derive received signal for successive positions of the ship",
     ):
 
         delay_to_apply_ship = (
-            ds.delay_rcv.min(dim="idx_rcv")
-            .sel(lon=ds.lon_src, lat=ds.lat_src, method="nearest")
+            xr_dataset.delay_rcv.min(dim="idx_rcv")
+            .sel(lon=xr_dataset.lon_src, lat=xr_dataset.lat_src, method="nearest")
             .values.flatten()
         )
 
@@ -418,7 +443,7 @@ def add_event_isotropic_env(
             broadband_pressure_field=grid_pressure_field,
             frequencies=event_src.kraken_freq,
             source=event_src,
-            rcv_range=ds.r_src_rcv.sel(idx_rcv=i_rcv).values,
+            rcv_range=xr_dataset.r_src_rcv.sel(idx_rcv=i_rcv).values,
             rcv_depth=rcv_depth,
             apply_delay=True,
             delay=delay_to_apply_ship,
@@ -426,34 +451,49 @@ def add_event_isotropic_env(
         )
 
         if i_rcv == 0:
-            ds["event_signal_time"] = t_rcv.astype(np.float32)
-            rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
+            xr_dataset["event_signal_time"] = t_rcv.astype(np.float32)
+            rcv_signal_event = np.empty(
+                tuple(xr_dataset.sizes[d] for d in signal_event_dim), dtype=np.float32
+            )
 
-        rcv_signal_event[i_rcv, :] = s_rcv[:, 0, :].T
+        s_rcv = s_rcv[:, 0, :].T
+        # 1 dataset / snr version
+        # rcv_signal_event[i_rcv, ...] = s_rcv
 
-    ds["rcv_signal_event"] = (
-        ["idx_rcv", "src_trajectory_time", "event_signal_time"],
+        # # Add 1 dimension for snrs
+        s_rcv = np.repeat(s_rcv[np.newaxis, ...], xr_dataset.sizes["snr"], axis=0)
+        rcv_signal_event[:, i_rcv, ...] = s_rcv
+
+    xr_dataset["rcv_signal_event"] = (
+        signal_event_dim,
         rcv_signal_event.astype(np.float32),
     )
 
-    add_noise_to_event(ds, snr_dB=snr_dB)
-    add_event_correlation(ds)
+    noise_free = rcv_signal_event[0, ...].copy()
+    xr_dataset["rcv_signal_event_noise_free"] = (
+        signal_event_dim[1:],
+        noise_free.astype(np.float32),
+    )
+
+    # add_noise_to_event(xr_dataset, snr_dB=snr_dB)
+    # add_event_correlation(xr_dataset, snr_dB=snr_dB, init_corr=init_corr)
 
 
 def add_event_anisotropic_env(
-    ds,
-    snr_dB,
+    xr_dataset,
+    # snr_dB,
     event_src,
     kraken_grid,
     signal_event_dim,
     grid_pressure_field,
+    # init_corr=True,
 ):
     """
     Add event in anisotropic environment.
 
     Parameters
     ----------
-    ds : xr.Dataset
+    xr_dataset : xr.Dataset
         Dataset to populate.
     snr_dB : float
         Signal to noise ratio.
@@ -465,6 +505,8 @@ def add_event_anisotropic_env(
         Dimensions of the signal event.
     grid_pressure_field : np.ndarray
         Grid pressure field.
+    init_corr : bool, optional
+        Initialize correlation. The default is True.
 
     Returns
     -------
@@ -473,9 +515,9 @@ def add_event_anisotropic_env(
     """
 
     # Array of receiver indexes
-    idx_rcv = ds.idx_rcv.values
+    idx_rcv = xr_dataset.idx_rcv.values
     # Array of ship positions idx
-    idx_src_pos = np.arange(ds.dims["src_trajectory_time"])
+    idx_src_pos = np.arange(xr_dataset.sizes["src_trajectory_time"])
     # Array of receiver depths
     rcv_depth = [event_src.z_src]
 
@@ -502,14 +544,16 @@ def add_event_anisotropic_env(
             # i_src = 2
 
             delay_to_apply_ship = (
-                ds.delay_rcv.min(dim="idx_rcv")
-                .sel(lon=ds.lon_src, lat=ds.lat_src, method="nearest")
+                xr_dataset.delay_rcv.min(dim="idx_rcv")
+                .sel(lon=xr_dataset.lon_src, lat=xr_dataset.lat_src, method="nearest")
                 .values.flatten()
             )
 
             # Get azimuths for current ship position
             i_az_kraken, az_kraken, rcv_range, transfert_function = (
-                get_src_transfert_function(ds, i_rcv, i_src, grid_pressure_field)
+                get_src_transfert_function(
+                    xr_dataset, i_rcv, i_src, grid_pressure_field
+                )
             )
             rcv_range = rcv_range.reshape(1)
             transfert_function = transfert_function.todense()
@@ -534,17 +578,29 @@ def add_event_anisotropic_env(
             )
 
             if i_rcv == 0 and i_src == 0:
-                ds["event_signal_time"] = t_rcv.astype(np.float32)
-                rcv_signal_event = np.zeros(tuple(ds.dims[d] for d in signal_event_dim))
-                # rcv_signal_event = np.empty(tuple(ds.dims[d] for d in signal_event_dim))
-                rcv_signal_event_visits = np.zeros(
-                    tuple(ds.dims[d] for d in signal_event_dim)
+                xr_dataset["event_signal_time"] = t_rcv.astype(np.float32)
+                rcv_signal_event = np.zeros(
+                    tuple(xr_dataset.sizes[d] for d in signal_event_dim[1:])
                 )
+                # rcv_signal_event = np.empty(tuple(xr_dataset.sizes[d] for d in signal_event_dim))
+                # rcv_signal_event_visits = np.zeros(
+                #     tuple(xr_dataset.sizes[d] for d in signal_event_dim)
+                # )
                 # print(s_rcv)
 
             s_rcv = s_rcv[:, 0, :].T
-            rcv_signal_event[i_rcv, i_src, :] = s_rcv
-            rcv_signal_event_visits[i_rcv, i_src, :] += 1
+
+            # 1 dataset / snr version
+            # rcv_signal_event[i_rcv, i_src, ...] = s_rcv
+
+            # # Add 1 dimension for snrs
+            s_rcv = np.repeat(s_rcv[np.newaxis, ...], xr_dataset.sizes["snr"], axis=0)
+            rcv_signal_event[:, i_rcv, i_src, ...] = np.squeeze(
+                s_rcv
+            )  # Squeeze to remove the 1 dimension for range
+
+            # rcv_signal_event[i_rcv, i_src, :] = s_rcv
+            # rcv_signal_event_visits[i_rcv, i_src, :] += 1
 
             # print(f"Contains nans ? : {np.any(np.isnan(s_rcv.astype(np.float32)))}")
             # if np.any(np.abs(s_rcv) > 1e20):
@@ -554,8 +610,14 @@ def add_event_anisotropic_env(
             #     smaller = True
             #     print(f"Is smaller than 1e-20")
 
-    ds["rcv_signal_event"] = (
-        ["idx_rcv", "src_trajectory_time", "event_signal_time"],
+    # if not "rcv_signal_event" in xr_dataset:
+    xr_dataset["rcv_signal_event"] = (
+        signal_event_dim,
+        rcv_signal_event.astype(np.float32),
+    )
+
+    xr_dataset["rcv_signal_event_noise_free"] = (
+        signal_event_dim,
         rcv_signal_event.astype(np.float32),
     )
 
@@ -565,17 +627,17 @@ def add_event_anisotropic_env(
     #     f"smaller : {np.any(np.logical_and((0 < np.abs(rcv_signal_event)), (np.abs(rcv_signal_event) < 1e-20)))}"
     # )
 
-    add_noise_to_event(ds, snr_dB=snr_dB)
-    add_event_correlation(ds)
+    # add_noise_to_event(xr_dataset, snr_dB=snr_dB)
+    # add_event_correlation(xr_dataset, snr_dB=snr_dB, init_corr=init_corr)
 
 
-def get_src_transfert_function(ds, i_rcv, i_src, grid_pressure_field):
+def get_src_transfert_function(xr_dataset, i_rcv, i_src, grid_pressure_field):
     """
     Extract waveguide transfert function for the given source position index and receiver index.
 
     Parameters
     ----------
-    ds : xr.Dataset
+    xr_dataset : xr.Dataset
         Library dataset.
     i_rcv : int
         Receiver index.
@@ -596,8 +658,10 @@ def get_src_transfert_function(ds, i_rcv, i_src, grid_pressure_field):
         Transfert function for the given azimuth.
 
     """
-    az_propa_unique = get_unique_azimuths(ds, i_rcv)
-    az_src = ds.az_src_rcv.sel(idx_rcv=i_rcv).isel(src_trajectory_time=i_src).values
+    az_propa_unique = get_unique_azimuths(xr_dataset, i_rcv)
+    az_src = (
+        xr_dataset.az_src_rcv.sel(idx_rcv=i_rcv).isel(src_trajectory_time=i_src).values
+    )
     i_az_src = np.argmin(np.abs(az_propa_unique - az_src))
 
     az = az_propa_unique[i_az_src]  # Azimuth for which we have the transfert function
@@ -605,19 +669,19 @@ def get_src_transfert_function(ds, i_rcv, i_src, grid_pressure_field):
         i_az_src
     ]  # Transfert function for the given azimuth
     rcv_range = (
-        ds.r_src_rcv.sel(idx_rcv=i_rcv).isel(src_trajectory_time=i_src).values
+        xr_dataset.r_src_rcv.sel(idx_rcv=i_rcv).isel(src_trajectory_time=i_src).values
     )  # Range along the given azimuth
 
     return i_az_src, az, rcv_range, transfert_function
 
 
-def get_unique_azimuths(ds, i_rcv):
+def get_unique_azimuths(xr_dataset, i_rcv):
     """
     Get unique azimuths for the given receiver index.
 
     Parameters
     ----------
-    ds : xr.Dataset
+    xr_dataset : xr.Dataset
         Library dataset.
     i_rcv : int
         Receiver index.
@@ -628,7 +692,7 @@ def get_unique_azimuths(ds, i_rcv):
         Unique azimuths.
 
     """
-    return np.unique(ds.az_propa.sel(idx_rcv=i_rcv).values)
+    return np.unique(xr_dataset.az_propa.sel(idx_rcv=i_rcv).values)
 
 
 def get_range_from_rcv(grid_info, rcv_info):
@@ -781,7 +845,12 @@ def get_azimuth_src_rcv(lon_src, lat_src, rcv_info):
 
 
 def init_library_dataset(
-    grid_info, rcv_info, n_noise_realisations, similarity_metrics, isotropic_env=True
+    grid_info,
+    rcv_info,
+    snrs_dB,
+    n_noise_realisations,
+    similarity_metrics,
+    isotropic_env=True,
 ):
     """
     Initialize the dataset for the library.
@@ -813,7 +882,7 @@ def init_library_dataset(
     # Compute range from each receiver
     rr_rcv = get_range_from_rcv(grid_info, rcv_info)
 
-    ds = xr.Dataset(
+    xr_dataset = xr.Dataset(
         data_vars=dict(
             lon_rcv=(["idx_rcv"], rcv_info["lons"]),
             lat_rcv=(["idx_rcv"], rcv_info["lats"]),
@@ -826,6 +895,7 @@ def init_library_dataset(
         coords=dict(
             lon=grid_info["lons"],
             lat=grid_info["lats"],
+            snr=snrs_dB,
             idx_rcv=np.arange(n_rcv),
             idx_similarity_metric=np.arange(n_similarity_metrics),
             idx_noise_realisation=np.arange(n_noise_realisations),
@@ -840,36 +910,36 @@ def init_library_dataset(
     if not isotropic_env:
         # Compute azimuths
         az_rcv = get_azimuth_rcv(grid_info, rcv_info)
-        ds["az_rcv"] = (["idx_rcv", "lat", "lon"], az_rcv)
-        ds["az_rcv"].attrs["units"] = "°"
-        ds["az_rcv"].attrs["long_name"] = "Azimuth"
+        xr_dataset["az_rcv"] = (["idx_rcv", "lat", "lon"], az_rcv)
+        xr_dataset["az_rcv"].attrs["units"] = "°"
+        xr_dataset["az_rcv"].attrs["long_name"] = "Azimuth"
 
         # Build list of angles to be used in kraken
-        dmax = ds.r_from_rcv.min(dim=["lat", "lon", "idx_rcv"]).round(0).values
+        dmax = xr_dataset.r_from_rcv.min(dim=["lat", "lon", "idx_rcv"]).round(0).values
         delta = np.sqrt(grid_info["dlat_bathy"] ** 2 + grid_info["dlon_bathy"] ** 2)
-        # delta = min(ds.dx, ds.dy)
+        # delta = min(xr_dataset.dx, xr_dataset.dy)
         d_az = np.arctan(delta / dmax) * 180 / np.pi
-        list_az_th = np.arange(ds.az_rcv.min(), ds.az_rcv.max(), d_az)
+        list_az_th = np.arange(xr_dataset.az_rcv.min(), xr_dataset.az_rcv.max(), d_az)
 
-        az_propa = np.empty(ds.az_rcv.shape)
+        az_propa = np.empty(xr_dataset.az_rcv.shape)
         # t0 = time.time()
         for i_rcv in range(n_rcv):
             for az in list_az_th:
                 closest_points_idx = (
-                    np.abs(ds.az_rcv.sel(idx_rcv=i_rcv) - az) <= d_az / 2
+                    np.abs(xr_dataset.az_rcv.sel(idx_rcv=i_rcv) - az) <= d_az / 2
                 )
                 az_propa[i_rcv, closest_points_idx] = az
         # print(f"Elapsed time : {time.time() - t0}")
 
         # Add az_propa to dataset
-        ds["az_propa"] = (["idx_rcv", "lat", "lon"], az_propa)
-        ds["az_propa"].attrs["units"] = "°"
-        ds["az_propa"].attrs["long_name"] = "Propagation azimuth"
+        xr_dataset["az_propa"] = (["idx_rcv", "lat", "lon"], az_propa)
+        xr_dataset["az_propa"].attrs["units"] = "°"
+        xr_dataset["az_propa"].attrs["long_name"] = "Propagation azimuth"
 
-        # plot_angle_repartition(ds, grid_info)
+        # plot_angle_repartition(xr_dataset, grid_info)
 
         # Remove az_rcv
-        ds = ds.drop_vars("az_rcv")
+        xr_dataset = xr_dataset.drop_vars("az_rcv")
 
     # Set attributes
     var_unit_mapping = {
@@ -880,41 +950,45 @@ def init_library_dataset(
             "lat",
         ],
         "m": ["r_from_rcv"],
-        "": ["idx_rcv"],
+        "dB": ["snr"],
+        "": ["idx_rcv", "idx_similarity_metric", "idx_noise_realisation"],
     }
     for unit in var_unit_mapping.keys():
         for var in var_unit_mapping[unit]:
-            ds[var].attrs["units"] = unit
+            xr_dataset[var].attrs["units"] = unit
 
-    ds["lon_rcv"].attrs["long_name"] = "Receiver longitude"
-    ds["lat_rcv"].attrs["long_name"] = "Receiver latitude"
-    ds["r_from_rcv"].attrs["long_name"] = "Range from receiver"
-    ds["lon"].attrs["long_name"] = "Longitude"
-    ds["lat"].attrs["long_name"] = "Latitude"
-    ds["idx_rcv"].attrs["long_name"] = "Receiver index"
+    xr_dataset["lon_rcv"].attrs["long_name"] = "Receiver longitude"
+    xr_dataset["lat_rcv"].attrs["long_name"] = "Receiver latitude"
+    xr_dataset["r_from_rcv"].attrs["long_name"] = "Range from receiver"
+    xr_dataset["lon"].attrs["long_name"] = "Longitude"
+    xr_dataset["lat"].attrs["long_name"] = "Latitude"
+    xr_dataset["snr"].attrs["long_name"] = "Signal to noise ratio"
+    xr_dataset["idx_rcv"].attrs["long_name"] = "Receiver index"
+    xr_dataset["idx_similarity_metric"].attrs["long_name"] = "Similarity metric index"
+    xr_dataset["idx_noise_realisation"].attrs["long_name"] = "Noise realisation index"
 
     # TODO : need to be changed in case of multiple receivers couples
-    ds["delay_rcv"] = ds.r_from_rcv / C0
+    xr_dataset["delay_rcv"] = xr_dataset.r_from_rcv / C0
 
     # Build OBS pairs
     rcv_pairs = []
-    for i in ds.idx_rcv.values:
-        for j in range(i + 1, ds.idx_rcv.values[-1] + 1):
+    for i in xr_dataset.idx_rcv.values:
+        for j in range(i + 1, xr_dataset.idx_rcv.values[-1] + 1):
             rcv_pairs.append((i, j))
-    ds.coords["idx_rcv_pairs"] = np.arange(len(rcv_pairs))
-    ds.coords["idx_rcv_in_pair"] = np.arange(2)
-    ds["rcv_pairs"] = (["idx_rcv_pairs", "idx_rcv_in_pair"], rcv_pairs)
+    xr_dataset.coords["idx_rcv_pairs"] = np.arange(len(rcv_pairs))
+    xr_dataset.coords["idx_rcv_in_pair"] = np.arange(2)
+    xr_dataset["rcv_pairs"] = (["idx_rcv_pairs", "idx_rcv_in_pair"], rcv_pairs)
 
-    return ds
+    return xr_dataset
 
 
-def init_event_dataset(ds, src_info, rcv_info, interp_src_pos_on_grid=False):
+def init_event_dataset(xr_dataset, src_info, rcv_info, interp_src_pos_on_grid=False):
     """
     Initialize the dataset for the event.
 
     Parameters
     ----------
-    ds : xr.Dataset
+    xr_dataset : xr.Dataset
         Library dataset.
     src_info : dict
         Source information.
@@ -934,42 +1008,46 @@ def init_event_dataset(ds, src_info, rcv_info, interp_src_pos_on_grid=False):
     r_src_rcv = get_range_src_rcv_range(lon_src, lat_src, rcv_info)
     az_src_rcv = get_azimuth_src_rcv(lon_src, lat_src, rcv_info)
 
-    ds.coords["event_signal_time"] = []
-    ds.coords["src_trajectory_time"] = t_src.astype(np.float32)
+    xr_dataset.coords["event_signal_time"] = []
+    xr_dataset.coords["src_trajectory_time"] = t_src.astype(np.float32)
 
-    ds["lon_src"] = (["src_trajectory_time"], lon_src.astype(np.float32))
-    ds["lat_src"] = (["src_trajectory_time"], lat_src.astype(np.float32))
-    ds["r_src_rcv"] = (
+    xr_dataset["lon_src"] = (["src_trajectory_time"], lon_src.astype(np.float32))
+    xr_dataset["lat_src"] = (["src_trajectory_time"], lat_src.astype(np.float32))
+    xr_dataset["r_src_rcv"] = (
         ["idx_rcv", "src_trajectory_time"],
         np.array(r_src_rcv).astype(np.float32),
     )
-    ds["az_src_rcv"] = (
+    xr_dataset["az_src_rcv"] = (
         ["idx_rcv", "src_trajectory_time"],
         np.array(az_src_rcv).astype(np.float32),
     )
 
-    ds["event_signal_time"].attrs["units"] = "s"
-    ds["src_trajectory_time"].attrs["units"] = "s"
+    xr_dataset["event_signal_time"].attrs["units"] = "s"
+    xr_dataset["src_trajectory_time"].attrs["units"] = "s"
 
-    ds["lon_src"].attrs["long_name"] = "lon_src"
-    ds["lat_src"].attrs["long_name"] = "lat_src"
-    ds["r_src_rcv"].attrs["long_name"] = "Range from receiver to source"
-    ds["event_signal_time"].attrs["units"] = "Time"
-    ds["src_trajectory_time"].attrs["long_name"] = "Time"
+    xr_dataset["lon_src"].attrs["long_name"] = "lon_src"
+    xr_dataset["lat_src"].attrs["long_name"] = "lat_src"
+    xr_dataset["r_src_rcv"].attrs["long_name"] = "Range from receiver to source"
+    xr_dataset["event_signal_time"].attrs["units"] = "Time"
+    xr_dataset["src_trajectory_time"].attrs["long_name"] = "Time"
 
     if interp_src_pos_on_grid:
-        ds["lon_src"].values = ds.lon.sel(lon=ds.lon_src, method="nearest")
-        ds["lat_src"].values = ds.lat.sel(lat=ds.lat_src, method="nearest")
-        ds["r_src_rcv"].values = get_range_src_rcv_range(
-            ds["lon_src"], ds["lat_src"], rcv_info
+        xr_dataset["lon_src"].values = xr_dataset.lon.sel(
+            lon=xr_dataset.lon_src, method="nearest"
         )
-        ds.attrs["source_positions"] = "Interpolated on grid"
-        ds.attrs["src_pos"] = "on_grid"
+        xr_dataset["lat_src"].values = xr_dataset.lat.sel(
+            lat=xr_dataset.lat_src, method="nearest"
+        )
+        xr_dataset["r_src_rcv"].values = get_range_src_rcv_range(
+            xr_dataset["lon_src"], xr_dataset["lat_src"], rcv_info
+        )
+        xr_dataset.attrs["source_positions"] = "Interpolated on grid"
+        xr_dataset.attrs["src_pos"] = "on_grid"
     else:
-        ds.attrs["source_positions"] = "Not interpolated on grid"
-        ds.attrs["src_pos"] = "not_on_grid"
+        xr_dataset.attrs["source_positions"] = "Not interpolated on grid"
+        xr_dataset.attrs["src_pos"] = "not_on_grid"
 
-    return ds
+    # return xr_dataset
 
 
 def check_waveguide_cutoff(
@@ -1013,7 +1091,7 @@ def check_waveguide_cutoff(
     return src
 
 
-def add_noise_to_dataset(xr_dataset, snr_dB):
+def add_noise_to_dataset(xr_dataset):
     """
     Add noise to received signal.
 
@@ -1021,29 +1099,35 @@ def add_noise_to_dataset(xr_dataset, snr_dB):
     ----------
     xr_dataset : xr.Dataset
         Populated dataset.
-    snr_dB : float
-        Signal to noise ratio.
 
     Returns
     -------
     None
 
     """
-
     for i_rcv in tqdm(
-        xr_dataset.idx_rcv, bar_format=BAR_FORMAT, desc="Add noise to received signal"
+        xr_dataset.idx_rcv.values,
+        bar_format=BAR_FORMAT,
+        desc="Add noise to received signal",
     ):
-        if snr_dB is not None:
-            # Add noise to received signal
-            xr_dataset.rcv_signal_library.loc[dict(idx_rcv=i_rcv)] = (
-                add_noise_to_signal(
-                    xr_dataset.rcv_signal_library.sel(idx_rcv=i_rcv).values,
-                    snr_dB=snr_dB,
+        rcv_sig = (
+            xr_dataset.rcv_signal_library_noise_free.sel(idx_rcv=i_rcv).load().values
+        )
+        for snr_dB in xr_dataset.snr.values:
+
+            if snr_dB is not None:
+                # Add noise to received signal
+                xr_dataset.rcv_signal_library.loc[dict(idx_rcv=i_rcv, snr=snr_dB)] = (
+                    add_noise_to_signal(
+                        np.copy(rcv_sig),
+                        snr_dB=snr_dB,
+                    )
                 )
-            )
-            xr_dataset.attrs["snr_dB"] = snr_dB
-        else:
-            xr_dataset.attrs["snr_dB"] = "Noiseless"
+
+                # xr_dataset.attrs["snr_dB"] = snr_dB
+            else:
+                # xr_dataset.attrs["snr_dB"] = "Noiseless"
+                pass  # TODO: need to be updated to fit with snr integration in a single dataset
 
 
 def fft_convolve_f(a0, a1, axis=-1, workers=8):
@@ -1092,67 +1176,85 @@ def add_correlation_to_dataset(xr_dataset):
     """
 
     # Derive correlation lags
-    xr_dataset.coords["library_corr_lags"] = signal.correlation_lags(
+    lags_idx = signal.correlation_lags(
         xr_dataset.sizes["library_signal_time"], xr_dataset.sizes["library_signal_time"]
     )
+    lags = (
+        lags_idx * xr_dataset.library_signal_time.diff("library_signal_time").values[0]
+    )
+    xr_dataset.coords["library_corr_lags"] = lags
     xr_dataset["library_corr_lags"].attrs["units"] = "s"
     xr_dataset["library_corr_lags"].attrs["long_name"] = "Correlation lags"
 
     # Derive cross_correlation vector for each grid pixel
-    library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
+    library_corr_dim = ["snr", "idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
     library_corr = np.empty(tuple(xr_dataset.sizes[d] for d in library_corr_dim))
 
     # Faster FFT approach
     ax = 2
     nlag = xr_dataset.sizes["library_corr_lags"]
     for i_pair in tqdm(
-        range(xr_dataset.dims["idx_rcv_pairs"]),
+        range(xr_dataset.sizes["idx_rcv_pairs"]),
         bar_format=BAR_FORMAT,
         desc="Receiver pair cross-correlation computation",
     ):
-        rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
-        in1 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0]).values
-        in2 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1]).values
+        for idx_snr, snr_dB in enumerate(xr_dataset.snr.values):
+            rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
+            in1 = (
+                xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0], snr=snr_dB)
+                .load()
+                .values
+            )
+            in2 = (
+                xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1], snr=snr_dB)
+                .load()
+                .values
+            )
 
-        nfft = sp_fft.next_fast_len(nlag, True)
+            nfft = sp_fft.next_fast_len(nlag, True)
 
-        sig_0 = sp_fft.rfft(
-            in1,
-            n=nfft,
-            axis=-1,
-        )
-        sig_1 = sp_fft.rfft(
-            in2,
-            n=nfft,
-            axis=-1,
-        )
+            sig_0 = sp_fft.rfft(
+                in1,
+                n=nfft,
+                axis=-1,
+            )
+            sig_1 = sp_fft.rfft(
+                in2,
+                n=nfft,
+                axis=-1,
+            )
 
-        corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
-        corr_01_fft = corr_01_fft[:, :, slice(nlag)]
+            corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
+            corr_01_fft = corr_01_fft[:, :, slice(nlag)]
 
-        autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
-        autocorr0 = autocorr0[:, :, slice(nlag)]
+            autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
+            autocorr0 = autocorr0[:, :, slice(nlag)]
 
-        autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
-        autocorr1 = autocorr1[:, :, slice(nlag)]
+            autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
+            autocorr1 = autocorr1[:, :, slice(nlag)]
 
-        n0 = corr_01_fft.shape[-1] // 2
-        corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
-        corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
-        corr_01_fft /= corr_norm
-        library_corr[i_pair, ...] = corr_01_fft
+            n0 = corr_01_fft.shape[-1] // 2
+            corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
+            corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
+            corr_01_fft /= corr_norm
+            library_corr[idx_snr, i_pair, ...] = corr_01_fft
 
+    # if init_corr:
+    # library_corr_dim += ["snr"]
+    # dummy_array = np.empty(tuple(xr_dataset.sizes[d] for d in library_corr_dim))
     xr_dataset["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
     xr_dataset["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
 
+    # xr_dataset.library_corr.loc[dict(snr=snr_dB)] = library_corr.astype(np.float32)
 
-def add_noise_to_event(library_dataset, snr_dB):
+
+def add_noise_to_event(xr_dataset, snr_dB):
     """
     Add noise to event signal.
 
     Parameters
     ----------
-    library_dataset : xr.Dataset
+    xr_dataset : xr.Dataset
         Populated dataset.
     snr_dB : float
         Signal to noise ratio.
@@ -1162,28 +1264,34 @@ def add_noise_to_event(library_dataset, snr_dB):
     None
 
     """
-
-    ds = library_dataset
+    # ds = library_dataset
     for i_rcv in tqdm(
-        ds.idx_rcv, bar_format=BAR_FORMAT, desc="Add noise to event signal"
+        xr_dataset.idx_rcv, bar_format=BAR_FORMAT, desc="Add noise to event signal"
     ):
+        rcv_sig = (
+            xr_dataset.rcv_signal_event_noise_free.sel(idx_rcv=i_rcv).load().values
+        )
         if snr_dB is not None:
             # Add noise to received signal
-            ds.rcv_signal_event.loc[dict(idx_rcv=i_rcv)] = add_noise_to_signal(
-                ds.rcv_signal_event.sel(idx_rcv=i_rcv).values, snr_dB
+            xr_dataset.rcv_signal_event.loc[dict(idx_rcv=i_rcv, snr=snr_dB)] = (
+                add_noise_to_signal(
+                    np.copy(rcv_sig),
+                    snr_dB,
+                )
             )
-            ds.attrs["snr_dB"] = snr_dB
+            # xr_dataset.attrs["snr_dB"] = snr_dB
         else:
-            ds.attrs["snr_dB"] = "Noiseless"
+            # xr_dataset.attrs["snr_dB"] = "Noiseless"
+            pass  # TODO: need to be updated to fit with snr integration in a single dataset
 
 
-def add_event_correlation(library_dataset):
+def add_event_correlation(xr_dataset, snr_dB, init_corr=False):
     """
     Derive correlation for each source position.
 
     Parameters
     ----------
-    library_dataset : xr.Dataset
+    xr_dataset : xr.Dataset
         Populated dataset.
 
     Returns
@@ -1192,28 +1300,37 @@ def add_event_correlation(library_dataset):
 
     """
 
-    ds = library_dataset
-    ds.coords["event_corr_lags"] = signal.correlation_lags(
-        ds.dims["event_signal_time"], ds.dims["event_signal_time"]
-    )
-    ds["event_corr_lags"].attrs["units"] = "s"
-    ds["event_corr_lags"].attrs["long_name"] = "Correlation lags"
+    # ds = library_dataset
+    # lags_idx = signal.correlation_lags(
+    #     xr_dataset.sizes["event_signal_time"], xr_dataset.sizes["event_signal_time"]
+    # )
+    # lags = lags_idx * xr_dataset.event_signal_time.diff("event_signal_time").values[0]
+
+    # xr_dataset.coords["event_corr_lags"] = lags
+    # xr_dataset["event_corr_lags"].attrs["units"] = "s"
+    # xr_dataset["event_corr_lags"].attrs["long_name"] = "Correlation lags"
 
     # Derive cross_correlation vector for each ship position
     event_corr_dim = ["idx_rcv_pairs", "src_trajectory_time", "event_corr_lags"]
-    event_corr = np.empty(tuple(ds.dims[d] for d in event_corr_dim))
+    event_corr = np.empty(tuple(xr_dataset.sizes[d] for d in event_corr_dim))
 
     for i_ship in tqdm(
-        range(ds.dims["src_trajectory_time"]),
+        range(xr_dataset.sizes["src_trajectory_time"]),
         bar_format=BAR_FORMAT,
         desc="Derive correlation vector for each ship position",
     ):
-        for i_pair, rcv_pair in enumerate(ds.rcv_pairs):
-            s0 = ds.rcv_signal_event.sel(idx_rcv=rcv_pair[0]).isel(
-                src_trajectory_time=i_ship
+        for i_pair, rcv_pair in enumerate(xr_dataset.rcv_pairs):
+            s0 = (
+                xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[0], snr=snr_dB)
+                .isel(src_trajectory_time=i_ship)
+                .load()
+                .values
             )
-            s1 = ds.rcv_signal_event.sel(idx_rcv=rcv_pair[1]).isel(
-                src_trajectory_time=i_ship
+            s1 = (
+                xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[1], snr=snr_dB)
+                .isel(src_trajectory_time=i_ship)
+                .load()
+                .values
             )
 
             corr_01 = signal.correlate(s0, s1)
@@ -1224,9 +1341,17 @@ def add_event_correlation(library_dataset):
 
             event_corr[i_pair, i_ship, :] = corr_01
 
-            del s0, s1, corr_01
+            # del s0, s1, corr_01
 
-    ds["event_corr"] = (event_corr_dim, event_corr.astype(np.float32))
+    # if init_corr:
+    #     event_corr_dim += ["snr"]
+    #     dummy_array = np.zeros(tuple(xr_dataset.sizes[d] for d in event_corr_dim))
+    #     xr_dataset["event_corr"] = (event_corr_dim, dummy_array)
+    #     xr_dataset["event_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
+
+    xr_dataset.event_corr.loc[dict(snr=snr_dB)] = event_corr.astype(np.float32)
+
+    # xr_dataset["event_corr"] = (event_corr_dim, event_corr.astype(np.float32))
 
 
 def add_noise_to_signal(sig, snr_dB, noise_type="gaussian"):
@@ -1374,7 +1499,9 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, detection_metric):
     return da_amb_surf
 
 
-def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=True):
+def build_ambiguity_surf(
+    xr_dataset, snr_dB, idx_similarity_metric, i_noise, init_amb_surf, verbose=True
+):
     """
     Build ambiguity surface for each receiver pair and source position.
 
@@ -1382,6 +1509,8 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
     ----------
     xr_dataset : xr.Dataset
         Populated dataset.
+    snr_dB : float
+        Signal to noise ratio (dB).
     idx_similarity_metric : int
         Index of the similarity metric.
     i_noise : int
@@ -1420,42 +1549,14 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
     )
     ambiguity_surface_sim = ambiguity_surface[0, ...]
 
-    if i_noise == 0 and idx_similarity_metric == 0:
-        # Create ambiguity surface dataarray
-        xr_dataset["ambiguity_surface"] = (
-            ambiguity_surface_dim,
-            ambiguity_surface,
-        )
-        # Add attributes
-        xr_dataset.ambiguity_surface.attrs["long_name"] = "Ambiguity surface"
-        xr_dataset.ambiguity_surface.attrs["units"] = "dB"
-
-        # Create detected position dataarrays
-        detected_pos_dim = [
-            "idx_rcv_pairs",
-            "src_trajectory_time",
-            "idx_noise_realisation",
-            "idx_similarity_metric",
-        ]
-
-        # Weird behavior of xarray : if detected_pos_lon and detected_pos_lat are initialized with the same np array (e.g. np.empty),
-        # the two dataarrays are linked and the values of detected_pos_lon are updated when detected_pos_lat is updated
-        detected_pos_init_lon = np.empty(
-            tuple(xr_dataset.sizes[d] for d in detected_pos_dim)
-        )
-        detected_pos_init_lat = np.empty(
-            tuple(xr_dataset.sizes[d] for d in detected_pos_dim)
-        )
-
-        xr_dataset["detected_pos_lon"] = (detected_pos_dim, detected_pos_init_lon)
-        xr_dataset["detected_pos_lat"] = (detected_pos_dim, detected_pos_init_lat)
-
     # Store all ambiguity surfaces in a list (for parrallel processing)
     ambiguity_surfaces = []
 
     for i_pair in xr_dataset.idx_rcv_pairs:
-        lib_data = xr_dataset.library_corr.sel(idx_rcv_pairs=i_pair)
-        event_data = xr_dataset.event_corr.sel(idx_rcv_pairs=i_pair)
+        lib_data = xr_dataset.library_corr.sel(idx_rcv_pairs=i_pair, snr=snr_dB).load()
+        event_data = xr_dataset.event_corr.sel(idx_rcv_pairs=i_pair, snr=snr_dB).load()
+
+        test = xr_dataset.event_corr.sel(idx_rcv_pairs=i_pair).load()
 
         """ Parallel processing"""
         # # TODO: swicht between parallel and sequential processing depending on the number of ship positions
@@ -1463,7 +1564,7 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
         # pool = multiprocessing.Pool(processes=N_CORES)
         # # Build the parameter pool
         # idx_ship_intervalls = np.array_split(
-        #     np.arange(xr_dataset.dims["src_trajectory_time"]), N_CORES
+        #     np.arange(xr_dataset.sizes["src_trajectory_time"]), N_CORES
         # )
         # src_traj_time_intervalls = np.array_split(xr_dataset["src_trajectory_time"], N_CORES)
         # param_pool = [
@@ -1486,7 +1587,7 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
         lib_data_array = lib_data.values
 
         for i_ship in tqdm(
-            range(xr_dataset.dims["src_trajectory_time"]),
+            range(xr_dataset.sizes["src_trajectory_time"]),
             bar_format=BAR_FORMAT,
             desc="Build ambiguity surface",
         ):
@@ -1540,9 +1641,9 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
         print(f"Elapsed time (for loop) : {time.time() - t0}")
 
     # Store ambiguity surface in dataset
-    xr_dataset.ambiguity_surface[dict(idx_similarity_metric=idx_similarity_metric)] = (
-        ambiguity_surface_sim
-    )
+    xr_dataset.ambiguity_surface.loc[
+        dict(idx_similarity_metric=idx_similarity_metric, snr=snr_dB)
+    ] = ambiguity_surface_sim
 
     # xr_dataset["ambiguity_surface"] = (
     #     ambiguity_surface_dim,
@@ -1555,10 +1656,86 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
     # xr_dataset = xr.merge([xr_dataset, amb_surf_merged])
 
     # Analyse ambiguity surface to detect source position
-    get_detected_pos(xr_dataset, idx_similarity_metric, i_noise)
+    get_detected_pos(xr_dataset, snr_dB, idx_similarity_metric, i_noise)
 
 
-def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"):
+def init_ambiguity_surface(xr_dataset):
+
+    ambiguity_surface_dim = [
+        "idx_similarity_metric",
+        "idx_rcv_pairs",
+        "src_trajectory_time",
+        "lat",
+        "lon",
+    ]
+    ambiguity_surface = np.empty(
+        tuple(xr_dataset.sizes[d] for d in ambiguity_surface_dim)
+    )
+
+    # Create ambiguity surface dataarray
+    xr_dataset["ambiguity_surface"] = (
+        ambiguity_surface_dim,
+        ambiguity_surface,
+    )
+
+    # Expand dims to add snr dimension to the rcv_signal_library dataarray
+    # Using expand_dims to avoid loading the entire dataset in memory -> overflow
+    xr_dataset["ambiguity_surface"] = (
+        xr_dataset.ambiguity_surface.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
+        .assign_coords({"snr": xr_dataset.snr})
+        .copy()
+    )
+
+    # Add attributes
+    xr_dataset.ambiguity_surface.attrs["long_name"] = "Ambiguity surface"
+    xr_dataset.ambiguity_surface.attrs["units"] = "dB"
+
+    # Create detected position dataarrays
+    detected_pos_dim = [
+        # "snr",
+        "idx_rcv_pairs",
+        "src_trajectory_time",
+        "idx_noise_realisation",
+        "idx_similarity_metric",
+    ]
+
+    # Weird behavior of xarray : if detected_pos_lon and detected_pos_lat are initialized with the same np array (e.g. np.empty),
+    # the two dataarrays are linked and the values of detected_pos_lon are updated when detected_pos_lat is updated
+    detected_pos_init_lon = np.empty(
+        tuple(xr_dataset.sizes[d] for d in detected_pos_dim)
+    )
+    detected_pos_init_lat = np.empty(
+        tuple(xr_dataset.sizes[d] for d in detected_pos_dim)
+    )
+
+    xr_dataset["detected_pos_lon"] = (detected_pos_dim, detected_pos_init_lon)
+    xr_dataset["detected_pos_lat"] = (detected_pos_dim, detected_pos_init_lat)
+
+    # Expand dims to add snr dimension to the rcv_signal_library dataarray
+    # Using expand_dims to avoid loading the entire dataset in memory -> overflow
+    xr_dataset["detected_pos_lon"] = (
+        xr_dataset.detected_pos_lon.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
+        .assign_coords({"snr": xr_dataset.snr})
+        .copy()
+    )
+    xr_dataset["detected_pos_lat"] = (
+        xr_dataset.detected_pos_lat.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
+        .assign_coords({"snr": xr_dataset.snr})
+        .copy()
+    )
+
+    # Save and reload to avoid read-only issues with zarr
+    xr_dataset.to_zarr(xr_dataset.fullpath_output, mode="w")
+    xr_dataset.close()
+    # Open mutable zarr dataset
+    xr_dataset = xr.open_zarr(xr_dataset.fullpath_output)
+
+    return xr_dataset
+
+
+def get_detected_pos(
+    xr_dataset, snr_dB, idx_similarity_metric, i_noise, method="absmax"
+):
     """
     Derive detected position from ambiguity surface.
 
@@ -1566,6 +1743,8 @@ def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"
     ----------
     xr_dataset : xr.Dataset
         Populated dataset.
+    snr_dB : float
+        Signal to noise ratio.
     idx_similarity_metric : int
         Index of the similarity metric.
     i_noise : int
@@ -1578,8 +1757,10 @@ def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"
     None
 
     """
-    ambiguity_surface = xr_dataset.ambiguity_surface.isel(
-        idx_similarity_metric=idx_similarity_metric
+    ambiguity_surface = (
+        xr_dataset.ambiguity_surface.isel(idx_similarity_metric=idx_similarity_metric)
+        .sel(snr=snr_dB)
+        .load()
     )
 
     if method == "absmax":
@@ -1596,11 +1777,13 @@ def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"
 
     # Store detected position in dataset
     dict_sel = dict(
-        idx_noise_realisation=i_noise, idx_similarity_metric=idx_similarity_metric
+        idx_noise_realisation=i_noise,
+        idx_similarity_metric=idx_similarity_metric,
+        snr=snr_dB,
     )
     # ! need to use loc when assigning values to a DataArray to avoid silent failing !
-    xr_dataset.detected_pos_lon[dict_sel] = detected_lon
-    xr_dataset.detected_pos_lat[dict_sel] = detected_lat
+    xr_dataset.detected_pos_lon.loc[dict_sel] = detected_lon
+    xr_dataset.detected_pos_lat.loc[dict_sel] = detected_lat
 
 
 def init_src(dt, min_waveguide_depth, src_info):
@@ -2007,7 +2190,7 @@ def print_simulation_info(testcase, src_info, rcv_info, grid_info):
     print(msg)
 
 
-def get_populated_path(grid_info, kraken_env, src_signal_type):
+def get_populated_path(grid_info, kraken_env, src_signal_type, ext="nc"):
     """
     Get fullpath to populated dataset.
 
@@ -2019,6 +2202,8 @@ def get_populated_path(grid_info, kraken_env, src_signal_type):
         Kraken environment.
     src_signal_type : str
         Source signal type.
+    ext : str, optional
+        File extension. The default is "nc".
 
     Returns
     -------
@@ -2040,21 +2225,21 @@ def get_populated_path(grid_info, kraken_env, src_signal_type):
     populated_path = os.path.join(
         VERLINDEN_POPULATED_FOLDER,
         kraken_env.filename,
-        f"populated_{boundaries}_{src_signal_type}.nc",
+        f"populated_{boundaries}_{src_signal_type}.{ext}",
     )
     return populated_path
 
 
-def save_dataset(
+def build_output_save_path(
     xr_dataset,
     output_folder,
     analysis_folder,
     env_filename,
     src_name,
-    snr_tag,
+    # snr_tag,
 ):
     """
-    Save dataset to netcdf.
+    Build path to save dataset and related figures
 
     Parameters
     ----------
@@ -2068,30 +2253,31 @@ def save_dataset(
         Environment filename.
     src_name : str
         Source name.
-    snr_tag : str
-        SNR tag.
 
     Returns
     -------
     None
 
     """
-
+    ext = "zarr"
     # Build path to save dataset and corresponding path to save analysis results produced later on
-    xr_dataset.attrs["fullpath_output"] = os.path.join(
-        output_folder,
-        env_filename,
-        src_name,
-        xr_dataset.src_pos,
-        f"output_{snr_tag}.nc",
-    )
-    xr_dataset.attrs["fullpath_analysis"] = os.path.join(
-        analysis_folder,
-        env_filename,
-        src_name,
-        xr_dataset.src_pos,
-        snr_tag,
-    )
+    # Check if fullpath_output and fullpath_analysis are already in xr_dataset.attrs
+    if not "fullpath_output" in xr_dataset.attrs:
+        xr_dataset.attrs["fullpath_output"] = os.path.join(
+            output_folder,
+            env_filename,
+            src_name,
+            xr_dataset.src_pos,
+            f"output_{env_filename}.{ext}",
+        )
+    if not "fullpath_analysis" in xr_dataset.attrs:
+        xr_dataset.attrs["fullpath_analysis"] = os.path.join(
+            analysis_folder,
+            env_filename,
+            src_name,
+            xr_dataset.src_pos,
+            # snr_tag,
+        )
 
     # Ensure that the output folder exists
     if not os.path.exists(os.path.dirname(xr_dataset.fullpath_output)):
@@ -2100,8 +2286,9 @@ def save_dataset(
     if not os.path.exists(xr_dataset.fullpath_analysis):
         os.makedirs(xr_dataset.fullpath_analysis)
 
-    # Save dataset to netcdf
-    xr_dataset.to_netcdf(xr_dataset.fullpath_output)
+    # # Save dataset to netcdf
+    # # xr_dataset.to_netcdf(xr_dataset.fullpath_output)
+    # xr_dataset.to_zarr(xr_dataset.fullpath_output, mode="r+")
 
 
 def get_snr_tag(snr_dB, verbose=True):

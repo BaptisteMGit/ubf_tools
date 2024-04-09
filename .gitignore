@@ -155,6 +155,8 @@ env_desc_img/
 
 # NETCDF data 
 *.nc
+# Zarr data 
+*.zarr
 
 # Wav files
 *.wav

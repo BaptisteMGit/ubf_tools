@@ -21,6 +21,7 @@ pylint = "*"
 scikit-learn = "*"
 dask = "*"
 distributed = "*"
+zarr = "*"
 
 [dev-packages]
 ipykernel = "*"

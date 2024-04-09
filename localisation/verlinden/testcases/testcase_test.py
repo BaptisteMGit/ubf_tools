@@ -95,7 +95,9 @@ def run_tc(
 
     if debug:
         src_signal_type = ["debug_pulse"]
-        snr = [0]
+        # src_signal_type = ["pulse"]
+        # snr = np.arange(-15, 5, 0.5)
+        snr = [-20, 0]
         duration = 200  # 1000 s
         nmax_ship = 1
         grid_info = dict(
@@ -170,7 +172,7 @@ def run_tc(
         elif src_stype == "ship":
             fs = 100  # Sampling frequency
             # Library
-            f0_lib = 0.5  # Fundamental frequency of the ship signal
+            f0_lib = 1  # Fundamental frequency of the ship signal
             lib_src_info = {
                 "sig_type": "ship",
                 "f0": f0_lib,
@@ -180,7 +182,7 @@ def run_tc(
             }
 
             # Event
-            f0_event = 0.5  # Fundamental frequency of the ship signal
+            f0_event = 1.5  # Fundamental frequency of the ship signal
             event_src_info = {
                 "sig_type": "ship",
                 "f0": f0_event,
@@ -217,13 +219,13 @@ def run_tc(
         plot_info = {
             "plot_video": False,
             "plot_one_tl_profile": False,
-            "plot_ambiguity_surface_dist": True,
-            "plot_received_signal": False,
-            "plot_emmited_signal": False,
-            "plot_ambiguity_surface": False,
-            "plot_ship_trajectory": False,
+            "plot_ambiguity_surface_dist": False,
+            "plot_received_signal": True,
+            "plot_emmited_signal": True,
+            "plot_ambiguity_surface": True,
+            "plot_ship_trajectory": True,
             "plot_pos_error": False,
-            "plot_correlation": False,
+            "plot_correlation": True,
             "tl_freq_to_plot": [20],
             "lon_offset": 0.001,
             "lat_offset": 0.001,
@@ -290,13 +292,13 @@ def run_tests(run_mode, re_analysis=False):
     # Test case 1.0
     nb_noise_realisations_per_snr = 20
     src_signal_type = ["ship"]
-    # similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
+    similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
     # snr = [-10, -5, 0, 5]
-    similarity_metrics = ["hilbert_env_intercorr0"]
+    # similarity_metrics = ["intercorr0"]
 
     # snr = [-10, -5, 0, 5, 10, None]
     # grid_offset_cells = 80
-    snr = [0]
+    snr = [-15, 0]
     grid_offset_cells = 40
 
     # run_tc(
@@ -344,18 +346,18 @@ def run_tests(run_mode, re_analysis=False):
     # )
 
     # Test case 1.4
-    # run_tc(
-    #     testcase=TestCase1_4(),
-    #     rcv_info=rcv_info_sw,
-    #     initial_ship_pos=initial_ship_pos_sw,
-    #     snr=snr,
-    #     src_signal_type=src_signal_type,
-    #     similarity_metrics=similarity_metrics,
-    #     grid_offset_cells=grid_offset_cells,
-    #     debug=debug,
-    #     re_analysis=re_analysis,
-    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
-    # )
+    run_tc(
+        testcase=TestCase1_4(),
+        rcv_info=rcv_info_sw,
+        initial_ship_pos=initial_ship_pos_sw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        similarity_metrics=similarity_metrics,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    )
 
     # # Test case 2.0
     # run_tc(
@@ -392,19 +394,19 @@ def run_tests(run_mode, re_analysis=False):
     grid_offset_cells = 80
     nb_noise_realisations_per_snr = 100
 
-    # snr = [None]
-    run_tc(
-        testcase=TestCase3_1(),
-        rcv_info=rcv_info_dw,
-        initial_ship_pos=initial_ship_pos_dw,
-        snr=snr,
-        src_signal_type=src_signal_type,
-        similarity_metrics=similarity_metrics,
-        grid_offset_cells=grid_offset_cells,
-        debug=debug,
-        re_analysis=re_analysis,
-        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
-    )
+    # # snr = [None]
+    # run_tc(
+    #     testcase=TestCase3_1(),
+    #     rcv_info=rcv_info_dw,
+    #     initial_ship_pos=initial_ship_pos_dw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    # )
 
 
 if __name__ == "__main__":
@@ -415,7 +417,7 @@ if __name__ == "__main__":
     # client = cluster.get_client()
 
     # run_mode = "normal"
-    re_analysis = True
+    re_analysis = False
 
     import sys
 
@@ -425,6 +427,6 @@ if __name__ == "__main__":
         run_mode = "normal"
 
     # run_mode = "debug"
-    run_mode = "normal"
+    # run_mode = "normal"
 
     run_tests(run_mode, re_analysis)

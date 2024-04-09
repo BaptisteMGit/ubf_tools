@@ -1284,19 +1284,29 @@ def analysis_main(
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 
     for snr in snr_list:
-        if snr is None:
-            snr_tag = "_noiseless"
-        else:
-            snr_tag = f"_snr{snr}dB"
+        # if snr is None:
+        #     snr_tag = "_noiseless"
+        # else:
+        #     snr_tag = f"_snr{snr}dB"
 
-        output_nc_path = os.path.join(
+        # output_nc_path = os.path.join(
+        #     VERLINDEN_OUTPUT_FOLDER,
+        #     testcase_name,
+        #     simulation_info["src_type"],
+        #     simulation_info["src_pos"],
+        #     f"output_{testcase_name}.nc",
+        # )
+        # xr_dataset = xr.open_dataset(output_nc_path)
+
+        output_zarr_path = os.path.join(
             VERLINDEN_OUTPUT_FOLDER,
             testcase_name,
             simulation_info["src_type"],
             simulation_info["src_pos"],
-            f"output{snr_tag}.nc",
+            f"output_{testcase_name}.zarr",
         )
-        xr_dataset = xr.open_dataset(output_nc_path)
+        xr_dataset = xr.open_zarr(output_zarr_path)
+        xr_dataset = xr_dataset.sel(snr=snr).load()
 
         if similarity_metrics is None:
             similarity_metrics = xr_dataset.similarity_metric.values
@@ -1308,7 +1318,7 @@ def analysis_main(
             ]
 
         # Image folder
-        root_img = xr_dataset.fullpath_analysis
+        root_img = os.path.join(xr_dataset.fullpath_analysis, f"{snr}_dB")
         img_basepath = os.path.join(root_img, now, testcase_name + "_")
         img_root = os.path.dirname(img_basepath)
 
@@ -1414,7 +1424,7 @@ def analysis_main(
             # Write report in txt file
             local_log = [
                 f"Detection metric: {similarity_metric}",
-                f"SNR: {ds.attrs['snr_dB']}dB",
+                f"SNR: {ds.snr.values}dB",
                 f"Number of sensors: {ds.dims['idx_rcv']}",
                 f"Number of sensors pairs: {ds.dims['idx_rcv_pairs']}",
                 f"Positions of the source: {ds.attrs['source_positions']}",

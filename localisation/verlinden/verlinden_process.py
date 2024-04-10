@@ -128,6 +128,9 @@ def populate_grid(
         ext="zarr",
     )
 
+    # Initialize correlation array
+    init_corr_library(xr_dataset)
+
     if not os.path.exists(os.path.dirname(xr_dataset.fullpath_populated)):
         os.makedirs(os.path.dirname(xr_dataset.fullpath_populated))
 
@@ -367,11 +370,13 @@ def verlinden_main(
         n_noise_realisations=nb_noise_realisations_per_snr,
         similarity_metrics=similarity_metrics,
     )
+    # Add source library/event to dataset
+    add_src_to_dataset(verlinden_dataset, library_src, event_src, src_info)
 
     # Add noise to dataset
     add_noise_to_dataset(verlinden_dataset)
     # Derive correlation vector for the entire grid
-    add_correlation_to_dataset(verlinden_dataset)
+    verlinden_dataset = add_correlation_to_dataset(verlinden_dataset)
 
     event_src.z_src = src_info["depth"]
     add_event_to_dataset(
@@ -416,9 +421,6 @@ def verlinden_main(
                     i_noise=i,
                     init_amb_surf=init_amb_surf,
                 )
-
-        # Add source and event to dataset
-        add_src_to_dataset(verlinden_dataset, library_src, event_src, src_info)
 
         # Save dataset
         # xr_dataset.to_netcdf(xr_dataset.fullpath_output)

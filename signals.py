@@ -12,6 +12,10 @@ def pulse(T, f, fs, t0=0):
     s[idx_tpulse] = (
         1 / 2 * np.sin(omega * t_pulse) * (1 - np.cos(1 / 4 * omega * t_pulse))
     )
+
+    # Normalize to 1
+    s /= np.max(np.abs(s))
+
     return s, t
 
 
@@ -36,6 +40,9 @@ def pulse_train(T, f, fs, interpulse_delay=None):
         )
         s_train += s_pulse
 
+    # Normalize to 1
+    s_train /= np.max(np.abs(s_train))
+
     return s_train, t_train
 
 
@@ -47,6 +54,7 @@ def sine_wave(f0, fs, T, A, phi):
 
     t = np.arange(0, T, 1 / fs)
     y = A * np.sin(2 * np.pi * f0 * t + phi)
+
     return y, t
 
 
@@ -131,6 +139,10 @@ def ricker_pulse(fc, fs, T, t0=0, center=True):
         t0 = t.max() / 2
 
     s = (1 - 2 * (np.pi * fc * (t - t0)) ** 2) * np.exp(-((np.pi * fc * (t - t0)) ** 2))
+
+    # Normalize to 1
+    s /= np.max(np.abs(s))
+
     return s, t
 
 

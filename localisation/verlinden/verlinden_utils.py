@@ -1160,6 +1160,34 @@ def fft_convolve_f(a0, a1, axis=-1, workers=8):
     return corr_01
 
 
+def init_corr_library(xr_dataset):
+    # Derive correlation lags
+    lags_idx = signal.correlation_lags(
+        xr_dataset.sizes["library_signal_time"], xr_dataset.sizes["library_signal_time"]
+    )
+    lags = (
+        lags_idx * xr_dataset.library_signal_time.diff("library_signal_time").values[0]
+    )
+    xr_dataset.coords["library_corr_lags"] = lags
+    xr_dataset["library_corr_lags"].attrs["units"] = "s"
+    xr_dataset["library_corr_lags"].attrs["long_name"] = "Correlation lags"
+
+    # Derive cross_correlation vector for each grid pixel
+    library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
+    library_corr = np.empty(
+        tuple(xr_dataset.sizes[d] for d in library_corr_dim), dtype=np.float32
+    )
+
+    # Init variable
+    xr_dataset["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
+    xr_dataset["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
+    # Expand dims to add snr dimension to the library_corr dataarray
+    # Using expand_dims to avoid loading the entire dataset in memory -> overflow
+    xr_dataset["library_corr"] = xr_dataset.library_corr.expand_dims(
+        dim={"snr": xr_dataset.sizes["snr"]}
+    ).assign_coords({"snr": xr_dataset.snr})
+
+
 def add_correlation_to_dataset(xr_dataset):
     """
     Derive correlation for each grid pixel.
@@ -1175,38 +1203,62 @@ def add_correlation_to_dataset(xr_dataset):
 
     """
 
-    # Derive correlation lags
-    lags_idx = signal.correlation_lags(
-        xr_dataset.sizes["library_signal_time"], xr_dataset.sizes["library_signal_time"]
-    )
-    lags = (
-        lags_idx * xr_dataset.library_signal_time.diff("library_signal_time").values[0]
-    )
-    xr_dataset.coords["library_corr_lags"] = lags
-    xr_dataset["library_corr_lags"].attrs["units"] = "s"
-    xr_dataset["library_corr_lags"].attrs["long_name"] = "Correlation lags"
+    # # Derive correlation lags
+    # lags_idx = signal.correlation_lags(
+    #     xr_dataset.sizes["library_signal_time"], xr_dataset.sizes["library_signal_time"]
+    # )
+    # lags = (
+    #     lags_idx * xr_dataset.library_signal_time.diff("library_signal_time").values[0]
+    # )
+    # xr_dataset.coords["library_corr_lags"] = lags
+    # xr_dataset["library_corr_lags"].attrs["units"] = "s"
+    # xr_dataset["library_corr_lags"].attrs["long_name"] = "Correlation lags"
 
-    # Derive cross_correlation vector for each grid pixel
-    library_corr_dim = ["snr", "idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
-    library_corr = np.empty(tuple(xr_dataset.sizes[d] for d in library_corr_dim))
+    # # Derive cross_correlation vector for each grid pixel
+    # library_corr = np.empty(
+    #     tuple(xr_dataset.sizes[d] for d in library_corr_dim), dtype=np.float32
+    # )
+
+    # # Init variable
+    # xr_dataset["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
+    # xr_dataset["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
+    # # Expand dims to add snr dimension to the library_corr dataarray
+    # # Using expand_dims to avoid loading the entire dataset in memory -> overflow
+    # xr_dataset["library_corr"] = xr_dataset.library_corr.expand_dims(
+    #     dim={"snr": xr_dataset.sizes["snr"]}
+    # ).assign_coords({"snr": xr_dataset.snr})
+
+    # # Close an reopen to ensure dataarray is mutable
+    # xr_dataset.to_zarr(xr_dataset.fullpath_populated, mode="a")
+    # xr_dataset.close()
+    # # Open mutable zarr dataset
+    # xr_dataset = xr.open_zarr(xr_dataset.fullpath_populated)
+    library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
 
     # Faster FFT approach
     ax = 2
     nlag = xr_dataset.sizes["library_corr_lags"]
-    for i_pair in tqdm(
-        range(xr_dataset.sizes["idx_rcv_pairs"]),
+    for idx_snr in tqdm(
+        range(xr_dataset.sizes["snr"]),
         bar_format=BAR_FORMAT,
         desc="Receiver pair cross-correlation computation",
     ):
-        for idx_snr, snr_dB in enumerate(xr_dataset.snr.values):
+        library_corr = np.empty(
+            tuple(xr_dataset.sizes[d] for d in library_corr_dim), dtype=np.float32
+        )
+
+        for i_pair in range(xr_dataset.sizes["idx_rcv_pairs"]):
+
             rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
             in1 = (
-                xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0], snr=snr_dB)
+                xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0])
+                .isel(snr=idx_snr)
                 .load()
                 .values
             )
             in2 = (
-                xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1], snr=snr_dB)
+                xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1])
+                .isel(snr=idx_snr)
                 .load()
                 .values
             )
@@ -1237,15 +1289,20 @@ def add_correlation_to_dataset(xr_dataset):
             corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
             corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
             corr_01_fft /= corr_norm
-            library_corr[idx_snr, i_pair, ...] = corr_01_fft
+            # library_corr[idx_snr, i_pair, ...] = corr_01_fft
+            library_corr[i_pair, ...] = corr_01_fft
+
+        # Assign to dataset for each snr
+        xr_dataset["library_corr"][dict(snr=idx_snr)] = library_corr.astype(np.float32)
 
     # if init_corr:
     # library_corr_dim += ["snr"]
     # dummy_array = np.empty(tuple(xr_dataset.sizes[d] for d in library_corr_dim))
-    xr_dataset["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
-    xr_dataset["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
+    # xr_dataset["library_corr"] = (library_corr_dim, library_corr.astype(np.float32))
+    # xr_dataset["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
 
     # xr_dataset.library_corr.loc[dict(snr=snr_dB)] = library_corr.astype(np.float32)
+    return xr_dataset
 
 
 def add_noise_to_event(xr_dataset, snr_dB):
@@ -1819,15 +1876,15 @@ def init_src(dt, min_waveguide_depth, src_info):
         )
 
     elif sig_type == "pulse":
-        src_sig, t_src_sig = pulse(T=dt, f=25, fs=100)
+        src_sig, t_src_sig = pulse(T=dt, f=src_info["f0"], fs=src_info["fs"])
 
     elif sig_type == "pulse_train":
-        src_sig, t_src_sig = pulse_train(T=dt, f=25, fs=100)
+        src_sig, t_src_sig = pulse_train(T=dt, f=src_info["f0"], fs=src_info["fs"])
 
     elif sig_type == "debug_pulse":
-        fs = 40
-        src_sig, t_src_sig = pulse(T=0.1, f=10, fs=fs)
-        nfft = int(fs * dt)
+        src_info["f0"], src_info["fs"] = 10, 40
+        src_sig, t_src_sig = pulse(T=0.1, f=src_info["f0"], fs=src_info["fs"])
+        nfft = int(src_info["fs"] * dt)
 
     if sig_type in ["ship", "pulse_train"]:
         # Apply hanning window
@@ -1872,6 +1929,7 @@ def plot_src(library_src, testcase):
     plt.savefig(
         os.path.join(testcase.env_dir, "env_desc_img", f"src_{testcase.name}.png")
     )
+    plt.close()
 
 
 def init_event_src_traj(src_info, dt):

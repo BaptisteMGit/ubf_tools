@@ -90,7 +90,6 @@ def plot_emmited_signal(xr_dataset, img_root):
         xr_dataset[src].plot(label=label)
 
     plt.ylabel("Amplitude")
-    # # plt.tight_layout()
     plt.legend()
     img_fpath = os.path.join(img_folder, "emmited_signals.png")
     plt.savefig(img_fpath)
@@ -1283,6 +1282,19 @@ def analysis_main(
 
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 
+    output_nc_path = os.path.join(
+        VERLINDEN_OUTPUT_FOLDER,
+        testcase_name,
+        simulation_info["src_type"],
+        simulation_info["src_pos"],
+        f"output_{testcase_name}_all_snrs.nc",
+    )
+    xr_dataset = xr.open_dataset(output_nc_path)
+
+    # Plot emmited signal
+    if plot_info["plot_emmited_signal"]:
+        plot_emmited_signal(xr_dataset, xr_dataset.fullpath_analysis)
+
     for snr in snr_list:
         # if snr is None:
         #     snr_tag = "_noiseless"
@@ -1296,17 +1308,18 @@ def analysis_main(
         #     simulation_info["src_pos"],
         #     f"output_{testcase_name}.nc",
         # )
-        # xr_dataset = xr.open_dataset(output_nc_path)
+        # xr_dataset = xr.open_dataset(output_nc_path).load()
 
-        output_zarr_path = os.path.join(
-            VERLINDEN_OUTPUT_FOLDER,
-            testcase_name,
-            simulation_info["src_type"],
-            simulation_info["src_pos"],
-            f"output_{testcase_name}.zarr",
-        )
-        xr_dataset = xr.open_zarr(output_zarr_path)
-        xr_dataset = xr_dataset.sel(snr=snr).load()
+        # output_zarr_path = os.path.join(
+        #     VERLINDEN_OUTPUT_FOLDER,
+        #     testcase_name,
+        #     simulation_info["src_type"],
+        #     simulation_info["src_pos"],
+        #     f"output_{testcase_name}.zarr",
+        # )
+        # xr_dataset = xr.open_zarr(output_zarr_path)
+        # xr_dataset = xr_dataset.sel(snr=snr).load()
+        ds_snr = xr_dataset.sel(snr=snr).load()
 
         if similarity_metrics is None:
             similarity_metrics = xr_dataset.similarity_metric.values
@@ -1336,18 +1349,14 @@ def analysis_main(
             xr_dataset.sizes["src_trajectory_time"],
         )
 
-        # Plot figures independent of the similarity metric
+        # Figures independent from the similarity metric
         # Plot received signal
         if plot_info["plot_received_signal"]:
-            plot_received_signal(xr_dataset, img_root, n_instant_to_plot)
-
-        # Plot emmited signal
-        if plot_info["plot_emmited_signal"]:
-            plot_emmited_signal(xr_dataset, img_root)
+            plot_received_signal(ds_snr, img_root, n_instant_to_plot)
 
         for i_sim_metric, similarity_metric in enumerate(similarity_metrics):
 
-            ds = xr_dataset.sel(idx_similarity_metric=i_sim_metric)
+            ds_snr_sim = ds_snr.sel(idx_similarity_metric=i_sim_metric)
 
             # Plot one TL profile
             if plot_info["plot_one_tl_profile"]:
@@ -1361,12 +1370,12 @@ def analysis_main(
 
             # Plot ambiguity surface distribution
             if plot_info["plot_ambiguity_surface_dist"]:
-                plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot)
+                plot_ambiguity_surface_dist(ds_snr_sim, img_root, n_instant_to_plot)
 
             # Plot ambiguity surface
             if plot_info["plot_ambiguity_surface"]:
                 plot_ambiguity_surface(
-                    ds,
+                    ds_snr_sim,
                     img_root,
                     nb_instant_to_plot=n_instant_to_plot,
                     plot_info=plot_info,
@@ -1375,7 +1384,7 @@ def analysis_main(
             # Create video
             if plot_info["plot_video"]:
                 plot_localisation_moviepy(
-                    ds=ds,
+                    ds=ds_snr_sim,
                     nb_frames=n_instant_to_plot,
                     anim_filename=img_basepath + "ambiguity_surf.mp4",
                     plot_hyperbol=False,
@@ -1387,7 +1396,7 @@ def analysis_main(
             # Plot ship trajectory
             if plot_info["plot_ship_trajectory"]:
                 plot_ship_trajectory(
-                    ds,
+                    ds_snr_sim,
                     img_root=img_root,
                     plot_info=plot_info,
                     noise_realisation_to_plot=1,
@@ -1395,21 +1404,21 @@ def analysis_main(
 
             # Plot detection error
             if plot_info["plot_pos_error"]:
-                plot_pos_error(ds, img_root=img_root)
+                plot_pos_error(ds_snr_sim, img_root=img_root)
 
             # Plot correlation
             if plot_info["plot_correlation"]:
                 plot_correlation(
-                    ds,
+                    ds_snr_sim,
                     img_root,
                     similarity_metric,
                     n_instant_to_plot=n_rcv_signals_to_plot,
                 )
 
-            pos_error = get_pos_error(ds)
+            pos_error = get_pos_error(ds_snr_sim)
             pos_error_metrics = get_pos_error_metrics(pos_error)
 
-            amb_surf = get_ambiguity_surface(ds)
+            amb_surf = get_ambiguity_surface(ds_snr_sim)
             amb_dynamic_range = (amb_surf.max() - amb_surf.min()).round(2).values
 
             global_line = (
@@ -1424,11 +1433,11 @@ def analysis_main(
             # Write report in txt file
             local_log = [
                 f"Detection metric: {similarity_metric}",
-                f"SNR: {ds.snr.values}dB",
-                f"Number of sensors: {ds.dims['idx_rcv']}",
-                f"Number of sensors pairs: {ds.dims['idx_rcv_pairs']}",
-                f"Positions of the source: {ds.attrs['source_positions']}",
-                f"Number of source positions analysed: {ds.dims['src_trajectory_time']}",
+                f"SNR: {ds_snr_sim.snr.values}dB",
+                f"Number of sensors: {ds_snr_sim.dims['idx_rcv']}",
+                f"Number of sensors pairs: {ds_snr_sim.dims['idx_rcv_pairs']}",
+                f"Positions of the source: {ds_snr_sim.attrs['source_positions']}",
+                f"Number of source positions analysed: {ds_snr_sim.dims['src_trajectory_time']}",
                 f"Ambiguity surface dynamic (max - min): {amb_dynamic_range:.1f}dB",
                 f"Position error median: {pos_error_metrics['median']:.1f}m",
                 f"Position error mean: {pos_error_metrics['mean']:.1f}m",

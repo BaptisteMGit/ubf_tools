@@ -113,11 +113,11 @@ def populate_grid(
         rcv_signal_library.astype(np.float32),
     )
 
-    # Expand dims to add snr dimension to the rcv_signal_library dataarray
-    # Using expand_dims to avoid loading the entire dataset in memory -> overflow
-    xr_dataset["rcv_signal_library"] = xr_dataset.rcv_signal_library.expand_dims(
-        dim={"snr": xr_dataset.sizes["snr"]}
-    ).assign_coords({"snr": xr_dataset.snr})
+    # # Expand dims to add snr dimension to the rcv_signal_library dataarray
+    # # Using expand_dims to avoid loading the entire dataset in memory -> overflow
+    # xr_dataset["rcv_signal_library"] = xr_dataset.rcv_signal_library.expand_dims(
+    #     dim={"snr": xr_dataset.sizes["snr"]}
+    # ).assign_coords({"snr": xr_dataset.snr})
 
     xr_dataset["rcv_signal_library"].attrs["long_name"] = r"$s_{i}$"
 
@@ -125,7 +125,7 @@ def populate_grid(
         grid_info,
         kraken_env=testcase.env,
         src_signal_type=src_info["signal_type"],
-        ext="zarr",
+        ext="nc",
     )
 
     # Initialize correlation array
@@ -135,13 +135,14 @@ def populate_grid(
         os.makedirs(os.path.dirname(xr_dataset.fullpath_populated))
 
     # Save populated dataset to zarr format (for very large arrays and parallel I/O)
-    print(f"Saving populated dataset to {xr_dataset.fullpath_populated} ...")
-    xr_dataset.to_zarr(xr_dataset.fullpath_populated, mode="w")
-    xr_dataset.close()
-    print("Dataset saved")
+    # print(f"Saving populated dataset to {xr_dataset.fullpath_populated} ...")
+    # xr_dataset.to_netcdf(xr_dataset.fullpath_populated)
+    # # xr_dataset.to_zarr(xr_dataset.fullpath_populated, mode="w")
+    # xr_dataset.close()
+    # print("Dataset saved")
 
     # Open mutable zarr dataset
-    xr_dataset = xr.open_zarr(xr_dataset.fullpath_populated)
+    # xr_dataset = xr.open_zarr(xr_dataset.fullpath_populated)
 
     # populated_dataarray = xr_dataset.rcv_signal_library
     # populated_dataarray.to_netcdf(xr_dataset.fullpath_populated)
@@ -204,7 +205,7 @@ def add_event_to_dataset(
         interp_src_pos_on_grid=interp_src_pos_on_grid,
     )
 
-    signal_event_dim = ["snr", "idx_rcv", "src_trajectory_time", "event_signal_time"]
+    signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
 
     if isotropic_env:
         add_event_isotropic_env(
@@ -236,7 +237,7 @@ def add_event_to_dataset(
     xr_dataset["event_corr_lags"].attrs["units"] = "s"
     xr_dataset["event_corr_lags"].attrs["long_name"] = "Correlation lags"
 
-    event_corr_dim = ["snr", "idx_rcv_pairs", "src_trajectory_time", "event_corr_lags"]
+    event_corr_dim = ["idx_rcv_pairs", "src_trajectory_time", "event_corr_lags"]
     dummy_array = np.empty(tuple(xr_dataset.sizes[d] for d in event_corr_dim))
     xr_dataset["event_corr"] = (event_corr_dim, dummy_array)
     xr_dataset["event_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
@@ -373,11 +374,6 @@ def verlinden_main(
     # Add source library/event to dataset
     add_src_to_dataset(verlinden_dataset, library_src, event_src, src_info)
 
-    # Add noise to dataset
-    add_noise_to_dataset(verlinden_dataset)
-    # Derive correlation vector for the entire grid
-    verlinden_dataset = add_correlation_to_dataset(verlinden_dataset)
-
     event_src.z_src = src_info["depth"]
     add_event_to_dataset(
         xr_dataset=verlinden_dataset,
@@ -390,7 +386,31 @@ def verlinden_main(
         isotropic_env=testcase.isotropic,
     )
 
+    init_ambiguity_surface(verlinden_dataset)
+
+    print(f"Saving populated dataset to {verlinden_dataset.fullpath_populated} ...")
+    verlinden_dataset.to_netcdf(verlinden_dataset.fullpath_populated)
+    base_dataset_path = verlinden_dataset.fullpath_populated
+    # xr_dataset.to_zarr(xr_dataset.fullpath_populated, mode="w")
+    verlinden_dataset.close()
+    print("Dataset saved")
+
+    # # Add noise to dataset
+    # add_noise_to_dataset(verlinden_dataset)
+    # # Derive correlation vector for the entire grid
+    # verlinden_dataset = add_correlation_to_dataset(verlinden_dataset)
+
     for idx_snr, snr_i in enumerate(snr):
+
+        snr_tag = get_snr_tag(snr_i)
+
+        # Load base dataset
+        verlinden_dataset = xr.open_dataset(base_dataset_path).load()
+
+        # Add noise to dataset
+        add_noise_to_dataset(verlinden_dataset, snr_dB=snr_i)
+        # Derive correlation vector for the entire grid
+        add_correlation_to_dataset(verlinden_dataset)
 
         # Loop over different realisation of noise for a given SNR
         for i in range(nb_noise_realisations_per_snr):
@@ -398,33 +418,45 @@ def verlinden_main(
 
             # Add event to dataset
             add_noise_to_event(xr_dataset=verlinden_dataset, snr_dB=snr_i)
-            add_event_correlation(xr_dataset=verlinden_dataset, snr_dB=snr_i)
+            add_event_correlation(xr_dataset=verlinden_dataset)
 
             for i_sim_metric in range(len(similarity_metrics)):
-                init_amb_surf = i == 0 and idx_snr == 0 and i_sim_metric == 0
+                init_amb_surf = i == 0 and i_sim_metric == 0
 
                 if init_amb_surf:
                     build_output_save_path(
                         verlinden_dataset,
                         output_folder=VERLINDEN_OUTPUT_FOLDER,
                         analysis_folder=VERLINDEN_ANALYSIS_FOLDER,
-                        env_filename=testcase.env.filename,
+                        testcase_name=testcase.env.filename,
                         src_name=library_src.name,
+                        snr_tag=snr_tag,
                     )
+                    output_dir = os.path.dirname(verlinden_dataset.fullpath_output)
 
-                    verlinden_dataset = init_ambiguity_surface(verlinden_dataset)
+                    # verlinden_dataset = init_ambiguity_surface(verlinden_dataset)
 
                 build_ambiguity_surf(
                     verlinden_dataset,
-                    snr_dB=snr_i,
                     idx_similarity_metric=i_sim_metric,
                     i_noise=i,
-                    init_amb_surf=init_amb_surf,
                 )
 
+        # Add snr info to dataset
+        verlinden_dataset["snr"] = snr_i
+        verlinden_dataset["snr"].attrs["units"] = "dB"
+        verlinden_dataset["snr"].attrs["long_name"] = "Signal to noise ratio"
+        # verlinden_dataset["snr_tag"] = snr_tag
+
         # Save dataset
-        # xr_dataset.to_netcdf(xr_dataset.fullpath_output)
-        verlinden_dataset.to_zarr(verlinden_dataset.fullpath_output, mode="a")
+        verlinden_dataset.to_netcdf(verlinden_dataset.fullpath_output)
+        # Close dataset to release memory
+        verlinden_dataset.close()
+
+        # verlinden_dataset.to_zarr(verlinden_dataset.fullpath_output, mode="a")
+
+    # Merge all results in a single dataset
+    merge_results(output_dir, testcase_name=testcase.env.filename, snr=snr)
 
     print(f"### Verlinden simulation process done ###")
 

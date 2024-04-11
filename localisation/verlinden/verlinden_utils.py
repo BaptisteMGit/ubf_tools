@@ -458,20 +458,20 @@ def add_event_isotropic_env(
 
         s_rcv = s_rcv[:, 0, :].T
         # 1 dataset / snr version
-        # rcv_signal_event[i_rcv, ...] = s_rcv
+        rcv_signal_event[i_rcv, ...] = s_rcv
 
         # # Add 1 dimension for snrs
-        s_rcv = np.repeat(s_rcv[np.newaxis, ...], xr_dataset.sizes["snr"], axis=0)
-        rcv_signal_event[:, i_rcv, ...] = s_rcv
+        # s_rcv = np.repeat(s_rcv[np.newaxis, ...], xr_dataset.sizes["snr"], axis=0)
+        # rcv_signal_event[:, i_rcv, ...] = s_rcv
 
     xr_dataset["rcv_signal_event"] = (
         signal_event_dim,
         rcv_signal_event.astype(np.float32),
     )
 
-    noise_free = rcv_signal_event[0, ...].copy()
+    noise_free = rcv_signal_event.copy()
     xr_dataset["rcv_signal_event_noise_free"] = (
-        signal_event_dim[1:],
+        signal_event_dim,
         noise_free.astype(np.float32),
     )
 
@@ -1091,7 +1091,7 @@ def check_waveguide_cutoff(
     return src
 
 
-def add_noise_to_dataset(xr_dataset):
+def add_noise_to_dataset(xr_dataset, snr_dB):
     """
     Add noise to received signal.
 
@@ -1110,24 +1110,48 @@ def add_noise_to_dataset(xr_dataset):
         bar_format=BAR_FORMAT,
         desc="Add noise to received signal",
     ):
-        rcv_sig = (
-            xr_dataset.rcv_signal_library_noise_free.sel(idx_rcv=i_rcv).load().values
-        )
-        for snr_dB in xr_dataset.snr.values:
+        rcv_sig = xr_dataset.rcv_signal_library_noise_free.sel(idx_rcv=i_rcv).values
 
-            if snr_dB is not None:
-                # Add noise to received signal
-                xr_dataset.rcv_signal_library.loc[dict(idx_rcv=i_rcv, snr=snr_dB)] = (
-                    add_noise_to_signal(
-                        np.copy(rcv_sig),
-                        snr_dB=snr_dB,
-                    )
+        # for snr_dB in xr_dataset.snr.values:
+
+        if snr_dB is not None:
+            # Add noise to received signal
+            xr_dataset.rcv_signal_library.loc[dict(idx_rcv=i_rcv)] = (
+                add_noise_to_signal(
+                    np.copy(rcv_sig),
+                    snr_dB=snr_dB,
                 )
+            )
 
-                # xr_dataset.attrs["snr_dB"] = snr_dB
-            else:
-                # xr_dataset.attrs["snr_dB"] = "Noiseless"
-                pass  # TODO: need to be updated to fit with snr integration in a single dataset
+            # xr_dataset.attrs["snr_dB"] = snr_dB
+        else:
+            # xr_dataset.attrs["snr_dB"] = "Noiseless"
+            pass  # TODO: need to be updated to fit with snr integration in a single dataset
+
+    # for i_rcv in tqdm(
+    #     xr_dataset.idx_rcv.values,
+    #     bar_format=BAR_FORMAT,
+    #     desc="Add noise to received signal",
+    # ):
+    #     rcv_sig = (
+    #         xr_dataset.rcv_signal_library_noise_free.sel(idx_rcv=i_rcv).load().values
+    #     )
+
+    #     for snr_dB in xr_dataset.snr.values:
+
+    #         if snr_dB is not None:
+    #             # Add noise to received signal
+    #             xr_dataset.rcv_signal_library.loc[dict(idx_rcv=i_rcv, snr=snr_dB)] = (
+    #                 add_noise_to_signal(
+    #                     np.copy(rcv_sig),
+    #                     snr_dB=snr_dB,
+    #                 )
+    #             )
+
+    #             # xr_dataset.attrs["snr_dB"] = snr_dB
+    #         else:
+    #             # xr_dataset.attrs["snr_dB"] = "Noiseless"
+    #             pass  # TODO: need to be updated to fit with snr integration in a single dataset
 
 
 def fft_convolve_f(a0, a1, axis=-1, workers=8):
@@ -1183,9 +1207,9 @@ def init_corr_library(xr_dataset):
     xr_dataset["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
     # Expand dims to add snr dimension to the library_corr dataarray
     # Using expand_dims to avoid loading the entire dataset in memory -> overflow
-    xr_dataset["library_corr"] = xr_dataset.library_corr.expand_dims(
-        dim={"snr": xr_dataset.sizes["snr"]}
-    ).assign_coords({"snr": xr_dataset.snr})
+    # xr_dataset["library_corr"] = xr_dataset.library_corr.expand_dims(
+    #     dim={"snr": xr_dataset.sizes["snr"]}
+    # ).assign_coords({"snr": xr_dataset.snr})
 
 
 def add_correlation_to_dataset(xr_dataset):
@@ -1233,67 +1257,115 @@ def add_correlation_to_dataset(xr_dataset):
     # xr_dataset.close()
     # # Open mutable zarr dataset
     # xr_dataset = xr.open_zarr(xr_dataset.fullpath_populated)
-    library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
 
     # Faster FFT approach
     ax = 2
     nlag = xr_dataset.sizes["library_corr_lags"]
-    for idx_snr in tqdm(
-        range(xr_dataset.sizes["snr"]),
-        bar_format=BAR_FORMAT,
-        desc="Receiver pair cross-correlation computation",
-    ):
-        library_corr = np.empty(
-            tuple(xr_dataset.sizes[d] for d in library_corr_dim), dtype=np.float32
+
+    library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
+    library_corr = np.empty(
+        tuple(xr_dataset.sizes[d] for d in library_corr_dim), dtype=np.float32
+    )
+
+    for i_pair in range(xr_dataset.sizes["idx_rcv_pairs"]):
+
+        rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
+        in1 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0]).values
+        in2 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1]).values
+
+        nfft = sp_fft.next_fast_len(nlag, True)
+
+        sig_0 = sp_fft.rfft(
+            in1,
+            n=nfft,
+            axis=-1,
+        )
+        sig_1 = sp_fft.rfft(
+            in2,
+            n=nfft,
+            axis=-1,
         )
 
-        for i_pair in range(xr_dataset.sizes["idx_rcv_pairs"]):
+        corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
+        corr_01_fft = corr_01_fft[:, :, slice(nlag)]
 
-            rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
-            in1 = (
-                xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0])
-                .isel(snr=idx_snr)
-                .load()
-                .values
-            )
-            in2 = (
-                xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1])
-                .isel(snr=idx_snr)
-                .load()
-                .values
-            )
+        autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
+        autocorr0 = autocorr0[:, :, slice(nlag)]
 
-            nfft = sp_fft.next_fast_len(nlag, True)
+        autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
+        autocorr1 = autocorr1[:, :, slice(nlag)]
 
-            sig_0 = sp_fft.rfft(
-                in1,
-                n=nfft,
-                axis=-1,
-            )
-            sig_1 = sp_fft.rfft(
-                in2,
-                n=nfft,
-                axis=-1,
-            )
+        n0 = corr_01_fft.shape[-1] // 2
+        corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
+        corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
+        corr_01_fft /= corr_norm
+        # library_corr[idx_snr, i_pair, ...] = corr_01_fft
+        library_corr[i_pair, ...] = corr_01_fft
 
-            corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
-            corr_01_fft = corr_01_fft[:, :, slice(nlag)]
+    # Assign to dataset
+    xr_dataset["library_corr"].values = library_corr.astype(np.float32)
 
-            autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
-            autocorr0 = autocorr0[:, :, slice(nlag)]
+    # library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
 
-            autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
-            autocorr1 = autocorr1[:, :, slice(nlag)]
+    # # Faster FFT approach
+    # ax = 2
+    # nlag = xr_dataset.sizes["library_corr_lags"]
+    # for idx_snr in tqdm(
+    #     range(xr_dataset.sizes["snr"]),
+    #     bar_format=BAR_FORMAT,
+    #     desc="Receiver pair cross-correlation computation",
+    # ):
+    #     library_corr = np.empty(
+    #         tuple(xr_dataset.sizes[d] for d in library_corr_dim), dtype=np.float32
+    #     )
 
-            n0 = corr_01_fft.shape[-1] // 2
-            corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
-            corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
-            corr_01_fft /= corr_norm
-            # library_corr[idx_snr, i_pair, ...] = corr_01_fft
-            library_corr[i_pair, ...] = corr_01_fft
+    #     for i_pair in range(xr_dataset.sizes["idx_rcv_pairs"]):
 
-        # Assign to dataset for each snr
-        xr_dataset["library_corr"][dict(snr=idx_snr)] = library_corr.astype(np.float32)
+    #         rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
+    #         in1 = (
+    #             xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0])
+    #             .isel(snr=idx_snr)
+    #             .load()
+    #             .values
+    #         )
+    #         in2 = (
+    #             xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1])
+    #             .isel(snr=idx_snr)
+    #             .load()
+    #             .values
+    #         )
+
+    #         nfft = sp_fft.next_fast_len(nlag, True)
+
+    #         sig_0 = sp_fft.rfft(
+    #             in1,
+    #             n=nfft,
+    #             axis=-1,
+    #         )
+    #         sig_1 = sp_fft.rfft(
+    #             in2,
+    #             n=nfft,
+    #             axis=-1,
+    #         )
+
+    #         corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
+    #         corr_01_fft = corr_01_fft[:, :, slice(nlag)]
+
+    #         autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
+    #         autocorr0 = autocorr0[:, :, slice(nlag)]
+
+    #         autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
+    #         autocorr1 = autocorr1[:, :, slice(nlag)]
+
+    #         n0 = corr_01_fft.shape[-1] // 2
+    #         corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
+    #         corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
+    #         corr_01_fft /= corr_norm
+    #         # library_corr[idx_snr, i_pair, ...] = corr_01_fft
+    #         library_corr[i_pair, ...] = corr_01_fft
+
+    #     # Assign to dataset for each snr
+    #     xr_dataset["library_corr"][dict(snr=idx_snr)] = library_corr.astype(np.float32)
 
     # if init_corr:
     # library_corr_dim += ["snr"]
@@ -1302,7 +1374,7 @@ def add_correlation_to_dataset(xr_dataset):
     # xr_dataset["library_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
 
     # xr_dataset.library_corr.loc[dict(snr=snr_dB)] = library_corr.astype(np.float32)
-    return xr_dataset
+    # return xr_dataset
 
 
 def add_noise_to_event(xr_dataset, snr_dB):
@@ -1321,28 +1393,45 @@ def add_noise_to_event(xr_dataset, snr_dB):
     None
 
     """
+
     # ds = library_dataset
     for i_rcv in tqdm(
         xr_dataset.idx_rcv, bar_format=BAR_FORMAT, desc="Add noise to event signal"
     ):
-        rcv_sig = (
-            xr_dataset.rcv_signal_event_noise_free.sel(idx_rcv=i_rcv).load().values
-        )
+        rcv_sig = xr_dataset.rcv_signal_event_noise_free.sel(idx_rcv=i_rcv).values
         if snr_dB is not None:
             # Add noise to received signal
-            xr_dataset.rcv_signal_event.loc[dict(idx_rcv=i_rcv, snr=snr_dB)] = (
-                add_noise_to_signal(
-                    np.copy(rcv_sig),
-                    snr_dB,
-                )
+            xr_dataset.rcv_signal_event.loc[dict(idx_rcv=i_rcv)] = add_noise_to_signal(
+                np.copy(rcv_sig),
+                snr_dB,
             )
             # xr_dataset.attrs["snr_dB"] = snr_dB
         else:
             # xr_dataset.attrs["snr_dB"] = "Noiseless"
             pass  # TODO: need to be updated to fit with snr integration in a single dataset
 
+    # # ds = library_dataset
+    # for i_rcv in tqdm(
+    #     xr_dataset.idx_rcv, bar_format=BAR_FORMAT, desc="Add noise to event signal"
+    # ):
+    #     rcv_sig = (
+    #         xr_dataset.rcv_signal_event_noise_free.sel(idx_rcv=i_rcv).load().values
+    #     )
+    #     if snr_dB is not None:
+    #         # Add noise to received signal
+    #         xr_dataset.rcv_signal_event.loc[dict(idx_rcv=i_rcv, snr=snr_dB)] = (
+    #             add_noise_to_signal(
+    #                 np.copy(rcv_sig),
+    #                 snr_dB,
+    #             )
+    #         )
+    #         # xr_dataset.attrs["snr_dB"] = snr_dB
+    #     else:
+    #         # xr_dataset.attrs["snr_dB"] = "Noiseless"
+    #         pass  # TODO: need to be updated to fit with snr integration in a single dataset
 
-def add_event_correlation(xr_dataset, snr_dB, init_corr=False):
+
+def add_event_correlation(xr_dataset):
     """
     Derive correlation for each source position.
 
@@ -1378,15 +1467,13 @@ def add_event_correlation(xr_dataset, snr_dB, init_corr=False):
     ):
         for i_pair, rcv_pair in enumerate(xr_dataset.rcv_pairs):
             s0 = (
-                xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[0], snr=snr_dB)
+                xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[0])
                 .isel(src_trajectory_time=i_ship)
-                .load()
                 .values
             )
             s1 = (
-                xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[1], snr=snr_dB)
+                xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[1])
                 .isel(src_trajectory_time=i_ship)
-                .load()
                 .values
             )
 
@@ -1398,15 +1485,48 @@ def add_event_correlation(xr_dataset, snr_dB, init_corr=False):
 
             event_corr[i_pair, i_ship, :] = corr_01
 
-            # del s0, s1, corr_01
+    xr_dataset["event_corr"].values = event_corr.astype(np.float32)
 
-    # if init_corr:
-    #     event_corr_dim += ["snr"]
-    #     dummy_array = np.zeros(tuple(xr_dataset.sizes[d] for d in event_corr_dim))
-    #     xr_dataset["event_corr"] = (event_corr_dim, dummy_array)
-    #     xr_dataset["event_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
+    # # Derive cross_correlation vector for each ship position
+    # event_corr_dim = ["idx_rcv_pairs", "src_trajectory_time", "event_corr_lags"]
+    # event_corr = np.empty(tuple(xr_dataset.sizes[d] for d in event_corr_dim))
 
-    xr_dataset.event_corr.loc[dict(snr=snr_dB)] = event_corr.astype(np.float32)
+    # for i_ship in tqdm(
+    #     range(xr_dataset.sizes["src_trajectory_time"]),
+    #     bar_format=BAR_FORMAT,
+    #     desc="Derive correlation vector for each ship position",
+    # ):
+    #     for i_pair, rcv_pair in enumerate(xr_dataset.rcv_pairs):
+    #         s0 = (
+    #             xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[0], snr=snr_dB)
+    #             .isel(src_trajectory_time=i_ship)
+    #             .load()
+    #             .values
+    #         )
+    #         s1 = (
+    #             xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[1], snr=snr_dB)
+    #             .isel(src_trajectory_time=i_ship)
+    #             .load()
+    #             .values
+    #         )
+
+    #         corr_01 = signal.correlate(s0, s1)
+    #         autocorr0 = signal.correlate(s0, s0)
+    #         autocorr1 = signal.correlate(s1, s1)
+    #         n0 = corr_01.shape[0] // 2
+    #         corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
+
+    #         event_corr[i_pair, i_ship, :] = corr_01
+
+    #         # del s0, s1, corr_01
+
+    # # if init_corr:
+    # #     event_corr_dim += ["snr"]
+    # #     dummy_array = np.zeros(tuple(xr_dataset.sizes[d] for d in event_corr_dim))
+    # #     xr_dataset["event_corr"] = (event_corr_dim, dummy_array)
+    # #     xr_dataset["event_corr"].attrs["long_name"] = r"$R_{ij}^{l}(\tau)$"
+
+    # xr_dataset.event_corr.loc[dict(snr=snr_dB)] = event_corr.astype(np.float32)
 
     # xr_dataset["event_corr"] = (event_corr_dim, event_corr.astype(np.float32))
 
@@ -1556,9 +1676,7 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, detection_metric):
     return da_amb_surf
 
 
-def build_ambiguity_surf(
-    xr_dataset, snr_dB, idx_similarity_metric, i_noise, init_amb_surf, verbose=True
-):
+def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=True):
     """
     Build ambiguity surface for each receiver pair and source position.
 
@@ -1610,10 +1728,8 @@ def build_ambiguity_surf(
     ambiguity_surfaces = []
 
     for i_pair in xr_dataset.idx_rcv_pairs:
-        lib_data = xr_dataset.library_corr.sel(idx_rcv_pairs=i_pair, snr=snr_dB).load()
-        event_data = xr_dataset.event_corr.sel(idx_rcv_pairs=i_pair, snr=snr_dB).load()
-
-        test = xr_dataset.event_corr.sel(idx_rcv_pairs=i_pair).load()
+        lib_data = xr_dataset.library_corr.sel(idx_rcv_pairs=i_pair)
+        event_data = xr_dataset.event_corr.sel(idx_rcv_pairs=i_pair)
 
         """ Parallel processing"""
         # # TODO: swicht between parallel and sequential processing depending on the number of ship positions
@@ -1693,13 +1809,13 @@ def build_ambiguity_surf(
                 amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
                 ambiguity_surface_sim[i_pair, i_ship, ...] = amb_surf
 
-            del amb_surf
+            # del amb_surf
 
         print(f"Elapsed time (for loop) : {time.time() - t0}")
 
     # Store ambiguity surface in dataset
     xr_dataset.ambiguity_surface.loc[
-        dict(idx_similarity_metric=idx_similarity_metric, snr=snr_dB)
+        dict(idx_similarity_metric=idx_similarity_metric)
     ] = ambiguity_surface_sim
 
     # xr_dataset["ambiguity_surface"] = (
@@ -1713,7 +1829,7 @@ def build_ambiguity_surf(
     # xr_dataset = xr.merge([xr_dataset, amb_surf_merged])
 
     # Analyse ambiguity surface to detect source position
-    get_detected_pos(xr_dataset, snr_dB, idx_similarity_metric, i_noise)
+    get_detected_pos(xr_dataset, idx_similarity_metric, i_noise)
 
 
 def init_ambiguity_surface(xr_dataset):
@@ -1735,13 +1851,13 @@ def init_ambiguity_surface(xr_dataset):
         ambiguity_surface,
     )
 
-    # Expand dims to add snr dimension to the rcv_signal_library dataarray
-    # Using expand_dims to avoid loading the entire dataset in memory -> overflow
-    xr_dataset["ambiguity_surface"] = (
-        xr_dataset.ambiguity_surface.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
-        .assign_coords({"snr": xr_dataset.snr})
-        .copy()
-    )
+    # # Expand dims to add snr dimension to the rcv_signal_library dataarray
+    # # Using expand_dims to avoid loading the entire dataset in memory -> overflow
+    # xr_dataset["ambiguity_surface"] = (
+    #     xr_dataset.ambiguity_surface.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
+    #     .assign_coords({"snr": xr_dataset.snr})
+    #     .copy()
+    # )
 
     # Add attributes
     xr_dataset.ambiguity_surface.attrs["long_name"] = "Ambiguity surface"
@@ -1768,31 +1884,29 @@ def init_ambiguity_surface(xr_dataset):
     xr_dataset["detected_pos_lon"] = (detected_pos_dim, detected_pos_init_lon)
     xr_dataset["detected_pos_lat"] = (detected_pos_dim, detected_pos_init_lat)
 
-    # Expand dims to add snr dimension to the rcv_signal_library dataarray
-    # Using expand_dims to avoid loading the entire dataset in memory -> overflow
-    xr_dataset["detected_pos_lon"] = (
-        xr_dataset.detected_pos_lon.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
-        .assign_coords({"snr": xr_dataset.snr})
-        .copy()
-    )
-    xr_dataset["detected_pos_lat"] = (
-        xr_dataset.detected_pos_lat.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
-        .assign_coords({"snr": xr_dataset.snr})
-        .copy()
-    )
+    # # Expand dims to add snr dimension to the rcv_signal_library dataarray
+    # # Using expand_dims to avoid loading the entire dataset in memory -> overflow
+    # xr_dataset["detected_pos_lon"] = (
+    #     xr_dataset.detected_pos_lon.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
+    #     .assign_coords({"snr": xr_dataset.snr})
+    #     .copy()
+    # )
+    # xr_dataset["detected_pos_lat"] = (
+    #     xr_dataset.detected_pos_lat.expand_dims(dim={"snr": xr_dataset.sizes["snr"]})
+    #     .assign_coords({"snr": xr_dataset.snr})
+    #     .copy()
+    # )
 
-    # Save and reload to avoid read-only issues with zarr
-    xr_dataset.to_zarr(xr_dataset.fullpath_output, mode="w")
-    xr_dataset.close()
-    # Open mutable zarr dataset
-    xr_dataset = xr.open_zarr(xr_dataset.fullpath_output)
+    # # Save and reload to avoid read-only issues with zarr
+    # xr_dataset.to_zarr(xr_dataset.fullpath_output, mode="w")
+    # xr_dataset.close()
+    # # Open mutable zarr dataset
+    # xr_dataset = xr.open_zarr(xr_dataset.fullpath_output)
 
-    return xr_dataset
+    # return xr_dataset
 
 
-def get_detected_pos(
-    xr_dataset, snr_dB, idx_similarity_metric, i_noise, method="absmax"
-):
+def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"):
     """
     Derive detected position from ambiguity surface.
 
@@ -1814,10 +1928,8 @@ def get_detected_pos(
     None
 
     """
-    ambiguity_surface = (
-        xr_dataset.ambiguity_surface.isel(idx_similarity_metric=idx_similarity_metric)
-        .sel(snr=snr_dB)
-        .load()
+    ambiguity_surface = xr_dataset.ambiguity_surface.isel(
+        idx_similarity_metric=idx_similarity_metric
     )
 
     if method == "absmax":
@@ -1836,7 +1948,7 @@ def get_detected_pos(
     dict_sel = dict(
         idx_noise_realisation=i_noise,
         idx_similarity_metric=idx_similarity_metric,
-        snr=snr_dB,
+        # snr=snr_dB,
     )
     # ! need to use loc when assigning values to a DataArray to avoid silent failing !
     xr_dataset.detected_pos_lon.loc[dict_sel] = detected_lon
@@ -1883,7 +1995,7 @@ def init_src(dt, min_waveguide_depth, src_info):
 
     elif sig_type == "debug_pulse":
         src_info["f0"], src_info["fs"] = 10, 40
-        src_sig, t_src_sig = pulse(T=0.1, f=src_info["f0"], fs=src_info["fs"])
+        src_sig, t_src_sig = pulse(T=dt, f=src_info["f0"], fs=src_info["fs"])
         nfft = int(src_info["fs"] * dt)
 
     if sig_type in ["ship", "pulse_train"]:
@@ -2292,9 +2404,9 @@ def build_output_save_path(
     xr_dataset,
     output_folder,
     analysis_folder,
-    env_filename,
+    testcase_name,
     src_name,
-    # snr_tag,
+    snr_tag,
 ):
     """
     Build path to save dataset and related figures
@@ -2307,8 +2419,8 @@ def build_output_save_path(
         Output folder.
     analysis_folder : str
         Analysis folder.
-    env_filename : str
-        Environment filename.
+    testcase_name : str
+        Testcase name.
     src_name : str
         Source name.
 
@@ -2317,21 +2429,21 @@ def build_output_save_path(
     None
 
     """
-    ext = "zarr"
+    ext = "nc"
     # Build path to save dataset and corresponding path to save analysis results produced later on
     # Check if fullpath_output and fullpath_analysis are already in xr_dataset.attrs
     if not "fullpath_output" in xr_dataset.attrs:
         xr_dataset.attrs["fullpath_output"] = os.path.join(
             output_folder,
-            env_filename,
+            testcase_name,
             src_name,
             xr_dataset.src_pos,
-            f"output_{env_filename}.{ext}",
+            f"output_{testcase_name}_{snr_tag}.{ext}",
         )
     if not "fullpath_analysis" in xr_dataset.attrs:
         xr_dataset.attrs["fullpath_analysis"] = os.path.join(
             analysis_folder,
-            env_filename,
+            testcase_name,
             src_name,
             xr_dataset.src_pos,
             # snr_tag,
@@ -2422,6 +2534,50 @@ def add_src_to_dataset(xr_dataset, library_src, event_src, src_info):
     param = src_info["event"].keys()
     for p in param:
         xr_dataset["event_src"].attrs[p] = src_info["event"][p]
+
+
+def merge_results(output_dir, testcase_name, snr):
+    merged_ds = xr.open_mfdataset(
+        os.path.join(
+            output_dir,
+            f"output_{testcase_name}_snr*.nc",
+        ),
+        combine="nested",
+        concat_dim="snr",
+    )
+
+    needed_vars = [
+        "rcv_signal_event",
+        "rcv_signal_library",
+        "event_corr",
+        "library_corr",
+        "ambiguity_surface",
+        "detected_pos_lon",
+        "detected_pos_lat",
+    ]  # Var that depend on snr
+    non_needed_vars = [
+        var for var in list(merged_ds.keys()) if var not in needed_vars
+    ]  # Var that do not depend on snr
+    for var in non_needed_vars:
+        merged_ds[var] = merged_ds[var].isel(snr=0, drop=True)
+
+    # Save merged dataset
+    merged_ds.to_netcdf(
+        os.path.join(
+            output_dir,
+            f"output_{testcase_name}_all_snrs.nc",
+        )
+    )
+    merged_ds.close()
+
+    # Remove individual snr files
+    for snr_i in snr:
+        os.remove(
+            os.path.join(
+                output_dir,
+                f"output_{testcase_name}_{get_snr_tag(snr_i, verbose=False)}.nc",
+            )
+        )
 
 
 if __name__ == "__main__":

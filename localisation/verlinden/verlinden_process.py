@@ -399,6 +399,7 @@ def verlinden_main(
     # add_noise_to_dataset(verlinden_dataset)
     # # Derive correlation vector for the entire grid
     # verlinden_dataset = add_correlation_to_dataset(verlinden_dataset)
+    merged_snrs = np.array([])
 
     for idx_snr, snr_i in enumerate(snr):
 
@@ -434,8 +435,6 @@ def verlinden_main(
                     )
                     output_dir = os.path.dirname(verlinden_dataset.fullpath_output)
 
-                    # verlinden_dataset = init_ambiguity_surface(verlinden_dataset)
-
                 build_ambiguity_surf(
                     verlinden_dataset,
                     idx_similarity_metric=i_sim_metric,
@@ -446,17 +445,36 @@ def verlinden_main(
         verlinden_dataset["snr"] = snr_i
         verlinden_dataset["snr"].attrs["units"] = "dB"
         verlinden_dataset["snr"].attrs["long_name"] = "Signal to noise ratio"
-        # verlinden_dataset["snr_tag"] = snr_tag
+
+        # Check if enough memory space is available
+        # TODO update with dedicated methods to get available memory
+        enough_memory = (idx_snr + 1) % 5 != 0
+        if not enough_memory:
+            # Merge results into a single file to save space (about 30 % of the data is redundant and can be saved)
+            snr_fpaths = merge_results(
+                output_dir, testcase_name=testcase.env.filename, snr=snr[0:idx_snr]
+            )
+            merged_snrs = np.append(merged_snrs, snr[0:idx_snr])
+            # Remove merged files
+            for fp in snr_fpaths:
+                os.remove(fp)
 
         # Save dataset
         verlinden_dataset.to_netcdf(verlinden_dataset.fullpath_output)
-        # Close dataset to release memory
+        # Close dataset to release memory (is it really releasing it ?)
         verlinden_dataset.close()
 
         # verlinden_dataset.to_zarr(verlinden_dataset.fullpath_output, mode="a")
 
-    # Merge all results in a single dataset
-    merge_results(output_dir, testcase_name=testcase.env.filename, snr=snr)
+    # Merge the remaining files
+    remaining_snrs = [snri for snri in snr if snri not in merged_snrs]
+
+    snr_fpaths = merge_results(
+        output_dir, testcase_name=testcase.env.filename, snr=remaining_snrs
+    )
+    # Remove merged files
+    for fp in snr_fpaths:
+        os.remove(fp)
 
     print(f"### Verlinden simulation process done ###")
 

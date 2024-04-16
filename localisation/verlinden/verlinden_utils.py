@@ -20,6 +20,7 @@ import sparse
 import numpy as np
 import xarray as xr
 import pandas as pd
+import multiprocessing
 import scipy.signal as signal
 import scipy.fft as sp_fft
 import matplotlib.pyplot as plt
@@ -886,6 +887,7 @@ def init_library_dataset(
         data_vars=dict(
             lon_rcv=(["idx_rcv"], rcv_info["lons"]),
             lat_rcv=(["idx_rcv"], rcv_info["lats"]),
+            rcv_id=(["idx_rcv"], rcv_info["id"]),
             r_from_rcv=(["idx_rcv", "lat", "lon"], rr_rcv),
             similarity_metric=(
                 ["idx_similarity_metric"],
@@ -970,7 +972,7 @@ def init_library_dataset(
     # TODO : need to be changed in case of multiple receivers couples
     xr_dataset["delay_rcv"] = xr_dataset.r_from_rcv / C0
 
-    # Build OBS pairs
+    # Build rcv pairs
     rcv_pairs = []
     for i in xr_dataset.idx_rcv.values:
         for j in range(i + 1, xr_dataset.idx_rcv.values[-1] + 1):
@@ -978,6 +980,22 @@ def init_library_dataset(
     xr_dataset.coords["idx_rcv_pairs"] = np.arange(len(rcv_pairs))
     xr_dataset.coords["idx_rcv_in_pair"] = np.arange(2)
     xr_dataset["rcv_pairs"] = (["idx_rcv_pairs", "idx_rcv_in_pair"], rcv_pairs)
+
+    # Build pair ids
+    pair_ids = []
+    for i_rcv_pair in xr_dataset["idx_rcv_pairs"]:
+        r0_id = xr_dataset.rcv_id.isel(
+            idx_rcv=xr_dataset.rcv_pairs.isel(
+                idx_rcv_pairs=i_rcv_pair, idx_rcv_in_pair=0
+            )
+        ).values
+        r1_id = xr_dataset.rcv_id.isel(
+            idx_rcv=xr_dataset.rcv_pairs.isel(
+                idx_rcv_pairs=i_rcv_pair, idx_rcv_in_pair=1
+            )
+        ).values
+        pair_ids.append(f"{r0_id}{r1_id}")
+    xr_dataset["rcv_pair_id"] = (["idx_rcv_pairs"], pair_ids)
 
     return xr_dataset
 
@@ -1586,20 +1604,20 @@ def add_noise_to_signal(sig, snr_dB, noise_type="gaussian"):
     return sig
 
 
-def derive_ambiguity(lib_data, event_data, src_traj_times, detection_metric):
+def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
     """
     Derive ambiguity surface for each receiver pair and source position.
 
     Parameters
     ----------
-    lib_data : xr.Dataarray
+    lib_data : xr.DataArray
         Library Dataarray.
-    event_data : xr.Dataarray
-        Event Dataarray.
+    event_data : xr.DataArray
+        Event DataArray.
     src_traj_times : np.ndarray
         Source trajectory times.
-    detection_metric : str
-        Detection metric.
+    similarity_metric : str
+        Similarity metric.
 
     Returns
     -------
@@ -1632,7 +1650,7 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, detection_metric):
         event_vector = event_data.sel(src_trajectory_time=src_time)
         event_vector_array = event_vector.values
 
-        if detection_metric == "intercorr0":
+        if similarity_metric == "intercorr0":
             amb_surf = mult_along_axis(
                 lib_data_array,
                 event_vector_array,
@@ -1646,7 +1664,7 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, detection_metric):
             amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
             da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
-        elif detection_metric == "lstsquares":
+        elif similarity_metric == "lstsquares":
             diff = lib_data_array - event_vector_array
             amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
             amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
@@ -1655,7 +1673,7 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, detection_metric):
             )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface
             da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
-        elif detection_metric == "hilbert_env_intercorr0":
+        elif similarity_metric == "hilbert_env_intercorr0":
             lib_env = np.abs(signal.hilbert(lib_data_array))
             event_env = np.abs(signal.hilbert(event_vector_array))
 
@@ -1724,108 +1742,113 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
     )
     ambiguity_surface_sim = ambiguity_surface[0, ...]
 
-    # Store all ambiguity surfaces in a list (for parrallel processing)
-    ambiguity_surfaces = []
+    parallel = False
 
+    ambiguity_surfaces = []
     for i_pair in xr_dataset.idx_rcv_pairs:
         lib_data = xr_dataset.library_corr.sel(idx_rcv_pairs=i_pair)
         event_data = xr_dataset.event_corr.sel(idx_rcv_pairs=i_pair)
 
-        """ Parallel processing"""
-        # # TODO: swicht between parallel and sequential processing depending on the number of ship positions
-        # # Init pool
-        # pool = multiprocessing.Pool(processes=N_CORES)
-        # # Build the parameter pool
-        # idx_ship_intervalls = np.array_split(
-        #     np.arange(xr_dataset.sizes["src_trajectory_time"]), N_CORES
-        # )
-        # src_traj_time_intervalls = np.array_split(xr_dataset["src_trajectory_time"], N_CORES)
-        # param_pool = [
-        #     (lib_data, event_data, src_traj_time_intervalls[i], detection_metric)
-        #     for i in range(len(idx_ship_intervalls))
-        # ]
-        # # Run parallel processes
-        # results = pool.starmap(derive_ambiguity, param_pool)
-        # # Close pool
-        # pool.close()
-        # # Wait for all processes to finish
-        # pool.join()
+        if parallel:
+            """ Parallel processing"""
+            # Store all ambiguity surfaces in a list (for parrallel processing)
+            # TODO: swicht between parallel and sequential processing depending on the number of ship positions
+            # Init pool
+            pool = multiprocessing.Pool(processes=N_CORES)
+            # Build the parameter pool
+            idx_ship_intervalls = np.array_split(
+                np.arange(xr_dataset.sizes["src_trajectory_time"]), N_CORES
+            )
+            src_traj_time_intervalls = np.array_split(
+                xr_dataset["src_trajectory_time"], N_CORES
+            )
+            param_pool = [
+                (lib_data, event_data, src_traj_time_intervalls[i], similarity_metric)
+                for i in range(len(idx_ship_intervalls))
+            ]
+            # Run parallel processes
+            results = pool.starmap(derive_ambiguity, param_pool)
+            # Close pool
+            pool.close()
+            # Wait for all processes to finish
+            pool.join()
 
-        # ambiguity_surfaces += results
-        # print(f"Elapsed time (parallel) : {time.time() - t0}")
+            ambiguity_surfaces += results
+            print(f"Elapsed time (parallel) : {time.time() - t0}")
 
-        """ Sequential processing"""
-        t0 = time.time()
+        else:
+            """ Sequential processing"""
+            # t0 = time.time()
+            amb_surf_da = derive_ambiguity(lib_data, event_data, xr_dataset.src_trajectory_time, similarity_metric)
+            ambiguity_surfaces.append(amb_surf_da)
+        
+        # lib_data_array = lib_data.values
 
-        lib_data_array = lib_data.values
+        # for i_ship in tqdm(
+        #     range(xr_dataset.sizes["src_trajectory_time"]),
+        #     bar_format=BAR_FORMAT,
+        #     desc="Build ambiguity surface",
+        # ):
+        #     event_vector = event_data.isel(src_trajectory_time=i_ship)
+        #     event_vector_array = event_vector.values
 
-        for i_ship in tqdm(
-            range(xr_dataset.sizes["src_trajectory_time"]),
-            bar_format=BAR_FORMAT,
-            desc="Build ambiguity surface",
-        ):
-            event_vector = event_data.isel(src_trajectory_time=i_ship)
-            event_vector_array = event_vector.values
+        #     if similarity_metric == "intercorr0":
+        #         amb_surf = mult_along_axis(
+        #             lib_data_array,
+        #             event_vector_array,
+        #             axis=2,
+        #         )
+        #         autocorr_lib_0 = np.sum(lib_data_array**2, axis=2)
+        #         autocorr_event_0 = np.sum(event_vector_array**2)
 
-            if similarity_metric == "intercorr0":
-                amb_surf = mult_along_axis(
-                    lib_data_array,
-                    event_vector_array,
-                    axis=2,
-                )
-                autocorr_lib_0 = np.sum(lib_data_array**2, axis=2)
-                autocorr_event_0 = np.sum(event_vector_array**2)
+        #         norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
+        #         amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
+        #         amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
+        #         ambiguity_surface_sim[i_pair, i_ship, ...] = amb_surf
 
-                norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
-                amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
-                amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
-                ambiguity_surface_sim[i_pair, i_ship, ...] = amb_surf
+        #     elif similarity_metric == "lstsquares":
 
-            elif similarity_metric == "lstsquares":
+        #         diff = lib_data_array - event_vector_array
+        #         amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
+        #         amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
+        #         amb_surf = (
+        #             1 - amb_surf
+        #         )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface
+        #         ambiguity_surface[i_pair, i_ship, ...] = amb_surf
 
-                diff = lib_data_array - event_vector_array
-                amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
-                amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
-                amb_surf = (
-                    1 - amb_surf
-                )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface
-                ambiguity_surface[i_pair, i_ship, ...] = amb_surf
+        #     elif similarity_metric == "hilbert_env_intercorr0":
+        #         lib_env = np.abs(signal.hilbert(lib_data_array))
+        #         event_env = np.abs(signal.hilbert(event_vector_array))
 
-            elif similarity_metric == "hilbert_env_intercorr0":
-                lib_env = np.abs(signal.hilbert(lib_data_array))
-                event_env = np.abs(signal.hilbert(event_vector_array))
+        #         amb_surf = mult_along_axis(
+        #             lib_env,
+        #             event_env,
+        #             axis=2,
+        #         )
 
-                amb_surf = mult_along_axis(
-                    lib_env,
-                    event_env,
-                    axis=2,
-                )
+        #         autocorr_lib_0 = np.sum(lib_env**2, axis=2)
+        #         autocorr_event_0 = np.sum(event_env**2)
 
-                autocorr_lib_0 = np.sum(lib_env**2, axis=2)
-                autocorr_event_0 = np.sum(event_env**2)
+        #         norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
+        #         amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
+        #         amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
+        #         ambiguity_surface_sim[i_pair, i_ship, ...] = amb_surf
 
-                norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
-                amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
-                amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
-                ambiguity_surface_sim[i_pair, i_ship, ...] = amb_surf
-
-            # del amb_surf
-
-        print(f"Elapsed time (for loop) : {time.time() - t0}")
-
-    # Store ambiguity surface in dataset
-    xr_dataset.ambiguity_surface.loc[
-        dict(idx_similarity_metric=idx_similarity_metric)
-    ] = ambiguity_surface_sim
+    # # Store ambiguity surface in dataset
+    # xr_dataset.ambiguity_surface.loc[
+    #     dict(idx_similarity_metric=idx_similarity_metric)
+    # ] = ambiguity_surface_sim
 
     # xr_dataset["ambiguity_surface"] = (
     #     ambiguity_surface_dim,
     #     ambiguity_surface,
     # )
 
-    # # Merge dataarrays # TODO : uncomment in case of parallel processing
-    # amb_surf_merged = xr.merge(ambiguity_surfaces)
-    # xr_dataset["ambiguity_surface"] = amb_surf_merged["ambiguity_surface"]
+    # Merge dataarrays # TODO : uncomment in case of parallel processing
+    amb_surf_merged = xr.merge(ambiguity_surfaces)
+    xr_dataset.ambiguity_surface.loc[
+        dict(idx_similarity_metric=idx_similarity_metric)
+    ] = amb_surf_merged["ambiguity_surface"]
     # xr_dataset = xr.merge([xr_dataset, amb_surf_merged])
 
     # Analyse ambiguity surface to detect source position
@@ -2537,47 +2560,126 @@ def add_src_to_dataset(xr_dataset, library_src, event_src, src_info):
 
 
 def merge_results(output_dir, testcase_name, snr):
-    merged_ds = xr.open_mfdataset(
-        os.path.join(
-            output_dir,
-            f"output_{testcase_name}_snr*.nc",
-        ),
-        combine="nested",
-        concat_dim="snr",
-    )
+    # merged_ds = xr.open_mfdataset(
+    #     os.path.join(
+    #         output_dir,
+    #         f"output_{testcase_name}_snr*.nc",
+    #     ),
+    #     combine="nested",
+    #     concat_dim="snr",
+    # )
+    merged_fpath = os.path.join(output_dir, f"output_{testcase_name}_snrs.nc")
+    if not os.path.exists(merged_fpath):
+        snr_filepaths = [os.path.join(output_dir, f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.nc") for snri in snr]
+        # Open snr file and save it as snrs file
+        with xr.open_mfdataset(snr_filepaths, 
+                               combine="nested",
+                               concat_dim="snr") as merged_ds:
 
-    needed_vars = [
-        "rcv_signal_event",
-        "rcv_signal_library",
-        "event_corr",
-        "library_corr",
-        "ambiguity_surface",
-        "detected_pos_lon",
-        "detected_pos_lat",
-    ]  # Var that depend on snr
-    non_needed_vars = [
-        var for var in list(merged_ds.keys()) if var not in needed_vars
-    ]  # Var that do not depend on snr
-    for var in non_needed_vars:
-        merged_ds[var] = merged_ds[var].isel(snr=0, drop=True)
+            needed_vars = [
+                "rcv_signal_event",
+                "rcv_signal_library",
+                "event_corr",
+                "library_corr",
+                "ambiguity_surface",
+                "detected_pos_lon",
+                "detected_pos_lat",
+            ]  # Var that depend on snr
+            non_needed_vars = [
+                var for var in list(merged_ds.keys()) if var not in needed_vars
+            ]  # Var that do not depend on snr
+            for var in non_needed_vars:
+                merged_ds[var] = merged_ds[var].isel(snr=0, drop=True)
+        merged_ds.to_netcdf(merged_fpath)
+    else:
+        with xr.open_dataset(merged_fpath) as merged_ds:
+            # Add new snr to the existing snrs file
+            snr_filepaths = [
+                os.path.join(
+                    output_dir,
+                    f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.nc",
+                )
+                for snri in snr
+                if not snri in merged_ds.snr.values
+            ]
+            # If list is not empty
+            if snr_filepaths:
+                with xr.open_mfdataset(snr_filepaths, 
+                                combine="nested",
+                                concat_dim="snr") as ds:
 
-    # Save merged dataset
-    merged_ds.to_netcdf(
-        os.path.join(
-            output_dir,
-            f"output_{testcase_name}_all_snrs.nc",
-        )
-    )
-    merged_ds.close()
+                    merged_ds = xr.concat([merged_ds, ds], dim="snr")
+                    needed_vars = [
+                        "rcv_signal_event",
+                        "rcv_signal_library",
+                        "event_corr",
+                        "library_corr",
+                        "ambiguity_surface",
+                        "detected_pos_lon",
+                        "detected_pos_lat",
+                    ]  # Var that depend on snr
+                    non_needed_vars = [
+                        var for var in list(ds.keys()) if var not in needed_vars
+                    ]  # Var that do not depend on snr
+                    for var in non_needed_vars:
+                        merged_ds[var] = merged_ds[var].isel(snr=0, drop=True)
 
-    # Remove individual snr files
-    for snr_i in snr:
-        os.remove(
-            os.path.join(
-                output_dir,
-                f"output_{testcase_name}_{get_snr_tag(snr_i, verbose=False)}.nc",
-            )
-        )
+        if snr_filepaths:
+            merged_ds.to_netcdf(merged_fpath)
+
+    return snr_filepaths
+# # Remove snr file
+#     os.remove(snr_filepaths)
+
+# list_fpath = [os.path.join(output_dir, f"output_{testcase_name}_{get_snr_tag(snr_i, verbose=False)}.nc") for snr_i in snr]
+# if os.path.exists(merged_fpath):
+#     list_fpath.append(merged_fpath)
+
+# with xr.open_mfdataset(
+#     list_fpath,
+#     combine="nested",
+#     concat_dim="snr",
+# ) as merged_ds:
+# # merged_ds = xr.open_mfdataset(
+# #     list_fpath,
+# #     combine="nested",
+# #     concat_dim="snr",
+# # )
+
+#     needed_vars = [
+#         "rcv_signal_event",
+#         "rcv_signal_library",
+#         "event_corr",
+#         "library_corr",
+#         "ambiguity_surface",
+#         "detected_pos_lon",
+#         "detected_pos_lat",
+#     ]  # Var that depend on snr
+#     non_needed_vars = [
+#         var for var in list(merged_ds.keys()) if var not in needed_vars
+#     ]  # Var that do not depend on snr
+#     for var in non_needed_vars:
+#         merged_ds[var] = merged_ds[var].isel(snr=0, drop=True)
+
+# # Save merged dataset
+# merged_ds.to_netcdf(merged_fpath)
+# merged_ds.close()
+
+# os.remove(
+#         os.path.join(
+#             output_dir,
+#             f"output_{testcase_name}_{get_snr_tag(snr_i, verbose=False)}.nc",
+#         )
+#     )
+
+# Remove individual snr files
+# for snr_i in snr:
+#     os.remove(
+#         os.path.join(
+#             output_dir,
+#             f"output_{testcase_name}_{get_snr_tag(snr_i, verbose=False)}.nc",
+#         )
+#     )
 
 
 if __name__ == "__main__":

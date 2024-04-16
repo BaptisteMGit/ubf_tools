@@ -276,7 +276,6 @@ def plot_received_signal(xr_dataset, img_root, n_instant_to_plot=None):
 
             axes[i_rcv].plot(tau, lib_corr, label="library", color=LIBRARY_COLOR)
             axes[i_rcv].plot(tau, event_corr, label="event", color=EVENT_COLOR)
-
             axes[i_rcv].set_xlabel("")
             axes[i_rcv].set_ylabel("")
             axes[i_rcv].legend(loc="upper right")
@@ -458,8 +457,8 @@ def plot_ambiguity_surface(
     amb_surf.attrs["units"] = "dB"
 
     for i_src_time in range(nb_instant_to_plot):
-        for i_rcv_pair in range(ds.dims["idx_rcv_pairs"]):
-
+        for i_rcv_pair in ds["idx_rcv_pairs"].values:
+            rcv_pair = ds["rcv_pairs"].sel(idx_rcv_pairs=i_rcv_pair).values
             plt.figure()
 
             vmin = (
@@ -554,17 +553,22 @@ def plot_ambiguity_surface(
                 zorder=3,
             )
 
-            for i_rcv in range(ds.dims["idx_rcv"]):
+            for i_rcv in ds["idx_rcv"].values:
+                if i_rcv in rcv_pair:
+                    size = 130
+                else:
+                    size = 50
                 plt.scatter(
                     ds.lon_rcv.isel(idx_rcv=i_rcv),
                     ds.lat_rcv.isel(idx_rcv=i_rcv),
                     marker="o",
                     label=f"$O_{i_rcv}$",
+                    s=size,
                 )
 
             # Plot line between rcv and display dist between rcv
-            lon_rcv = ds.lon_rcv.values
-            lat_rcv = ds.lat_rcv.values
+            lon_rcv = ds.lon_rcv.sel(idx_rcv=rcv_pair).values
+            lat_rcv = ds.lat_rcv.sel(idx_rcv=rcv_pair).values
             dist = np.round(
                 Geod(ellps="WGS84").inv(lon_rcv[0], lat_rcv[0], lon_rcv[1], lat_rcv[1])[
                     2
@@ -760,30 +764,31 @@ def plot_localisation_moviepy(
     plt.close(fig)
 
 
-def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1):
+def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=0):
     """Plot ship trajectory."""
     # Init folders
     img_folder = init_plot_folders(
         img_root, "ship_trajectory", ds.similarity_metric.values
     )
 
+    # List of colors for each rcv pairs
+    rcv_pair_colors = ["blue", "magenta", "green"]
+    """ Plot single detection for a single noise realisation """
     for i_noise in range(noise_realisation_to_plot):
 
-        plt.figure()  # figsize=(16, 8)
-        plt.plot(
-            ds.lon_src,
-            ds.lat_src,
-            marker="o",
-            color="red",
-            markersize=6,
-            zorder=6,
-            label=r"$X_{ref}$",
-        )
-
-        # List of colors for each rcv pairs
-        rcv_pair_colors = ["blue", "magenta", "green"]
-
         for i_rcv_pair in ds.idx_rcv_pairs.values:
+            pair_id = ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values
+
+            plt.figure()  # figsize=(16, 8)
+            plt.plot(
+                ds.lon_src,
+                ds.lat_src,
+                marker="o",
+                color="red",
+                markersize=6,
+                zorder=6,
+                label=r"$X_{ref}$",
+            )
 
             # Plot rcv positions
             for i_rcv in range(ds.dims["idx_rcv"]):
@@ -793,7 +798,7 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1
                     marker="o",
                     s=100,
                     zorder=2,
-                    label=f"$O_{i_rcv}$",
+                    label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
                 )
 
             det_pos_lon = ds.detected_pos_lon.isel(
@@ -812,7 +817,7 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1
                 s=200,
                 zorder=1,
                 linewidths=2.2,
-                label=r"$X_{loc}$" + f" (rcv pair n°{i_rcv_pair})",
+                label=r"$X_{loc}$ " + f" - {pair_id}",
             )
 
             plt.xlim(
@@ -832,32 +837,36 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1
             plt.ylabel("Latitude [°]")
             plt.grid(True)
             plt.legend()
-            img_fpath = os.path.join(img_folder, f"ship_trajectory_noise_{i_noise}.png")
+            img_fpath = os.path.join(
+                img_folder, f"ship_trajectory_noise_{i_noise}_{pair_id}.png"
+            )
             plt.savefig(img_fpath)
             plt.close()
 
-    # Plot detected positions for all noise realisations
-    plt.figure()  # figsize=(16, 8)
-    plt.plot(
-        ds.lon_src,
-        ds.lat_src,
-        marker="o",
-        color="red",
-        markersize=6,
-        zorder=6,
-        label=r"$X_{ref}$",
-    )
+    """ Plot detected positions for all noise realisations """
     for i_rcv_pair in ds.idx_rcv_pairs.values:
+        pair_id = str(ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values)
+
+        plt.figure()  # figsize=(16, 8)
+        plt.plot(
+            ds.lon_src,
+            ds.lat_src,
+            marker="o",
+            color="red",
+            markersize=6,
+            zorder=6,
+            label=r"$X_{ref}$",
+        )
 
         # Plot rcv positions
-        for i_rcv in range(ds.dims["idx_rcv"]):
+        for i_rcv in range(ds.sizes["idx_rcv"]):
             plt.scatter(
                 ds.lon_rcv.isel(idx_rcv=i_rcv),
                 ds.lat_rcv.isel(idx_rcv=i_rcv),
                 marker="o",
                 s=100,
                 zorder=4,
-                label=f"$O_{i_rcv}$",
+                label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
             )
 
         det_pos_lon = ds.detected_pos_lon.isel(
@@ -875,7 +884,7 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1
             alpha=0.3,
             # linewidths=2.2,
             zorder=5,
-            label=r"$X_{loc}$" + f" (rcv pair n°{i_rcv_pair})",
+            label=r"$X_{" + pair_id + r"}$",
         )
 
         plt.scatter(
@@ -886,7 +895,7 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1
             s=200,
             linewidths=2.2,
             zorder=5,
-            label=r"$\hat{X_{loc}}$" + f" (rcv pair n°{i_rcv_pair})",
+            label=r"$\hat{X_{" + pair_id + r"}}$",
         )
 
         ax = plt.gca()
@@ -919,9 +928,99 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=1
         plt.ylabel("Latitude [°]")
         plt.grid(True)
         plt.legend()
-        img_fpath = os.path.join(img_folder, f"ship_trajectory_pos_0_alldet.png")
+        img_fpath = os.path.join(
+            img_folder, f"ship_trajectory_pos_0_alldet_{pair_id}.png"
+        )
         plt.savefig(img_fpath)
         plt.close()
+
+    """ Plot detected positions for all noise realisations and all pairs """
+    plt.figure()  # figsize=(16, 8)
+    plt.plot(
+        ds.lon_src,
+        ds.lat_src,
+        marker="o",
+        color="red",
+        markersize=6,
+        zorder=6,
+        label=r"$X_{ref}$",
+    )
+    # Plot rcv positions
+    for i_rcv in range(ds.sizes["idx_rcv"]):
+        plt.scatter(
+            ds.lon_rcv.isel(idx_rcv=i_rcv),
+            ds.lat_rcv.isel(idx_rcv=i_rcv),
+            marker="o",
+            s=100,
+            zorder=4,
+            label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+        )
+
+    for i_rcv_pair in ds.idx_rcv_pairs.values:
+        pair_id = str(ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values)
+
+        det_pos_lon = ds.detected_pos_lon.isel(
+            idx_rcv_pairs=i_rcv_pair, src_trajectory_time=0
+        )
+        det_pos_lat = ds.detected_pos_lat.isel(
+            idx_rcv_pairs=i_rcv_pair, src_trajectory_time=0
+        )
+        plt.scatter(
+            det_pos_lon,
+            det_pos_lat,
+            marker=".",
+            color=rcv_pair_colors[i_rcv_pair],
+            s=35,
+            alpha=0.3,
+            # linewidths=2.2,
+            zorder=5,
+            label=r"$X_{" + pair_id + r"}$",
+        )
+
+        plt.scatter(
+            det_pos_lon.mean(),
+            det_pos_lat.mean(),
+            marker="+",
+            color=rcv_pair_colors[i_rcv_pair],
+            s=200,
+            linewidths=2.2,
+            zorder=5,
+            label=r"$\hat{X_{" + pair_id + r"}}$",
+        )
+
+        ax = plt.gca()
+        confidence_ellipse(
+            det_pos_lon,
+            det_pos_lat,
+            ax,
+            n_std=3,
+            edgecolor="k",
+            facecolor=rcv_pair_colors[i_rcv_pair],
+            alpha=0.2,
+            zorder=2,
+            label=r"$3\sigma$" + f" - {pair_id}",
+        )
+
+        plt.xlim(
+            [
+                min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
+            ]
+        )
+        plt.ylim(
+            [
+                min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
+            ]
+        )
+
+    plt.xlabel("Longitude [°]")
+    plt.ylabel("Latitude [°]")
+    plt.grid(True)
+    plt.legend(ncol=ds.sizes["idx_rcv_pairs"] + 1)
+    img_fpath = os.path.join(img_folder, f"ship_trajectory_pos_0_alldet_allpairs.png")
+    plt.savefig(img_fpath)
+    plt.close()
 
 
 def get_pos_error(ds):
@@ -1059,19 +1158,25 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
     # Init folders
     img_folder = init_plot_folders(img_root, "signal_corr", ds.similarity_metric.values)
 
-    fig, axes = plt.subplots(
-        n_instant_to_plot,
-        ds.sizes["idx_rcv_pairs"],
-        sharex=True,
-        sharey=True,
-        figsize=(16, 8),
-    )
-    axes = np.reshape(
-        axes, (n_instant_to_plot, ds.sizes["idx_rcv_pairs"])
-    )  # Ensure 2D axes array in case of single obs pair
-
     for i_ship in range(n_instant_to_plot):
-        for i_rcv_pair in range(ds.dims["idx_rcv_pairs"]):
+        fig, axes = plt.subplots(
+            ds.sizes["idx_rcv_pairs"],
+            1,
+            sharex=True,
+        )
+
+        # fig, axes = plt.subplots(
+        #     n_instant_to_plot,
+        #     ds.sizes["idx_rcv_pairs"],
+        #     sharex=True,
+        #     sharey=True,
+        #     figsize=(16, 8),
+        # )
+        # axes = np.reshape(
+        #     axes, (n_instant_to_plot, ds.sizes["idx_rcv_pairs"])
+        # )  # Ensure 2D axes array in case of single obs pair
+
+        for i_rcv_pair in range(ds.sizes["idx_rcv_pairs"]):
             event_vect = ds.event_corr.isel(
                 src_trajectory_time=i_ship, idx_rcv_pairs=i_rcv_pair
             )
@@ -1097,30 +1202,32 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
                 lib_zorder = 2
 
             event_vect.plot(
-                ax=axes[i_ship, i_rcv_pair],
+                ax=axes[i_rcv_pair],
                 label="event",
                 color=EVENT_COLOR,
                 zorder=event_zorder,
             )
             lib_vect.plot(
-                ax=axes[i_ship, i_rcv_pair],
+                ax=axes[i_rcv_pair],
                 label="lib at ship pos",
                 color=LIBRARY_COLOR,
                 zorder=lib_zorder,
             )
-            axes[i_ship, i_rcv_pair].set_xlabel("")
-            axes[i_ship, i_rcv_pair].set_ylabel("")
-            axes[i_ship, i_rcv_pair].set_title(f"Source pos n°{i_ship}")
-            axes[i_ship, i_rcv_pair].legend(loc="upper right")
-            # axes[i_ship, i_rcv_pair].tick_params(labelsize=TICKS_FONTSIZE)
+            axes[i_rcv_pair].set_xlabel("")
+            axes[i_rcv_pair].set_ylabel("")
+            axes[i_rcv_pair].set_title("")
+            axes[i_rcv_pair].legend(loc="upper right")
 
-    fig.supxlabel(r"$\tau$ [s]")
-    fig.supylabel(ylabel)
+        for ax, lab in zip(axes, ds.rcv_pair_id.values):
+            ax.set_title(lab, loc="right")
 
-    # plt.tight_layout()
-    img_fpath = os.path.join(img_folder, f"signal_corr.png")
-    plt.savefig(img_fpath)
-    plt.close()
+        fig.supxlabel(r"$\tau$ [s]")
+        fig.supylabel(ylabel)
+
+        # plt.tight_layout()
+        img_fpath = os.path.join(img_folder, f"signal_corr_pos{i_ship}.png")
+        plt.savefig(img_fpath)
+        plt.close()
 
 
 def check_folder_creation(plot_info):
@@ -1287,7 +1394,7 @@ def analysis_main(
         testcase_name,
         simulation_info["src_type"],
         simulation_info["src_pos"],
-        f"output_{testcase_name}_all_snrs.nc",
+        f"output_{testcase_name}_snrs.nc",
     )
     xr_dataset = xr.open_dataset(output_nc_path)
 
@@ -1296,29 +1403,7 @@ def analysis_main(
         plot_emmited_signal(xr_dataset, xr_dataset.fullpath_analysis)
 
     for snr in snr_list:
-        # if snr is None:
-        #     snr_tag = "_noiseless"
-        # else:
-        #     snr_tag = f"_snr{snr}dB"
 
-        # output_nc_path = os.path.join(
-        #     VERLINDEN_OUTPUT_FOLDER,
-        #     testcase_name,
-        #     simulation_info["src_type"],
-        #     simulation_info["src_pos"],
-        #     f"output_{testcase_name}.nc",
-        # )
-        # xr_dataset = xr.open_dataset(output_nc_path).load()
-
-        # output_zarr_path = os.path.join(
-        #     VERLINDEN_OUTPUT_FOLDER,
-        #     testcase_name,
-        #     simulation_info["src_type"],
-        #     simulation_info["src_pos"],
-        #     f"output_{testcase_name}.zarr",
-        # )
-        # xr_dataset = xr.open_zarr(output_zarr_path)
-        # xr_dataset = xr_dataset.sel(snr=snr).load()
         ds_snr = xr_dataset.sel(snr=snr).load()
 
         if similarity_metrics is None:
@@ -1399,7 +1484,7 @@ def analysis_main(
                     ds_snr_sim,
                     img_root=img_root,
                     plot_info=plot_info,
-                    noise_realisation_to_plot=1,
+                    noise_realisation_to_plot=0,
                 )
 
             # Plot detection error

@@ -14,6 +14,7 @@
 # ======================================================================================================================
 
 import os
+import shutil
 import numpy as np
 import xarray as xr
 
@@ -392,21 +393,35 @@ def verlinden_main(
     verlinden_dataset.to_netcdf(verlinden_dataset.fullpath_populated)
     base_dataset_path = verlinden_dataset.fullpath_populated
     # xr_dataset.to_zarr(xr_dataset.fullpath_populated, mode="w")
-    verlinden_dataset.close()
+    # verlinden_dataset.close()
     print("Dataset saved")
 
     # # Add noise to dataset
     # add_noise_to_dataset(verlinden_dataset)
     # # Derive correlation vector for the entire grid
     # verlinden_dataset = add_correlation_to_dataset(verlinden_dataset)
+
+    # Init merge file
     merged_snrs = np.array([])
+    testcase_name = testcase.env.filename
+    output_dir = os.path.join(
+        VERLINDEN_OUTPUT_FOLDER,
+        testcase_name,
+        library_src.name,
+        verlinden_dataset.src_pos,
+    )
+    merged_fpath = merge_file_path(output_dir, testcase_name)
+    del verlinden_dataset
+
+    if os.path.exists(merged_fpath):
+        os.remove(merged_fpath)
 
     for idx_snr, snr_i in enumerate(snr):
 
         snr_tag = get_snr_tag(snr_i)
 
         # Load base dataset
-        verlinden_dataset = xr.open_dataset(base_dataset_path).load()
+        verlinden_dataset = xr.open_dataset(base_dataset_path)
 
         # Add noise to dataset
         add_noise_to_dataset(verlinden_dataset, snr_dB=snr_i)
@@ -429,7 +444,7 @@ def verlinden_main(
                         verlinden_dataset,
                         output_folder=VERLINDEN_OUTPUT_FOLDER,
                         analysis_folder=VERLINDEN_ANALYSIS_FOLDER,
-                        testcase_name=testcase.env.filename,
+                        testcase_name=testcase_name,
                         src_name=library_src.name,
                         snr_tag=snr_tag,
                     )
@@ -447,13 +462,12 @@ def verlinden_main(
         verlinden_dataset["snr"].attrs["long_name"] = "Signal to noise ratio"
 
         # Check if enough memory space is available
-        # TODO update with dedicated methods to get available memory
-        enough_memory = (idx_snr + 1) % 5 != 0
+        free_memory = shutil.disk_usage("C:\\")[-1]
+        snr_file_size = verlinden_dataset.nbytes
+        enough_memory = free_memory > 3 * snr_file_size
         if not enough_memory:
             # Merge results into a single file to save space (about 30 % of the data is redundant and can be saved)
-            snr_fpaths = merge_results(
-                output_dir, testcase_name=testcase.env.filename, snr=snr[0:idx_snr]
-            )
+            snr_fpaths = merge_results(output_dir, testcase_name, snr=snr[0:idx_snr])
             merged_snrs = np.append(merged_snrs, snr[0:idx_snr])
             # Remove merged files
             for fp in snr_fpaths:
@@ -468,10 +482,7 @@ def verlinden_main(
 
     # Merge the remaining files
     remaining_snrs = [snri for snri in snr if snri not in merged_snrs]
-
-    snr_fpaths = merge_results(
-        output_dir, testcase_name=testcase.env.filename, snr=remaining_snrs
-    )
+    snr_fpaths = merge_results(output_dir, testcase_name, snr=remaining_snrs)
     # Remove merged files
     for fp in snr_fpaths:
         os.remove(fp)
@@ -480,7 +491,7 @@ def verlinden_main(
 
     simu_folder = os.path.dirname(testcase.env.env_fpath)
 
-    return simu_folder, testcase.env.filename
+    return simu_folder, testcase_name
 
 
 if __name__ == "__main__":

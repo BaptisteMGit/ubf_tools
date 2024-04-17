@@ -1781,7 +1781,7 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
             # t0 = time.time()
             amb_surf_da = derive_ambiguity(lib_data, event_data, xr_dataset.src_trajectory_time, similarity_metric)
             ambiguity_surfaces.append(amb_surf_da)
-        
+
         # lib_data_array = lib_data.values
 
         # for i_ship in tqdm(
@@ -1844,13 +1844,17 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
     #     ambiguity_surface,
     # )
 
-    # Merge dataarrays # TODO : uncomment in case of parallel processing
+    # Merge dataarrays
     amb_surf_merged = xr.merge(ambiguity_surfaces)
     xr_dataset.ambiguity_surface.loc[
         dict(idx_similarity_metric=idx_similarity_metric)
     ] = amb_surf_merged["ambiguity_surface"]
-    # xr_dataset = xr.merge([xr_dataset, amb_surf_merged])
 
+    # amb_surf_combined = amb_surf_merged.ambiguity_surface.mean(dim=["idx_rcv_pairs"])
+    amb_surf_combined = amb_surf_merged.ambiguity_surface.prod(dim="idx_rcv_pairs") ** (1 / len(xr_dataset.idx_rcv_pairs))
+    xr_dataset.ambiguity_surface_combined.loc[
+        dict(idx_similarity_metric=idx_similarity_metric)
+    ] = amb_surf_combined
     # Analyse ambiguity surface to detect source position
     get_detected_pos(xr_dataset, idx_similarity_metric, i_noise)
 
@@ -1858,8 +1862,8 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
 def init_ambiguity_surface(xr_dataset):
 
     ambiguity_surface_dim = [
-        "idx_similarity_metric",
         "idx_rcv_pairs",
+        "idx_similarity_metric",
         "src_trajectory_time",
         "lat",
         "lon",
@@ -1873,6 +1877,16 @@ def init_ambiguity_surface(xr_dataset):
         ambiguity_surface_dim,
         ambiguity_surface,
     )
+    xr_dataset["ambiguity_surface_combined"] = (
+        ambiguity_surface_dim[1:],
+        ambiguity_surface[0, ...],
+    )
+    # Add attributes
+    xr_dataset.ambiguity_surface.attrs["long_name"] = "Ambiguity surface"
+    xr_dataset.ambiguity_surface.attrs["units"] = "dB"
+    xr_dataset.ambiguity_surface_combined.attrs["long_name"] = "Ambiguity surface combined"
+    xr_dataset.ambiguity_surface_combined.attrs["units"] = "dB"
+
 
     # # Expand dims to add snr dimension to the rcv_signal_library dataarray
     # # Using expand_dims to avoid loading the entire dataset in memory -> overflow
@@ -1882,13 +1896,8 @@ def init_ambiguity_surface(xr_dataset):
     #     .copy()
     # )
 
-    # Add attributes
-    xr_dataset.ambiguity_surface.attrs["long_name"] = "Ambiguity surface"
-    xr_dataset.ambiguity_surface.attrs["units"] = "dB"
-
     # Create detected position dataarrays
     detected_pos_dim = [
-        # "snr",
         "idx_rcv_pairs",
         "src_trajectory_time",
         "idx_noise_realisation",
@@ -1906,6 +1915,8 @@ def init_ambiguity_surface(xr_dataset):
 
     xr_dataset["detected_pos_lon"] = (detected_pos_dim, detected_pos_init_lon)
     xr_dataset["detected_pos_lat"] = (detected_pos_dim, detected_pos_init_lat)
+    xr_dataset["detected_pos_lon_combined"] = (detected_pos_dim[1:], detected_pos_init_lon[0, ...])
+    xr_dataset["detected_pos_lat_combined"] = (detected_pos_dim[1:], detected_pos_init_lat[0, ...])
 
     # # Expand dims to add snr dimension to the rcv_signal_library dataarray
     # # Using expand_dims to avoid loading the entire dataset in memory -> overflow
@@ -1954,6 +1965,9 @@ def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"
     ambiguity_surface = xr_dataset.ambiguity_surface.isel(
         idx_similarity_metric=idx_similarity_metric
     )
+    ambiguity_surface_combined = xr_dataset.ambiguity_surface_combined.isel(
+        idx_similarity_metric=idx_similarity_metric
+    )
 
     if method == "absmax":
         max_pos_idx = ambiguity_surface.argmax(dim=["lon", "lat"])
@@ -1963,6 +1977,13 @@ def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"
         detected_lon = xr_dataset.lon.isel(lon=ilon_detected).values
         detected_lat = xr_dataset.lat.isel(lat=ilat_detected).values
 
+        max_pos_combined_idx = ambiguity_surface_combined.argmax(dim=["lon", "lat"])
+        ilon_detected_combined = max_pos_combined_idx["lon"]  # Index of detected longitude
+        ilat_detected_combined = max_pos_combined_idx["lat"]  # Index of detected longitude
+
+        detected_lon_combined = xr_dataset.lon.isel(lon=ilon_detected_combined).values
+        detected_lat_combined = xr_dataset.lat.isel(lat=ilat_detected_combined).values
+
     # TODO : add other methods to take a larger number of values into account
     else:
         raise ValueError("Method not supported")
@@ -1971,11 +1992,12 @@ def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"
     dict_sel = dict(
         idx_noise_realisation=i_noise,
         idx_similarity_metric=idx_similarity_metric,
-        # snr=snr_dB,
     )
     # ! need to use loc when assigning values to a DataArray to avoid silent failing !
     xr_dataset.detected_pos_lon.loc[dict_sel] = detected_lon
     xr_dataset.detected_pos_lat.loc[dict_sel] = detected_lat
+    xr_dataset.detected_pos_lon_combined.loc[dict_sel] = detected_lon_combined
+    xr_dataset.detected_pos_lat_combined.loc[dict_sel] = detected_lat_combined
 
 
 def init_src(dt, min_waveguide_depth, src_info):
@@ -2245,16 +2267,30 @@ def get_dist_between_rcv(rcv_info):
     geod = Geod(ellps="WGS84")
 
     dist_inter_rcv = []
-    for i_rcv in range(len(rcv_info["id"]) - 1):
-        # Derive distance to the 4 corners of the grid
-        _, _, dist_i = geod.inv(
-            lons1=[rcv_info["lons"][i_rcv]],
-            lats1=[rcv_info["lats"][i_rcv]],
-            lons2=[rcv_info["lons"][i_rcv + 1]],
-            lats2=[rcv_info["lats"][i_rcv + 1]],
-        )
 
-        dist_inter_rcv.append(np.round(dist_i, 0))
+    rcv_pairs = []
+    for i in range((len(rcv_info["id"]))):
+        for j in range(i + 1, len(rcv_info["id"])):
+            rcv_pairs.append((i, j))
+
+    for i_pair, pair in enumerate(rcv_pairs):
+        _, _, dist = geod.inv(
+            lons1=[rcv_info["lons"][pair[0]]],
+            lats1=[rcv_info["lats"][pair[0]]],
+            lons2=[rcv_info["lons"][pair[1]]],
+            lats2=[rcv_info["lats"][pair[1]]],
+        )
+        dist_inter_rcv.append(np.round(dist, 0))
+
+    # for i_rcv in range(len(rcv_info["id"]) - 1):
+    #     _, _, dist_i = geod.inv(
+    #         lons1=[rcv_info["lons"][i_rcv]],
+    #         lats1=[rcv_info["lats"][i_rcv]],
+    #         lons2=[rcv_info["lons"][i_rcv + 1]],
+    #         lats2=[rcv_info["lats"][i_rcv + 1]],
+    #     )
+
+    #     dist_inter_rcv.append(np.round(dist_i, 0))
 
     rcv_info["dist_inter_rcv"] = dist_inter_rcv
 
@@ -2558,6 +2594,9 @@ def add_src_to_dataset(xr_dataset, library_src, event_src, src_info):
     for p in param:
         xr_dataset["event_src"].attrs[p] = src_info["event"][p]
 
+def merge_file_path(output_dir, testcase_name):
+    merge_fpath = os.path.join(output_dir, f"output_{testcase_name}_snrs.nc")
+    return merge_fpath
 
 def merge_results(output_dir, testcase_name, snr):
     # merged_ds = xr.open_mfdataset(
@@ -2568,13 +2607,19 @@ def merge_results(output_dir, testcase_name, snr):
     #     combine="nested",
     #     concat_dim="snr",
     # )
-    merged_fpath = os.path.join(output_dir, f"output_{testcase_name}_snrs.nc")
+    merged_fpath = merge_file_path(output_dir, testcase_name)
     if not os.path.exists(merged_fpath):
-        snr_filepaths = [os.path.join(output_dir, f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.nc") for snri in snr]
+        snr_filepaths_to_merge = [
+            os.path.join(
+                output_dir,
+                f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.nc",
+            )
+            for snri in snr
+        ]
         # Open snr file and save it as snrs file
-        with xr.open_mfdataset(snr_filepaths, 
-                               combine="nested",
-                               concat_dim="snr") as merged_ds:
+        with xr.open_mfdataset(
+            snr_filepaths_to_merge, combine="nested", concat_dim="snr"
+        ) as merged_ds:
 
             needed_vars = [
                 "rcv_signal_event",
@@ -2594,7 +2639,7 @@ def merge_results(output_dir, testcase_name, snr):
     else:
         with xr.open_dataset(merged_fpath) as merged_ds:
             # Add new snr to the existing snrs file
-            snr_filepaths = [
+            snr_filepaths_to_merge = [
                 os.path.join(
                     output_dir,
                     f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.nc",
@@ -2602,11 +2647,12 @@ def merge_results(output_dir, testcase_name, snr):
                 for snri in snr
                 if not snri in merged_ds.snr.values
             ]
+
             # If list is not empty
-            if snr_filepaths:
-                with xr.open_mfdataset(snr_filepaths, 
-                                combine="nested",
-                                concat_dim="snr") as ds:
+            if snr_filepaths_to_merge:
+                with xr.open_mfdataset(
+                    snr_filepaths_to_merge, combine="nested", concat_dim="snr"
+                ) as ds:
 
                     merged_ds = xr.concat([merged_ds, ds], dim="snr")
                     needed_vars = [
@@ -2624,10 +2670,19 @@ def merge_results(output_dir, testcase_name, snr):
                     for var in non_needed_vars:
                         merged_ds[var] = merged_ds[var].isel(snr=0, drop=True)
 
-        if snr_filepaths:
+        if snr_filepaths_to_merge:
             merged_ds.to_netcdf(merged_fpath)
 
-    return snr_filepaths
+    # List files to remove
+    snr_filepaths_to_delete = []
+    for path in os.listdir(output_dir):
+        if path.startswith(f"output_{testcase_name}_snr") and path.endswith(".nc") and path != f"output_{testcase_name}_snrs.nc":
+            snr = float(path.split("snr")[-1].split("dB")[0])
+            if snr in merged_ds.snr.values:
+                fullpath = os.path.join(output_dir, path)
+                snr_filepaths_to_delete.append(fullpath)
+
+    return snr_filepaths_to_delete
 # # Remove snr file
 #     os.remove(snr_filepaths)
 

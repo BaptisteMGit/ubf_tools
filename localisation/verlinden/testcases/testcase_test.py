@@ -96,8 +96,8 @@ def run_tc(
     if debug:
         src_signal_type = ["debug_pulse"]
         # src_signal_type = ["pulse"]
-        # snr = np.arange(-15, 5, 0.5)
-        snr = [-20, 0]
+        snr = np.arange(-5, 0, 0.5)
+        # snr = [-20, 0]
         duration = 200  # 1000 s
         nmax_ship = 1
         grid_info = dict(
@@ -108,7 +108,7 @@ def run_tc(
             dlat_bathy=dlat,
             dlon_bathy=dlon,
         )
-        nb_noise_realisations_per_snr = 5
+        nb_noise_realisations_per_snr = 3
 
     else:
         # src_signal_type = ["ship"]
@@ -250,11 +250,17 @@ def run_tests(run_mode, re_analysis=False):
     elif run_mode == "debug":
         debug = True
 
-    # Receiver info for shallow water test cases
+    # # Receiver info for shallow water test cases
+    # rcv_info_sw = {
+    #     "id": ["R0", "R1"],
+    #     "lons": [-4.87, -4.8626],
+    #     "lats": [52.52, 52.52],
+    # }
+
     rcv_info_sw = {
-        "id": ["R0", "R1"],
-        "lons": [-4.87, -4.8626],
-        "lats": [52.52, 52.52],
+        "id": ["R0", "R1", "R2"],
+        "lons": [-4.87, -4.8626, -4.8663],
+        "lats": [52.52, 52.52, 52.5126],
     }
     # Initial ship position for shallow water test cases
     # initial_ship_pos_sw = {
@@ -278,6 +284,13 @@ def run_tests(run_mode, re_analysis=False):
         "lats": [],
     }
 
+    # # Receiver info for deep water test cases
+    # rcv_info_dw = {
+    #     "id": ["RR45", "RR48", "RR44"],
+    #     "lons": [],
+    #     "lats": [],
+    # }
+
     for obs_id in rcv_info_dw["id"]:
         pos_obs = load_rhumrum_obs_pos(obs_id)
         rcv_info_dw["lons"].append(pos_obs.lon)
@@ -290,7 +303,7 @@ def run_tests(run_mode, re_analysis=False):
     }
 
     # Test case 1.0
-    nb_noise_realisations_per_snr = 20
+    nb_noise_realisations_per_snr = 30
     src_signal_type = ["ship"]
     similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
     # snr = [-10, -5, 0, 5]
@@ -302,7 +315,8 @@ def run_tests(run_mode, re_analysis=False):
     # grid_offset_cells = 40
     src_signal_type = ["ship"]
     similarity_metrics = ["hilbert_env_intercorr0", "intercorr0"]
-    snr = np.arange(-15, 5, 1).tolist()
+    # snr = np.arange(-15, 5, 1).tolist()
+    snr = [0]
     grid_offset_cells = 50
 
     run_tc(
@@ -350,18 +364,18 @@ def run_tests(run_mode, re_analysis=False):
     # )
 
     # Test case 1.4
-    # run_tc(
-    #     testcase=TestCase1_4(),
-    #     rcv_info=rcv_info_sw,
-    #     initial_ship_pos=initial_ship_pos_sw,
-    #     snr=snr,
-    #     src_signal_type=src_signal_type,
-    #     similarity_metrics=similarity_metrics,
-    #     grid_offset_cells=grid_offset_cells,
-    #     debug=debug,
-    #     re_analysis=re_analysis,
-    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
-    # )
+    run_tc(
+        testcase=TestCase1_4(),
+        rcv_info=rcv_info_sw,
+        initial_ship_pos=initial_ship_pos_sw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        similarity_metrics=similarity_metrics,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    )
 
     # # Test case 2.0
     # run_tc(
@@ -395,7 +409,7 @@ def run_tests(run_mode, re_analysis=False):
     similarity_metrics = ["hilbert_env_intercorr0", "intercorr0"]
     snr = np.arange(-15, 5, 0.5).tolist()
     # snr = snr[0:3]
-    grid_offset_cells = 80
+    grid_offset_cells = 60
     nb_noise_realisations_per_snr = 100
 
     # # snr = [None]
@@ -422,6 +436,7 @@ if __name__ == "__main__":
 
     # run_mode = "normal"
     re_analysis = False
+    # re_analysis = True
 
     import sys
 
@@ -430,7 +445,30 @@ if __name__ == "__main__":
     else:
         run_mode = "normal"
 
-    # run_mode = "debug"
-    # run_mode = "normal"
+        # run_mode = "debug"
+        # run_mode = "normal"
 
     run_tests(run_mode, re_analysis)
+
+    from localisation.verlinden.verlinden_utils import merge_results
+    import xarray as xr
+
+    # path = (
+    #     "C:\\Users\\baptiste.menetrier\\Desktop\\devPy\\phd\\localisation\\verlinden\\verlinden_process_output\\testcase1_4\\ship\\not_on_grid\\"
+    #     + f"output_testcase1_4_snrs.nc"
+    # )
+    # ds = xr.open_dataset(path)
+
+    # output_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_output\testcase1_4\ship\not_on_grid"
+    # snr = np.arange(-10.0, 2.5, 0.5)
+    # tc = "testcase1_4"
+    # for snr_i in snr:
+    #     f = merge_results(output_dir, testcase_name=tc, snr=snr_i)
+    # os.remove(f)
+    # p = (
+    #     "C:\\Users\\baptiste.menetrier\\Desktop\\devPy\\phd\\localisation\\verlinden\\verlinden_process_output\\testcase1_4\\ship\\not_on_grid\\"
+    #     + f"output_testcase1_4_snr{snr_i}dB.nc"
+    # )
+    # os.remove(p)
+
+    # merge_results(output_dir, testcase_name=tc, snr=snr)

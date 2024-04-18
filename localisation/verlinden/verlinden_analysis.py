@@ -4,6 +4,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
+
+plt.switch_backend("agg")
+
 import scipy.signal as signal
 import moviepy.editor as mpy
 
@@ -1326,9 +1329,10 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
         #     sharey=True,
         #     figsize=(16, 8),
         # )
-        # axes = np.reshape(
-        #     axes, (n_instant_to_plot, ds.sizes["idx_rcv_pairs"])
-        # )  # Ensure 2D axes array in case of single obs pair
+        if ds.sizes["idx_rcv_pairs"] == 1:
+            axes = np.reshape(
+                axes, (ds.sizes["idx_rcv_pairs"],)
+            )  # Ensure 2D axes array in case of single obs pair
 
         for i_rcv_pair in range(ds.sizes["idx_rcv_pairs"]):
             event_vect = ds.event_corr.isel(
@@ -1529,10 +1533,12 @@ def compare_perf_src(src_type_list, simulation_info, testcase_name, snr=0):
 def analysis_main(
     snr_list,
     testcase_name,
+    init_time,
     similarity_metrics=None,
     plot_info={},
     simulation_info={},
     grid_info={},
+    file_ext="nc",
     img_format="png",
 ):
     """Main function to analyse the localisation performance."""
@@ -1543,35 +1549,33 @@ def analysis_main(
 
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 
-    output_nc_path = os.path.join(
+    output_f_path = os.path.join(
         VERLINDEN_OUTPUT_FOLDER,
         testcase_name,
         simulation_info["src_type"],
         simulation_info["src_pos"],
-        f"output_{testcase_name}_snrs.nc",
+        init_time,
+        f"output_{testcase_name}_snrs.{file_ext}",
     )
-    xr_dataset = xr.open_dataset(output_nc_path)
-
-    # Plot emmited signal
-    if plot_info["plot_emmited_signal"]:
-        plot_emmited_signal(xr_dataset, xr_dataset.fullpath_analysis)
+    if file_ext == "nc":
+        xr_dataset = xr.open_dataset(output_f_path)
+    elif file_ext == "zarr":
+        xr_dataset = xr.open_zarr(output_f_path)
 
     for snr in snr_list:
 
-        ds_snr = xr_dataset.sel(snr=snr).load()
+        ds_snr = xr_dataset.sel(snr=snr).compute()
 
         if similarity_metrics is None:
-            similarity_metrics = xr_dataset.similarity_metric.values
+            similarity_metrics = ds_snr.similarity_metric.values
         else:
             similarity_metrics = [
-                s
-                for s in similarity_metrics
-                if s in xr_dataset.similarity_metric.values
+                s for s in similarity_metrics if s in ds_snr.similarity_metric.values
             ]
 
         # Image folder
-        root_img = os.path.join(xr_dataset.fullpath_analysis, f"{snr}_dB")
-        img_basepath = os.path.join(root_img, now, testcase_name + "_")
+        root_img = os.path.join(ds_snr.fullpath_analysis, now, f"{snr}_dB")
+        img_basepath = os.path.join(root_img, testcase_name + "_")
         img_root = os.path.dirname(img_basepath)
 
         # Assert at least one plot will be created to avoid creating empty folders
@@ -1581,12 +1585,16 @@ def analysis_main(
 
         n_instant_to_plot = min(
             simulation_info["n_instant_to_plot"],
-            xr_dataset.sizes["src_trajectory_time"],
+            ds_snr.sizes["src_trajectory_time"],
         )
         n_rcv_signals_to_plot = min(
             simulation_info["n_rcv_signals_to_plot"],
-            xr_dataset.sizes["src_trajectory_time"],
+            ds_snr.sizes["src_trajectory_time"],
         )
+
+        # Plot emmited signal
+        if plot_info["plot_emmited_signal"]:
+            plot_emmited_signal(ds_snr, img_root)
 
         # Figures independent from the similarity metric
         # Plot received signal

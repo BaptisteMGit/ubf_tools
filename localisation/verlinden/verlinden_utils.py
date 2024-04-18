@@ -482,12 +482,10 @@ def add_event_isotropic_env(
 
 def add_event_anisotropic_env(
     xr_dataset,
-    # snr_dB,
     event_src,
     kraken_grid,
     signal_event_dim,
     grid_pressure_field,
-    # init_corr=True,
 ):
     """
     Add event in anisotropic environment.
@@ -528,8 +526,7 @@ def add_event_anisotropic_env(
         bar_format=BAR_FORMAT,
         desc="Derive received signal for successive positions of the ship",
     ):
-        # TODO remove
-        # i_rcv = 1
+
         # Get kraken grid for the given rcv
         kraken_range = kraken_grid[i_rcv]["range"].todense()
         kraken_depth = kraken_grid[i_rcv]["depth"].todense()
@@ -540,9 +537,6 @@ def add_event_anisotropic_env(
             bar_format=BAR_FORMAT,
             desc="Scanning src positions",
         ):
-
-            # TODO remove
-            # i_src = 2
 
             delay_to_apply_ship = (
                 xr_dataset.delay_rcv.min(dim="idx_rcv")
@@ -580,36 +574,20 @@ def add_event_anisotropic_env(
 
             if i_rcv == 0 and i_src == 0:
                 xr_dataset["event_signal_time"] = t_rcv.astype(np.float32)
-                rcv_signal_event = np.zeros(
-                    tuple(xr_dataset.sizes[d] for d in signal_event_dim[1:])
+                rcv_signal_event = np.empty(
+                    tuple(xr_dataset.sizes[d] for d in signal_event_dim), dtype=np.float32
                 )
-                # rcv_signal_event = np.empty(tuple(xr_dataset.sizes[d] for d in signal_event_dim))
-                # rcv_signal_event_visits = np.zeros(
-                #     tuple(xr_dataset.sizes[d] for d in signal_event_dim)
-                # )
-                # print(s_rcv)
 
             s_rcv = s_rcv[:, 0, :].T
 
             # 1 dataset / snr version
-            # rcv_signal_event[i_rcv, i_src, ...] = s_rcv
+            rcv_signal_event[i_rcv, i_src, ...] = s_rcv
 
             # # Add 1 dimension for snrs
-            s_rcv = np.repeat(s_rcv[np.newaxis, ...], xr_dataset.sizes["snr"], axis=0)
-            rcv_signal_event[:, i_rcv, i_src, ...] = np.squeeze(
-                s_rcv
-            )  # Squeeze to remove the 1 dimension for range
-
-            # rcv_signal_event[i_rcv, i_src, :] = s_rcv
-            # rcv_signal_event_visits[i_rcv, i_src, :] += 1
-
-            # print(f"Contains nans ? : {np.any(np.isnan(s_rcv.astype(np.float32)))}")
-            # if np.any(np.abs(s_rcv) > 1e20):
-            #     greater = True
-            #     print(f"Is greater than 1e20")
-            # if np.any(np.logical_and((0 < np.abs(s_rcv)), (np.abs(s_rcv) < 1e-20))):
-            #     smaller = True
-            #     print(f"Is smaller than 1e-20")
+            # s_rcv = np.repeat(s_rcv[np.newaxis, ...], xr_dataset.sizes["snr"], axis=0)
+            # rcv_signal_event[:, i_rcv, i_src, ...] = np.squeeze(
+            #     s_rcv
+            # )  # Squeeze to remove the 1 dimension for range
 
     # if not "rcv_signal_event" in xr_dataset:
     xr_dataset["rcv_signal_event"] = (
@@ -621,15 +599,6 @@ def add_event_anisotropic_env(
         signal_event_dim,
         rcv_signal_event.astype(np.float32),
     )
-
-    # print(f"Greater : {greater}; smaller : {smaller}")
-    # print(f"greater :{np.any(np.abs(rcv_signal_event) > 1e20)}")
-    # print(
-    #     f"smaller : {np.any(np.logical_and((0 < np.abs(rcv_signal_event)), (np.abs(rcv_signal_event) < 1e-20)))}"
-    # )
-
-    # add_noise_to_event(xr_dataset, snr_dB=snr_dB)
-    # add_event_correlation(xr_dataset, snr_dB=snr_dB, init_corr=init_corr)
 
 
 def get_src_transfert_function(xr_dataset, i_rcv, i_src, grid_pressure_field):
@@ -876,6 +845,7 @@ def init_library_dataset(
 
     """
 
+
     # Init Dataset
     n_rcv = len(rcv_info["id"])
     n_similarity_metrics = len(similarity_metrics)
@@ -996,6 +966,10 @@ def init_library_dataset(
         ).values
         pair_ids.append(f"{r0_id}{r1_id}")
     xr_dataset["rcv_pair_id"] = (["idx_rcv_pairs"], pair_ids)
+
+    # Initialisation time 
+    now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    xr_dataset.attrs["init_time"] = now
 
     return xr_dataset
 
@@ -2058,7 +2032,7 @@ def init_src(dt, min_waveguide_depth, src_info):
     return src
 
 
-def plot_src(library_src, testcase):
+def plot_src(src, testcase, usage="library"):
     """
     Plot source signal.
 
@@ -2075,7 +2049,7 @@ def plot_src(library_src, testcase):
 
     """
     pfig = PubFigure()
-    library_src.display_source(plot_spectrum=False)
+    src.display_source(plot_spectrum=False)
     fig = plt.gcf()
     fig.set_size_inches(pfig.size)
     axs = fig.axes
@@ -2084,7 +2058,7 @@ def plot_src(library_src, testcase):
     fig.suptitle("Source signal")
     plt.tight_layout()
     plt.savefig(
-        os.path.join(testcase.env_dir, "env_desc_img", f"src_{testcase.name}.png")
+        os.path.join(testcase.env_dir, "env_desc_img", f"{usage}_src_{testcase.name}.png")
     )
     plt.close()
 
@@ -2419,7 +2393,7 @@ def print_simulation_info(testcase, src_info, rcv_info, grid_info):
     print(msg)
 
 
-def get_populated_path(grid_info, kraken_env, src_signal_type, ext="nc"):
+def get_populated_path(grid_info, kraken_env, src_signal_type, init_time, ext="nc"):
     """
     Get fullpath to populated dataset.
 
@@ -2454,7 +2428,8 @@ def get_populated_path(grid_info, kraken_env, src_signal_type, ext="nc"):
     populated_path = os.path.join(
         VERLINDEN_POPULATED_FOLDER,
         kraken_env.filename,
-        f"populated_{boundaries}_{src_signal_type}.{ext}",
+        init_time,
+        f"populated_{src_signal_type}.{ext}",
     )
     return populated_path
 
@@ -2466,6 +2441,7 @@ def build_output_save_path(
     testcase_name,
     src_name,
     snr_tag,
+    ext="nc",
 ):
     """
     Build path to save dataset and related figures
@@ -2488,7 +2464,6 @@ def build_output_save_path(
     None
 
     """
-    ext = "nc"
     # Build path to save dataset and corresponding path to save analysis results produced later on
     # Check if fullpath_output and fullpath_analysis are already in xr_dataset.attrs
     if not "fullpath_output" in xr_dataset.attrs:
@@ -2497,6 +2472,7 @@ def build_output_save_path(
             testcase_name,
             src_name,
             xr_dataset.src_pos,
+            xr_dataset.attrs["init_time"],
             f"output_{testcase_name}_{snr_tag}.{ext}",
         )
     if not "fullpath_analysis" in xr_dataset.attrs:
@@ -2505,6 +2481,7 @@ def build_output_save_path(
             testcase_name,
             src_name,
             xr_dataset.src_pos,
+            xr_dataset.attrs["init_time"],
             # snr_tag,
         )
 
@@ -2594,31 +2571,29 @@ def add_src_to_dataset(xr_dataset, library_src, event_src, src_info):
     for p in param:
         xr_dataset["event_src"].attrs[p] = src_info["event"][p]
 
-def merge_file_path(output_dir, testcase_name):
-    merge_fpath = os.path.join(output_dir, f"output_{testcase_name}_snrs.nc")
+def merge_file_path(output_dir, testcase_name, ext="nc"):
+    merge_fpath = os.path.join(output_dir, f"output_{testcase_name}_snrs.{ext}")
     return merge_fpath
 
-def merge_results(output_dir, testcase_name, snr):
-    # merged_ds = xr.open_mfdataset(
-    #     os.path.join(
-    #         output_dir,
-    #         f"output_{testcase_name}_snr*.nc",
-    #     ),
-    #     combine="nested",
-    #     concat_dim="snr",
-    # )
-    merged_fpath = merge_file_path(output_dir, testcase_name)
+
+def merge_results(output_dir, testcase_name, snr, ext="nc"):
+    if ext == "zarr":
+        engine="zarr"
+    else:
+        engine="netcdf4"
+
+    merged_fpath = merge_file_path(output_dir, testcase_name, ext=ext)
     if not os.path.exists(merged_fpath):
         snr_filepaths_to_merge = [
             os.path.join(
                 output_dir,
-                f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.nc",
+                f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.{ext}",
             )
             for snri in snr
         ]
         # Open snr file and save it as snrs file
         with xr.open_mfdataset(
-            snr_filepaths_to_merge, combine="nested", concat_dim="snr"
+            snr_filepaths_to_merge, combine="nested", concat_dim="snr", engine=engine
         ) as merged_ds:
 
             needed_vars = [
@@ -2635,14 +2610,19 @@ def merge_results(output_dir, testcase_name, snr):
             ]  # Var that do not depend on snr
             for var in non_needed_vars:
                 merged_ds[var] = merged_ds[var].isel(snr=0, drop=True)
-        merged_ds.to_netcdf(merged_fpath)
+
+        if ext == "zarr":
+            merged_ds.to_zarr(merged_fpath, mode="w")
+        else:
+            merged_ds.to_netcdf(merged_fpath)
+
     else:
         with xr.open_dataset(merged_fpath) as merged_ds:
             # Add new snr to the existing snrs file
             snr_filepaths_to_merge = [
                 os.path.join(
                     output_dir,
-                    f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.nc",
+                    f"output_{testcase_name}_{get_snr_tag(snri, verbose=False)}.{ext}",
                 )
                 for snri in snr
                 if not snri in merged_ds.snr.values
@@ -2651,7 +2631,7 @@ def merge_results(output_dir, testcase_name, snr):
             # If list is not empty
             if snr_filepaths_to_merge:
                 with xr.open_mfdataset(
-                    snr_filepaths_to_merge, combine="nested", concat_dim="snr"
+                    snr_filepaths_to_merge, combine="nested", concat_dim="snr", engine=engine
                 ) as ds:
 
                     merged_ds = xr.concat([merged_ds, ds], dim="snr")
@@ -2671,16 +2651,21 @@ def merge_results(output_dir, testcase_name, snr):
                         merged_ds[var] = merged_ds[var].isel(snr=0, drop=True)
 
         if snr_filepaths_to_merge:
-            merged_ds.to_netcdf(merged_fpath)
+            if ext == "zarr":
+                merged_ds.to_zarr(merged_fpath, mode="w")
+            else:
+                merged_ds.to_netcdf(merged_fpath)
 
     # List files to remove
     snr_filepaths_to_delete = []
     for path in os.listdir(output_dir):
-        if path.startswith(f"output_{testcase_name}_snr") and path.endswith(".nc") and path != f"output_{testcase_name}_snrs.nc":
+        if path.startswith(f"output_{testcase_name}_snr") and path.endswith(f".{ext}") and path != f"output_{testcase_name}_snrs.{ext}":
             snr = float(path.split("snr")[-1].split("dB")[0])
             if snr in merged_ds.snr.values:
                 fullpath = os.path.join(output_dir, path)
                 snr_filepaths_to_delete.append(fullpath)
+
+    merged_ds.close()
 
     return snr_filepaths_to_delete
 # # Remove snr file

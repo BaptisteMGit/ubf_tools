@@ -35,6 +35,7 @@ def populate_grid(
     snrs_dB,
     n_noise_realisations,
     similarity_metrics,
+    file_ext,
 ):
     """
     Populate grid with received signal.
@@ -82,11 +83,21 @@ def populate_grid(
         isotropic_env=testcase.isotropic,
     )
 
+    xr_dataset.attrs["fullpath_populated"] = get_populated_path(
+        grid_info,
+        kraken_env=testcase.env,
+        src_signal_type=src_info["signal_type"],
+        init_time=xr_dataset.attrs["init_time"],
+        ext=file_ext,
+    )
+
+    if not os.path.exists(os.path.dirname(xr_dataset.fullpath_populated)):
+        os.makedirs(os.path.dirname(xr_dataset.fullpath_populated))
+
     signal_library_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
 
     # Switch between isotropic and anisotropic environment
     if testcase.isotropic:
-        # TODO update with testcase object properties
         xr_dataset, rcv_signal_library, grid_pressure_field = populate_isotropic_env(
             xr_dataset, library_src, signal_library_dim, testcase
         )
@@ -122,18 +133,8 @@ def populate_grid(
 
     xr_dataset["rcv_signal_library"].attrs["long_name"] = r"$s_{i}$"
 
-    xr_dataset.attrs["fullpath_populated"] = get_populated_path(
-        grid_info,
-        kraken_env=testcase.env,
-        src_signal_type=src_info["signal_type"],
-        ext="zarr",
-    )
-
     # Initialize correlation array
     init_corr_library(xr_dataset)
-
-    if not os.path.exists(os.path.dirname(xr_dataset.fullpath_populated)):
-        os.makedirs(os.path.dirname(xr_dataset.fullpath_populated))
 
     # Save populated dataset to zarr format (for very large arrays and parallel I/O)
     # print(f"Saving populated dataset to {xr_dataset.fullpath_populated} ...")
@@ -270,6 +271,7 @@ def verlinden_main(
     similarity_metrics,
     nb_noise_realisations_per_snr=10,
     dt=None,
+    file_ext="nc",
 ):
     """
     Main function to run the Verlinden simulation process.
@@ -317,7 +319,8 @@ def verlinden_main(
     )
 
     # Plot source signal and spectrum
-    plot_src(library_src, testcase)
+    plot_src(src=library_src, testcase=testcase, usage="library")
+    plot_src(src=event_src, testcase=testcase, usage="event")
 
     # Define ship trajectory
     init_event_src_traj(src_info, dt)
@@ -368,6 +371,7 @@ def verlinden_main(
         testcase=testcase,
         n_noise_realisations=nb_noise_realisations_per_snr,
         similarity_metrics=similarity_metrics,
+        file_ext=file_ext,
     )
     # Add source library/event to dataset
     add_src_to_dataset(verlinden_dataset, library_src, event_src, src_info)
@@ -393,12 +397,12 @@ def verlinden_main(
 
     t0 = time.time()
 
-    if verlinden_dataset.fullpath_populated.endswith(".zarr"):
+    if file_ext == "zarr":
         verlinden_dataset.to_zarr(verlinden_dataset.fullpath_populated, mode="w")
-        file_format = "zarr"
+        # file_ext = "zarr"
     else:
         verlinden_dataset.to_netcdf(verlinden_dataset.fullpath_populated)
-        file_format = "nc"
+        # file_ext = "nc"
 
     # verlinden_dataset.to_netcdf(verlinden_dataset.fullpath_populated)
     base_dataset_path = verlinden_dataset.fullpath_populated
@@ -420,18 +424,23 @@ def verlinden_main(
         library_src.name,
         verlinden_dataset.src_pos,
     )
-    merged_fpath = merge_file_path(output_dir, testcase_name)
+    merged_fpath = merge_file_path(output_dir, testcase_name, ext=file_ext)
+    init_time = verlinden_dataset.attrs["init_time"]
+    verlinden_dataset.close()
     del verlinden_dataset
 
     if os.path.exists(merged_fpath):
-        os.remove(merged_fpath)
+        if file_ext == "zarr":
+            shutil.rmtree(merged_fpath)
+        else:
+            os.remove(merged_fpath)
 
     for idx_snr, snr_i in enumerate(snr):
 
         snr_tag = get_snr_tag(snr_i)
 
         # Load base dataset
-        if file_format == "zarr":
+        if file_ext == "zarr":
             verlinden_dataset = xr.open_zarr(base_dataset_path).compute()
         else:
             verlinden_dataset = xr.open_dataset(base_dataset_path)
@@ -460,7 +469,7 @@ def verlinden_main(
                         testcase_name=testcase_name,
                         src_name=library_src.name,
                         snr_tag=snr_tag,
-                        ext=file_format,
+                        ext=file_ext,
                     )
                     output_dir = os.path.dirname(verlinden_dataset.fullpath_output)
 
@@ -482,7 +491,7 @@ def verlinden_main(
         if not enough_memory:
             # Merge results into a single file to save space (about 30 % of the data is redundant and can be saved)
             snr_fpaths = merge_results(
-                output_dir, testcase_name, snr=snr[0:idx_snr], ext=file_format
+                output_dir, testcase_name, snr=snr[0:idx_snr], ext=file_ext
             )
             merged_snrs = np.append(merged_snrs, snr[0:idx_snr])
             # Remove merged files
@@ -490,31 +499,35 @@ def verlinden_main(
                 os.remove(fp)
 
         # Save dataset
-        if file_format == "zarr":
+        if file_ext == "zarr":
             verlinden_dataset.to_zarr(verlinden_dataset.fullpath_output, mode="w")
         else:
             verlinden_dataset.to_netcdf(verlinden_dataset.fullpath_output)
 
         # Close dataset to release memory (is it really releasing it ?)
         verlinden_dataset.close()
+        del verlinden_dataset
 
         # verlinden_dataset.to_zarr(verlinden_dataset.fullpath_output, mode="a")
 
     # Merge the remaining files
     remaining_snrs = [snri for snri in snr if snri not in merged_snrs]
     snr_fpaths = merge_results(
-        output_dir, testcase_name, snr=remaining_snrs, ext=file_format
+        output_dir, testcase_name, snr=remaining_snrs, ext=file_ext
     )
     # Remove merged files
     for fp in snr_fpaths:
-        os.remove(fp)
+        if file_ext == "zarr":
+            shutil.rmtree(fp)
+        else:
+            os.remove(fp)
 
     print(f"Time with zarr : {time.time()-t0}")
     print(f"### Verlinden simulation process done ###")
 
     simu_folder = os.path.dirname(testcase.env.env_fpath)
 
-    return simu_folder, testcase_name
+    return simu_folder, testcase_name, init_time
 
 
 if __name__ == "__main__":

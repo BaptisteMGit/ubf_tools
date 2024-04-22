@@ -2602,8 +2602,11 @@ def merge_results(output_dir, testcase_name, snr, ext="nc"):
                 "event_corr",
                 "library_corr",
                 "ambiguity_surface",
+                "ambiguity_surface_combined"
                 "detected_pos_lon",
                 "detected_pos_lat",
+                "detected_pos_lon_combined",
+                "detected_pos_lat_combined",
             ]  # Var that depend on snr
             non_needed_vars = [
                 var for var in list(merged_ds.keys()) if var not in needed_vars

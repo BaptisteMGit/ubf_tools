@@ -891,24 +891,27 @@ def init_library_dataset(
         delta = np.sqrt(grid_info["dlat_bathy"] ** 2 + grid_info["dlon_bathy"] ** 2)
         # delta = min(xr_dataset.dx, xr_dataset.dy)
         d_az = np.arctan(delta / dmax) * 180 / np.pi
-        list_az_th = np.arange(xr_dataset.az_rcv.min(), xr_dataset.az_rcv.max(), d_az)
+        # list_az_th = np.arange(xr_dataset.az_rcv.min(), xr_dataset.az_rcv.max(), d_az)
+        list_az_th = np.arange(-180, 180, d_az)
+
 
         az_propa = np.empty(xr_dataset.az_rcv.shape)
         # t0 = time.time()
+        visited_sites = az_propa.copy()
+        visited_sites[:] = False
         for i_rcv in range(n_rcv):
             for az in list_az_th:
                 closest_points_idx = (
                     np.abs(xr_dataset.az_rcv.sel(idx_rcv=i_rcv) - az) <= d_az / 2
                 )
                 az_propa[i_rcv, closest_points_idx] = az
+                visited_sites[i_rcv, closest_points_idx] = True
         # print(f"Elapsed time : {time.time() - t0}")
 
         # Add az_propa to dataset
         xr_dataset["az_propa"] = (["idx_rcv", "lat", "lon"], az_propa)
         xr_dataset["az_propa"].attrs["units"] = "°"
         xr_dataset["az_propa"].attrs["long_name"] = "Propagation azimuth"
-
-        # plot_angle_repartition(xr_dataset, grid_info)
 
         # Remove az_rcv
         xr_dataset = xr_dataset.drop_vars("az_rcv")

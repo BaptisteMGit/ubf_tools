@@ -17,7 +17,10 @@ import numpy as np
 from pyproj import Geod
 from localisation.verlinden.verlinden_process import verlinden_main
 from localisation.verlinden.verlinden_analysis import analysis_main, compare_perf_src
-from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+from localisation.verlinden.verlinden_utils import (
+    load_rhumrum_obs_pos,
+    get_bathy_grid_size,
+)
 from testcase_envs import (
     TestCase1_0,
     TestCase1_1,
@@ -51,8 +54,11 @@ def run_tc(
     debug=False,
     re_analysis=False,
     nb_noise_realisations_per_snr=100,
+    diff_src=False,
+    init_time=None,
 ):
 
+    file_ext = "zarr"
     # similarity_metrics = ["intercorr0"]
     if not similarity_metrics:
         similarity_metrics = ["hilbert_env_intercorr0"]
@@ -70,28 +76,7 @@ def run_tc(
 
     # Derive bathy grid size
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
-    lat_rad = np.radians(lat)  # Latitude en radians
-    lon_rad = np.radians(lon)  # Longitude en radians
-
-    grid_size = 15 / 3600 * np.pi / 180  # 15" (secondes d'arc)
-    lat_0 = lat_rad - grid_size
-    lat_1 = lat_rad + grid_size
-    lon_0 = lon_rad - grid_size
-    lon_1 = lon_rad + grid_size
-
-    geod = Geod(ellps="WGS84")
-    _, _, dlat = geod.inv(
-        lons1=lon,
-        lats1=np.degrees(lat_0),
-        lons2=lon,
-        lats2=np.degrees(lat_1),
-    )
-    _, _, dlon = geod.inv(
-        lons1=np.degrees(lon_0),
-        lats1=lat,
-        lons2=np.degrees(lon_1),
-        lats2=lat,
-    )
+    dlon, dlat = get_bathy_grid_size(lon, lat)
 
     if debug:
         src_signal_type = ["debug_pulse"]
@@ -182,21 +167,24 @@ def run_tc(
             }
 
             # Event
-            f0_event = 1.5  # Fundamental frequency of the ship signal
-            event_src_info = {
-                "sig_type": "ship",
-                "f0": f0_event,
-                "std_fi": f0_event * 10 / 100,
-                "tau_corr_fi": 0.1 / f0_event,
-                "fs": fs,
-            }
+            if diff_src:
+                f0_event = 1.5  # Fundamental frequency of the ship signal
+                event_src_info = {
+                    "sig_type": "ship",
+                    "f0": f0_event,
+                    "std_fi": f0_event * 10 / 100,
+                    "tau_corr_fi": 1 / f0_event,
+                    "fs": fs,
+                }
+            else:
+                event_src_info = lib_src_info
 
         src_info["library"] = lib_src_info
         src_info["event"] = event_src_info
 
         if not re_analysis:
             # Run all the process
-            simu_folder, testcase_name = verlinden_main(
+            simu_folder, testcase_name, init_time = verlinden_main(
                 testcase=testcase,
                 src_info=src_info,
                 grid_info=grid_info,
@@ -204,9 +192,11 @@ def run_tc(
                 snr=snr,
                 similarity_metrics=similarity_metrics,
                 nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+                file_ext=file_ext,
             )
         else:
             simu_folder, testcase_name = get_simu_info(testcase)
+            assert init_time is not None
 
         simulation_info = {
             "simulation_folder": simu_folder,
@@ -239,8 +229,122 @@ def run_tc(
             simulation_info=simulation_info,
             grid_info=grid_info,
             plot_info=plot_info,
+            init_time=init_time,
+            file_ext=file_ext,
         )
     # compare_perf_src(src_type_list, simulation_info, testcase_name, snr=0)
+
+
+def run_tests_17042024(run_mode, re_analysis=False, init_time=None):
+
+    if run_mode == "normal":
+        debug = False
+    elif run_mode == "debug":
+        debug = True
+
+    # Receiver info for deep water test cases
+    rcv_info_dw = {
+        "id": ["RR45", "RR48"],
+        "lons": [],
+        "lats": [],
+    }
+
+    for obs_id in rcv_info_dw["id"]:
+        pos_obs = load_rhumrum_obs_pos(obs_id)
+        rcv_info_dw["lons"].append(pos_obs.lon)
+        rcv_info_dw["lats"].append(pos_obs.lat)
+
+    initial_ship_pos_dw = {
+        "lon": rcv_info_dw["lons"][0],
+        "lat": rcv_info_dw["lats"][0] + 0.07,
+        "crs": "WGS84",
+    }
+
+    # SNR study
+    # Test case 3.1
+    src_signal_type = ["ship"]
+    similarity_metrics = ["hilbert_env_intercorr0", "intercorr0"]
+    snr = np.arange(-15, 5, 0.5).tolist()
+    grid_offset_cells = 30
+    nb_noise_realisations_per_snr = 100
+
+    # run_tc(
+    #     testcase=TestCase3_1(),
+    #     rcv_info=rcv_info_dw,
+    #     initial_ship_pos=initial_ship_pos_dw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    #     diff_src=False,
+    #     init_time=init_time,
+    # )
+
+    # Different spectral content
+    src_signal_type = ["ship"]
+    similarity_metrics = ["hilbert_env_intercorr0", "intercorr0"]
+    snr = [0]
+    grid_offset_cells = 30
+    nb_noise_realisations_per_snr = 100
+
+    # run_tc(
+    #     testcase=TestCase3_1(),
+    #     rcv_info=rcv_info_dw,
+    #     initial_ship_pos=initial_ship_pos_dw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    #     diff_src=True,
+    #     init_time=init_time,
+    # )
+
+    # 3 OBS behavior
+    # Receiver info for deep water test cases
+    rcv_info_dw = {
+        "id": ["RR45", "RR48", "RR44"],
+        "lons": [],
+        "lats": [],
+    }
+
+    for obs_id in rcv_info_dw["id"]:
+        pos_obs = load_rhumrum_obs_pos(obs_id)
+        rcv_info_dw["lons"].append(pos_obs.lon)
+        rcv_info_dw["lats"].append(pos_obs.lat)
+
+    initial_ship_pos_dw = {
+        "lon": rcv_info_dw["lons"][0],
+        "lat": rcv_info_dw["lats"][0] + 0.07,
+        "crs": "WGS84",
+    }
+
+    # Test case 3.1
+    src_signal_type = ["ship"]
+    similarity_metrics = ["hilbert_env_intercorr0", "intercorr0"]
+    snr = [0]
+    grid_offset_cells = 30
+    nb_noise_realisations_per_snr = 100
+
+    run_tc(
+        testcase=TestCase3_1(),
+        rcv_info=rcv_info_dw,
+        initial_ship_pos=initial_ship_pos_dw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        similarity_metrics=similarity_metrics,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+        diff_src=False,
+        init_time=init_time,
+    )
 
 
 def run_tests(run_mode, re_analysis=False):
@@ -305,32 +409,23 @@ def run_tests(run_mode, re_analysis=False):
     # Test case 1.0
     nb_noise_realisations_per_snr = 30
     src_signal_type = ["ship"]
-    similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
-    # snr = [-10, -5, 0, 5]
-    # similarity_metrics = ["intercorr0"]
-
-    # snr = [-10, -5, 0, 5, 10, None]
-    # grid_offset_cells = 80
-    # snr = [-15, 0]
-    # grid_offset_cells = 40
-    src_signal_type = ["ship"]
     similarity_metrics = ["hilbert_env_intercorr0", "intercorr0"]
-    # snr = np.arange(-15, 5, 1).tolist()
+    snr = np.arange(-15, 5, 1).tolist()
     snr = [0]
     grid_offset_cells = 50
 
-    run_tc(
-        testcase=TestCase1_0(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        snr=snr,
-        src_signal_type=src_signal_type,
-        similarity_metrics=similarity_metrics,
-        grid_offset_cells=grid_offset_cells,
-        debug=debug,
-        re_analysis=re_analysis,
-        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
-    )
+    # run_tc(
+    #     testcase=TestCase1_0(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    # )
 
     # Test case 1.1
     # run_tc(
@@ -364,18 +459,18 @@ def run_tests(run_mode, re_analysis=False):
     # )
 
     # Test case 1.4
-    run_tc(
-        testcase=TestCase1_4(),
-        rcv_info=rcv_info_sw,
-        initial_ship_pos=initial_ship_pos_sw,
-        snr=snr,
-        src_signal_type=src_signal_type,
-        similarity_metrics=similarity_metrics,
-        grid_offset_cells=grid_offset_cells,
-        debug=debug,
-        re_analysis=re_analysis,
-        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
-    )
+    # run_tc(
+    #     testcase=TestCase1_4(),
+    #     rcv_info=rcv_info_sw,
+    #     initial_ship_pos=initial_ship_pos_sw,
+    #     snr=snr,
+    #     src_signal_type=src_signal_type,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_offset_cells=grid_offset_cells,
+    #     debug=debug,
+    #     re_analysis=re_analysis,
+    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    # )
 
     # # Test case 2.0
     # run_tc(
@@ -408,31 +503,24 @@ def run_tests(run_mode, re_analysis=False):
     src_signal_type = ["ship"]
     similarity_metrics = ["hilbert_env_intercorr0", "intercorr0"]
     snr = np.arange(-15, 5, 0.5).tolist()
-    # snr = snr[0:3]
-    grid_offset_cells = 60
-    nb_noise_realisations_per_snr = 100
+    grid_offset_cells = 50
+    nb_noise_realisations_per_snr = 30
 
-    # # snr = [None]
-    # run_tc(
-    #     testcase=TestCase3_1(),
-    #     rcv_info=rcv_info_dw,
-    #     initial_ship_pos=initial_ship_pos_dw,
-    #     snr=snr,
-    #     src_signal_type=src_signal_type,
-    #     similarity_metrics=similarity_metrics,
-    #     grid_offset_cells=grid_offset_cells,
-    #     debug=debug,
-    #     re_analysis=re_analysis,
-    #     nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
-    # )
+    run_tc(
+        testcase=TestCase3_1(),
+        rcv_info=rcv_info_dw,
+        initial_ship_pos=initial_ship_pos_dw,
+        snr=snr,
+        src_signal_type=src_signal_type,
+        similarity_metrics=similarity_metrics,
+        grid_offset_cells=grid_offset_cells,
+        debug=debug,
+        re_analysis=re_analysis,
+        nb_noise_realisations_per_snr=nb_noise_realisations_per_snr,
+    )
 
 
 if __name__ == "__main__":
-
-    # from dask.distributed import LocalCluster
-
-    # cluster = LocalCluster()  # Fully-featured local Dask cluster
-    # client = cluster.get_client()
 
     # run_mode = "normal"
     re_analysis = False
@@ -446,29 +534,12 @@ if __name__ == "__main__":
         run_mode = "normal"
 
         # run_mode = "debug"
-        # run_mode = "normal"
+    run_mode = "normal"
 
-    run_tests(run_mode, re_analysis)
-
-    from localisation.verlinden.verlinden_utils import merge_results
-    import xarray as xr
-
-    # path = (
-    #     "C:\\Users\\baptiste.menetrier\\Desktop\\devPy\\phd\\localisation\\verlinden\\verlinden_process_output\\testcase1_4\\ship\\not_on_grid\\"
-    #     + f"output_testcase1_4_snrs.nc"
-    # )
-    # ds = xr.open_dataset(path)
-
-    # output_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\verlinden_process_output\testcase1_4\ship\not_on_grid"
-    # snr = np.arange(-10.0, 2.5, 0.5)
-    # tc = "testcase1_4"
-    # for snr_i in snr:
-    #     f = merge_results(output_dir, testcase_name=tc, snr=snr_i)
-    # os.remove(f)
-    # p = (
-    #     "C:\\Users\\baptiste.menetrier\\Desktop\\devPy\\phd\\localisation\\verlinden\\verlinden_process_output\\testcase1_4\\ship\\not_on_grid\\"
-    #     + f"output_testcase1_4_snr{snr_i}dB.nc"
-    # )
-    # os.remove(p)
-
-    # merge_results(output_dir, testcase_name=tc, snr=snr)
+    # run_tests(run_mode, re_analysis)
+    init_time = "20240418_063833"
+    run_tests_17042024(
+        run_mode,
+        re_analysis,
+        init_time=init_time,
+    )

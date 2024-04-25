@@ -77,18 +77,12 @@ def populate_grid(
     xr_dataset = init_library_dataset(
         grid_info=grid_info,
         rcv_info=rcv_info,
+        src_info=src_info,
         snrs_dB=snrs_dB,
         n_noise_realisations=n_noise_realisations,
         similarity_metrics=similarity_metrics,
-        isotropic_env=testcase.isotropic,
-    )
-
-    xr_dataset.attrs["fullpath_populated"] = get_populated_path(
-        grid_info,
-        kraken_env=testcase.env,
-        src_signal_type=src_info["signal_type"],
-        init_time=xr_dataset.attrs["init_time"],
-        ext=file_ext,
+        testcase=testcase,
+        file_ext=file_ext,
     )
 
     if not os.path.exists(os.path.dirname(xr_dataset.fullpath_populated)):

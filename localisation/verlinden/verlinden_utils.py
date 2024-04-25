@@ -75,9 +75,6 @@ def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase
         Grid pressure field.
 
     """
-    # xr_dataset, library_src, kraken_env, kraken_flp, signal_library_dim
-
-    delay_to_apply = xr_dataset.delay_rcv.min(dim="idx_rcv").values.flatten()
 
     # Run KRAKEN
     grid_pressure_field, _ = runkraken(
@@ -87,6 +84,8 @@ def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase
         parallel=False,
         verbose=False,
     )
+
+    delay_to_apply = xr_dataset.delay_rcv.min(dim="idx_rcv").values.flatten()
 
     # Loop over receivers
     for i_rcv in tqdm(
@@ -817,10 +816,12 @@ def get_azimuth_src_rcv(lon_src, lat_src, rcv_info):
 def init_library_dataset(
     grid_info,
     rcv_info,
+    src_info,
     snrs_dB,
     n_noise_realisations,
     similarity_metrics,
-    isotropic_env=True,
+    testcase,
+    file_ext,
 ):
     """
     Initialize the dataset for the library.
@@ -844,7 +845,6 @@ def init_library_dataset(
         Initialized dataset.
 
     """
-
 
     # Init Dataset
     n_rcv = len(rcv_info["id"])
@@ -873,79 +873,28 @@ def init_library_dataset(
             idx_noise_realisation=np.arange(n_noise_realisations),
         ),
         attrs=dict(
-            title="Verlinden simulation with simple environment",
+            title=testcase.title,
+            description=testcase.desc,
             dx=grid_info["dx"],
             dy=grid_info["dy"],
         ),
     )
 
-    if not isotropic_env:
-        # Compute azimuths
-        az_rcv = get_azimuth_rcv(grid_info, rcv_info)
-        xr_dataset["az_rcv"] = (["idx_rcv", "lat", "lon"], az_rcv)
-        xr_dataset["az_rcv"].attrs["units"] = "°"
-        xr_dataset["az_rcv"].attrs["long_name"] = "Azimuth"
-
-        # Build list of angles to be used in kraken
-        dmax = xr_dataset.r_from_rcv.min(dim=["lat", "lon", "idx_rcv"]).round(0).values
-        delta = np.sqrt(grid_info["dlat_bathy"] ** 2 + grid_info["dlon_bathy"] ** 2)
-        # delta = min(xr_dataset.dx, xr_dataset.dy)
-        d_az = np.arctan(delta / dmax) * 180 / np.pi
-        # list_az_th = np.arange(xr_dataset.az_rcv.min(), xr_dataset.az_rcv.max(), d_az)
-        list_az_th = np.arange(-180, 180, d_az)
-
-
-        az_propa = np.empty(xr_dataset.az_rcv.shape)
-        # t0 = time.time()
-        visited_sites = az_propa.copy()
-        visited_sites[:] = False
-        for i_rcv in range(n_rcv):
-            for az in list_az_th:
-                closest_points_idx = (
-                    np.abs(xr_dataset.az_rcv.sel(idx_rcv=i_rcv) - az) <= d_az / 2
-                )
-                az_propa[i_rcv, closest_points_idx] = az
-                visited_sites[i_rcv, closest_points_idx] = True
-        # print(f"Elapsed time : {time.time() - t0}")
-
-        # Add az_propa to dataset
-        xr_dataset["az_propa"] = (["idx_rcv", "lat", "lon"], az_propa)
-        xr_dataset["az_propa"].attrs["units"] = "°"
-        xr_dataset["az_propa"].attrs["long_name"] = "Propagation azimuth"
-
-        # Remove az_rcv
-        xr_dataset = xr_dataset.drop_vars("az_rcv")
-
-    # Set attributes
-    var_unit_mapping = {
-        "°": [
-            "lon_rcv",
-            "lat_rcv",
-            "lon",
-            "lat",
-        ],
-        "m": ["r_from_rcv"],
-        "dB": ["snr"],
-        "": ["idx_rcv", "idx_similarity_metric", "idx_noise_realisation"],
-    }
-    for unit in var_unit_mapping.keys():
-        for var in var_unit_mapping[unit]:
-            xr_dataset[var].attrs["units"] = unit
-
-    xr_dataset["lon_rcv"].attrs["long_name"] = "Receiver longitude"
-    xr_dataset["lat_rcv"].attrs["long_name"] = "Receiver latitude"
-    xr_dataset["r_from_rcv"].attrs["long_name"] = "Range from receiver"
-    xr_dataset["lon"].attrs["long_name"] = "Longitude"
-    xr_dataset["lat"].attrs["long_name"] = "Latitude"
-    xr_dataset["snr"].attrs["long_name"] = "Signal to noise ratio"
-    xr_dataset["idx_rcv"].attrs["long_name"] = "Receiver index"
-    xr_dataset["idx_similarity_metric"].attrs["long_name"] = "Similarity metric index"
-    xr_dataset["idx_noise_realisation"].attrs["long_name"] = "Noise realisation index"
-
-    # TODO : need to be changed in case of multiple receivers couples
     xr_dataset["delay_rcv"] = xr_dataset.r_from_rcv / C0
 
+    if not testcase.isotropic:
+        # Associate azimuths to grid cells for each receiver
+        set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv)
+
+    # Set attrs 
+    set_dataset_attrs(xr_dataset, grid_info, testcase, src_info, file_ext)
+
     # Build rcv pairs
+    build_rcv_pairs(xr_dataset)
+
+    return xr_dataset
+
+def build_rcv_pairs(xr_dataset):
     rcv_pairs = []
     for i in xr_dataset.idx_rcv.values:
         for j in range(i + 1, xr_dataset.idx_rcv.values[-1] + 1):
@@ -970,11 +919,85 @@ def init_library_dataset(
         pair_ids.append(f"{r0_id}{r1_id}")
     xr_dataset["rcv_pair_id"] = (["idx_rcv_pairs"], pair_ids)
 
-    # Initialisation time 
+
+def set_dataset_attrs(xr_dataset, grid_info, testcase, src_info, file_ext):
+    # Set attributes
+    var_unit_mapping = {
+        "°": [
+            "lon_rcv",
+            "lat_rcv",
+            "lon",
+            "lat",
+        ],
+        "m": ["r_from_rcv"],
+        "dB": ["snr"],
+        "": ["idx_rcv", "idx_similarity_metric", "idx_noise_realisation"],
+        "s": ["delay_rcv"],
+    }
+    for unit in var_unit_mapping.keys():
+        for var in var_unit_mapping[unit]:
+            xr_dataset[var].attrs["units"] = unit
+
+    xr_dataset["lon_rcv"].attrs["long_name"] = "Receiver longitude"
+    xr_dataset["lat_rcv"].attrs["long_name"] = "Receiver latitude"
+    xr_dataset["r_from_rcv"].attrs["long_name"] = "Range from receiver"
+    xr_dataset["lon"].attrs["long_name"] = "Longitude"
+    xr_dataset["lat"].attrs["long_name"] = "Latitude"
+    xr_dataset["snr"].attrs["long_name"] = "Signal to noise ratio"
+    xr_dataset["idx_rcv"].attrs["long_name"] = "Receiver index"
+    xr_dataset["idx_similarity_metric"].attrs["long_name"] = "Similarity metric index"
+    xr_dataset["idx_noise_realisation"].attrs["long_name"] = "Noise realisation index"
+    xr_dataset["delay_rcv"].attrs["long_name"] = "Propagation delay from receiver"
+
+    # Initialisation time
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
     xr_dataset.attrs["init_time"] = now
 
-    return xr_dataset
+    xr_dataset.attrs["fullpath_populated"] = get_populated_path(
+        grid_info,
+        kraken_env=testcase.env,
+        src_signal_type=src_info["signal_type"],
+        init_time=xr_dataset.attrs["init_time"],
+        ext=file_ext,
+    )
+
+
+def set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv):
+    az_rcv = get_azimuth_rcv(grid_info, rcv_info)
+    xr_dataset["az_rcv"] = (["idx_rcv", "lat", "lon"], az_rcv)
+    xr_dataset["az_rcv"].attrs["units"] = "°"
+    xr_dataset["az_rcv"].attrs["long_name"] = "Azimuth"
+
+    # Build list of angles to be used in kraken
+    dmax = xr_dataset.r_from_rcv.max(dim=["lat", "lon", "idx_rcv"]).round(0).values
+    delta = np.sqrt(grid_info["dlat_bathy"] ** 2 + grid_info["dlon_bathy"] ** 2)
+    d_az = np.arctan(delta / dmax) * 180 / np.pi
+    # list_az_th = np.arange(xr_dataset.az_rcv.min(), xr_dataset.az_rcv.max(), d_az)
+    list_az_th = np.arange(-180, 180, d_az)
+
+    az_propa = np.empty(xr_dataset.az_rcv.shape)
+    # t0 = time.time()
+    visited_sites = az_propa.copy()
+    visited_sites[:] = False
+    for i_rcv in range(n_rcv):
+        for az in list_az_th:
+            closest_points_idx = (
+                np.abs(xr_dataset.az_rcv.sel(idx_rcv=i_rcv) - az) <= d_az / 2
+            )
+            az_propa[i_rcv, closest_points_idx] = az
+            visited_sites[i_rcv, closest_points_idx] = True
+    # print(f"Elapsed time : {time.time() - t0}")
+
+    # Add az_propa to dataset
+    xr_dataset["az_propa"] = (["idx_rcv", "lat", "lon"], az_propa)
+    xr_dataset["az_propa"].attrs["units"] = "°"
+    xr_dataset["az_propa"].attrs["long_name"] = "Propagation azimuth"
+
+    azimuths_rcv = np.array([get_unique_azimuths(xr_dataset, i_rcv) for i_rcv in range(n_rcv)])
+    xr_dataset["azimuths_rcv"] = (["idx_rcv", "azimuth"], azimuths_rcv)
+
+    # Remove az_rcv
+    xr_dataset.drop_vars("az_rcv")
 
 
 def init_event_dataset(xr_dataset, src_info, rcv_info, interp_src_pos_on_grid=False):
@@ -1072,15 +1095,13 @@ def check_waveguide_cutoff(
 
     """
 
-    varin = {}
-
     fc = waveguide_cutoff_freq(waveguide_depth=testcase.min_depth)
     propagating_freq = src.positive_freq[src.positive_freq > fc]
     if propagating_freq.size != src.kraken_freq.size:
         src = init_src(dt, testcase.min_depth, src_info)
 
         # Update testcase with new frequency vector
-        varin["freq"] = src.kraken_freq
+        varin = {"freq": src.kraken_freq}
         testcase.update(varin)
 
     return src
@@ -2226,6 +2247,32 @@ def get_max_kraken_range(rcv_info, grid_info):
 
     rcv_info["max_kraken_range_m"] = np.round(max_r, -2)
 
+
+def get_bathy_grid_size(lon, lat):
+    lat_rad = np.radians(lat)  # Latitude en radians
+    lon_rad = np.radians(lon)  # Longitude en radians
+
+    grid_size = 15 / 3600 * np.pi / 180  # 15" (secondes d'arc)
+    lat_0 = lat_rad - grid_size
+    lat_1 = lat_rad + grid_size
+    lon_0 = lon_rad - grid_size
+    lon_1 = lon_rad + grid_size
+
+    geod = Geod(ellps="WGS84")
+    _, _, dlat = geod.inv(
+        lons1=lon,
+        lats1=np.degrees(lat_0),
+        lons2=lon,
+        lats2=np.degrees(lat_1),
+    )
+    _, _, dlon = geod.inv(
+        lons1=np.degrees(lon_0),
+        lats1=lat,
+        lons2=np.degrees(lon_1),
+        lats2=lat,
+    )
+
+    return dlon, dlat
 
 def get_dist_between_rcv(rcv_info):
     """

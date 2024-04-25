@@ -456,6 +456,7 @@ def plot_ambiguity_surface(
     nb_instant_to_plot=10,
     grid_info={},
     plot_info={},
+    zoom=False,
     plot_hyperbol=False,
 ):
     """Plot ambiguity surface for each source position."""
@@ -624,24 +625,31 @@ def plot_ambiguity_surface(
                 s=10,
             )
 
-            plt.xlim(
-                [
-                    min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
-                    max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
-                ]
-            )
-            plt.ylim(
-                [
-                    min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
-                    max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
-                ]
-            )
+            if zoom:
+                plt.xlim([ds.lon.min(), ds.lon.max()])
+                plt.ylim([ds.lat.min(), ds.lat.max()])
+                zoom_label = "_zoom"
+            else:
+                plt.xlim(
+                    [
+                        min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                        max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
+                    ]
+                )
+                plt.ylim(
+                    [
+                        min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                        max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
+                    ]
+                )
+                zoom_label = ""
             plt.title(
                 f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair {pair_id})",
             )
             plt.legend(ncol=2)
             img_fpath = os.path.join(
-                img_folder, f"ambiguity_surface_time_{i_src_time}_pair_{i_rcv_pair}.png"
+                img_folder,
+                f"ambiguity_surface_time_{i_src_time}_pair_{i_rcv_pair}{zoom_label}.png",
             )
             plt.savefig(img_fpath)
             plt.close()
@@ -729,25 +737,31 @@ def plot_ambiguity_surface(
                 label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
                 s=50,
             )
+        if zoom:
+            plt.xlim([ds.lon.min(), ds.lon.max()])
+            plt.ylim([ds.lat.min(), ds.lat.max()])
+            zoom_label = "_zoom"
+        else:
+            plt.xlim(
+                [
+                    min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                    max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
+                ]
+            )
+            plt.ylim(
+                [
+                    min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                    max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
+                ]
+            )
+            zoom_label = ""
 
-        plt.xlim(
-            [
-                min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
-                max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
-            ]
-        )
-        plt.ylim(
-            [
-                min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
-                max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
-            ]
-        )
         plt.title(
             f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time})",
         )
         plt.legend(ncol=2)
         img_fpath = os.path.join(
-            img_folder, f"ambiguity_surface_combined_time_{i_src_time}.png"
+            img_folder, f"ambiguity_surface_combined_time_{i_src_time}{zoom_label}.png"
         )
         plt.savefig(img_fpath)
         plt.close()
@@ -881,7 +895,9 @@ def plot_localisation_moviepy(
     plt.close(fig)
 
 
-def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=0):
+def plot_ship_trajectory(
+    ds, img_root, plot_info={}, noise_realisation_to_plot=0, zoom=False
+):
     """Plot ship trajectory."""
     # Init folders
     img_folder = init_plot_folders(
@@ -937,25 +953,31 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=0
                 label=r"$X_{loc}$ " + f" - {pair_id}",
             )
 
-            plt.xlim(
-                [
-                    min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
-                    max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
-                ]
-            )
-            plt.ylim(
-                [
-                    min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
-                    max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
-                ]
-            )
+            if zoom:
+                plt.xlim([ds.lon.min(), ds.lon.max()])
+                plt.ylim([ds.lat.min(), ds.lat.max()])
+                zoom_label = "_zoom"
+            else:
+                plt.xlim(
+                    [
+                        min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                        max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
+                    ]
+                )
+                plt.ylim(
+                    [
+                        min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                        max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
+                    ]
+                )
+                zoom_label = ""
 
             plt.xlabel("Longitude [°]")
             plt.ylabel("Latitude [°]")
             plt.grid(True)
             plt.legend()
             img_fpath = os.path.join(
-                img_folder, f"ship_trajectory_noise_{i_noise}_{pair_id}.png"
+                img_folder, f"ship_trajectory_noise_{i_noise}_{pair_id}{zoom_label}.png"
             )
             plt.savefig(img_fpath)
             plt.close()
@@ -1021,32 +1043,38 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=0
             det_pos_lat,
             ax,
             n_std=3,
-            edgecolor="k",
+            edgecolor=rcv_pair_colors[i_rcv_pair],
             facecolor=rcv_pair_colors[i_rcv_pair],
             alpha=0.2,
             zorder=2,
             label=r"$3\sigma$" + " confidence ellipse",
         )
 
-        plt.xlim(
-            [
-                min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
-                max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
-            ]
-        )
-        plt.ylim(
-            [
-                min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
-                max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
-            ]
-        )
+        if zoom:
+            plt.xlim([ds.lon.min(), ds.lon.max()])
+            plt.ylim([ds.lat.min(), ds.lat.max()])
+            zoom_label = "_zoom"
+        else:
+            plt.xlim(
+                [
+                    min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                    max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
+                ]
+            )
+            plt.ylim(
+                [
+                    min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                    max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
+                ]
+            )
+            zoom_label = ""
 
         plt.xlabel("Longitude [°]")
         plt.ylabel("Latitude [°]")
         plt.grid(True)
         plt.legend()
         img_fpath = os.path.join(
-            img_folder, f"ship_trajectory_pos_0_alldet_{pair_id}.png"
+            img_folder, f"ship_trajectory_pos_0_alldet_{pair_id}{zoom_label}.png"
         )
         plt.savefig(img_fpath)
         plt.close()
@@ -1113,24 +1141,30 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=0
             n_std=3,
             edgecolor=rcv_pair_colors[i_rcv_pair],
             facecolor=rcv_pair_colors[i_rcv_pair],
-            linewidth=5,
+            # linewidth=5,
             alpha=0.2,
             zorder=2,
             label=r"$\Sigma_{" + pair_id + r"}$",
         )
 
-        plt.xlim(
-            [
-                min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
-                max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
-            ]
-        )
-        plt.ylim(
-            [
-                min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
-                max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
-            ]
-        )
+        if zoom:
+            plt.xlim([ds.lon.min(), ds.lon.max()])
+            plt.ylim([ds.lat.min(), ds.lat.max()])
+            zoom_label = "_zoom"
+        else:
+            plt.xlim(
+                [
+                    min(ds.lon.min(), ds.lon_rcv.min()) - plot_info["lon_offset"],
+                    max(ds.lon.max(), ds.lon_rcv.max()) + plot_info["lon_offset"],
+                ]
+            )
+            plt.ylim(
+                [
+                    min(ds.lat.min(), ds.lat_rcv.min()) - plot_info["lat_offset"],
+                    max(ds.lat.max(), ds.lat_rcv.max()) + plot_info["lat_offset"],
+                ]
+            )
+            zoom_label = ""
 
     # Add combined detected positions
     det_pos_lon = ds.detected_pos_lon_combined.isel(src_trajectory_time=0)
@@ -1165,7 +1199,7 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=0
         n_std=3,
         edgecolor="black",
         facecolor="black",
-        linewidth=10,
+        # linewidth=10,
         alpha=0.2,
         zorder=2,
         label=r"$\Sigma_{combined}$",
@@ -1175,7 +1209,9 @@ def plot_ship_trajectory(ds, img_root, plot_info={}, noise_realisation_to_plot=0
     plt.ylabel("Latitude [°]")
     plt.grid(True)
     plt.legend(ncol=ds.sizes["idx_rcv_pairs"] + 2)
-    img_fpath = os.path.join(img_folder, f"ship_trajectory_pos_0_alldet_allpairs.png")
+    img_fpath = os.path.join(
+        img_folder, f"ship_trajectory_pos_0_alldet_allpairs{zoom_label}.png"
+    )
     plt.savefig(img_fpath)
     plt.close()
 
@@ -1621,12 +1657,14 @@ def analysis_main(
 
             # Plot ambiguity surface
             if plot_info["plot_ambiguity_surface"]:
-                plot_ambiguity_surface(
-                    ds_snr_sim,
-                    img_root,
-                    nb_instant_to_plot=n_instant_to_plot,
-                    plot_info=plot_info,
-                )
+                for zoom in [True, False]:
+                    plot_ambiguity_surface(
+                        ds_snr_sim,
+                        img_root,
+                        nb_instant_to_plot=n_instant_to_plot,
+                        plot_info=plot_info,
+                        zoom=zoom,
+                    )
 
             # Create video
             if plot_info["plot_video"]:
@@ -1642,12 +1680,14 @@ def analysis_main(
 
             # Plot ship trajectory
             if plot_info["plot_ship_trajectory"]:
-                plot_ship_trajectory(
-                    ds_snr_sim,
-                    img_root=img_root,
-                    plot_info=plot_info,
-                    noise_realisation_to_plot=0,
-                )
+                for zoom in [True, False]:
+                    plot_ship_trajectory(
+                        ds_snr_sim,
+                        img_root=img_root,
+                        plot_info=plot_info,
+                        noise_realisation_to_plot=0,
+                        zoom=zoom,
+                    )
 
             # Plot detection error
             if plot_info["plot_pos_error"]:

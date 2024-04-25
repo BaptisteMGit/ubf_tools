@@ -193,11 +193,6 @@ def postprocess_received_signal_from_broadband_pressure_field(
     fc = waveguide_cutoff_freq(waveguide_depth=minimum_waveguide_depth)
     propagating_spectrum = source.positive_spectrum[source.positive_freq > fc]
 
-    # TODO : check which factor to apply
-    # norm_factor = (
-    #     RHO_W / np.pi * np.exp(1j * (2 * np.pi * positive_fft_freq / C0 - np.pi / 2))
-    # )
-    # norm_factor = 1
     k0 = 2 * np.pi * propagating_freq / C0
     norm_factor = np.exp(1j * k0) / (4 * np.pi)
 

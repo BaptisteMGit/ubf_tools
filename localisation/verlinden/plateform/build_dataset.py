@@ -18,6 +18,8 @@ import dask.array as da
 
 from time import sleep
 from dask.distributed import Client
+from dask.diagnostics import ProgressBar
+
 from propa.kraken_toolbox.run_kraken import runkraken, clear_kraken_parallel_working_dir
 from localisation.verlinden.plateform.init_dataset import init_dataset
 
@@ -37,6 +39,8 @@ def build_dataset(
     xr.Dataset
     """
     client = Client(n_workers=6, threads_per_worker=1)
+    # client = Client(n_workers=6)
+
     print(client.dashboard_link)
     # Create zarr
     ds = init_dataset(
@@ -46,6 +50,8 @@ def build_dataset(
 
     print(f"Dataset sizes : {ds.sizes}")
     clear_kraken_parallel_working_dir(root=testcase.env.root)
+
+    # Params common to regions
     rmax = ds.r_from_rcv.max().values
     lon_rcv = ds.lon_rcv.values
     lat_rcv = ds.lat_rcv.values
@@ -54,7 +60,7 @@ def build_dataset(
 
     # Looop over dataset regions
     nregion = 10
-    # regions are defined by azimuth slices
+    # Regions are defined by azimuth slices
     az_limits = np.linspace(0, ds.sizes["all_az"], nregion, dtype=int)
     regions_az_slices = [
         slice(az_limits[i], az_limits[i + 1]) for i in range(len(az_limits) - 1)
@@ -64,7 +70,7 @@ def build_dataset(
         region_ds = ds.isel(all_az=r_az_slice)
 
         # Compute transfer functions (tf) using `map_blocks`
-        rmax = 10000
+        rmax = 1000
 
         array_template = region_ds.tf.isel(idx_rcv=0, all_az=0).data
         tf_dask = region_ds.tf.data
@@ -79,7 +85,9 @@ def build_dataset(
             freq,
             meta=array_template,
         )
-        region_tf_data = region_tf.compute()
+
+        with ProgressBar():
+            region_tf_data = region_tf.compute()
 
         ds.tf[dict(all_az=r_az_slice)] = region_tf_data
         region_to_save = ds.tf[dict(all_az=r_az_slice)]
@@ -95,7 +103,7 @@ def build_dataset(
                 "kraken_range": slice(0, ds.sizes["kraken_range"]),
             },
         )
-        sleep(1)
+        sleep(1)  # Seems to solve unstable behavior ...
 
     client.close()
 
@@ -103,7 +111,6 @@ def build_dataset(
 def compute_tf_chunk_dask(
     chunk, testcase, rmax, lon_rcv, lat_rcv, all_az, freq, block_info=None
 ):
-    # print(block_info[0]["array-location"])
     i_rcv = block_info[0]["array-location"][0][0]
     i_az = block_info[0]["array-location"][1][0]
     testcase_varin = dict(
@@ -167,7 +174,8 @@ if __name__ == "__main__":
     from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
 
     rcv_info_dw = {
-        "id": ["RR45", "RR48", "RR44"],
+        # "id": ["RR45", "RR48", "RR44"],
+        "id": ["RR45", "RR48"],
         "lons": [],
         "lats": [],
     }

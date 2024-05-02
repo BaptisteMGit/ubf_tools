@@ -19,6 +19,7 @@ import pandas as pd
 import dask.array
 
 from pyproj import Geod
+from dask.diagnostics import ProgressBar
 from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1
@@ -101,19 +102,32 @@ def init_dataset(
     # Associate azimuths to grid cells
     xr_dataset = set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv)
 
+    # Build rcv pairs
+    build_rcv_pairs(xr_dataset)
+
+    # Set attributes
+    set_attrs(xr_dataset, grid_info, testcase)
+
+    # Chunk
+    xr_dataset = xr_dataset.chunk({"idx_rcv": 1})
+
+    # Save zarr (light data)
+    with ProgressBar():
+        xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=True, mode="w")
+
     # Create arrays to store transfer functions
     # Frequency vector
     # nfft = 1024
-    fs = 100
+    # fs = 100
     nfft = 2**4
-    # fs = 10
+    fs = 10
     positive_freq = np.fft.rfftfreq(nfft, 1 / fs)
     kraken_freq = positive_freq[positive_freq > 2]
     xr_dataset.coords["kraken_freq"] = kraken_freq
 
     # Dummy kraken run to get field grid
-    max_range = xr_dataset.r_from_rcv.max().values
-    max_range = 10000  # TODO
+    # max_range = xr_dataset.r_from_rcv.max().values
+    max_range = 1000  # TODO
     testcase_varin = dict(
         max_range_m=max_range,
         azimuth=0,
@@ -147,21 +161,13 @@ def init_dataset(
     tf_arr = np.empty(tf_shape, dtype=np.complex64)
     xr_dataset["tf"] = (tf_dims, tf_arr)
 
-    # Build rcv pairs
-    build_rcv_pairs(xr_dataset)
-
-    # Set attributes
-    set_attrs(xr_dataset, grid_info, testcase)
-
     # Store zarr without computing
-    # xr_dataset = xr_dataset.chunk({"idx_rcv": 1, "all_az": 50})
+    # Chunk new variable tf
     xr_dataset = xr_dataset.chunk({"idx_rcv": 1, "all_az": 1})
-
-    # zarr_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\saves\test.zarr"
-    xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=False, mode="w")
+    with ProgressBar():
+        xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=False, mode="a")
 
     return xr_dataset
-    # return xr_dataset
 
 
 def init_grid(rcv_info, minimum_distance_around_rcv, dx=100, dy=100):

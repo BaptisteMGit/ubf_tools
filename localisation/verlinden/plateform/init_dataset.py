@@ -19,6 +19,9 @@ import pandas as pd
 import dask.array
 
 from pyproj import Geod
+from propa.kraken_toolbox.run_kraken import runkraken
+from propa.kraken_toolbox.utils import waveguide_cutoff_freq
+from localisation.verlinden.testcases.testcase_envs import TestCase3_1
 from localisation.verlinden.verlinden_utils import (
     get_range_from_rcv,
     get_azimuth_rcv,
@@ -45,12 +48,10 @@ def init_dataset(
 
     Parameters
     ----------
-    grid_info : dict
-        Grid information.
     rcv_info : dict
         Receiver information.
-    src_info : dict
-        Source information.
+    testcase: TestCase
+        Testcase.
 
     Returns
     -------
@@ -60,7 +61,9 @@ def init_dataset(
     """
 
     # Define grid
-    grid_info = init_grid(rcv_info, minimum_distance_around_rcv=20 * 1e3)
+    grid_info = init_grid(
+        rcv_info, minimum_distance_around_rcv=20 * 1e3, dx=100, dy=100
+    )
 
     # Derive max distance to be used in kraken for each receiver
     get_max_kraken_range(rcv_info, grid_info)
@@ -96,20 +99,53 @@ def init_dataset(
     xr_dataset["delay_rcv"] = xr_dataset.r_from_rcv / C0
 
     # Associate azimuths to grid cells
-    set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv)
+    xr_dataset = set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv)
 
     # Create arrays to store transfer functions
-    all_az = np.unique(xr_dataset.azimuths_rcv.values.flatten())
-    xr_dataset.coords["all_az"] = all_az
-    # nf = 1000
-    tf_dims = ["idx_rcv", "all_az"]
-    tf_shape = [xr_dataset.sizes[dim] for dim in tf_dims]
-    tf_arr = np.empty(tf_shape)
-    xr_dataset["tf"] = (tf_dims, tf_arr)
-    xr_dataset.chunk({"idx_rcv": 1})
+    # Frequency vector
+    # nfft = 1024
+    fs = 100
+    nfft = 2**4
+    # fs = 10
+    positive_freq = np.fft.rfftfreq(nfft, 1 / fs)
+    kraken_freq = positive_freq[positive_freq > 2]
+    xr_dataset.coords["kraken_freq"] = kraken_freq
 
-    zarr_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\saves\test.zarr"
-    xr_dataset.to_zarr(zarr_path, compute=False)
+    # Dummy kraken run to get field grid
+    max_range = xr_dataset.r_from_rcv.max().values
+    max_range = 10000  # TODO
+    testcase_varin = dict(
+        max_range_m=max_range,
+        azimuth=0,
+        rcv_lon=rcv_info["lons"][0],
+        rcv_lat=rcv_info["lats"][0],
+        freq=[1],
+    )
+    testcase.update(testcase_varin)
+
+    # Run kraken
+    _, field_pos = runkraken(
+        env=testcase.env,
+        flp=testcase.flp,
+        frequencies=testcase.env.freq,
+        parallel=True,
+        verbose=False,
+    )
+
+    kraken_range = field_pos["r"]["r"]
+    kraken_depth = field_pos["r"]["z"]
+
+    # List of all azimuts
+    xr_dataset.coords["all_az"] = np.unique(xr_dataset.azimuths_rcv.values.flatten())
+    # kraken grid coords
+    xr_dataset.coords["kraken_range"] = kraken_range
+    xr_dataset.coords["kraken_depth"] = kraken_depth
+
+    # Transfert function array
+    tf_dims = ["idx_rcv", "all_az", "kraken_freq", "kraken_depth", "kraken_range"]
+    tf_shape = [xr_dataset.sizes[dim] for dim in tf_dims]
+    tf_arr = np.empty(tf_shape, dtype=np.complex64)
+    xr_dataset["tf"] = (tf_dims, tf_arr)
 
     # Build rcv pairs
     build_rcv_pairs(xr_dataset)
@@ -117,7 +153,15 @@ def init_dataset(
     # Set attributes
     set_attrs(xr_dataset, grid_info, testcase)
 
+    # Store zarr without computing
+    # xr_dataset = xr_dataset.chunk({"idx_rcv": 1, "all_az": 50})
+    xr_dataset = xr_dataset.chunk({"idx_rcv": 1, "all_az": 1})
+
+    # zarr_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\saves\test.zarr"
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=False, mode="w")
+
     return xr_dataset
+    # return xr_dataset
 
 
 def init_grid(rcv_info, minimum_distance_around_rcv, dx=100, dy=100):

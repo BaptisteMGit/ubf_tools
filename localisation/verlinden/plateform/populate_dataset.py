@@ -104,14 +104,6 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
         tf = ds_to_pop.tf.isel(kraken_depth=0)  # Only one depth
 
-        #   Dummy lon lat loop version
-        # for lon in ds.lon.values:
-        #     for lat in ds.lat.values:
-        #         az = ds_to_pop.az_propa.sel(lon=lon, lat=lat)
-        #         r = ds_to_pop.r_from_rcv.sel(lon=lon, lat=lat)
-        #         tf_lon_lat = tf.sel(all_az=az, kraken_range=r, method="nearest")
-        #         tf_gridded.loc[dict(idx_rcv=i_rcv, lon=lon, lat=lat)] = tf_lon_lat
-
         for az in ds_to_pop.all_az.values:
             az_mask_2d = ds_to_pop.az_propa == az
             r_az = ds_to_pop.r_from_rcv.values[az_mask_2d]

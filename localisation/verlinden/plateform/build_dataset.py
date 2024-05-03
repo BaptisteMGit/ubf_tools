@@ -22,6 +22,7 @@ from dask.diagnostics import ProgressBar
 
 from propa.kraken_toolbox.run_kraken import runkraken, clear_kraken_parallel_working_dir
 from localisation.verlinden.plateform.init_dataset import init_dataset
+from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 
 
 # ======================================================================================================================
@@ -123,15 +124,28 @@ def compute_tf_chunk_dask(
     )
     testcase.update(testcase_varin)
 
+    # Propagating freq
+    fc = waveguide_cutoff_freq(waveguide_depth=testcase.min_depth)
+    f = freq[freq > fc]
+
     # Run kraken
     tf_chunk, _ = runkraken(
         env=testcase.env,
         flp=testcase.flp,
-        frequencies=testcase.env.freq,
+        frequencies=f,
         parallel=False,
         verbose=False,
         clear=False,
     )
+
+    if freq.size > f.size:
+        # Add zeros to match original freq size
+        tf_chunk = np.concatenate(
+            [
+                tf_chunk,
+                np.zeros((freq.size - f.size, *tf_chunk.shape[1:]), dtype=complex),
+            ]
+        )
 
     dask_tf_chunk = da.from_array(
         np.squeeze(tf_chunk, (1, 2)), chunks=block_info[None]["chunk-shape"][2:]

@@ -153,36 +153,6 @@ def compute_tf_chunk_dask(
     return dask_tf_chunk
 
 
-def compute_tf_chunk(chunk, testcase, rmax, lon_rcv, lat_rcv):
-    # Assuming `external_function` is the function you want to call for each chunk
-    # This function might be replaced with your actual computation logic
-    # print(chunk.sizes)
-    # print(chunk.coords)
-    testcase_varin = dict(
-        # max_range_m=chunk.r_from_rcv.max().values,
-        max_range_m=rmax,  # TODO
-        azimuth=chunk.all_az.values[0],
-        rcv_lon=lon_rcv[chunk.idx_rcv],
-        rcv_lat=lat_rcv[chunk.idx_rcv],
-        freq=chunk.kraken_freq.values,
-    )
-    testcase.update(testcase_varin)
-
-    # Run kraken
-    tf_chunk, field_pos = runkraken(
-        env=testcase.env,
-        flp=testcase.flp,
-        frequencies=testcase.env.freq,
-        parallel=False,
-        verbose=False,
-    )
-
-    ds_tf_chunk = chunk
-    ds_tf_chunk[dict(idx_rcv=0, all_az=0)] = np.squeeze(tf_chunk, (1, 2))
-    # return da.from_array(tf_chunk, chunks=tf_chunk.shape)
-    return ds_tf_chunk
-
-
 if __name__ == "__main__":
     from localisation.verlinden.testcases.testcase_envs import TestCase3_1
     from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos

@@ -13,7 +13,6 @@
 # Import
 # ======================================================================================================================
 import numpy as np
-import xarray as xr
 import dask.array as da
 
 from time import sleep
@@ -154,6 +153,7 @@ def compute_tf_chunk_dask(
 
 
 if __name__ == "__main__":
+    # import xarray as xr
     from localisation.verlinden.testcases.testcase_envs import TestCase3_1
     from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
 

@@ -13,19 +13,15 @@
 # Import
 # ======================================================================================================================
 import os
+import dask
 import numpy as np
 import xarray as xr
 import dask.array as da
 
-from time import sleep
-from dask.distributed import Client
-import dask
-
-from propa.kraken_toolbox.run_kraken import runkraken, clear_kraken_parallel_working_dir
+from misc import mult_along_axis
 from localisation.verlinden.plateform.init_dataset import (
     init_grid,
     get_range_from_rcv,
-    set_azimuths,
 )
 
 from localisation.verlinden.verlinden_utils import get_azimuth_rcv
@@ -35,7 +31,7 @@ from cst import C0
 def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     # Check if we need to update the grid
-    update_grid = ~((ds.dx == dx) & (ds.dy == dy))
+    update_grid = not ((ds.dx == dx) & (ds.dy == dy))
     if update_grid:
         assert (
             rcv_info is not None
@@ -119,7 +115,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
         for az in ds_to_pop.all_az.values:
             az_mask_2d = ds_to_pop.az_propa == az
             r_az = ds_to_pop.r_from_rcv.values[az_mask_2d]
-            tf_az = tf.sel(all_az=az, kraken_range=r_az, method="nearest")
+            tf_az = tf.sel(all_az=az).sel(kraken_range=r_az, method="nearest")
             tf_gridded_array[i_rcv, az_mask_2d, :] = tf_az.values.T
 
     ds["tf_gridded"] = (["idx_rcv", "lat", "lon", "kraken_freq"], tf_gridded_array)
@@ -130,24 +126,25 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     if update_grid:
         ds.to_zarr(ds.fullpath_dataset, mode="w")
     else:
-        ds.tf_gridded.to_zarr(ds.fullpath_dataset, mode="a")
+        ds.to_zarr(ds.fullpath_dataset, mode="a")
 
     return ds
 
 
-def grid_synthesis(ds, src):
-    # Extract propagating spectrum from entire spectrum
-    fc = waveguide_cutoff_freq(waveguide_depth=minimum_waveguide_depth)
-    propagating_freq = src.positive_freq[src.positive_freq > fc]
-    propagating_spectrum = src.positive_spectrum[src.positive_freq > fc]
+def grid_synthesis(
+    ds,
+    src,
+    apply_delay=True,
+):
+    propagating_freq = src.positive_freq
+    propagating_spectrum = src.positive_spectrum
+
+    # # TODO remove
+    # propagating_freq = propagating_freq[200 : ds.sizes["kraken_freq"] + 200]
+    # propagating_spectrum = propagating_spectrum[200 : ds.sizes["kraken_freq"] + 200]
 
     k0 = 2 * np.pi * propagating_freq / C0
     norm_factor = np.exp(1j * k0) / (4 * np.pi)
-
-    # Received signal spectrum resulting from the convolution of the src signal and the impulse response
-    transmited_field_f = mult_along_axis(
-        pressure_field, propagating_spectrum * norm_factor, axis=0
-    )
 
     nfft_inv = (
         4 * src.nfft
@@ -156,51 +153,174 @@ def grid_synthesis(ds, src):
     dt = T_tot / nfft_inv
     time_vector = np.arange(0, T_tot, dt)
 
-    # Apply corresponding delay to the signal
-    if apply_delay:
-        for ir, rcv_r in enumerate(rcv_range):  # TODO: remove loop for efficiency
-            if delay is None:
-                tau = rcv_r / C0
-            else:
-                tau = delay[ir]
+    # Loop over sub_regions of the grid
+    sub_region_size = 100
+    lat_slices_lim = np.arange(0, ds.sizes["lat"], sub_region_size)
+    lat_slices = [
+        slice(lat_slices_lim[i], lat_slices_lim[i + 1])
+        for i in range(len(lat_slices_lim) - 1)
+    ]
+    lon_slices_lim = np.arange(0, ds.sizes["lon"], sub_region_size)
+    lon_slices = [
+        slice(lon_slices_lim[i], lon_slices_lim[i + 1])
+        for i in range(len(lon_slices_lim) - 1)
+    ]
 
-            delay_f = np.exp(1j * 2 * np.pi * tau * propagating_freq)
+    ds.coords["library_signal_time"] = time_vector
+    ts_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
+    ts_shape = [ds.sizes[dim] for dim in ts_dim]
+    transmited_field_t = np.empty(ts_shape)
+    ds["rcv_signal_library"] = (
+        ts_dim,
+        transmited_field_t,
+    )
+    ds.rcv_signal_library.attrs["long_name"] = r"$s_{i}$"
+    # Save to zarr without computing
+    ds.to_zarr(ds.fullpath_dataset, mode="a", compute=False)
 
-            transmited_field_f[..., ir] = mult_along_axis(
-                transmited_field_f[..., ir], delay_f, axis=0
+    for lon_s in lon_slices:
+        for lat_s in lat_slices:
+            ds_sub = ds.isel(lat=lat_s, lon=lon_s)
+
+            # Compute received signal in sub_region
+            transmited_field_t = compute_received_signal(
+                ds_sub,
+                propagating_freq,
+                propagating_spectrum,
+                norm_factor,
+                nfft_inv,
+                apply_delay,
             )
 
+            ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)] = transmited_field_t
+            sub_region_to_save = ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)]
+
+            # Save to zarr
+            sub_region_to_save.to_zarr(
+                ds.fullpath_dataset,
+                mode="r+",
+                region={
+                    "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
+                    "lat": lat_s,
+                    "lon": lon_s,
+                    "library_signal_time": slice(0, ds.sizes["library_signal_time"]),
+                },
+            )
+
+    return ds
+
+
+def compute_received_signal(
+    ds, propagating_freq, propagating_spectrum, norm_factor, nfft_inv, apply_delay
+):
+
+    # Received signal spectrum resulting from the convolution of the src signal and the impulse response
+    transmited_field_f = mult_along_axis(
+        ds.tf_gridded, propagating_spectrum * norm_factor, axis=-1
+    )
+
+    # Apply corresponding delay to the signal
+    if apply_delay:
+        tau = ds.delay_rcv.min(
+            dim="idx_rcv"
+        )  # Delay to apply to the signal to take into account the propagation time
+
+        # Expand tau to the signal shape
+        tau = tau.expand_dims({"kraken_freq": ds.sizes["kraken_freq"]}, axis=-1)
+        # Derive delay factor
+        tau_vec = mult_along_axis(tau, propagating_freq, axis=-1)
+        delay_f = np.exp(1j * 2 * np.pi * tau_vec)
+        # Expand delay factor to the signal shape
+        delay_f = tau.copy(deep=True, data=delay_f).expand_dims(
+            {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
+        )
+        # Apply delay
+        transmited_field_f = transmited_field_f * delay_f
+
     # Fourier synthesis of the received signal -> time domain
-    received_signal_t = np.fft.irfft(transmited_field_f, axis=0, n=nfft_inv)
-    transmited_field_t = np.real(received_signal_t)
+    n_workers = 6
+    chunk_shape = (
+        ds.sizes["idx_rcv"],
+        ds.sizes["lat"] // n_workers,
+        ds.sizes["lon"] // n_workers,
+        ds.sizes["kraken_freq"],
+    )
+    transmited_field_f = da.from_array(transmited_field_f, chunks=chunk_shape)
+    transmited_field_t = np.fft.irfft(transmited_field_f, axis=-1, n=nfft_inv).compute()
+
+    return transmited_field_t
 
 
 if __name__ == "__main__":
+    # fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3528.zarr"
     # fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3528_10000m.zarr"
-    fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3996.zarr"
+    fname = "propa_dataset_65.5928_65.9521_-27.6662_-27.5711_backup.zarr"
     root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1"
     fpath = os.path.join(root, fname)
+
+    from dask.distributed import Client
+
     ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
     from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
 
-    rcv_info_dw = {
-        # "id": ["RR45", "RR48", "RR44"],
-        "id": ["RR45", "RR48"],
-        "lons": [],
-        "lats": [],
-    }
+    fname = "propa_dataset_65.5928_65.9521_-27.6662_-27.5711.zarr"
+    fpath = os.path.join(root, fname)
+    ds_full = xr.open_dataset(fpath, engine="zarr", chunks={})
 
-    for obs_id in rcv_info_dw["id"]:
-        pos_obs = load_rhumrum_obs_pos(obs_id)
-        rcv_info_dw["lons"].append(pos_obs.lon)
-        rcv_info_dw["lats"].append(pos_obs.lat)
+    # rcv_info_dw = {
+    #     # "id": ["RR45", "RR48", "RR44"],
+    #     "id": ["RR45", "RR48"],
+    #     "lons": [],
+    #     "lats": [],
+    # }
 
-    ds = grid_tf(
-        ds,
-        dx=100,
-        dy=100,
-        rcv_info=rcv_info_dw,
-    )
+    # for obs_id in rcv_info_dw["id"]:
+    #     pos_obs = load_rhumrum_obs_pos(obs_id)
+    #     rcv_info_dw["lons"].append(pos_obs.lon)
+    #     rcv_info_dw["lats"].append(pos_obs.lat)
+
+    # ds = grid_tf(
+    #     ds,
+    #     dx=100,
+    #     dy=100,
+    #     rcv_info=rcv_info_dw,
+    # )
+
+    # client = Client(n_workers=6, threads_per_worker=1)
+    # print(client.dashboard_link)
+
+    # fs = 100  # Sampling frequency
+    # # Library
+    # f0_lib = 1  # Fundamental frequency of the ship signal
+    # src_info = {
+    #     "sig_type": "ship",
+    #     "f0": f0_lib,
+    #     "std_fi": f0_lib * 1 / 100,
+    #     "tau_corr_fi": 1 / f0_lib,
+    #     "fs": fs,
+    # }
+
+    # dt = 5
+    # min_waveguide_depth = 5000
+    # from localisation.verlinden.AcousticComponent import AcousticSource
+    # from signals import generate_ship_signal
+
+    # src_sig, t_src_sig = generate_ship_signal(
+    #     Ttot=dt,
+    #     f0=src_info["f0"],
+    #     std_fi=src_info["std_fi"],
+    #     tau_corr_fi=src_info["tau_corr_fi"],
+    #     fs=src_info["fs"],
+    # )
+
+    # src = AcousticSource(
+    #     signal=src_sig,
+    #     time=t_src_sig,
+    #     name="ship",
+    #     waveguide_depth=min_waveguide_depth,
+    # )
+
+    # ds = grid_synthesis(ds, src)
 
     print()

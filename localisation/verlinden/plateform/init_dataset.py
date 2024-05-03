@@ -16,19 +16,13 @@ import os
 import numpy as np
 import xarray as xr
 import pandas as pd
-import dask.array
 
 from pyproj import Geod
 from dask.diagnostics import ProgressBar
 from propa.kraken_toolbox.run_kraken import runkraken
-from propa.kraken_toolbox.utils import waveguide_cutoff_freq
-from localisation.verlinden.testcases.testcase_envs import TestCase3_1
 from localisation.verlinden.verlinden_utils import (
     get_range_from_rcv,
-    get_azimuth_rcv,
-    get_populated_path,
     set_azimuths,
-    set_dataset_attrs,
     build_rcv_pairs,
     get_max_kraken_range,
     get_dist_between_rcv,
@@ -62,9 +56,7 @@ def init_dataset(
     """
 
     # Define grid
-    grid_info = init_grid(
-        rcv_info, minimum_distance_around_rcv=20 * 1e3, dx=100, dy=100
-    )
+    grid_info = init_grid(rcv_info, minimum_distance_around_rcv=1 * 1e3, dx=100, dy=100)
 
     # Derive max distance to be used in kraken for each receiver
     get_max_kraken_range(rcv_info, grid_info)
@@ -119,11 +111,10 @@ def init_dataset(
     # Frequency vector
     # nfft = 1024
     # fs = 100
-    nfft = 2**4
+    nfft = 2**5
     fs = 10
     positive_freq = np.fft.rfftfreq(nfft, 1 / fs)
-    kraken_freq = positive_freq[positive_freq > 2]
-    xr_dataset.coords["kraken_freq"] = kraken_freq
+    xr_dataset.coords["kraken_freq"] = positive_freq
 
     # Dummy kraken run to get field grid
     # max_range = xr_dataset.r_from_rcv.max().values
@@ -161,9 +152,10 @@ def init_dataset(
     tf_arr = np.empty(tf_shape, dtype=np.complex64)
     xr_dataset["tf"] = (tf_dims, tf_arr)
 
-    # Store zarr without computing
     # Chunk new variable tf
     xr_dataset = xr_dataset.chunk({"idx_rcv": 1, "all_az": 1})
+
+    # Store zarr without computing
     with ProgressBar():
         xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=False, mode="a")
 

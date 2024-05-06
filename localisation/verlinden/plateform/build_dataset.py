@@ -15,13 +15,15 @@
 import numpy as np
 import dask.array as da
 
-from time import sleep
+from time import sleep, time
 from dask.distributed import Client
 from dask.diagnostics import ProgressBar
 
 from propa.kraken_toolbox.run_kraken import runkraken, clear_kraken_parallel_working_dir
 from localisation.verlinden.plateform.init_dataset import init_dataset
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq
+
+N_WORKERS = 8
 
 
 # ======================================================================================================================
@@ -30,6 +32,7 @@ from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 def build_dataset(
     rcv_info,
     testcase,
+    **kwargs,
 ):
     """
     Build the dataset to be used by the localisation algorithm.
@@ -38,14 +41,16 @@ def build_dataset(
     -------
     xr.Dataset
     """
-    client = Client(n_workers=6, threads_per_worker=1)
+
+    client = Client(n_workers=N_WORKERS, threads_per_worker=1)
+    print(client.dashboard_link)
     # client = Client(n_workers=6)
 
-    print(client.dashboard_link)
     # Create zarr
     ds = init_dataset(
         rcv_info,
         testcase,
+        **kwargs,
     )
 
     print(f"Dataset sizes : {ds.sizes}")
@@ -58,10 +63,16 @@ def build_dataset(
     all_az = ds.all_az.values
     freq = ds.kraken_freq.values
 
-    # Looop over dataset regions
-    nregion = 10
+    # Loop over dataset regions
+    nregion = ds.sizes["all_az"]
+    max_size_bytes = 0.5 * 1e9  # 500 Mo
+    size = ds.tf.nbytes / nregion
+    while size <= max_size_bytes and nregion > 1:  # At least 1 region
+        nregion -= 1
+        size = ds.tf.nbytes / nregion
+
     # Regions are defined by azimuth slices
-    az_limits = np.linspace(0, ds.sizes["all_az"], nregion, dtype=int)
+    az_limits = np.linspace(0, ds.sizes["all_az"], nregion + 1, dtype=int)
     regions_az_slices = [
         slice(az_limits[i], az_limits[i + 1]) for i in range(len(az_limits) - 1)
     ]
@@ -70,7 +81,7 @@ def build_dataset(
         region_ds = ds.isel(all_az=r_az_slice)
 
         # Compute transfer functions (tf) using `map_blocks`
-        rmax = 1000
+        # rmax = 1000
 
         array_template = region_ds.tf.isel(idx_rcv=0, all_az=0).data
         tf_dask = region_ds.tf.data
@@ -86,12 +97,13 @@ def build_dataset(
             meta=array_template,
         )
 
-        with ProgressBar():
-            region_tf_data = region_tf.compute()
+        # with ProgressBar():
+        region_tf_data = region_tf.compute()
 
         ds.tf[dict(all_az=r_az_slice)] = region_tf_data
         region_to_save = ds.tf[dict(all_az=r_az_slice)]
 
+        t0 = time()
         region_to_save.to_zarr(
             ds.fullpath_dataset,
             mode="r+",
@@ -103,9 +115,13 @@ def build_dataset(
                 "kraken_range": slice(0, ds.sizes["kraken_range"]),
             },
         )
+        print(f"Region ({size * 1e-9} Go) saved in {time() - t0:.2f} s")
+
         sleep(1)  # Seems to solve unstable behavior ...
 
     client.close()
+
+    return ds.fullpath_dataset
 
 
 def compute_tf_chunk_dask(

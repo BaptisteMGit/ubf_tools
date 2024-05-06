@@ -18,6 +18,8 @@ import xarray as xr
 import dask.array as da
 
 from misc import mult_along_axis
+from dask.distributed import Client
+
 from localisation.verlinden.plateform.init_dataset import (
     init_grid,
     get_range_from_rcv,
@@ -145,13 +147,19 @@ def grid_synthesis(
     time_vector = np.arange(0, T_tot, dt)
 
     # Loop over sub_regions of the grid
-    sub_region_size = 100
-    lat_slices_lim = np.arange(0, ds.sizes["lat"], sub_region_size)
+    nregion = ds.sizes["lon"]
+    max_size_bytes = 0.5 * 1e9  # 500 Mo
+    size = ds.tf.nbytes / nregion
+    while size <= max_size_bytes and nregion > 1:  # At least 1 region
+        nregion -= 1
+        size = ds.tf.nbytes / nregion
+
+    lat_slices_lim = np.linspace(0, ds.sizes["lat"], nregion + 1, dtype=int)
     lat_slices = [
         slice(lat_slices_lim[i], lat_slices_lim[i + 1])
         for i in range(len(lat_slices_lim) - 1)
     ]
-    lon_slices_lim = np.arange(0, ds.sizes["lon"], sub_region_size)
+    lon_slices_lim = np.linspace(0, ds.sizes["lon"], nregion + 1, dtype=int)
     lon_slices = [
         slice(lon_slices_lim[i], lon_slices_lim[i + 1])
         for i in range(len(lon_slices_lim) - 1)
@@ -242,6 +250,21 @@ def compute_received_signal(
     return transmited_field_t
 
 
+def populate_dataset(ds, src, **kwargs):
+    # Grid transfer functions
+    grid_tf_kw = {key: kwargs[key] for key in kwargs if key in ["dx", "dy", "rcv_info"]}
+    ds = grid_tf(ds, **grid_tf_kw)
+
+    client = Client(n_workers=6, threads_per_worker=1)
+    print(client.dashboard_link)
+
+    # Grid synthesis
+    grid_synthesis_kw = {key: kwargs[key] for key in kwargs if key in ["apply_delay"]}
+    ds = grid_synthesis(ds, src, **grid_synthesis_kw)
+
+    return ds
+
+
 if __name__ == "__main__":
     # fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3528.zarr"
     # fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3528_10000m.zarr"
@@ -259,17 +282,17 @@ if __name__ == "__main__":
     fpath = os.path.join(root, fname)
     ds_full = xr.open_dataset(fpath, engine="zarr", chunks={})
 
-    # rcv_info_dw = {
-    #     # "id": ["RR45", "RR48", "RR44"],
-    #     "id": ["RR45", "RR48"],
-    #     "lons": [],
-    #     "lats": [],
-    # }
+    rcv_info_dw = {
+        # "id": ["RR45", "RR48", "RR44"],
+        "id": ["RR45", "RR48"],
+        "lons": [],
+        "lats": [],
+    }
 
-    # for obs_id in rcv_info_dw["id"]:
-    #     pos_obs = load_rhumrum_obs_pos(obs_id)
-    #     rcv_info_dw["lons"].append(pos_obs.lon)
-    #     rcv_info_dw["lats"].append(pos_obs.lat)
+    for obs_id in rcv_info_dw["id"]:
+        pos_obs = load_rhumrum_obs_pos(obs_id)
+        rcv_info_dw["lons"].append(pos_obs.lon)
+        rcv_info_dw["lats"].append(pos_obs.lat)
 
     # ds = grid_tf(
     #     ds,
@@ -278,40 +301,38 @@ if __name__ == "__main__":
     #     rcv_info=rcv_info_dw,
     # )
 
-    # client = Client(n_workers=6, threads_per_worker=1)
-    # print(client.dashboard_link)
+    fs = 100  # Sampling frequency
+    # Library
+    f0_lib = 1  # Fundamental frequency of the ship signal
+    src_info = {
+        "sig_type": "ship",
+        "f0": f0_lib,
+        "std_fi": f0_lib * 1 / 100,
+        "tau_corr_fi": 1 / f0_lib,
+        "fs": fs,
+    }
 
-    # fs = 100  # Sampling frequency
-    # # Library
-    # f0_lib = 1  # Fundamental frequency of the ship signal
-    # src_info = {
-    #     "sig_type": "ship",
-    #     "f0": f0_lib,
-    #     "std_fi": f0_lib * 1 / 100,
-    #     "tau_corr_fi": 1 / f0_lib,
-    #     "fs": fs,
-    # }
+    dt = 5
+    min_waveguide_depth = 5000
+    from localisation.verlinden.AcousticComponent import AcousticSource
+    from signals import generate_ship_signal
 
-    # dt = 5
-    # min_waveguide_depth = 5000
-    # from localisation.verlinden.AcousticComponent import AcousticSource
-    # from signals import generate_ship_signal
+    src_sig, t_src_sig = generate_ship_signal(
+        Ttot=dt,
+        f0=src_info["f0"],
+        std_fi=src_info["std_fi"],
+        tau_corr_fi=src_info["tau_corr_fi"],
+        fs=src_info["fs"],
+    )
 
-    # src_sig, t_src_sig = generate_ship_signal(
-    #     Ttot=dt,
-    #     f0=src_info["f0"],
-    #     std_fi=src_info["std_fi"],
-    #     tau_corr_fi=src_info["tau_corr_fi"],
-    #     fs=src_info["fs"],
-    # )
-
-    # src = AcousticSource(
-    #     signal=src_sig,
-    #     time=t_src_sig,
-    #     name="ship",
-    #     waveguide_depth=min_waveguide_depth,
-    # )
+    src = AcousticSource(
+        signal=src_sig,
+        time=t_src_sig,
+        name="ship",
+        waveguide_depth=min_waveguide_depth,
+    )
 
     # ds = grid_synthesis(ds, src)
+    ds = populate_dataset(ds, src, rcv_info=rcv_info_dw)
 
     print()

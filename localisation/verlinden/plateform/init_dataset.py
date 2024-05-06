@@ -37,6 +37,12 @@ ROOT_DATASET_PATH = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation
 def init_dataset(
     rcv_info,
     testcase,
+    minimum_distance_around_rcv=1 * 1e3,
+    dx=100,
+    dy=100,
+    nfft=1024,
+    fs=100,
+    max_range=None,
 ):
     """
     Initialize the dataset to be used by build_dataset().
@@ -56,7 +62,7 @@ def init_dataset(
     """
 
     # Define grid
-    grid_info = init_grid(rcv_info, minimum_distance_around_rcv=1 * 1e3, dx=100, dy=100)
+    grid_info = init_grid(rcv_info, minimum_distance_around_rcv, dx, dy)
 
     # Derive max distance to be used in kraken for each receiver
     get_max_kraken_range(rcv_info, grid_info)
@@ -104,21 +110,21 @@ def init_dataset(
     xr_dataset = xr_dataset.chunk({"idx_rcv": 1})
 
     # Save zarr (light data)
-    with ProgressBar():
-        xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=True, mode="w")
+    # with ProgressBar():
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=True, mode="w")
 
     # Create arrays to store transfer functions
     # Frequency vector
     # nfft = 1024
     # fs = 100
-    nfft = 2**5
-    fs = 10
+    # nfft = 2**5
+    # fs = 10
     positive_freq = np.fft.rfftfreq(nfft, 1 / fs)
     xr_dataset.coords["kraken_freq"] = positive_freq
 
     # Dummy kraken run to get field grid
-    # max_range = xr_dataset.r_from_rcv.max().values
-    max_range = 1000  # TODO
+    if max_range is None:
+        max_range = xr_dataset.r_from_rcv.max().values
     testcase_varin = dict(
         max_range_m=max_range,
         azimuth=0,
@@ -156,8 +162,8 @@ def init_dataset(
     xr_dataset = xr_dataset.chunk({"idx_rcv": 1, "all_az": 1})
 
     # Store zarr without computing
-    with ProgressBar():
-        xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=False, mode="a")
+    # with ProgressBar():
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=False, mode="a")
 
     return xr_dataset
 

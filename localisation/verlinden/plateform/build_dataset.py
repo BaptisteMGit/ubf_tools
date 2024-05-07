@@ -12,6 +12,7 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import gc
 import numpy as np
 import dask.array as da
 
@@ -42,86 +43,87 @@ def build_dataset(
     xr.Dataset
     """
 
-    client = Client(n_workers=N_WORKERS, threads_per_worker=1)
-    print(client.dashboard_link)
-    # client = Client(n_workers=6)
+    with Client(n_workers=N_WORKERS, threads_per_worker=1) as client:
+        print(client.dashboard_link)
 
-    # Create zarr
-    ds = init_dataset(
-        rcv_info,
-        testcase,
-        **kwargs,
-    )
-
-    print(f"Dataset sizes : {ds.sizes}")
-    clear_kraken_parallel_working_dir(root=testcase.env.root)
-
-    # Params common to regions
-    rmax = ds.r_from_rcv.max().values
-    lon_rcv = ds.lon_rcv.values
-    lat_rcv = ds.lat_rcv.values
-    all_az = ds.all_az.values
-    freq = ds.kraken_freq.values
-
-    # Loop over dataset regions
-    nregion = ds.sizes["all_az"]
-    max_size_bytes = 0.5 * 1e9  # 500 Mo
-    size = ds.tf.nbytes / nregion
-    while size <= max_size_bytes and nregion > 1:  # At least 1 region
-        nregion -= 1
-        size = ds.tf.nbytes / nregion
-
-    # Regions are defined by azimuth slices
-    az_limits = np.linspace(0, ds.sizes["all_az"], nregion + 1, dtype=int)
-    regions_az_slices = [
-        slice(az_limits[i], az_limits[i + 1]) for i in range(len(az_limits) - 1)
-    ]
-
-    for r_az_slice in regions_az_slices:
-        region_ds = ds.isel(all_az=r_az_slice)
-
-        # Compute transfer functions (tf) using `map_blocks`
-        # rmax = 1000
-
-        array_template = region_ds.tf.isel(idx_rcv=0, all_az=0).data
-        tf_dask = region_ds.tf.data
-
-        region_tf = tf_dask.map_blocks(
-            compute_tf_chunk_dask,
+        # Create zarr
+        ds = init_dataset(
+            rcv_info,
             testcase,
-            rmax,
-            lon_rcv,
-            lat_rcv,
-            all_az,
-            freq,
-            meta=array_template,
+            **kwargs,
         )
 
-        # with ProgressBar():
-        region_tf_data = region_tf.compute()
+        print(f"Dataset sizes : {ds.sizes}")
+        clear_kraken_parallel_working_dir(root=testcase.env.root)
 
-        ds.tf[dict(all_az=r_az_slice)] = region_tf_data
-        region_to_save = ds.tf[dict(all_az=r_az_slice)]
+        # Params common to regions
+        rmax = ds.r_from_rcv.max().values
+        lon_rcv = ds.lon_rcv.values
+        lat_rcv = ds.lat_rcv.values
+        all_az = ds.all_az.values
+        freq = ds.kraken_freq.values
 
-        t0 = time()
-        region_to_save.to_zarr(
-            ds.fullpath_dataset,
-            mode="r+",
-            region={
-                "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
-                "all_az": r_az_slice,
-                "kraken_freq": slice(0, ds.sizes["kraken_freq"]),
-                "kraken_depth": slice(0, ds.sizes["kraken_depth"]),
-                "kraken_range": slice(0, ds.sizes["kraken_range"]),
-            },
-        )
-        print(f"Region ({size * 1e-9} Go) saved in {time() - t0:.2f} s")
+        # Loop over dataset regions
+        nregion = ds.sizes["all_az"]
+        max_size_bytes = 0.5 * 1e9  # 500 Mo
+        size = ds.tf.nbytes / nregion
+        while size <= max_size_bytes and nregion > 1:  # At least 1 region
+            nregion -= 1
+            size = ds.tf.nbytes / nregion
 
-        sleep(1)  # Seems to solve unstable behavior ...
+        # Regions are defined by azimuth slices
+        az_limits = np.linspace(0, ds.sizes["all_az"], nregion + 1, dtype=int)
+        regions_az_slices = [
+            slice(az_limits[i], az_limits[i + 1]) for i in range(len(az_limits) - 1)
+        ]
 
-    client.close()
+        for r_az_slice in regions_az_slices:
+            region_ds = ds.isel(all_az=r_az_slice)
 
-    return ds.fullpath_dataset
+            # Compute transfer functions (tf) using `map_blocks`
+            # rmax = 1000
+
+            array_template = region_ds.tf.isel(idx_rcv=0, all_az=0).data
+            tf_dask = region_ds.tf.data
+
+            region_tf = tf_dask.map_blocks(
+                compute_tf_chunk_dask,
+                testcase,
+                rmax,
+                lon_rcv,
+                lat_rcv,
+                all_az,
+                freq,
+                meta=array_template,
+            )
+
+            # with ProgressBar():
+            region_tf_data = region_tf.compute()
+
+            ds.tf[dict(all_az=r_az_slice)] = region_tf_data
+            region_to_save = ds.tf[dict(all_az=r_az_slice)]
+
+            t0 = time()
+            region_to_save.to_zarr(
+                ds.fullpath_dataset_propa,
+                mode="r+",
+                region={
+                    "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
+                    "all_az": r_az_slice,
+                    "kraken_freq": slice(0, ds.sizes["kraken_freq"]),
+                    "kraken_depth": slice(0, ds.sizes["kraken_depth"]),
+                    "kraken_range": slice(0, ds.sizes["kraken_range"]),
+                },
+            )
+            print(f"Region ({size * 1e-9} Go) saved in {time() - t0:.2f} s")
+
+            sleep(1)  # Seems to solve unstable behavior ...
+
+            # Ensure memory is freed
+            del region_ds, region_tf, region_tf_data, region_to_save
+            gc.collect()
+
+    return ds.fullpath_dataset_propa
 
 
 def compute_tf_chunk_dask(

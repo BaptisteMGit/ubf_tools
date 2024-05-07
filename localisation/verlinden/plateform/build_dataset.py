@@ -13,6 +13,7 @@
 # Import
 # ======================================================================================================================
 import gc
+import zarr
 import numpy as np
 import dask.array as da
 
@@ -122,6 +123,11 @@ def build_dataset(
             # Ensure memory is freed
             del region_ds, region_tf, region_tf_data, region_to_save
             gc.collect()
+
+    # Open the Zarr store and update attrs
+    zarr_store = zarr.open(ds.fullpath_dataset_propa)
+    zarr_store.attrs.update({"propa_done": True})
+    zarr.consolidate_metadata(ds.fullpath_dataset_propa)
 
     return ds.fullpath_dataset_propa
 

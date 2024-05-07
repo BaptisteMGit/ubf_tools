@@ -16,6 +16,7 @@ import os
 import numpy as np
 import xarray as xr
 import pandas as pd
+import dask.array as da
 
 from pyproj import Geod
 from dask.diagnostics import ProgressBar
@@ -153,7 +154,8 @@ def init_dataset(
     # Transfert function array
     tf_dims = ["idx_rcv", "all_az", "kraken_freq", "kraken_depth", "kraken_range"]
     tf_shape = [xr_dataset.sizes[dim] for dim in tf_dims]
-    tf_arr = np.empty(tf_shape, dtype=np.complex64)
+
+    tf_arr = da.empty(tf_shape, dtype=np.complex64)
     xr_dataset["tf"] = (tf_dims, tf_arr)
 
     # Chunk new variable tf

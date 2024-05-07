@@ -65,7 +65,7 @@ def build_dataset(
 
         # Loop over dataset regions
         nregion = ds.sizes["all_az"]
-        max_size_bytes = 0.5 * 1e9  # 500 Mo
+        max_size_bytes = 0.1 * 1e9  # 100 Mo
         size = ds.tf.nbytes / nregion
         while size <= max_size_bytes and nregion > 1:  # At least 1 region
             nregion -= 1

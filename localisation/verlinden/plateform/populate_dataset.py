@@ -123,10 +123,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     ds = ds.drop_vars("tf")
 
     # Update dataset
-    if update_grid:
-        ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="w")
-    else:
-        ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="a")
+    ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="w")
 
     return ds
 
@@ -136,87 +133,89 @@ def grid_synthesis(
     src,
     apply_delay=True,
 ):
+    with Client(n_workers=6, threads_per_worker=1) as client:
+        print(client.dashboard_link)
 
-    # Set path to save the dataset and save existing vars
-    set_propa_grid_src_path(ds)
-    ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
+        # Set path to save the dataset and save existing vars
+        set_propa_grid_src_path(ds)
+        ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
 
-    propagating_freq = src.positive_freq
-    propagating_spectrum = src.positive_spectrum
+        propagating_freq = src.positive_freq
+        propagating_spectrum = src.positive_spectrum
 
-    # # TODO remove
-    # propagating_freq = propagating_freq[200 : ds.sizes["kraken_freq"] + 200]
-    # propagating_spectrum = propagating_spectrum[200 : ds.sizes["kraken_freq"] + 200]
+        k0 = 2 * np.pi * propagating_freq / C0
+        norm_factor = np.exp(1j * k0) / (4 * np.pi)
 
-    k0 = 2 * np.pi * propagating_freq / C0
-    norm_factor = np.exp(1j * k0) / (4 * np.pi)
+        nfft_inv = (
+            4 * src.nfft
+        )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+        T_tot = 1 / src.df
+        dt = T_tot / nfft_inv
+        time_vector = np.arange(0, T_tot, dt)
 
-    nfft_inv = (
-        4 * src.nfft
-    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
-    T_tot = 1 / src.df
-    dt = T_tot / nfft_inv
-    time_vector = np.arange(0, T_tot, dt)
-
-    # Loop over sub_regions of the grid
-    nregion = ds.sizes["lon"]
-    max_size_bytes = 0.5 * 1e9  # 500 Mo
-    size = ds.tf_gridded.nbytes / nregion
-    while size <= max_size_bytes and nregion > 1:  # At least 1 region
-        nregion -= 1
+        # Loop over sub_regions of the grid
+        nregion = ds.sizes["lon"]
+        max_size_bytes = 0.5 * 1e9  # 500 Mo
         size = ds.tf_gridded.nbytes / nregion
+        while size <= max_size_bytes and nregion > 1:  # At least 1 region
+            nregion -= 1
+            size = ds.tf_gridded.nbytes / nregion
 
-    lat_slices_lim = np.linspace(0, ds.sizes["lat"], nregion + 1, dtype=int)
-    lat_slices = [
-        slice(lat_slices_lim[i], lat_slices_lim[i + 1])
-        for i in range(len(lat_slices_lim) - 1)
-    ]
-    lon_slices_lim = np.linspace(0, ds.sizes["lon"], nregion + 1, dtype=int)
-    lon_slices = [
-        slice(lon_slices_lim[i], lon_slices_lim[i + 1])
-        for i in range(len(lon_slices_lim) - 1)
-    ]
+        lat_slices_lim = np.linspace(0, ds.sizes["lat"], nregion + 1, dtype=int)
+        lat_slices = [
+            slice(lat_slices_lim[i], lat_slices_lim[i + 1])
+            for i in range(len(lat_slices_lim) - 1)
+        ]
+        lon_slices_lim = np.linspace(0, ds.sizes["lon"], nregion + 1, dtype=int)
+        lon_slices = [
+            slice(lon_slices_lim[i], lon_slices_lim[i + 1])
+            for i in range(len(lon_slices_lim) - 1)
+        ]
 
-    ds.coords["library_signal_time"] = time_vector
-    ts_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
-    ts_shape = [ds.sizes[dim] for dim in ts_dim]
-    transmited_field_t = np.empty(ts_shape)
-    ds["rcv_signal_library"] = (
-        ts_dim,
-        transmited_field_t,
-    )
-    ds.rcv_signal_library.attrs["long_name"] = r"$s_{i}$"
-    # Save to zarr without computing
-    ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="a", compute=False)
+        ds.coords["library_signal_time"] = time_vector
+        ts_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
+        ts_shape = [ds.sizes[dim] for dim in ts_dim]
+        transmited_field_t = np.empty(ts_shape)
+        ds["rcv_signal_library"] = (
+            ts_dim,
+            transmited_field_t,
+        )
+        ds.rcv_signal_library.attrs["long_name"] = r"$s_{i}$"
+        # Save to zarr without computing
+        ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="a", compute=False)
 
-    for lon_s in lon_slices:
-        for lat_s in lat_slices:
-            ds_sub = ds.isel(lat=lat_s, lon=lon_s)
+        for lon_s in lon_slices:
+            for lat_s in lat_slices:
+                ds_sub = ds.isel(lat=lat_s, lon=lon_s)
 
-            # Compute received signal in sub_region
-            transmited_field_t = compute_received_signal(
-                ds_sub,
-                propagating_freq,
-                propagating_spectrum,
-                norm_factor,
-                nfft_inv,
-                apply_delay,
-            )
+                # Compute received signal in sub_region
+                transmited_field_t = compute_received_signal(
+                    ds_sub,
+                    propagating_freq,
+                    propagating_spectrum,
+                    norm_factor,
+                    nfft_inv,
+                    apply_delay,
+                )
 
-            ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)] = transmited_field_t
-            sub_region_to_save = ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)]
+                ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)] = transmited_field_t
+                sub_region_to_save = ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)]
 
-            # Save to zarr
-            sub_region_to_save.to_zarr(
-                ds.fullpath_dataset_propa_grid_src,
-                mode="r+",
-                region={
-                    "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
-                    "lat": lat_s,
-                    "lon": lon_s,
-                    "library_signal_time": slice(0, ds.sizes["library_signal_time"]),
-                },
-            )
+                # Save to zarr
+                sub_region_to_save.to_zarr(
+                    ds.fullpath_dataset_propa_grid_src,
+                    mode="r+",
+                    region={
+                        "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
+                        "lat": lat_s,
+                        "lon": lon_s,
+                        "library_signal_time": slice(
+                            0, ds.sizes["library_signal_time"]
+                        ),
+                    },
+                    # compute=False,
+                )
+                # sub_region_to_save.compute()
 
     return ds
 
@@ -266,9 +265,6 @@ def populate_dataset(ds, src, **kwargs):
     # Grid transfer functions
     grid_tf_kw = {key: kwargs[key] for key in kwargs if key in ["dx", "dy", "rcv_info"]}
     ds = grid_tf(ds, **grid_tf_kw)
-
-    client = Client(n_workers=6, threads_per_worker=1)
-    print(client.dashboard_link)
 
     # Grid synthesis
     grid_synthesis_kw = {key: kwargs[key] for key in kwargs if key in ["apply_delay"]}

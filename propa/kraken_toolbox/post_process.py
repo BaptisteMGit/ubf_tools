@@ -3,9 +3,12 @@ import time
 
 from cst import C0, RHO_W
 from misc import mult_along_axis
-from propa.kraken_toolbox.utils import runkraken, waveguide_cutoff_freq
+from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
+from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.read_shd import readshd
 from scipy.interpolate import interp1d
+
+""" Post processor for KRAKEN runs using shd files. """
 
 
 def postprocess_ir(shd_fpath, source, rcv_range, rcv_depth):
@@ -19,17 +22,11 @@ def postprocess_ir(shd_fpath, source, rcv_range, rcv_depth):
     pressure_field = np.squeeze(pressure, axis=(1, 2))  # 3D array (nfreq, nz, nr)
 
     # No need to process the entire grid :  extract pressure field at desired positions
-    rcv_pos_idx_r = [
-        np.argmin(np.abs(field_pos["r"]["r"] - rcv_r)) for rcv_r in rcv_range
-    ]
-    rcv_pos_idx_z = [
-        np.argmin(np.abs(field_pos["r"]["z"] - rcv_z)) for rcv_z in rcv_depth
-    ]
-    rr, zz = np.meshgrid(rcv_pos_idx_r, rcv_pos_idx_z)
+    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath, rcv_depth, rcv_range)
     pressure_field = pressure_field[:, zz, rr]
 
     # Get rid of frequencies below the cutoff frequency
-    fc = waveguide_cutoff_freq(max_depth=field_pos["r"]["z"].max())
+    fc = waveguide_cutoff_freq(waveguide_depth=field_pos["r"]["z"].max())
     propagating_freq = source.positive_freq[source.positive_freq > fc]
 
     if (
@@ -58,7 +55,7 @@ def postprocess_received_signal(
     )
 
     # Extract propagating spectrum from entire spectrum
-    fc = waveguide_cutoff_freq(max_depth=field_pos["r"]["z"].max())
+    fc = waveguide_cutoff_freq(waveguide_depth=field_pos["r"]["z"].max())
     propagating_spectrum = source.positive_spectrum[source.positive_freq > fc]
 
     # TODO : check which factor to apply
@@ -71,6 +68,13 @@ def postprocess_received_signal(
     transmited_field_f = mult_along_axis(
         pressure_field, propagating_spectrum * norm_factor, axis=0
     )
+
+    nfft_inv = (
+        4 * source.nfft
+    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    T_tot = 1 / source.df
+    dt = T_tot / nfft_inv
+    time_vector = np.arange(0, T_tot, dt)
 
     # Apply corresponding delay to the signal
     if apply_delay:
@@ -87,15 +91,140 @@ def postprocess_received_signal(
             )
 
     # Fourier synthesis of the received signal -> time domain
-    nfft_inv = (
-        4 * source.nfft
-    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
     received_signal_t = np.fft.irfft(transmited_field_f, axis=0, n=nfft_inv)
     transmited_field_t = np.real(received_signal_t)
 
+    return (
+        time_vector,
+        transmited_field_t,
+        field_pos,
+    )
+
+
+""" Post processor for KRAKEN runs pre-loaded broadband pressure field array. Needed for broadband range dependent simulations."""
+
+
+def postprocess_ir_from_broadband_pressure_field(
+    broadband_pressure_field,
+    frequencies,
+    source,
+    kraken_range=None,
+    kraken_depth=None,
+    shd_fpath=None,
+    rcv_range=None,
+    rcv_depth=None,
+    minimum_waveguide_depth=1000,
+    squeeze=True,
+):
+    """Post process Kraken run to derive ocean waveguide impulse response."""
+
+    if squeeze:
+        pressure_field = np.squeeze(
+            broadband_pressure_field, axis=(1, 2)
+        )  # 3D array (nfreq, nz, nr)
+    else:
+        pressure_field = broadband_pressure_field
+
+    # No need to process the entire grid :  extract pressure field at desired positions
+    rr, zz, field_pos = get_rcv_pos_idx(
+        kraken_range=kraken_range,
+        kraken_depth=kraken_depth,
+        rcv_depth=rcv_depth,
+        rcv_range=rcv_range,
+        shd_fpath=shd_fpath,
+    )
+    pressure_field = pressure_field[:, zz, rr]
+
+    # Get rid of frequencies below the cutoff frequency
+    fc = waveguide_cutoff_freq(waveguide_depth=minimum_waveguide_depth)
+    propagating_freq = source.positive_freq[source.positive_freq > fc]
+
+    # # TODO need to be fixed
+    # if (
+    #     frequencies.size < propagating_freq.size
+    # ):  # Sparse frequency vector used for kraken
+    #     pressure_field = interp_frequency_domain_ir(
+    #         frequencies, pressure_field, propagating_freq
+    #     )
+
+    # elif frequencies.size == propagating_freq.size:
+    #     freqdiff = frequencies - propagating_freq
+    #     if freqdiff.max() > 0.5:  # Different frequency sampling
+    #         pressure_field = interp_frequency_domain_ir(
+    #             frequencies, pressure_field, propagating_freq
+    #         )
+
+    return propagating_freq, pressure_field, field_pos
+
+
+def postprocess_received_signal_from_broadband_pressure_field(
+    broadband_pressure_field,
+    frequencies,
+    source,
+    rcv_range,
+    rcv_depth,
+    minimum_waveguide_depth=1000,
+    kraken_range=None,
+    kraken_depth=None,
+    shd_fpath=None,
+    apply_delay=True,
+    delay=None,
+    squeeze=True,
+):
+    # Derive broadband impulse response of the ocean waveguide
+    (
+        propagating_freq,
+        pressure_field,
+        field_pos,
+    ) = postprocess_ir_from_broadband_pressure_field(
+        broadband_pressure_field=broadband_pressure_field,
+        frequencies=frequencies,
+        source=source,
+        shd_fpath=shd_fpath,
+        kraken_range=kraken_range,
+        kraken_depth=kraken_depth,
+        rcv_range=rcv_range,
+        rcv_depth=rcv_depth,
+        minimum_waveguide_depth=minimum_waveguide_depth,
+        squeeze=squeeze,
+    )
+
+    # Extract propagating spectrum from entire spectrum
+    fc = waveguide_cutoff_freq(waveguide_depth=minimum_waveguide_depth)
+    propagating_spectrum = source.positive_spectrum[source.positive_freq > fc]
+
+    k0 = 2 * np.pi * propagating_freq / C0
+    norm_factor = np.exp(1j * k0) / (4 * np.pi)
+
+    # Received signal spectrum resulting from the convolution of the source signal and the impulse response
+    transmited_field_f = mult_along_axis(
+        pressure_field, propagating_spectrum * norm_factor, axis=0
+    )
+
+    nfft_inv = (
+        4 * source.nfft
+    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
     T_tot = 1 / source.df
-    dt = T_tot / received_signal_t.shape[0]
+    dt = T_tot / nfft_inv
     time_vector = np.arange(0, T_tot, dt)
+
+    # Apply corresponding delay to the signal
+    if apply_delay:
+        for ir, rcv_r in enumerate(rcv_range):  # TODO: remove loop for efficiency
+            if delay is None:
+                tau = rcv_r / C0
+            else:
+                tau = delay[ir]
+
+            delay_f = np.exp(1j * 2 * np.pi * tau * propagating_freq)
+
+            transmited_field_f[..., ir] = mult_along_axis(
+                transmited_field_f[..., ir], delay_f, axis=0
+            )
+
+    # Fourier synthesis of the received signal -> time domain
+    received_signal_t = np.fft.irfft(transmited_field_f, axis=0, n=nfft_inv)
+    transmited_field_t = np.real(received_signal_t)
 
     return (
         time_vector,
@@ -105,6 +234,7 @@ def postprocess_received_signal(
 
 
 def interp_frequency_domain_ir(pf_p, f_p, f):
+    # TODO : debug this function
     unwrapped_phase = np.unwrap(np.angle(pf_p), axis=0)
     magnitude = np.abs(pf_p)
 
@@ -155,7 +285,7 @@ def process_broadband(fname, source, max_depth):
         f.writelines(lines)
 
     # Run kraken for the frequencies of interest
-    runkraken(fname)
+    runkraken(fname)  # TODO: deprecated (needs env flp and freqs as args)
 
 
 def fourier_synthesis_kraken(fname, source, max_depth):
@@ -165,7 +295,7 @@ def fourier_synthesis_kraken(fname, source, max_depth):
     Note that according to Jensen et al. (2000), the sampling frequency must be greater than 8 * fmax for visual inspection of the propagated pulse.
     """
 
-    # TODO: add args to define the freqeuncies to use
+    # TODO: add args to define the frequencies to use
     # It can be very usefull to reduce the number of frequencies to compute the Fourier synthesis
     # For instance using a non unigorm frequency vector can help catching the entire signal complexity while significantly reducing the
     # computing effort --> example : signal with dirac like harmonics
@@ -199,7 +329,7 @@ def fourier_synthesis_kraken(fname, source, max_depth):
         f.writelines(lines)
 
     # Run kraken for the frequencies of interest
-    runkraken(fname)
+    runkraken(fname)  # TODO: deprecated (needs env flp and freqs as args)
 
     env_filename = fname + ".shd"
 
@@ -242,49 +372,3 @@ def fourier_synthesis_kraken(fname, source, max_depth):
 
 if __name__ == "__main__":
     pass
-
-    # plt.figure()
-    # plt.vlines(freqVec, ymin=-0.01, ymax=0.01, color="k", linestyle="--")
-    # plt.plot(positive_fft_freq, np.real(transmited_field_f[:, 0, 0]), label="real")
-    # plt.plot(positive_fft_freq, np.imag(transmited_field_f[:, 0, 0]), label="imag")
-    # plt.xlabel("Frequency (Hz)")
-    # plt.show()
-
-    # # from scipy import interpolate
-    # f_interp = np.arange(positive_fft_freq.min(), positive_fft_freq.max(), 0.1)
-    # interp_phases = np.interp(
-    #     f_interp,
-    #     positive_fft_freq,
-    #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
-    # )
-
-    # # phase_interpolator = interpolate.interp1d(
-    # #     positive_fft_freq,
-    # #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
-    # #     kind="cubic",
-    # # )
-    # # interp_phases = phase_interpolator(f_interp)
-    # wraped_phases = (interp_phases + np.pi) % (2 * np.pi) - np.pi
-
-    # plt.figure()
-    # plt.plot(
-    #     positive_fft_freq,
-    #     np.unwrap(np.angle(transmited_field_f[:, 0, 0])),
-    #     label="original",
-    # )
-    # plt.plot(f_interp, interp_phases, label="interp")
-    # plt.ylabel("Phase (°)")
-    # plt.xlabel("Frequency (Hz)")
-    # plt.legend()
-
-    # plt.figure()
-    # plt.xlabel("Frequency (Hz)")
-    # plt.ylabel("Phase (rads)")
-    # plt.plot(
-    #     positive_fft_freq,
-    #     np.angle(transmited_field_f[:, 0, 0]),
-    #     label="original",
-    #     marker="+",
-    # )
-    # plt.plot(f_interp, wraped_phases, label="interp", marker="+")
-    # plt.show()

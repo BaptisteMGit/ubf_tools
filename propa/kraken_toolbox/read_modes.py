@@ -28,10 +28,7 @@ def readmodes(modfil, freq=0, modes=None):
     modfil = file_root + ext
 
     # Read the modal data
-    if modes is None:
-        Modes = readmodes_bin(modfil, freq)
-    else:
-        Modes = readmodes_bin(modfil, freq, modes)
+    Modes = readmodes_bin(modfil, freq, modes)
 
     # Identify the index of the frequency closest to the user-specified value
     freq_diff = np.abs(Modes["freqVec"] - freq)
@@ -158,6 +155,9 @@ def readmodes_bin(filename, freq=0, modes=None):
     # Don't try to read modes that don't exist
     ii = modes <= Modes["M"]
     modes = np.array(modes)[ii]
+
+    Modes["selected_modes"] = modes
+    Modes["nb_selected_modes"] = len(modes)
 
     # Read top and bottom halfspace info
 

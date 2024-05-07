@@ -102,21 +102,35 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
     if not os.path.exists(fullpath_dataset_propa):
         steps = [0, 1]  # All steps required
     else:
-        print(f"Propa dataset already exists at {fullpath_dataset_propa}")
+        ds = xr.open_dataset(fullpath_dataset_propa, engine="zarr", chunks={})
+        if ds.propa_done:
+            print(f"Propa dataset already exists at {fullpath_dataset_propa}")
 
-        root_dir = build_root_dir(testcase.name)
-        grid_label = build_grid_label(dx, dy)
-        fullpath_dataset_propa_grid = build_propa_grid_path(
-            root_dir, boundaries_label, grid_label
-        )
+            root_dir = build_root_dir(testcase.name)
+            grid_label = build_grid_label(dx, dy)
+            fullpath_dataset_propa_grid = build_propa_grid_path(
+                root_dir, boundaries_label, grid_label
+            )
 
-        if not os.path.exists(fullpath_dataset_propa_grid):
-            steps = [1]  # Gridding and synthesis required
+            if not os.path.exists(fullpath_dataset_propa_grid):
+                steps = [1]  # Gridding and synthesis required
+            else:
+                ds = xr.open_dataset(
+                    fullpath_dataset_propa_grid, engine="zarr", chunks={}
+                )
+                if ds.propa_grid_done:
+                    print(
+                        f"Grid dataset already exists at {fullpath_dataset_propa_grid}"
+                    )
+                    steps = [2]  # Only synthesis required
+                else:
+                    steps = [1]  # Gridding and synthesis required
+
         else:
-            print(f"Grid dataset already exists at {fullpath_dataset_propa_grid}")
-            steps = [2]  # Only synthesis required
+            steps = [0, 1]
 
     if 0 in steps:
+        print("Step 0")
         build_dataset(
             rcv_info=rcv_info,
             testcase=testcase,
@@ -127,17 +141,19 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
             fs=src.fs,
         )
     if 1 in steps:
+        print("Step 1")
+        ds = xr.open_dataset(fullpath_dataset_propa, engine="zarr", chunks={})
         ds = populate_dataset(
-            fullpath_dataset_propa,
+            ds,
             src,
             rcv_info=rcv_info,
-            grid_info=grid_info,
             dx=dx,
             dy=dy,
         )
         fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src
 
     if 2 in steps:
+        print("Step 2")
         ds = xr.open_dataset(fullpath_dataset_propa_grid, engine="zarr", chunks={})
         ds = grid_synthesis(ds, src)
         fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src

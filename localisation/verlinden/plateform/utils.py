@@ -13,6 +13,7 @@
 # Import
 # ======================================================================================================================
 import os
+import numpy as np
 import pandas as pd
 
 ROOT_DATASET_PATH = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset"
@@ -63,8 +64,14 @@ def set_attrs(xr_dataset, grid_info, testcase):
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
     xr_dataset.attrs["init_time"] = now
 
+    xr_dataset.attrs["dataset_root_dir"] = build_root_dir(testcase.name)
     set_propa_path(xr_dataset, grid_info, testcase)
     set_propa_grid_path(xr_dataset)
+
+    # Boolean to control if the dataset has been populated
+    xr_dataset.attrs["propa_done"] = False
+    xr_dataset.attrs["propa_grid_done"] = False
+    xr_dataset.attrs["propa_grid_src_done"] = False
 
     return xr_dataset
 
@@ -202,3 +209,28 @@ def build_src_label(src_name, f0=None, fs=None, std_fi=None, tau_corr_fi=None):
 
 def build_grid_label(dx, dy):
     return f"{dx}_{dy}"
+
+
+def get_region_number(nregion_max, var, max_size_bytes=0.1 * 1e9):
+    nregion = nregion_max
+    # max_size_bytes = 0.1 * 1e9  # 100 Mo
+    size = var.nbytes / nregion
+    while size <= max_size_bytes and nregion > 1:  # At least 1 region
+        nregion -= 1
+        size = var.nbytes / nregion
+    return nregion
+
+
+def get_lonlat_sub_regions(ds, nregion):
+    lat_slices_lim = np.linspace(0, ds.sizes["lat"], nregion + 1, dtype=int)
+    lat_slices = [
+        slice(lat_slices_lim[i], lat_slices_lim[i + 1])
+        for i in range(len(lat_slices_lim) - 1)
+    ]
+    lon_slices_lim = np.linspace(0, ds.sizes["lon"], nregion + 1, dtype=int)
+    lon_slices = [
+        slice(lon_slices_lim[i], lon_slices_lim[i + 1])
+        for i in range(len(lon_slices_lim) - 1)
+    ]
+
+    return lon_slices, lat_slices

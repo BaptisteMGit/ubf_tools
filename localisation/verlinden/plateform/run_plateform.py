@@ -90,7 +90,7 @@ def run_plateform_test():
 
 def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
 
-    for obs_id in rcv_info_dw["id"]:
+    for obs_id in rcv_info["id"]:
         pos_obs = load_rhumrum_obs_pos(obs_id)
         rcv_info["lons"].append(pos_obs.lon)
         rcv_info["lats"].append(pos_obs.lat)
@@ -127,7 +127,7 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
             fs=src.fs,
         )
     if 1 in steps:
-        populate_dataset(
+        ds = populate_dataset(
             fullpath_dataset_propa,
             src,
             rcv_info=rcv_info,
@@ -135,11 +135,18 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
             dx=dx,
             dy=dy,
         )
+        fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src
+
     if 2 in steps:
         ds = xr.open_dataset(fullpath_dataset_propa_grid, engine="zarr", chunks={})
         ds = grid_synthesis(ds, src)
+        fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src
 
-    print()
+    return (
+        fullpath_dataset_propa,
+        fullpath_dataset_propa_grid,
+        fullpath_dataset_propa_grid_src,
+    )
 
 
 if __name__ == "__main__":

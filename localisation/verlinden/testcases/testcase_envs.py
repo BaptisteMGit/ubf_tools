@@ -15,6 +15,8 @@ from propa.kraken_toolbox.kraken_env import (
     Bathymetry,
 )
 from propa.kraken_toolbox.utils import default_nb_rcv_z
+from propa.kraken_toolbox.run_kraken import get_subprocess_working_dir
+
 from localisation.verlinden.testcases.testcase_bathy import (
     bathy_flat_seabed,
     bathy_sin_slope,
@@ -49,10 +51,6 @@ def get_img_path(testcase_name, type="medium", azimuth=None):
             return os.path.join(root, f"bathy_az{azimuth:.2f}.png")
         else:
             return os.path.join(root, "bathy.png")
-
-
-def get_bathy_path(testcase_name):
-    return os.path.join(TC_WORKING_DIR, testcase_name, "bathy.csv")
 
 
 def plot_env_properties(env, plot_medium, plot_bottom, plot_env):
@@ -128,6 +126,8 @@ class TestCase:
         self.range_dependence = False
         self.isotropic = True
 
+        self.called_by_subprocess = False
+
         # Default values
         self.default_varin = {
             "freq": [20],
@@ -138,6 +138,7 @@ class TestCase:
             "rcv_lat": 52.22,
             "dr_flp": 10,
             "dr_bathy": 500,
+            "called_by_subprocess": False,
         }
 
         # Set env directory
@@ -254,8 +255,18 @@ class TestCase:
             bathy_path=get_img_path(self.name, type="bathy"),
         )
 
+    def get_bathy_path(self):
+        if self.called_by_subprocess:
+            bathy_dir = get_subprocess_working_dir(
+                env_root=os.path.join(TC_WORKING_DIR, self.name), worker_pid=os.getpid()
+            )
+        else:
+            bathy_dir = os.path.join(TC_WORKING_DIR, self.name)
+
+        return os.path.join(bathy_dir, "bathy.csv")
+
     def set_bathy(self):
-        self.bathy = Bathymetry(get_bathy_path(testcase_name=self.name))
+        self.bathy = Bathymetry(self.get_bathy_path())
         self.max_depth = self.bathy.bathy_depth.max()
         self.min_depth = self.bathy.bathy_depth.min()
         if self.src_depth is None:
@@ -671,6 +682,7 @@ class TestCase3_1(TestCase3):
             "rcv_lat": -27.58,
             "dr_flp": 5,
             "dr_bathy": 1000,
+            "called_by_subprocess": False,
         }
 
         # Flat bottom
@@ -692,6 +704,7 @@ class TestCase3_1(TestCase3):
             range_resolution=self.dr_bathy,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
     def load_ssp(self):

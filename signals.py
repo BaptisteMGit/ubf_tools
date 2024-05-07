@@ -109,11 +109,11 @@ def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100):
 
     # Derive ship signal from harmonics
     s = np.zeros_like(t, dtype=complex)
-    for l in range(1, Nh + 1):
+    for k in range(1, Nh + 1):
         s += (
-            A_harmonics[l - 1]
-            * ship_spectrum(f0 * l)
-            * np.exp(1j * 2 * np.pi * l * (f0 * t + delta_ph))
+            A_harmonics[k - 1]
+            * ship_spectrum(f0 * k)
+            * np.exp(1j * 2 * np.pi * k * (f0 * t + delta_ph))
         )
 
     # Real

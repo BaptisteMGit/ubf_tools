@@ -19,6 +19,7 @@ import pandas as pd
 
 from pyproj import Geod
 from dask.diagnostics import ProgressBar
+from localisation.verlinden.plateform.utils import set_attrs
 from propa.kraken_toolbox.run_kraken import runkraken
 from localisation.verlinden.verlinden_utils import (
     get_range_from_rcv,
@@ -29,9 +30,6 @@ from localisation.verlinden.verlinden_utils import (
     get_bathy_grid_size,
 )
 from cst import C0
-
-
-ROOT_DATASET_PATH = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset"
 
 
 def init_dataset(
@@ -111,7 +109,7 @@ def init_dataset(
 
     # Save zarr (light data)
     # with ProgressBar():
-    xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=True, mode="w")
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=True, mode="w")
 
     # Create arrays to store transfer functions
     # Frequency vector
@@ -163,7 +161,7 @@ def init_dataset(
 
     # Store zarr without computing
     # with ProgressBar():
-    xr_dataset.to_zarr(xr_dataset.fullpath_dataset, compute=False, mode="a")
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="a")
 
     return xr_dataset
 
@@ -254,94 +252,6 @@ def init_grid(rcv_info, minimum_distance_around_rcv, dx=100, dy=100):
     grid_info["max_lon"] = np.max(grid_lons)
 
     return grid_info
-
-
-def set_attrs(xr_dataset, grid_info, testcase):
-    """
-    Add attributes to the dataset.
-
-    Parameters
-    ----------
-    xr_dataset : xr.Dataset
-        Dataset.
-    grid_info : dict
-        Grid information.
-    testcase : Testcase object.
-        Tescase.
-
-    Returns
-    -------
-    xr.Dataset
-    """
-    # Set attributes
-    var_unit_mapping = {
-        "°": [
-            "lon_rcv",
-            "lat_rcv",
-            "lon",
-            "lat",
-        ],
-        "m": ["r_from_rcv"],
-        "": ["idx_rcv"],
-        "s": ["delay_rcv"],
-    }
-    for unit in var_unit_mapping.keys():
-        for var in var_unit_mapping[unit]:
-            xr_dataset[var].attrs["units"] = unit
-
-    xr_dataset["lon_rcv"].attrs["long_name"] = "Receiver longitude"
-    xr_dataset["lat_rcv"].attrs["long_name"] = "Receiver latitude"
-    xr_dataset["r_from_rcv"].attrs["long_name"] = "Range from receiver"
-    xr_dataset["lon"].attrs["long_name"] = "Longitude"
-    xr_dataset["lat"].attrs["long_name"] = "Latitude"
-    xr_dataset["idx_rcv"].attrs["long_name"] = "Receiver index"
-    xr_dataset["delay_rcv"].attrs["long_name"] = "Propagation delay from receiver"
-
-    # Initialisation time
-    now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    xr_dataset.attrs["init_time"] = now
-
-    xr_dataset.attrs["fullpath_dataset"] = get_dataset_path(grid_info, testcase)
-
-    if not os.path.exists(os.path.dirname(xr_dataset.fullpath_dataset)):
-        os.makedirs(os.path.dirname(xr_dataset.fullpath_dataset))
-
-    return xr_dataset
-
-
-def get_dataset_path(grid_info, testcase):
-    """
-    Build dataset path.
-    Parameters
-    ----------
-    grid_info : dict
-        Grid information.
-    testcase : Testcase object.
-        Tescase.
-
-    Returns
-    -------
-    str
-        Fullpath to dataset.
-
-    """
-    boundaries = "_".join(
-        [
-            f"{v:.4f}"
-            for v in [
-                grid_info["min_lon"],
-                grid_info["max_lon"],
-                grid_info["min_lat"],
-                grid_info["max_lat"],
-            ]
-        ]
-    )
-    populated_path = os.path.join(
-        ROOT_DATASET_PATH,
-        testcase.name,
-        f"propa_dataset_{boundaries}.zarr",
-    )
-    return populated_path
 
 
 if __name__ == "__main__":

@@ -20,6 +20,10 @@ import dask.array as da
 from misc import mult_along_axis
 from dask.distributed import Client
 
+from localisation.verlinden.plateform.utils import (
+    set_propa_grid_path,
+    set_propa_grid_src_path,
+)
 from localisation.verlinden.plateform.init_dataset import (
     init_grid,
     get_range_from_rcv,
@@ -96,6 +100,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
         # Update grid size attributes
         ds.attrs["dx"] = dx
         ds.attrs["dy"] = dy
+        set_propa_grid_path(ds)
 
     tf_gridded_array = np.empty(
         (ds.sizes["idx_rcv"], ds.sizes["lat"], ds.sizes["lon"], ds.sizes["kraken_freq"])
@@ -115,11 +120,13 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     ds["tf_gridded"].attrs["units"] = ""
     ds["tf_gridded"].attrs["long_name"] = "Transfer function gridded"
 
+    ds = ds.drop_vars("tf")
+
     # Update dataset
     if update_grid:
-        ds.to_zarr(ds.fullpath_dataset, mode="w")
+        ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="w")
     else:
-        ds.to_zarr(ds.fullpath_dataset, mode="a")
+        ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="a")
 
     return ds
 
@@ -129,6 +136,11 @@ def grid_synthesis(
     src,
     apply_delay=True,
 ):
+
+    # Set path to save the dataset and save existing vars
+    set_propa_grid_src_path(ds)
+    ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
+
     propagating_freq = src.positive_freq
     propagating_spectrum = src.positive_spectrum
 
@@ -149,10 +161,10 @@ def grid_synthesis(
     # Loop over sub_regions of the grid
     nregion = ds.sizes["lon"]
     max_size_bytes = 0.5 * 1e9  # 500 Mo
-    size = ds.tf.nbytes / nregion
+    size = ds.tf_gridded.nbytes / nregion
     while size <= max_size_bytes and nregion > 1:  # At least 1 region
         nregion -= 1
-        size = ds.tf.nbytes / nregion
+        size = ds.tf_gridded.nbytes / nregion
 
     lat_slices_lim = np.linspace(0, ds.sizes["lat"], nregion + 1, dtype=int)
     lat_slices = [
@@ -175,7 +187,7 @@ def grid_synthesis(
     )
     ds.rcv_signal_library.attrs["long_name"] = r"$s_{i}$"
     # Save to zarr without computing
-    ds.to_zarr(ds.fullpath_dataset, mode="a", compute=False)
+    ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="a", compute=False)
 
     for lon_s in lon_slices:
         for lat_s in lat_slices:
@@ -196,7 +208,7 @@ def grid_synthesis(
 
             # Save to zarr
             sub_region_to_save.to_zarr(
-                ds.fullpath_dataset,
+                ds.fullpath_dataset_propa_grid_src,
                 mode="r+",
                 region={
                     "idx_rcv": slice(0, ds.sizes["idx_rcv"]),

@@ -30,7 +30,7 @@ from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import find_optimal_intervals
 
 
-def runkraken(env, flp, frequencies, parallel=False, verbose=False):
+def runkraken(env, flp, frequencies, parallel=False, verbose=False, clear=True):
     if verbose:
         print(f"Running Kraken  (parallel = {parallel})...")
 
@@ -44,12 +44,13 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False):
         env.range_dependent_env and env.broadband_run
     ):  # Run broadband range dependent simulation
 
+        # Clear working dirs
+        if clear:
+            clear_kraken_parallel_working_dir(root=env.root)
+
         # Run parallel
         if parallel:
             n_workers = min(len(frequencies), N_CORES)
-
-            # Clear working dirs
-            clear_kraken_parallel_working_dir(root=env.root)
 
             # Get optimal frequencies intervals bounds
             frequencies_intervalls, nb_used_workers = assign_frequency_intervalls(
@@ -227,14 +228,7 @@ def get_child_pids():
     return [child.pid for child in children]
 
 
-def init_parallel_kraken_working_dirs(env, env_root, worker_pid):
-    """
-    Initialise working directory to be used by child processes for multiprocessing.
-
-    :param root:
-    :param worker_pid:
-    :return:
-    """
+def get_subprocess_working_dir(env_root, worker_pid):
     # Create folder dedicated to the worker_pid
     root_parallel_folder = "parallel_working_dir"
     parallel_folder = f"child_process_{worker_pid}"
@@ -243,9 +237,23 @@ def init_parallel_kraken_working_dirs(env, env_root, worker_pid):
     subprocess_working_dir = os.path.join(
         env_root, root_parallel_folder, parallel_folder
     )
+
     if not os.path.exists(subprocess_working_dir):
         os.makedirs(subprocess_working_dir)
 
+    return subprocess_working_dir
+
+
+def init_parallel_kraken_working_dirs(env, env_root, worker_pid):
+    """
+    Initialise working directory to be used by child processes for multiprocessing.
+
+    :param root:
+    :param worker_pid:
+    :return:
+    """
+
+    subprocess_working_dir = get_subprocess_working_dir(env_root, worker_pid)
     env.root = subprocess_working_dir
 
     # Create bin folder
@@ -285,11 +293,6 @@ def runkraken_broadband_range_dependent(
     worker_pid = os.getpid()
     env_root = env.root
 
-    if parallel:
-        desc = f"Running broadband range dependent kraken simulation... (worker_pid = {worker_pid})"
-    else:
-        desc = "Running broadband range dependent kraken simulation..."
-
     # Loop over frequencies
     # for ifreq in tqdm(
     #     range(len(frequencies)),
@@ -313,12 +316,11 @@ def runkraken_broadband_range_dependent(
             rModes=env.modes_range,
         )
 
-        if parallel:
-            init_parallel_kraken_working_dirs(env, env_root, worker_pid)
-            os.chdir(env.root)
+        init_parallel_kraken_working_dirs(env, env_root, worker_pid)
+        os.chdir(env.root)
 
-            # Update flp_fpath with subprocess working directory
-            flp.flp_fpath = env.flp_fpath
+        # Update flp_fpath with subprocess working directory
+        flp.flp_fpath = env.flp_fpath
 
         # Write environment
         env.write_env()

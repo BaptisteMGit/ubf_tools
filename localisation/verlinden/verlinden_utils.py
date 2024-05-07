@@ -884,7 +884,7 @@ def init_library_dataset(
 
     if not testcase.isotropic:
         # Associate azimuths to grid cells for each receiver
-        set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv)
+        xr_dataset = set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv)
 
     # Set attrs 
     set_dataset_attrs(xr_dataset, grid_info, testcase, src_info, file_ext)
@@ -965,8 +965,6 @@ def set_dataset_attrs(xr_dataset, grid_info, testcase, src_info, file_ext):
 def set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv):
     az_rcv = get_azimuth_rcv(grid_info, rcv_info)
     xr_dataset["az_rcv"] = (["idx_rcv", "lat", "lon"], az_rcv)
-    xr_dataset["az_rcv"].attrs["units"] = "°"
-    xr_dataset["az_rcv"].attrs["long_name"] = "Azimuth"
 
     # Build list of angles to be used in kraken
     dmax = xr_dataset.r_from_rcv.max(dim=["lat", "lon", "idx_rcv"]).round(0).values
@@ -977,15 +975,22 @@ def set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv):
 
     az_propa = np.empty(xr_dataset.az_rcv.shape)
     # t0 = time.time()
-    visited_sites = az_propa.copy()
-    visited_sites[:] = False
+    # visited_sites = az_propa.copy()
+    # visited_sites[:] = False
     for i_rcv in range(n_rcv):
-        for az in list_az_th:
-            closest_points_idx = (
-                np.abs(xr_dataset.az_rcv.sel(idx_rcv=i_rcv) - az) <= d_az / 2
-            )
+        for i_az, az in enumerate(list_az_th):
+            if i_az == len(list_az_th) - 1:
+                closest_points_idx = (
+                    xr_dataset.az_rcv.sel(idx_rcv=i_rcv) >= az - d_az / 2
+                )
+            else:
+                closest_points_idx = np.logical_and(
+                    xr_dataset.az_rcv.sel(idx_rcv=i_rcv) >= az - d_az / 2,
+                    xr_dataset.az_rcv.sel(idx_rcv=i_rcv) < az + d_az / 2,
+                )
+
             az_propa[i_rcv, closest_points_idx] = az
-            visited_sites[i_rcv, closest_points_idx] = True
+            # visited_sites[i_rcv, closest_points_idx] = True
     # print(f"Elapsed time : {time.time() - t0}")
 
     # Add az_propa to dataset
@@ -993,11 +998,17 @@ def set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv):
     xr_dataset["az_propa"].attrs["units"] = "°"
     xr_dataset["az_propa"].attrs["long_name"] = "Propagation azimuth"
 
-    azimuths_rcv = np.array([get_unique_azimuths(xr_dataset, i_rcv) for i_rcv in range(n_rcv)])
-    xr_dataset["azimuths_rcv"] = (["idx_rcv", "azimuth"], azimuths_rcv)
+    list_az = [get_unique_azimuths(xr_dataset, i_rcv) for i_rcv in range(n_rcv)]
+    n_az_max = max([az.size for az in list_az])
+    azimuth_rcv = np.array(
+        [np.pad(az, (0, n_az_max - len(az)), constant_values=np.nan) for az in list_az]
+    )  # Pad to get homegenous dimensions
+    xr_dataset["azimuths_rcv"] = (["idx_rcv", "azimuth"], azimuth_rcv)
 
     # Remove az_rcv
-    xr_dataset.drop_vars("az_rcv")
+    ds = xr_dataset.drop_vars("az_rcv")
+
+    return ds 
 
 
 def init_event_dataset(xr_dataset, src_info, rcv_info, interp_src_pos_on_grid=False):
@@ -2305,16 +2316,6 @@ def get_dist_between_rcv(rcv_info):
             lats2=[rcv_info["lats"][pair[1]]],
         )
         dist_inter_rcv.append(np.round(dist, 0))
-
-    # for i_rcv in range(len(rcv_info["id"]) - 1):
-    #     _, _, dist_i = geod.inv(
-    #         lons1=[rcv_info["lons"][i_rcv]],
-    #         lats1=[rcv_info["lats"][i_rcv]],
-    #         lons2=[rcv_info["lons"][i_rcv + 1]],
-    #         lats2=[rcv_info["lats"][i_rcv + 1]],
-    #     )
-
-    #     dist_inter_rcv.append(np.round(dist_i, 0))
 
     rcv_info["dist_inter_rcv"] = dist_inter_rcv
 

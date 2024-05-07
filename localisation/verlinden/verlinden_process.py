@@ -336,7 +336,6 @@ def verlinden_main(
     testcase_varin = dict(
         freq=library_src.kraken_freq,
         max_range_m=max_range_m,
-        min_waveguide_depth=min_waveguide_depth,
     )
     testcase.update(testcase_varin)
 

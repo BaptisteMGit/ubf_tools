@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from publication.PublicationFigure import PubFigure
 from localisation.verlinden.verlinden_path import TC_WORKING_DIR
 from get_data.bathymetry.bathy_profile_extraction import extract_bathy_profile
+from propa.kraken_toolbox.run_kraken import get_subprocess_working_dir
+
 
 pfig = PubFigure(labelpad=15)
 
@@ -214,6 +216,7 @@ def extract_2D_bathy_profile(
     range_resolution=100,
     plot=False,
     bathy_path="",
+    called_by_subprocess=False,
 ):
     # Load bathymetry data
     ds_bathy = xr.open_dataset(bathy_nc_path)
@@ -234,7 +237,11 @@ def extract_2D_bathy_profile(
     r_km = range_along_profile / 1e3
     h_m = bathymetry_profile
 
-    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
+    env_root = os.path.join(TC_WORKING_DIR, testcase_name)
+    if called_by_subprocess:
+        env_dir = get_subprocess_working_dir(env_root=env_root, worker_pid=os.getpid())
+    else:
+        env_dir = env_root
     pd.DataFrame({"r": np.round(r_km, 3), "h": np.round(h_m, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )

@@ -18,7 +18,7 @@ SAND_PROPERTIES = {
 # Verlinden parameters
 MAX_LOC_DISTANCE = 50 * 1e3  # Maximum localisation distance (m)
 AVERAGE_LOC_DISTANCE = 10 * 1e3  # Average localisation distance (m)
-LIBRARY_COLOR = "blue"
+LIBRARY_COLOR = "red"
 EVENT_COLOR = "black"
 
 # TDQM bar format
@@ -28,3 +28,13 @@ BAR_FORMAT = "%s{l_bar}%s{bar}%s{r_bar}%s" % (
     Fore.YELLOW,
     Fore.RESET,
 )
+
+# Graph constants
+LABEL_FONTSIZE = 20
+TICKS_FONTSIZE = 20
+TITLE_FONTSIZE = 20
+LEGEND_FONTSIZE = 18
+SUPLABEL_FONTSIZE = 22
+
+# Parrallel processing
+N_CORES = 10

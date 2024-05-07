@@ -1,10 +1,15 @@
 import os
+import copy
 import warnings
+import scipy as sp
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 
-from cst import SAND_PROPERTIES
+from cst import SAND_PROPERTIES, C0
+from publication.PublicationFigure import PubFigure
 from propa.kraken_toolbox.utils import align_var_description
+from propa.kraken_toolbox.plot_utils import plot_ssp, plot_attenuation, plot_density
 
 
 class KrakenMedium:
@@ -67,10 +72,10 @@ class KrakenMedium:
                 f"Unknown interpolation method '{self.interpolation_method_}'. Please pick one of the following: {self.available_interpolation_methods}"
             )
 
-    def write_lines(self):
+    def write_lines(self, bottom_hs=None):
         # Medim info
         medium_info = align_var_description(
-            f"{self.nmesh_} {self.sigma_} {self.z_ssp_.max():.3f}",
+            f"{self.nmesh_} {self.sigma_} {self.z_ssp_.max():.2f}",
             "Number of mesh points, RMS surface roughness, Max depth (units: m)",
         )
 
@@ -113,19 +118,19 @@ class KrakenMedium:
         if self.rho_.size == 1 and self.ap_.size == 1 and self.as_.size == 1:
             scalar_flag = True
 
-        # Write SSP bloc
+        # Write water column SSP bloc
         ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S- wave attenuation"
         if not scalar_flag:
             ssp_bloc = [
                 align_var_description(
-                    f"{self.z_ssp_[0]:.3f} {self.cp_ssp_[0]:.3f} {self.cs_ssp_[0]:.3f} {self.rho_[0]:.3f} {self.ap_[0]:.3f} {self.as_[0]:.3f}",
+                    f"{self.z_ssp_[0]:.2f} {self.cp_ssp_[0]:.2f} {self.cs_ssp_[0]:.2f} {self.rho_[0]:.2f} {self.ap_[0]:.2f} {self.as_[0]:.2f}",
                     ssp_desc,
                 )
             ]
         else:
             ssp_bloc = [
                 align_var_description(
-                    f"{self.z_ssp_[0]:.3f} {self.cp_ssp_[0]:.3f} {self.cs_ssp_:.3f} {self.rho_:.3f} {self.ap_:.3f} {self.as_:.3f}",
+                    f"{self.z_ssp_[0]:.2f} {self.cp_ssp_[0]:.2f} {self.cs_ssp_:.2f} {self.rho_:.2f} {self.ap_:.2f} {self.as_:.2f}",
                     ssp_desc,
                 )
             ]
@@ -133,20 +138,35 @@ class KrakenMedium:
         for i in range(1, self.z_ssp_.size):
             if not scalar_flag:
                 ssp_bloc.append(
-                    f"{self.z_ssp_[i]:.3} {self.cp_ssp_[i]:.3f} {self.cs_ssp_[i]:.3f} {self.ap_[i]:.3f} {self.as_[i]:.3f}\n"
+                    f"{self.z_ssp_[i]:.3} {self.cp_ssp_[i]:.2f} {self.cs_ssp_[i]:.2f} {self.ap_[i]:.2f} {self.as_[i]:.2f}\n"
                 )
             else:
-                ssp_bloc.append(f"{self.z_ssp_[i]:.3f} {self.cp_ssp_[i]:.3f} / \n")
+                ssp_bloc.append(f"{self.z_ssp_[i]:.2f} {self.cp_ssp_[i]:.2f} / \n")
 
-        self.lines = [medium_info] + ssp_bloc
+        # Write ssp in sediment media layer bloc
+        sedim_medium_info = align_var_description(
+            f"{self.nmesh_} {self.sigma_} {bottom_hs.sedim_layer_max_depth:.2f}",
+            "Number of mesh points in sediment layer, RMS surface roughness, Max depth (units: m)",
+        )
+        sedim_layer_prop_1 = align_var_description(
+            f"{self.z_ssp_.max():.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rho_bot_halfspace:.2f} {bottom_hs.ap_bot_halfspace:.2f} {bottom_hs.as_bot_halfspace:.2f}",
+            ssp_desc,
+        )
+        sedim_layer_prop_2 = align_var_description(
+            f"{bottom_hs.sedim_layer_max_depth:.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rho_bot_halfspace:.2f} {bottom_hs.ap_bot_halfspace:.2f} {bottom_hs.as_bot_halfspace:.2f}",
+            ssp_desc,
+        )
+        ssp_sedim_bloc = [sedim_medium_info, sedim_layer_prop_1, sedim_layer_prop_2]
+
+        self.lines = [medium_info] + ssp_bloc + ssp_sedim_bloc
 
     def set_default(self):
         self.interpolation_method_ = "C_linear"
         self.set_interp_code()
-        self.z_ssp = np.array([0.0, 100.0])
-        self.cp_ssp = np.array([1500.0, 1500.0])
-        self.cs_ssp = np.array([0.0, 0.0])
-        self.rho = np.array([1.0, 1.0])
+        self.z_ssp_ = np.array([0.0, 100.0])
+        self.cp_ssp_ = np.array([1500.0, 1500.0])
+        self.cs_ssp_ = np.array([0.0, 0.0])
+        self.rho_ = np.array([1.0, 1.0])
         self.ap_ = np.array([0.0, 0.0])
         self.as_ = np.array([0.0, 0.0])
         self.nmesh_ = 0
@@ -155,77 +175,11 @@ class KrakenMedium:
     def plot_medium(self):
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
         axs[0].set_ylabel("Depth [m]")
-        self.plot_spp(ax=axs[0])
-        self.plot_attenuation(ax=axs[1])
-        self.plot_density(ax=axs[2])
+        plot_ssp(cp_ssp=self.cp_ssp_, cs_ssp=self.cs_ssp_, z=self.z_ssp_, ax=axs[0])
+        plot_attenuation(ap=self.ap_, as_=self.as_, z=self.z_ssp_, ax=axs[1])
+        plot_density(rho=self.rho_, z=self.z_ssp_, ax=axs[2])
         plt.suptitle("Medium properties")
         plt.tight_layout()
-        plt.show()
-
-    def plot_spp(self, ax=None):
-        if ax is None:
-            plt.figure(figsize=(10, 8))
-            ax = plt.gca()
-            ax.set_ylabel("Depth [m]")
-        ax.invert_yaxis()
-        col1 = "red"
-        ax.plot(self.cp_ssp_, self.z_ssp_, color=col1)
-        ax.tick_params(axis="x", labelcolor=col1)
-        ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]", color=col1)
-        # ax.set_title("Sound speed profile")
-
-        if self.cs_ssp_.size == 1:
-            cs = np.ones(self.z_ssp_.size) * self.cs_ssp_
-        else:
-            cs = self.cs_ssp_
-        ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
-        col2 = "blue"
-        ax_bis.plot(cs, self.z_ssp_, color=col2)
-        ax_bis.tick_params(axis="x", labelcolor=col2)
-        ax_bis.set_xlabel("S-wave celerity " + r"[$m.s^{-1}$]", color=col2)
-
-    def plot_attenuation(self, ax=None):
-        if ax is None:
-            plt.figure(figsize=(10, 8))
-            ax = plt.gca()
-            ax.set_ylabel("Depth [m]")
-
-        if self.ap_.size == 1:
-            ap = np.ones(self.z_ssp_.size) * self.ap_
-        else:
-            ap = self.ap_
-
-        ax.invert_yaxis()
-        col1 = "red"
-        ax.plot(ap, self.z_ssp_, color=col1)
-        ax.tick_params(axis="x", labelcolor=col1)
-        ax.set_xlabel("C-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col1)
-
-        if self.as_.size == 1:
-            as_ = np.ones(self.z_ssp_.size) * self.as_
-        else:
-            as_ = self.as_
-
-        ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
-        col2 = "blue"
-        ax_bis.plot(as_, self.z_ssp_, color=col2)
-        ax_bis.tick_params(axis="x", labelcolor=col2)
-        ax_bis.set_xlabel("S-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col2)
-
-    def plot_density(self, ax=None):
-        if ax is None:
-            plt.figure(figsize=(10, 8))
-            ax = plt.gca()
-            ax.set_ylabel("Depth [m]")
-
-        if self.rho_.size == 1:
-            rho = np.ones(self.z_ssp_.size) * self.rho_
-        else:
-            rho = self.rho_
-        ax.plot(rho, self.z_ssp_, label="Density", color="blue")
-        ax.invert_yaxis()
-        ax.tick_params(axis="x", labelcolor="blue")
-        ax.set_xlabel("Density " + r"[$g.cm^{-3}$]", color="blue")
 
 
 class KrakenTopHalfspace:
@@ -361,11 +315,22 @@ class KrakenBottomHalfspace:
         boundary_condition="acousto_elastic",
         sigma=0.0,
         halfspace_properties=SAND_PROPERTIES,
+        fmin=10,
+        alpha_wavelength=10,
     ):
         self.boundary_condition_ = boundary_condition
         self.sigma_ = sigma
         self.halfspace_properties_ = halfspace_properties
 
+        # Sedim layer depth
+        self.sedim_layer_depth = alpha_wavelength * C0 / fmin
+        self.z_in_bottom = np.array(
+            [0, self.sedim_layer_depth]
+        )  # Depth from bottom water/sediment interface (m)
+        self.sedim_layer_max_z = 10000  # Maximum depth of the sediment layer
+        self.sedim_layer_max_depth = None
+
+        # Boundary code
         self.boundary_code = None
         self.available_boundary_conditions = [
             "vacuum",
@@ -374,8 +339,10 @@ class KrakenBottomHalfspace:
             "reflection_coefficient",
             "precalculated_reflection_coefficient",
         ]
-
         self.set_boundary_code()
+
+        # Bathymetry code
+        self.bathymetry_code = ""
 
     def set_boundary_code(self):
         if self.boundary_condition_ == "vacuum":
@@ -397,8 +364,14 @@ class KrakenBottomHalfspace:
             )
         else:
             raise ValueError(
-                f"Unknown interpolation method '{self.boundary_condition_}'. Please pick one of the following: {self.available_boundary_conditions}"
+                f"Unknown boundary condition '{self.boundary_condition_}'. Please pick one of the following: {self.available_boundary_conditions}"
             )
+
+    def set_bathymetry_code(self, use_bathymetry):
+        if not use_bathymetry:
+            self.bathymetry_code = ""  # Don't use bathymetry
+        else:
+            self.bathymetry_code = "~"  # Use bathymetry
 
     def set_halfspace_properties(self):
         if self.halfspace_properties_ is None:
@@ -406,120 +379,74 @@ class KrakenBottomHalfspace:
                 "You need to provide top halfspace properties when using 'acousto_elastic' boundary condition"
             )
         else:
-            self.cp_top_halfspace = self.halfspace_properties_[
+            self.cp_bot_halfspace = self.halfspace_properties_[
                 "c_p"
             ]  # Compression waves celerity (units: m/s)
-            self.cs_top_halfspace = self.halfspace_properties_[
+            self.cs_bot_halfspace = self.halfspace_properties_[
                 "c_s"
             ]  # Shear waves celerity (units: m/s)
-            self.rho_top_halfspace = self.halfspace_properties_[
+            self.rho_bot_halfspace = self.halfspace_properties_[
                 "rho"
             ]  # Density (units: g/cm3)
-            self.ap_top_halfspace = self.halfspace_properties_[
+            self.ap_bot_halfspace = self.halfspace_properties_[
                 "a_p"
             ]  # Top compressional wave attenuation (units: self.units)
-            self.as_top_halfspace = self.halfspace_properties_[
+            self.as_bot_halfspace = self.halfspace_properties_[
                 "a_s"
             ]  # Top shear wave attenuation (units: self.units)
 
             self.use_halfspace_properties = True
 
-    def write_lines(self, kraken_medium):
+    def derive_sedim_layer_max_depth(self, z_max):
+        sedim_layer_z = z_max + self.sedim_layer_depth
+        self.sedim_layer_max_depth = min(sedim_layer_z, self.sedim_layer_max_z)
+
+    def write_lines(self, use_bathymetry=False):
+        # Get bathymetry code
+        self.set_bathymetry_code(use_bathymetry)
+
         # Bottom halfspace info
         bottom_halfspace_info = align_var_description(
-            f"'{self.boundary_code}' {self.sigma_}",
+            f"'{self.boundary_code+self.bathymetry_code}' {self.sigma_}",
             "Type of bottom boundary condition, Interfacial roughness",
         )
         self.lines = [bottom_halfspace_info]
 
-        # TODO : Add Half space properties
         if self.use_halfspace_properties:
             ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S-wave attenuation"
             half_space_prop = align_var_description(
-                f"{kraken_medium.z_ssp_.max():.3f} {self.cp_top_halfspace:.3f} {self.cs_top_halfspace:.3f} {self.rho_top_halfspace:.3f} {self.ap_top_halfspace:.3f} {self.as_top_halfspace:.3f}",
+                f"{self.sedim_layer_max_depth:.2f} {self.cp_bot_halfspace:.2f} {self.cs_bot_halfspace:.2f} {self.rho_bot_halfspace:.2f} {self.ap_bot_halfspace:.2f} {self.as_bot_halfspace:.2f}",
                 ssp_desc,
             )
             self.lines.append(half_space_prop)
 
     def set_default(self):
+        self.halfspace_properties_ = SAND_PROPERTIES
         self.boundary_condition_ = "acousto_elastic"
         self.set_boundary_code()
+        self.sigma_ = 0.0
+        self.bathymetry_code = ""
+
+    """ Associated plotting tools to represent bottom properties """
 
     def plot_bottom_halfspace(self):
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
-        axs[0].set_ylabel("Depth [m]")
-        self.plot_spp(ax=axs[0])
-        self.plot_attenuation(ax=axs[1])
-        self.plot_density(ax=axs[2])
-        plt.suptitle("Medium properties")
+        axs[0].set_ylabel("Depth (from water/sediment interface) [m]")
+        plot_ssp(
+            cp_ssp=self.cp_bot_halfspace,
+            cs_ssp=self.cs_bot_halfspace,
+            z=self.z_in_bottom,
+            ax=axs[0],
+        )
+        plot_attenuation(
+            ap=self.ap_bot_halfspace,
+            as_=self.as_bot_halfspace,
+            z=self.z_in_bottom,
+            ax=axs[1],
+        )
+        plot_density(rho=self.rho_bot_halfspace, z=self.z_in_bottom, ax=axs[2])
+        plt.suptitle("Bottom properties")
         plt.tight_layout()
-        plt.show()
-
-    def plot_spp(self, ax=None):
-        if ax is None:
-            plt.figure(figsize=(10, 8))
-            ax = plt.gca()
-            ax.set_ylabel("Depth [m]")
-        ax.invert_yaxis()
-        col1 = "red"
-        ax.plot(self.cp_ssp_, self.z_ssp_, color=col1)
-        ax.tick_params(axis="x", labelcolor=col1)
-        ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]", color=col1)
-        # ax.set_title("Sound speed profile")
-
-        if self.cs_ssp_.size == 1:
-            cs = np.ones(self.z_ssp_.size) * self.cs_ssp_
-        else:
-            cs = self.cs_ssp_
-        ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
-        col2 = "blue"
-        ax_bis.plot(cs, self.z_ssp_, color=col2)
-        ax_bis.tick_params(axis="x", labelcolor=col2)
-        ax_bis.set_xlabel("S-wave celerity " + r"[$m.s^{-1}$]", color=col2)
-
-    def plot_attenuation(self, ax=None):
-        if ax is None:
-            plt.figure(figsize=(10, 8))
-            ax = plt.gca()
-            ax.set_ylabel("Depth [m]")
-
-        if self.ap_.size == 1:
-            ap = np.ones(self.z_ssp_.size) * self.ap_
-        else:
-            ap = self.ap_
-
-        ax.invert_yaxis()
-        col1 = "red"
-        ax.plot(ap, self.z_ssp_, color=col1)
-        ax.tick_params(axis="x", labelcolor=col1)
-        ax.set_xlabel("C-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col1)
-        # ax.set_title("Attenuation profile")
-
-        if self.as_.size == 1:
-            as_ = np.ones(self.z_ssp_.size) * self.as_
-        else:
-            as_ = self.as_
-
-        ax_bis = ax.twiny()  # instantiate a second axes that shares the same y-axis
-        col2 = "blue"
-        ax_bis.plot(as_, self.z_ssp_, color=col2)
-        ax_bis.tick_params(axis="x", labelcolor=col2)
-        ax_bis.set_xlabel("S-wave attenuation " + r"[$dB.\lambda^{-1}$]", color=col2)
-
-    def plot_density(self, ax=None):
-        if ax is None:
-            plt.figure(figsize=(10, 8))
-            ax = plt.gca()
-            ax.set_ylabel("Depth [m]")
-
-        if self.rho_.size == 1:
-            rho = np.ones(self.z_ssp_.size) * self.rho_
-        else:
-            rho = self.rho_
-        ax.plot(rho, self.z_ssp_, label="Density", color="blue")
-        ax.invert_yaxis()
-        ax.tick_params(axis="x", labelcolor="blue")
-        ax.set_xlabel("Density " + r"[$g.cm^{-3}$]", color="blue")
 
 
 class KrakenAttenuation:
@@ -624,6 +551,48 @@ class KrakenField:
         )
 
 
+class Bathymetry:
+    def __init__(self, data_file=None, units="km", interpolation_method="linear"):
+        self.data_file = data_file
+        self.units = units
+        self.interpolation_method = interpolation_method
+
+        if self.data_file is None:
+            self.use_bathy = False
+        else:
+            self.load_data()
+
+    def load_data(self):
+        if os.path.exists(self.data_file):
+            data = pd.read_csv(self.data_file, sep=",", header=None)
+
+            # Ensure range are in km and depth in m
+            if self.units == "km":
+                self.bathy_range = data[0].values
+            elif self.units == "m":
+                self.bathy_range = data[0].values / 1000
+            else:
+                raise ValueError(
+                    f"Unknown units '{self.units}'. Please pick one of the following: 'km', 'm'"
+                )
+
+            self.bathy_depth = data[1].values
+            # Check if bathy is constant (i.e. no depth variation)
+            if np.all(self.bathy_depth == self.bathy_depth[0]):
+                self.use_bathy = False
+            else:
+                self.interpolator = sp.interpolate.interp1d(
+                    self.bathy_range,
+                    self.bathy_depth,
+                    kind=self.interpolation_method,
+                    fill_value=(self.bathy_depth[0], self.bathy_depth[-1]),
+                    bounds_error=False,
+                )
+                self.use_bathy = True
+        else:
+            raise ValueError(f"Data file '{self.data_file}' does not exist")
+
+
 class KrakenEnv:
     def __init__(
         self,
@@ -636,22 +605,27 @@ class KrakenEnv:
         kraken_attenuation=KrakenAttenuation(),
         kraken_bottom_hs=KrakenBottomHalfspace(),
         kraken_field=KrakenField(),
-        nmedia=1,
+        kraken_bathy=Bathymetry(),
+        rModes=None,
+        rModes_units="km",
+        nmedia=2,
     ):
         self.simulation_title = title
 
-        # Env file info
-        self.root = env_root
+        self.root_ = env_root
         self.filename = env_filename
-        self.env_fpath = os.path.join(self.root, self.filename + ".env")
-        # Flp file info
-        self.flp_fpath = os.path.join(self.root, self.filename + ".flp")
-        # Shd file info
-        self.shd_fpath = os.path.join(self.root, self.filename + ".shd")
+        # .env file path
+        self.env_fpath = os.path.join(self.root_, self.filename + ".env")
+        # .flp file path
+        self.flp_fpath = os.path.join(self.root_, self.filename + ".flp")
+        # .shd file path
+        self.shd_fpath = os.path.join(self.root_, self.filename + ".shd")
 
+        # List of ordered frequencies
         self.freq = np.array(freq)
         self.freq = np.unique(self.freq)
         self.freq.sort()
+
         if self.freq.size > 1:
             self.broadband_run = True
             self.nominal_frequency = float(self.freq[0])
@@ -664,10 +638,35 @@ class KrakenEnv:
         self.att = kraken_attenuation
         self.bottom_hs = kraken_bottom_hs
         self.field = kraken_field
-
+        self.bathy = kraken_bathy
         self.nmedia = nmedia
 
-    def write_env(self):
+        if rModes is not None and self.bathy.use_bathy:
+            self.modes_range = rModes
+            if rModes_units == "m":
+                self.modes_range = rModes / 1000  # Convert to km
+            # Sort by ascending ranges
+            self.modes_range.sort()
+
+        elif rModes is None and self.bathy.use_bathy:
+            self.modes_range = self.bathy.bathy_range  # Already in km
+            # Sort by ascending ranges
+            self.modes_range.sort()
+
+        # Ensure modes_range contains 0
+        if self.bathy.use_bathy and self.modes_range[0] != 0:
+            self.modes_range = np.append(0, self.modes_range)
+
+        # if self.bathy.use_bathy:
+        # Defined max depth of the sediment layer
+        self.bottom_hs.derive_sedim_layer_max_depth(z_max=self.bathy.bathy_depth.max())
+
+        self.range_dependent_env = False
+
+    def write_range_independent_lines(self):
+        # Init lines list
+        self.env_lines = []
+
         # Write top halfspace lines
         self.top_hs.write_lines(
             kraken_medium=self.medium,
@@ -676,16 +675,96 @@ class KrakenEnv:
             slow_rootfinder=False,
         )
         # Write medium lines
-        self.medium.write_lines()
+        self.medium.write_lines(bottom_hs=self.bottom_hs)
         # Write bottom halfspace lines
-        self.bottom_hs.write_lines(kraken_medium=self.medium)
+        self.bottom_hs.write_lines(use_bathymetry=self.bathy.use_bathy)
+
+        # self.bottom_hs.write_lines(
+        #     kraken_medium=self.medium, use_bathymetry=self.bathy.use_bathy
+        # )
+        # Write field lines
+        self.field.write_lines()
+        self.write_lines(title=self.simulation_title, medium=self.medium)
+
+        self.range_dependent_env = False
+
+    def write_range_dependent_lines(self):
+        # Init lines list
+        self.env_lines = []
+
+        # Write top halfspace lines
+        self.top_hs.write_lines(
+            kraken_medium=self.medium,
+            kraken_attenuation=self.att,
+            broadband_run=self.broadband_run,
+            slow_rootfinder=False,
+        )
+
         # Write field lines
         self.field.write_lines()
 
+        for i in range(self.modes_range.size):
+            depth = self.bathy.interpolator(self.modes_range[i])
+
+            medium_copy = copy.deepcopy(self.medium)
+
+            # Remove depths that exceed the bathymetry
+            idx = medium_copy.z_ssp_ <= depth
+
+            medium_copy.z_ssp_ = medium_copy.z_ssp_[idx]
+            medium_copy.cp_ssp_ = medium_copy.cp_ssp_[idx]
+
+            # Add a new SSP point interpolated to the bathymetry
+            if (
+                depth > medium_copy.z_ssp_[-1]
+            ):  # make sure added point is greater in depth
+                medium_copy.cp_ssp_ = np.append(
+                    medium_copy.cp_ssp_,
+                    np.interp(depth, medium_copy.z_ssp_, medium_copy.cp_ssp_),
+                )
+
+                if medium_copy.cs_ssp_.size == self.medium.z_ssp_.size:
+                    medium_copy.cs_ssp_ = medium_copy.cs_ssp_[idx]
+                    medium_copy.cs_ssp_ = np.append(
+                        depth, medium_copy.z_ssp_, medium_copy.cs_ssp_
+                    )
+
+                if medium_copy.rho_.size == self.medium.z_ssp_.size:
+                    medium_copy.rho_ = medium_copy.rho_[idx]
+                    medium_copy.rho_ = np.append(
+                        depth, medium_copy.z_ssp_, medium_copy.rho_
+                    )
+
+                if medium_copy.ap_.size == self.medium.z_ssp_.size:
+                    medium_copy.ap_ = medium_copy.ap_[idx]
+                    medium_copy.ap_ = np.append(
+                        depth, medium_copy.z_ssp_, medium_copy.ap_
+                    )
+
+                if medium_copy.as_.size == self.medium.z_ssp_.size:
+                    medium_copy.as_ = medium_copy.as_[idx]
+                    medium_copy.as_ = np.append(
+                        depth, medium_copy.z_ssp_, medium_copy.as_
+                    )
+
+                medium_copy.z_ssp_ = np.append(medium_copy.z_ssp_, depth)
+
+            # Write medium lines
+            medium_copy.write_lines(bottom_hs=self.bottom_hs)
+
+            # Write bottom halfspace lines
+            self.bottom_hs.write_lines(use_bathymetry=self.bathy.use_bathy)
+
+            # Change title to include range
+            title = self.simulation_title + f" - r = {self.modes_range[i]:.2f} km"
+            self.write_lines(title=title, medium=medium_copy)
+
+        self.range_dependent_env = True
+
+    def write_lines(self, title, medium):
         # Write env lines
-        self.env_lines = []
         # Bloc 1
-        self.env_lines.append(f"'{self.simulation_title}'\n")
+        self.env_lines.append(f"'{title}'\n")
         self.env_lines.append(
             align_var_description(f"{self.nominal_frequency}", "Nominal frequency (Hz)")
         )
@@ -695,29 +774,166 @@ class KrakenEnv:
         # Bloc 2
         self.env_lines += self.top_hs.lines
         # Bloc 3
-        self.env_lines += self.medium.lines
+        self.env_lines += medium.lines
         # Bloc 4
         self.env_lines += self.bottom_hs.lines
         # Bloc 5
         self.env_lines += self.field.lines
         # Bloc 6
-        self.env_lines.append(
-            align_var_description(f"{self.freq.size}", "Number of frequencies")
-        )
-        self.env_lines.append(
-            align_var_description(
-                " ".join([str(f) for f in self.freq]), "Frequencies (Hz)"
+        if self.broadband_run:
+            self.env_lines.append(
+                align_var_description(f"{self.freq.size}", "Number of frequencies")
             )
-        )
+            self.env_lines.append(
+                align_var_description(
+                    " ".join([str(f) for f in self.freq]), "Frequencies (Hz)"
+                )
+            )
+
+    def write_env(self):
+        # TODO: handle range dependent ssp
+        if self.bathy.use_bathy:
+            self.write_range_dependent_lines()
+        else:
+            self.write_range_independent_lines()
 
         # Write lines to .env file
         with open(self.env_fpath, "w") as f_out:
             f_out.writelines(self.env_lines)
 
-    def plot_env(self):
-        self.medium.plot_medium()
+    @property
+    def root(self):
+        return self.root_
 
-        # pass
+    @root.setter
+    def root(self, root):
+        self.root_ = root
+        self.env_fpath = os.path.join(self.root_, self.filename + ".env")
+        self.flp_fpath = os.path.join(self.root_, self.filename + ".flp")
+        self.shd_fpath = os.path.join(self.root_, self.filename + ".shd")
+
+    # Plotting tools
+    def plot_env(self, plot_src=False, src_depth=None):
+
+        fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
+        axs[0].set_ylabel("Depth [m]")
+        # Plot ssp
+        if np.array(self.medium.cp_ssp_).size == 1:
+            cp_med = np.ones(self.medium.z_ssp_.size) * self.medium.cp_ssp_
+        else:
+            cp_med = self.medium.cp_ssp_
+
+        if np.array(self.medium.cs_ssp_).size == 1:
+            cs_med = np.ones(self.medium.z_ssp_.size) * self.medium.cs_ssp_
+        else:
+            cs_med = self.medium.cs_ssp_
+
+        if np.array(self.bottom_hs.cp_bot_halfspace).size == 1:
+            cp_bot = (
+                np.ones(self.bottom_hs.z_in_bottom.size)
+                * self.bottom_hs.cp_bot_halfspace
+            )
+        else:
+            cp_bot = self.bottom_hs.cp_bot_halfspace
+
+        if np.array(self.bottom_hs.cs_bot_halfspace).size == 1:
+            cs_bot = (
+                np.ones(self.bottom_hs.z_in_bottom.size)
+                * self.bottom_hs.cs_bot_halfspace
+            )
+        else:
+            cs_bot = self.bottom_hs.cs_bot_halfspace
+
+        cp_env = np.append(cp_med, cp_bot)
+        cs_env = np.append(cs_med, cs_bot)
+        z_bottom = self.medium.z_ssp_[-1]
+        z_env = np.append(self.medium.z_ssp_, self.bottom_hs.z_in_bottom + z_bottom)
+        plot_ssp(
+            cp_ssp=cp_env,
+            cs_ssp=cs_env,
+            z=z_env,
+            z_bottom=z_bottom,
+            ax=axs[0],
+        )
+
+        # Plot attenuation
+        if np.array(self.medium.ap_).size == 1:
+            ap_med = np.ones(self.medium.z_ssp_.size) * self.medium.ap_
+        else:
+            ap_med = self.medium.ap_
+
+        if np.array(self.medium.as_).size == 1:
+            as_med = np.ones(self.medium.z_ssp_.size) * self.medium.as_
+        else:
+            as_med = self.medium.as_
+
+        if np.array(self.bottom_hs.ap_bot_halfspace).size == 1:
+            ap_bot = (
+                np.ones(self.bottom_hs.z_in_bottom.size)
+                * self.bottom_hs.ap_bot_halfspace
+            )
+        else:
+            ap_bot = self.bottom_hs.ap_bot_halfspace
+
+        if np.array(self.bottom_hs.as_bot_halfspace).size == 1:
+            as_bot = (
+                np.ones(self.bottom_hs.z_in_bottom.size)
+                * self.bottom_hs.as_bot_halfspace
+            )
+        else:
+            as_bot = self.bottom_hs.as_bot_halfspace
+
+        ap_env = np.append(ap_med, ap_bot)
+        as_env = np.append(as_med, as_bot)
+        plot_attenuation(
+            ap=ap_env,
+            as_=as_env,
+            z=z_env,
+            z_bottom=z_bottom,
+            ax=axs[1],
+        )
+
+        # Plot density
+        if np.array(self.medium.rho_).size == 1:
+            rho_med = np.ones(self.medium.z_ssp_.size) * self.medium.rho_
+        else:
+            rho_med = self.medium.rho_
+
+        if np.array(self.bottom_hs.rho_bot_halfspace).size == 1:
+            rho_bot = (
+                np.ones(self.bottom_hs.z_in_bottom.size)
+                * self.bottom_hs.rho_bot_halfspace
+            )
+        else:
+            rho_bot = self.bottom_hs.rho_bot_halfspace
+
+        rho_env = np.append(rho_med, rho_bot)
+        plot_density(rho=rho_env, z=z_env, z_bottom=z_bottom, ax=axs[2])
+
+        if plot_src:
+            for i in range(3):
+                xmin = axs[i].get_xlim()[0]
+                axs[i].scatter(xmin, src_depth, s=30, color="k")
+                # Circles
+                for s in [200, 500]:
+                    axs[i].scatter(
+                        xmin,
+                        src_depth,
+                        s=s,
+                        facecolors="None",
+                        edgecolors="k",
+                        linewidths=0.5,
+                    )
+
+        # if plot_rcv:
+        #     for i in range(3):
+        #         xmax = axs[i].get_xlim()[1]
+        #         axs[i].scatter(xmax, rcv_depth, s=50, color="k", marker=">")
+
+        plt.suptitle("Waveguide properties")
+        plt.tight_layout()
+        pfig = PubFigure(titlepad=50, labelpad=25)
+        pfig.set_all_fontsize()
 
 
 class KrakenFlp:
@@ -728,8 +944,6 @@ class KrakenFlp:
         mode_theory="adiabatic",
         mode_addition="coherent",
         nb_modes=9999,
-        n_profiles=1,
-        profiles_ranges=0.0,
         src_depth=[5],
         n_rcv_z=1000,
         rcv_z_min=0.0,
@@ -740,15 +954,21 @@ class KrakenFlp:
         rcv_dist_offset=0.0,
     ):
         self.env = env
+        self.flp_fpath = self.env.flp_fpath
         self.title_ = self.env.simulation_title
         self.src_type_ = src_type
         self.mode_theory_ = mode_theory
         self.mode_addition_ = mode_addition
         self.nb_modes_ = nb_modes
-        self.n_profiles_ = n_profiles
-        self.profiles_ranges_ = np.array(profiles_ranges)
-        if self.profiles_ranges_.size == 1:
-            self.profiles_ranges_ = np.array([profiles_ranges])
+
+        # Profile info ( for range dependent env)
+        if self.env.range_dependent_env:
+            self.n_profiles_ = self.env.modes_range.size
+            self.profiles_ranges_ = self.env.modes_range
+            rcv_z_max = self.env.bottom_hs.sedim_layer_max_depth
+        else:
+            self.n_profiles_ = 1
+            self.profiles_ranges_ = np.array([0.0])
 
         self.src_z_ = np.array(src_depth)
         if self.src_z_.size == 1:
@@ -756,12 +976,12 @@ class KrakenFlp:
 
         # Receiver depth info
         self.n_rcv_z_ = int(n_rcv_z)
-        self.rcv_z_min_ = int(rcv_z_min)
-        self.rcv_z_max_ = int(rcv_z_max)
+        self.rcv_z_min_ = int(np.floor(rcv_z_min))
+        self.rcv_z_max_ = int(np.ceil(rcv_z_max))
         # Receiver range info
         self.n_rcv_r_ = int(n_rcv_r)
-        self.rcv_r_min_ = int(rcv_r_min)
-        self.rcv_r_max_ = int(rcv_r_max)
+        self.rcv_r_min_ = int(np.floor(rcv_r_min))
+        self.rcv_r_max_ = int(np.ceil(rcv_r_max))
         self.rcv_dist_offset_ = int(rcv_dist_offset)
 
         self.set_codes()
@@ -815,7 +1035,7 @@ class KrakenFlp:
         )
         self.lines.append(
             align_var_description(
-                " ".join([str(r) for r in self.profiles_ranges_]) + " /",
+                " ".join([f"{r:.4f}" for r in self.profiles_ranges_]) + " /",
                 "Profile ranges (km)",
             )
         )
@@ -860,7 +1080,7 @@ class KrakenFlp:
     def write_flp(self):
         self.write_lines()
 
-        with open(self.env.flp_fpath, "w") as f_out:
+        with open(self.flp_fpath, "w") as f_out:
             f_out.writelines(self.lines)
 
 
@@ -871,20 +1091,28 @@ if __name__ == "__main__":
     cp_ssp = np.array([1500.0, 1550.0, 1540.0, 1532.0, 1522.0, 1512.0])
     medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=z_ssp, c_p=cp_ssp)
 
-    medium.plot_medium()
-    plt.show()
+    # medium.plot_medium()
+    # plt.show()
+
+    bathy = Bathymetry(
+        data_file=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd\bathy_data.csv",
+        interpolation_method="linear",
+        units="m",
+    )
 
     bott_hs_properties = SAND_PROPERTIES
     bott_hs_properties["z"] = z_ssp.max()
-    bott_hs = KrakenBottomHalfspace(halfspace_properties=bott_hs_properties)
+    bott_hs = KrakenBottomHalfspace(
+        halfspace_properties=bott_hs_properties,
+    )
 
     att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)
     field = KrakenField(src_depth=50)
 
     env = KrakenEnv(
         title="Test de la classe KrakenEnv",
-        env_root=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\testPyAT",
-        env_filename="test_kraken_env",
+        env_root=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd",
+        env_filename="test_kraken_rd",
         freq=[10, 50, 16, 25, 20, 21, 62, 85, 93, 714, 16, 25, 20, 21, 62],
         kraken_top_hs=top_hs,
         kraken_medium=medium,

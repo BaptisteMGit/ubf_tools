@@ -1,8 +1,20 @@
-import xarray as xr
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   test_trash.py
+@Time    :   2024/02/22 15:55:14
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   None
+"""
 
-swir_salinity_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\cmems_mod_glo_phy-so_anfc_0.083deg_P1M-m_1700737971954.nc"
-swir_temp_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\cmems_mod_glo_phy-thetao_anfc_0.083deg_P1M-m_1700737952634.nc"
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
+import numpy as np
 
-# Load temperatue and salinity
-ds_sal = xr.open_dataset(swir_salinity_path)
-ds_temp = xr.open_dataset(swir_temp_path)
+
+if __name__ == "__main__":
+
+    pass

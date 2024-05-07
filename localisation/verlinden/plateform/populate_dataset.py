@@ -13,6 +13,7 @@
 # Import
 # ======================================================================================================================
 import os
+import zarr
 import numpy as np
 import xarray as xr
 import dask.array as da
@@ -20,10 +21,7 @@ import dask.array as da
 from misc import mult_along_axis
 from dask.distributed import Client
 
-from localisation.verlinden.plateform.utils import (
-    set_propa_grid_path,
-    set_propa_grid_src_path,
-)
+from localisation.verlinden.plateform.utils import *
 from localisation.verlinden.plateform.init_dataset import (
     init_grid,
     get_range_from_rcv,
@@ -102,28 +100,64 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
         ds.attrs["dy"] = dy
         set_propa_grid_path(ds)
 
-    tf_gridded_array = np.empty(
-        (ds.sizes["idx_rcv"], ds.sizes["lat"], ds.sizes["lon"], ds.sizes["kraken_freq"])
+    # Loop over sub_regions of the grid
+
+    tf_gridded_dim = ["idx_rcv", "lat", "lon", "kraken_freq"]
+    tf_gridded_shape = [ds.sizes[dim] for dim in tf_gridded_dim]
+    # chunk_lon = max(1, ds.sizes["lon"] // 10)
+    # chunk_lat = max(1, ds.sizes["lat"] // 10)
+    # , chunks=(1, chunk_lat, chunk_lon, 1)
+    tf_gridded_array = da.empty(tf_gridded_shape, dtype=np.float32)
+    ds["tf_gridded"] = (
+        tf_gridded_dim,
+        tf_gridded_array,
     )
-    for i_rcv in ds.idx_rcv.values:
-        ds_to_pop = ds.sel(idx_rcv=i_rcv)
-
-        tf = ds_to_pop.tf.isel(kraken_depth=0)  # Only one depth
-
-        for az in ds_to_pop.all_az.values:
-            az_mask_2d = ds_to_pop.az_propa == az
-            r_az = ds_to_pop.r_from_rcv.values[az_mask_2d]
-            tf_az = tf.sel(all_az=az).sel(kraken_range=r_az, method="nearest")
-            tf_gridded_array[i_rcv, az_mask_2d, :] = tf_az.values.T
-
-    ds["tf_gridded"] = (["idx_rcv", "lat", "lon", "kraken_freq"], tf_gridded_array)
     ds["tf_gridded"].attrs["units"] = ""
     ds["tf_gridded"].attrs["long_name"] = "Transfer function gridded"
 
-    ds = ds.drop_vars("tf")
+    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded)
+    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
-    # Update dataset
-    ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="w")
+    # Save to zarr without computing
+    ds_init = ds.drop_vars("tf")
+    ds_init.to_zarr(ds.fullpath_dataset_propa_grid, mode="a", compute=False)
+
+    for lon_s in lon_slices:
+        for lat_s in lat_slices:
+            ds_sub = ds.isel(lat=lat_s, lon=lon_s)
+
+            tf_sub = np.empty_like(ds_sub.tf_gridded)
+
+            for i_rcv in ds.idx_rcv.values:
+                ds_to_pop = ds_sub.sel(idx_rcv=i_rcv)
+
+                tf = ds_to_pop.tf.isel(kraken_depth=0)  # Only one depth
+
+                for az in ds_to_pop.all_az.values:
+                    az_mask_2d = ds_to_pop.az_propa == az
+                    r_az = ds_to_pop.r_from_rcv.values[az_mask_2d]
+                    tf_az = tf.sel(all_az=az).sel(kraken_range=r_az, method="nearest")
+                    tf_sub[i_rcv, az_mask_2d, :] = tf_az.values.T
+
+            ds_sub.tf_gridded[dict(lat=lat_s, lon=lon_s)] = tf_sub
+            sub_region_to_save = ds_sub.tf_gridded[dict(lat=lat_s, lon=lon_s)]
+            sub_region_to_save.to_zarr(
+                ds.fullpath_dataset_propa_grid,
+                mode="r+",
+                region={
+                    "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
+                    "lat": lat_s,
+                    "lon": lon_s,
+                    "kraken_freq": slice(0, ds.sizes["kraken_freq"]),
+                },
+            )
+
+    # Open the Zarr store and update attrs
+    zarr_store = zarr.open(ds.fullpath_dataset_propa)
+    zarr_store.attrs.update({"propa_grid_done": True})
+    zarr.consolidate_metadata(ds.fullpath_dataset_propa)
+
+    ds = ds.drop_vars("tf")
 
     return ds
 
@@ -137,6 +171,7 @@ def grid_synthesis(
         print(client.dashboard_link)
 
         # Set path to save the dataset and save existing vars
+        ds.attrs["src_label"] = build_src_label(src_name=src.name)
         set_propa_grid_src_path(ds)
         ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
 
@@ -154,28 +189,15 @@ def grid_synthesis(
         time_vector = np.arange(0, T_tot, dt)
 
         # Loop over sub_regions of the grid
-        nregion = ds.sizes["lon"]
-        max_size_bytes = 0.5 * 1e9  # 500 Mo
-        size = ds.tf_gridded.nbytes / nregion
-        while size <= max_size_bytes and nregion > 1:  # At least 1 region
-            nregion -= 1
-            size = ds.tf_gridded.nbytes / nregion
-
-        lat_slices_lim = np.linspace(0, ds.sizes["lat"], nregion + 1, dtype=int)
-        lat_slices = [
-            slice(lat_slices_lim[i], lat_slices_lim[i + 1])
-            for i in range(len(lat_slices_lim) - 1)
-        ]
-        lon_slices_lim = np.linspace(0, ds.sizes["lon"], nregion + 1, dtype=int)
-        lon_slices = [
-            slice(lon_slices_lim[i], lon_slices_lim[i + 1])
-            for i in range(len(lon_slices_lim) - 1)
-        ]
+        nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded)
+        lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
         ds.coords["library_signal_time"] = time_vector
         ts_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
         ts_shape = [ds.sizes[dim] for dim in ts_dim]
-        transmited_field_t = np.empty(ts_shape)
+        # transmited_field_t = np.empty(ts_shape, dtype=np.float32)
+        transmited_field_t = da.empty(ts_shape, dtype=np.float32)
+
         ds["rcv_signal_library"] = (
             ts_dim,
             transmited_field_t,
@@ -213,9 +235,12 @@ def grid_synthesis(
                             0, ds.sizes["library_signal_time"]
                         ),
                     },
-                    # compute=False,
                 )
-                # sub_region_to_save.compute()
+
+    # Open the Zarr store and update attrs
+    zarr_store = zarr.open(ds.fullpath_dataset_propa_grid_src)
+    zarr_store.attrs.update({"propa_done_grid_src": True})
+    zarr.consolidate_metadata(ds.fullpath_dataset_propa_grid_src)
 
     return ds
 

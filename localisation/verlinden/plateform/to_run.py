@@ -12,7 +12,8 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
-from signals import pulse
+import numpy as np
+from signals import pulse, generate_ship_signal
 from localisation.verlinden.AcousticComponent import AcousticSource
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1
 from localisation.verlinden.plateform.run_plateform import run_on_plateform
@@ -63,18 +64,31 @@ def run_swir():
     dx, dy = 100, 100
 
     # Define source signal
-    dt = 7
     min_waveguide_depth = 5000
-    f0, fs = 5, 10
-    nfft = int(fs * dt)
-    src_sig, t_src_sig = pulse(T=dt, f=f0, fs=fs)
+    dt = 10
+    fs = 100  # Sampling frequency
+    f0_lib = 1  # Fundamental frequency of the ship signal
+    src_info = {
+        "sig_type": "ship",
+        "f0": f0_lib,
+        "std_fi": f0_lib * 1 / 100,
+        "tau_corr_fi": 1 / f0_lib,
+        "fs": fs,
+    }
+    src_sig, t_src_sig = generate_ship_signal(
+        Ttot=dt,
+        f0=src_info["f0"],
+        std_fi=src_info["std_fi"],
+        tau_corr_fi=src_info["tau_corr_fi"],
+        fs=src_info["fs"],
+    )
 
+    src_sig *= np.hanning(len(src_sig))
     src = AcousticSource(
         signal=src_sig,
         time=t_src_sig,
-        name="debug_pulse",
+        name="ship",
         waveguide_depth=min_waveguide_depth,
-        nfft=nfft,
     )
 
     (
@@ -89,3 +103,4 @@ def run_swir():
 if __name__ == "__main__":
 
     test()
+    # run_swir()

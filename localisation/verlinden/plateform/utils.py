@@ -15,12 +15,12 @@
 import os
 import numpy as np
 import pandas as pd
-from path import PROJECT_ROOT
+from path import PROJECT_ROOT, DATA_ROOT
 
 if os.name == "nt":
     ROOT_DATASET_PATH = os.path.join(PROJECT_ROOT, "localisation", "verlinden", "localisation_dataset")
 else:   
-    ROOT_DATASET_PATH = os.path.join(PROJECT_ROOT, "data", "localisation_dataset")
+    ROOT_DATASET_PATH = os.path.join(DATA_ROOT, "localisation_dataset")
 
 
 def set_attrs(xr_dataset, grid_info, testcase):

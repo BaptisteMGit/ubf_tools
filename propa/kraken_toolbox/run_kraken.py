@@ -41,7 +41,6 @@ def runkraken(
     # Write env and flp files
     env.write_env()
     flp.write_flp()
-
     if (
         env.range_dependent_env and env.broadband_run
     ):  # Run broadband range dependent simulation
@@ -180,7 +179,7 @@ def assign_frequency_intervalls(frequencies, n_workers, mode="equally_distribute
 
 
 def run_field(filename, parallel=False, worker_pid=None):
-    if parallel:
+    if parallel and (os.name == "nt"):
         if worker_pid is not None:
             parallel_working_dir = os.getcwd()
             subprocess_working_dir = os.path.join(parallel_working_dir, "bin")
@@ -195,7 +194,7 @@ def run_field(filename, parallel=False, worker_pid=None):
     os.system(f"{cmd} {filename}")
 
 
-def run_kraken(filename, parallel=False, worker_pid=None):
+def run_kraken(filename, parallel=False, worker_pid=None, silent=True):
     if parallel and (os.name == "nt"):
         if worker_pid is not None:
             parallel_working_dir = os.getcwd()
@@ -207,8 +206,13 @@ def run_kraken(filename, parallel=False, worker_pid=None):
     else:
         cmd = "kraken"
 
+    # Avoid warning
+    to_ex = f"{cmd} {filename}"
+    if silent:
+        to_ex = to_ex + " >/dev/null 2>&1"
+
     # Run Fortran version of Kraken
-    os.system(f"{cmd} {filename}")
+    os.system(to_ex)
 
 
 def clear_kraken_parallel_working_dir(root):

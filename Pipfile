@@ -1,0 +1,30 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+numpy = "*"
+matplotlib = "*"
+xarray = "*"
+scipy = "*"
+tqdm = "*"
+arlpy = "*"
+moviepy = "*"
+obspy = "*"
+netcdf4 = "*"
+pyproj = "*"
+sparse = "*"
+pathos = "*"
+psutil = "*"
+pylint = "*"
+scikit-learn = "*"
+dask = "*"
+distributed = "*"
+zarr = "*"
+
+[dev-packages]
+ipykernel = "*"
+
+[requires]
+python_version = "3.11"

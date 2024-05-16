@@ -1,0 +1,7 @@
+machine my.cmems-du.eu
+login USERNAME
+password PASSWORD
+
+machine nrt.cmems-du.eu
+login USERNAME
+password PASSWORD

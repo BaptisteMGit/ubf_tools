@@ -4,6 +4,7 @@ import os
 # ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation"
 
 ROOT = "/home/program/ubf_tools-main/localisation/verlinden"
+# ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden"
 ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation"
 
 VERLINDEN_POPULATED_FOLDER = os.path.join(ROOT, "verlinden_process_populated_library")

@@ -15,9 +15,12 @@
 import os
 import numpy as np
 import pandas as pd
+from path import PROJECT_ROOT
 
-ROOT_DATASET_PATH = "/home/data/localisation_dataset"
-# ROOT_DATASET_PATH = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset"
+if os.name == "nt":
+    ROOT_DATASET_PATH = os.path.join(PROJECT_ROOT, "localisation", "verlinden", "localisation_dataset")
+else:   
+    ROOT_DATASET_PATH = os.path.join(PROJECT_ROOT, "data", "localisation_dataset")
 
 
 def set_attrs(xr_dataset, grid_info, testcase):

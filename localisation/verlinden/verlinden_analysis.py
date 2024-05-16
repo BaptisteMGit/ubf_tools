@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 plt.switch_backend("agg")
 
 import scipy.signal as signal
-# import moviepy.editor as mpy
+import moviepy.editor as mpy
 
 from PIL import Image
 from cst import (

@@ -1,4 +1,5 @@
-# from colorama import Fore
+import os 
+from colorama import Fore
 
 """ Usefull constants """
 
@@ -22,13 +23,12 @@ LIBRARY_COLOR = "red"
 EVENT_COLOR = "black"
 
 # TDQM bar format
-BAR_FORMAT = ""
-# BAR_FORMAT = "%s{l_bar}%s{bar}%s{r_bar}%s" % (
-#     Fore.YELLOW,
-#     Fore.GREEN,
-#     Fore.YELLOW,
-#     Fore.RESET,
-# )
+BAR_FORMAT = "%s{l_bar}%s{bar}%s{r_bar}%s" % (
+    Fore.YELLOW,
+    Fore.GREEN,
+    Fore.YELLOW,
+    Fore.RESET,
+)
 
 # Graph constants
 LABEL_FONTSIZE = 20
@@ -38,5 +38,7 @@ LEGEND_FONTSIZE = 18
 SUPLABEL_FONTSIZE = 22
 
 # Parrallel processing
-N_CORES = 100   # Linux plateforme TIM
-# N_CORES = 10  # Windows PC
+if os.name == "nt":
+    N_CORES = 10  # Windows PC
+else:
+    N_CORES = 100   # Linux plateforme TIM

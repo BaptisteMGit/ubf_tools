@@ -25,6 +25,7 @@ from localisation.verlinden.testcases.testcase_bathy import (
     extract_2D_bathy_profile,
 )
 from localisation.verlinden.verlinden_path import TC_WORKING_DIR
+from path import PROJECT_ROOT
 
 ##########################################################################################
 # Useful constants
@@ -511,7 +512,7 @@ class TestCase1_4(TestCase1):
 
     def load_ssp(self):
         # Load ssp mat file
-        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+        data_dir = os.path.join(PROJECT_ROOT, "data", "ssp", "mmdpm")
         fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
         ssp_mat = sio.loadmat(fpath)
         self.z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
@@ -629,7 +630,8 @@ class TestCase2_2(TestCase2):
         self.process()
 
     def write_bathy(self):
-        bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\shallow_water\GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
+        fname = "GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
+        bathy_nc_path = os.path.join(PROJECT_ROOT, "data", "bathy", "shallow_water", fname)
         # Load real profile around OBS RR48
         extract_2D_bathy_profile(
             bathy_nc_path=bathy_nc_path,
@@ -645,7 +647,7 @@ class TestCase2_2(TestCase2):
 
     def load_ssp(self):
         # Load ssp mat file
-        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+        data_dir = os.path.join(PROJECT_ROOT, "data", "ssp", "mmdpm")
         fpath = os.path.join(
             data_dir,
             "shallow_water",
@@ -706,7 +708,8 @@ class TestCase3_1(TestCase3):
 
     def write_bathy(self):
         # bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
-        bathy_nc_path = "/home/program/ubf_tools-main/data/bathy/mmdpm/PVA_RR48/GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+        fname = "GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+        bathy_nc_path = os.path.join(PROJECT_ROOT, "data", "bathy", "mmdpm", "PVA_RR48", fname)
 
         # Load real profile around OBS RR48
         extract_2D_bathy_profile(
@@ -724,8 +727,7 @@ class TestCase3_1(TestCase3):
 
     def load_ssp(self):
         # Load ssp mat file
-        # data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
-        data_dir = "/home/program/ubf_tools-main/data/ssp/mmdpm"
+        data_dir = os.path.join(PROJECT_ROOT, "data", "ssp", "mmdpm")
         fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
         ssp_mat = sio.loadmat(fpath)
         self.z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()

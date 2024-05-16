@@ -15,8 +15,12 @@
 import os
 import numpy as np
 import pandas as pd
+from path import PROJECT_ROOT, DATA_ROOT
 
-ROOT_DATASET_PATH = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset"
+if os.name == "nt":
+    ROOT_DATASET_PATH = os.path.join(PROJECT_ROOT, "localisation", "verlinden", "localisation_dataset")
+else:   
+    ROOT_DATASET_PATH = os.path.join(DATA_ROOT, "localisation_dataset")
 
 
 def set_attrs(xr_dataset, grid_info, testcase):
@@ -193,16 +197,13 @@ def set_propa_grid_src_path(xr_dataset):
 
 
 def build_src_label(src_name, f0=None, fs=None, std_fi=None, tau_corr_fi=None):
-    if src_name == "ship":
-        assert (
-            f0 is not None
-            and fs is not None
-            and std_fi is not None
-            and tau_corr_fi is not None
-        ), "Missing parameters for ship source"
-        src_label = f"{src_name}_{f0:.1f}_{fs:.1f}_{std_fi:.1f}_{tau_corr_fi:.1f}"
-    else:
-        src_label = f"{src_name}"
+    # if src_name == "ship":
+    #     try:
+    #         src_label = f"{src_name}_{f0:.1f}_{fs:.1f}_{std_fi:.1f}_{tau_corr_fi:.1f}"
+    #     except:
+    #         print("Missing parameters for ship source")
+    # else:
+    src_label = f"{src_name}"
 
     return src_label
 

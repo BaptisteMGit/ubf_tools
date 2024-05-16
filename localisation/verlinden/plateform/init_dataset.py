@@ -106,11 +106,11 @@ def init_dataset(
     set_attrs(xr_dataset, grid_info, testcase)
 
     # Chunk
-    xr_dataset = xr_dataset.chunk({"idx_rcv": 1})
+    # xr_dataset = xr_dataset.chunk({"idx_rcv": 1})
 
     # Save zarr (light data)
     # with ProgressBar():
-    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=True, mode="w")
+    # xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=True, mode="w")
 
     # Create arrays to store transfer functions
     # Frequency vector
@@ -159,11 +159,16 @@ def init_dataset(
     xr_dataset["tf"] = (tf_dims, tf_arr)
 
     # Chunk new variable tf
-    xr_dataset = xr_dataset.chunk({"idx_rcv": 1, "all_az": 1})
+    chunk_dict = {}
+    for coord in list(xr_dataset.coords):
+        chunk_dict[coord] = xr_dataset.sizes[coord]
+    for coord in ["idx_rcv", "all_az"]:
+        chunk_dict[coord] = 1
+
+    xr_dataset = xr_dataset.chunk(chunk_dict)
 
     # Store zarr without computing
-    # with ProgressBar():
-    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="a")
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="w")
 
     return xr_dataset
 

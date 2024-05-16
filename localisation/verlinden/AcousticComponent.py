@@ -65,8 +65,8 @@ class AcousticSource:
         self.psd_freq, self.psd = signal.welch(self.signal, fs=self.fs)
 
         if self.nfft is None:
-            # self.nfft = 2 ** int(np.log2(self.ns) + 1)  # Next power of 2
-            self.nfft = 2**12
+            self.nfft = 2 ** int(np.log2(self.ns) + 1)  # Next power of 2
+            # self.nfft = 2**12
         else:
             self.nfft = 2 ** int(np.log2(self.nfft) + 1)
 

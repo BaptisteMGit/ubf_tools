@@ -48,6 +48,7 @@ from propa.kraken_toolbox.run_kraken import runkraken
 # from propa.kraken_toolbox.plot_utils import plotshd
 
 from localisation.verlinden.verlinden_path import VERLINDEN_POPULATED_FOLDER
+from path import PROJECT_ROOT
 
 
 def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase):
@@ -2350,9 +2351,10 @@ def load_rhumrum_obs_pos(obs_id):
         OBS position.
 
     """
-    path = "/home/program/ubf_tools-main/data/rhum_rum_obs_pos.csv"
+    pos_path = os.path.join(PROJECT_ROOT, "data", "rhum_rum_obs_pos.csv")
+
     pos = pd.read_csv(
-        path,
+        pos_path,
         index_col="id",
         delimiter=",",
     )

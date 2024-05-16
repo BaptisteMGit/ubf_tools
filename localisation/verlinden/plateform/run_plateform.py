@@ -113,7 +113,6 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
         if ds.propa_done:
             print(f"Propa dataset already exists at {fullpath_dataset_propa}")
 
-
             if not os.path.exists(fullpath_dataset_propa_grid):
                 steps = [1]  # Gridding and synthesis required
             else:

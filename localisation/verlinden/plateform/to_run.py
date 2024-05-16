@@ -62,7 +62,7 @@ def run_swir():
         "lats": [],
     }
     tc = TestCase3_1()
-    min_dist = 1 * 1e3
+    min_dist = 5 * 1e3
     dx, dy = 100, 100
 
     # Define source signal
@@ -86,7 +86,7 @@ def run_swir():
     )
 
     src_sig *= np.hanning(len(src_sig))
-    nfft = 2**7
+    nfft = 2**3
     src = AcousticSource(
         signal=src_sig,
         time=t_src_sig,
@@ -106,10 +106,12 @@ def run_swir():
 
 if __name__ == "__main__":
 
+    run_swir()
+
     # test()
     # import os
     # import zarr
-    import xarray as xr 
+    # import xarray as xr 
 
     # path = "/home/data/localisation_dataset/testcase3_1/propa_grid_src/propa_grid_src_65.6098_65.8902_-27.6593_-27.4407_100_100_ship.zarr"
     # root = "/home/data/localisation_dataset/testcase3_1"
@@ -131,5 +133,4 @@ if __name__ == "__main__":
     # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
     # print()
-    run_swir()
 

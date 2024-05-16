@@ -55,14 +55,14 @@ def test():
 
 def run_swir():
     rcv_info_dw = {
-        # "id": ["RR45", "RR48", "RR44"],
+        "id": ["RR45", "RR48", "RR44"],
         # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
-        "id": ["RRpftim0", "RRpftim1"],
+        # "id": ["RRpftim0", "RRpftim1"],
         "lons": [],
         "lats": [],
     }
     tc = TestCase3_1()
-    min_dist = 5 * 1e3
+    min_dist = 50 * 1e3
     dx, dy = 100, 100
 
     # Define source signal
@@ -86,7 +86,7 @@ def run_swir():
     )
 
     src_sig *= np.hanning(len(src_sig))
-    nfft = 2**3
+    nfft = None 
     src = AcousticSource(
         signal=src_sig,
         time=t_src_sig,
@@ -95,6 +95,7 @@ def run_swir():
         nfft=nfft,
     )
 
+    print(f"nfft = {src.nfft}")
     (
         fullpath_dataset_propa,
         fullpath_dataset_propa_grid,
@@ -102,6 +103,7 @@ def run_swir():
     ) = run_on_plateform(
         rcv_info=rcv_info_dw, testcase=tc, min_dist=min_dist, dx=dx, dy=dy, src=src
     )
+
 
 
 if __name__ == "__main__":

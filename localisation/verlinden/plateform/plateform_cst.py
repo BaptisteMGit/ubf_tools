@@ -1,1 +1,2 @@
 N_WORKERS = 80
+MAX_RAM_GB = 125

@@ -25,7 +25,7 @@ from propa.kraken_toolbox.run_kraken import runkraken, clear_kraken_parallel_wor
 from localisation.verlinden.plateform.init_dataset import init_dataset
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 
-from localisation.verlinden.plateform.plateform_cst import N_WORKERS
+from localisation.verlinden.plateform.plateform_cst import N_WORKERS, MAX_RAM_GB
 
 # ======================================================================================================================
 # Functions
@@ -51,39 +51,44 @@ def build_dataset(
     )
 
     print(f"Dataset sizes : {ds.sizes}")
+    print(f"Dataset memory size = {ds.nbytes * 1e-9} GB")
     clear_kraken_parallel_working_dir(root=testcase.env.root)
 
-    with Client(n_workers=N_WORKERS, threads_per_worker=1) as client:
-        # print(client.dashboard_link)
+    # Params common to regions
+    rmax = ds.r_from_rcv.max().values
+    lon_rcv = ds.lon_rcv.values
+    lat_rcv = ds.lat_rcv.values
+    all_az = ds.all_az.values
+    freq = ds.kraken_freq.values
 
+    # Loop over dataset regions
+    nregion = int(np.ceil(((ds.sizes["all_az"] * ds.sizes["idx_rcv"]) / N_WORKERS)))
 
-        # Params common to regions
-        rmax = ds.r_from_rcv.max().values
-        lon_rcv = ds.lon_rcv.values
-        lat_rcv = ds.lat_rcv.values
-        all_az = ds.all_az.values
-        freq = ds.kraken_freq.values
+    # nregion = ds.sizes["all_az"]
+    # # max_size_bytes = 1 * 1e9  # 1 Go
+    # max_size_bytes = MAX_RAM_GB / N_WORKERS
+    # size = ds.tf.nbytes / nregion
+    # while size <= max_size_bytes and nregion > 1:  # At least 1 region
+    #     nregion -= 1
+    #     size = ds.tf.nbytes / nregion
 
-        # Loop over dataset regions
-        nregion = ds.sizes["all_az"]
-        max_size_bytes = 0.1 * 1e9  # 100 Mo
-        size = ds.tf.nbytes / nregion
-        while size <= max_size_bytes and nregion > 1:  # At least 1 region
-            nregion -= 1
-            size = ds.tf.nbytes / nregion
+    # Regions are defined by azimuth slices
+    az_limits = np.linspace(0, ds.sizes["all_az"], nregion + 1, dtype=int)
+    regions_az_slices = [
+        slice(az_limits[i], az_limits[i + 1]) for i in range(len(az_limits) - 1)
+    ]
+    n_az_max = max([az_limits[i + 1] - az_limits[i] for i in range(len(az_limits) - 1)])
+    n_eff_workers = ds.sizes["idx_rcv"] * n_az_max
+    size = ds.tf.nbytes / nregion
+    print(f"Start building propa dataset using {n_eff_workers} workers")
 
-        # Regions are defined by azimuth slices
-        az_limits = np.linspace(0, ds.sizes["all_az"], nregion + 1, dtype=int)
-        regions_az_slices = [
-            slice(az_limits[i], az_limits[i + 1]) for i in range(len(az_limits) - 1)
-        ]
+    with Client(n_workers=n_eff_workers, threads_per_worker=1) as client:
+        print(client.dashboard_link)
 
         for r_az_slice in regions_az_slices:
             region_ds = ds.isel(all_az=r_az_slice)
 
             # Compute transfer functions (tf) using `map_blocks`
-            # rmax = 1000
-
             array_template = region_ds.tf.isel(idx_rcv=0, all_az=0).data
             tf_dask = region_ds.tf.data
 

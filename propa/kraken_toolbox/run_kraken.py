@@ -30,7 +30,7 @@ from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import find_optimal_intervals
 
 
-def runkraken(env, flp, frequencies, parallel=False, verbose=False, clear=True):
+def runkraken(env, flp, frequencies, parallel=False, verbose=False, clear=True, n_workers=None):
     if verbose:
         print(f"Running Kraken  (parallel = {parallel})...")
 
@@ -39,7 +39,6 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False, clear=True):
     # Write env and flp files
     env.write_env()
     flp.write_flp()
-
     if (
         env.range_dependent_env and env.broadband_run
     ):  # Run broadband range dependent simulation
@@ -50,7 +49,10 @@ def runkraken(env, flp, frequencies, parallel=False, verbose=False, clear=True):
 
         # Run parallel
         if parallel:
-            n_workers = min(len(frequencies), N_CORES)
+            if n_workers is None:
+                n_workers = min(len(frequencies), N_CORES)
+            else:
+                n_workers = min(len(frequencies), n_workers)
 
             # Get optimal frequencies intervals bounds
             frequencies_intervalls, nb_used_workers = assign_frequency_intervalls(
@@ -175,7 +177,7 @@ def assign_frequency_intervalls(frequencies, n_workers, mode="equally_distribute
 
 
 def run_field(filename, parallel=False, worker_pid=None):
-    if parallel:
+    if parallel and (os.name == 'nt'):
         if worker_pid is not None:
             parallel_working_dir = os.getcwd()
             subprocess_working_dir = os.path.join(parallel_working_dir, "bin")
@@ -190,8 +192,8 @@ def run_field(filename, parallel=False, worker_pid=None):
     os.system(f"{cmd} {filename}")
 
 
-def run_kraken(filename, parallel=False, worker_pid=None):
-    if parallel:
+def run_kraken(filename, parallel=False, worker_pid=None, silent=True):
+    if parallel and (os.name == 'nt'):
         if worker_pid is not None:
             parallel_working_dir = os.getcwd()
             subprocess_working_dir = os.path.join(parallel_working_dir, "bin")
@@ -202,8 +204,13 @@ def run_kraken(filename, parallel=False, worker_pid=None):
     else:
         cmd = "kraken"
 
+    # Avoid warning 
+    to_ex = f"{cmd} {filename}"
+    if silent:
+        to_ex = to_ex + " >/dev/null 2>&1"
+    
     # Run Fortran version of Kraken
-    os.system(f"{cmd} {filename}")
+    os.system(to_ex)
 
 
 def clear_kraken_parallel_working_dir(root):
@@ -256,25 +263,27 @@ def init_parallel_kraken_working_dirs(env, env_root, worker_pid):
     subprocess_working_dir = get_subprocess_working_dir(env_root, worker_pid)
     env.root = subprocess_working_dir
 
-    # Create bin folder
-    bin_folder = os.path.join(subprocess_working_dir, "bin")
-    if not os.path.exists(bin_folder):
-        os.makedirs(bin_folder)
+    if os.name == 'nt': # Windows
 
-    # Copy bin files to subprocess working directory
-    # (that's ugly but it works... calling kraken.exe and field.exe simultaneously from different process leads to errors)
-    for bin in [
-        "kraken.exe",
-        "field.exe",
-        "cyggcc_s-seh-1.dll",
-        "cyggfortran-5.dll",
-        "cygquadmath-0.dll",
-        "cygwin1.dll",
-    ]:
-        f_path_src = os.path.join(KRAKEN_BIN_DIRECTORY, bin)
-        f_path_dst = os.path.join(bin_folder, bin)
-        if not os.path.exists(f_path_dst):
-            shutil.copyfile(f_path_src, f_path_dst)
+        # Create bin folder
+        bin_folder = os.path.join(subprocess_working_dir, "bin")
+        if not os.path.exists(bin_folder):
+            os.makedirs(bin_folder)
+
+        # Copy bin files to subprocess working directory
+        # (that's ugly but it works... calling kraken.exe and field.exe simultaneously from different process leads to errors)
+        for bin in [
+            "kraken.exe",
+            "field.exe",
+            "cyggcc_s-seh-1.dll",
+            "cyggfortran-5.dll",
+            "cygquadmath-0.dll",
+            "cygwin1.dll",
+        ]:
+            f_path_src = os.path.join(KRAKEN_BIN_DIRECTORY, bin)
+            f_path_dst = os.path.join(bin_folder, bin)
+            if not os.path.exists(f_path_dst):
+                shutil.copyfile(f_path_src, f_path_dst)
 
 
 def runkraken_broadband_range_dependent(

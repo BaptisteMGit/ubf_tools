@@ -48,6 +48,7 @@ from propa.kraken_toolbox.run_kraken import runkraken
 # from propa.kraken_toolbox.plot_utils import plotshd
 
 from localisation.verlinden.verlinden_path import VERLINDEN_POPULATED_FOLDER
+from path import PROJECT_ROOT
 
 
 def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase):
@@ -694,6 +695,7 @@ def get_range_from_rcv(grid_info, rcv_info):
             lats1=np.ones(s) * rcv_info["lats"][i],
             lons2=llon,
             lats2=llat,
+            return_back_azimuth=True,
         )
         rr_from_rcv[i, :, :] = ranges
 
@@ -731,6 +733,7 @@ def get_range_src_rcv_range(lon_src, lat_src, rcv_info):
             lats1=np.ones(s) * rcv_info["lats"][i],
             lons2=lon_src,
             lats2=lat_src,
+            return_back_azimuth=True,
         )
         rr_src_rcv[i, :] = ranges
 
@@ -769,6 +772,7 @@ def get_azimuth_rcv(grid_info, rcv_info):
             lats1=np.ones(s) * rcv_info["lats"][i],
             lons2=llon,
             lats2=llat,
+            return_back_azimuth=True,
         )
         az_rcv[i, :, :] = fwd_az
 
@@ -807,6 +811,7 @@ def get_azimuth_src_rcv(lon_src, lat_src, rcv_info):
             lats1=np.ones(s) * rcv_info["lats"][i],
             lons2=lon_src,
             lats2=lat_src,
+            return_back_azimuth=True,
         )
         az_rcv[i, :] = fwd_az
 
@@ -2129,6 +2134,7 @@ def init_event_src_traj(src_info, dt):
         lats=lat_i,
         az=src_info["route_azimuth"],
         dist=Dtot,
+        return_back_azimuth=True,
     )
 
     # Determine coordinates along trajectory
@@ -2169,12 +2175,14 @@ def init_grid_around_event_src_traj(src_info, grid_info):
         lats=mean_lat,
         az=270,
         dist=offset_lon,
+        return_back_azimuth=True,
     )
     max_lon_grid, _, _ = geod.fwd(
         lons=max_lon,
         lats=mean_lat,
         az=90,
         dist=offset_lon,
+        return_back_azimuth=True,
     )
 
     _, min_lat_grid, _ = geod.fwd(
@@ -2182,12 +2190,14 @@ def init_grid_around_event_src_traj(src_info, grid_info):
         lats=min_lat,
         az=180,
         dist=offset_lat,
+        return_back_azimuth=True,
     )
     _, max_lat_grid, _ = geod.fwd(
         lons=mean_lon,
         lats=max_lat,
         az=0,
         dist=offset_lat,
+        return_back_azimuth=True,
     )
 
     grid_lons = np.array(
@@ -2197,6 +2207,7 @@ def init_grid_around_event_src_traj(src_info, grid_info):
             lat2=mean_lat,
             lon2=max_lon_grid,
             del_s=grid_info["dx"],
+            return_back_azimuth=True,
         ).lons
     )
     grid_lats = np.array(
@@ -2206,6 +2217,7 @@ def init_grid_around_event_src_traj(src_info, grid_info):
             lat2=max_lat_grid,
             lon2=mean_lon,
             del_s=grid_info["dy"],
+            return_back_azimuth=True,
         ).lats
     )
     grid_info["lons"] = grid_lons
@@ -2252,6 +2264,7 @@ def get_max_kraken_range(rcv_info, grid_info):
                 grid_info["max_lat"],
                 grid_info["min_lat"],
             ],
+            return_back_azimuth=True,
         )
 
         max_r.append(np.max(ranges))
@@ -2275,12 +2288,14 @@ def get_bathy_grid_size(lon, lat):
         lats1=np.degrees(lat_0),
         lons2=lon,
         lats2=np.degrees(lat_1),
+        return_back_azimuth=True,
     )
     _, _, dlon = geod.inv(
         lons1=np.degrees(lon_0),
         lats1=lat,
         lons2=np.degrees(lon_1),
         lats2=lat,
+        return_back_azimuth=True,
     )
 
     return dlon, dlat
@@ -2314,6 +2329,7 @@ def get_dist_between_rcv(rcv_info):
             lats1=[rcv_info["lats"][pair[0]]],
             lons2=[rcv_info["lons"][pair[1]]],
             lats2=[rcv_info["lats"][pair[1]]],
+            return_back_azimuth=True,
         )
         dist_inter_rcv.append(np.round(dist, 0))
 
@@ -2335,8 +2351,10 @@ def load_rhumrum_obs_pos(obs_id):
         OBS position.
 
     """
+    pos_path = os.path.join(PROJECT_ROOT, "data", "rhum_rum_obs_pos.csv")
+
     pos = pd.read_csv(
-        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\rhum_rum_obs_pos.csv",
+        pos_path,
         index_col="id",
         delimiter=",",
     )

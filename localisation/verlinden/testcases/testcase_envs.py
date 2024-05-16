@@ -25,6 +25,7 @@ from localisation.verlinden.testcases.testcase_bathy import (
     extract_2D_bathy_profile,
 )
 from localisation.verlinden.verlinden_path import TC_WORKING_DIR
+from path import PROJECT_ROOT
 
 ##########################################################################################
 # Useful constants
@@ -93,6 +94,7 @@ class TestCase:
         self.rcv_lat = None
         self.dr_flp = None
         self.dr_bathy = None
+        self.nb_modes = None 
         self.plot_medium = False
         self.plot_bottom = False
         self.plot_bathy = False
@@ -138,6 +140,7 @@ class TestCase:
             "rcv_lat": 52.22,
             "dr_flp": 10,
             "dr_bathy": 500,
+            "nb_modes": 100,
             "called_by_subprocess": False,
         }
 
@@ -308,6 +311,7 @@ class TestCase:
             rcv_z_max=self.flp_rcv_z_max,
             rcv_r_max=self.max_range_m * 1e-3,
             n_rcv_r=self.flp_n_rcv_r,
+            nb_modes=self.nb_modes,
             mode_addition="coherent",
         )
 
@@ -347,6 +351,7 @@ class TestCase1_0(TestCase1):
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "dr_flp": 5,
+            "nb_modes": 100,
         }
         # Flat bottom
         self.range_dependence = False
@@ -372,6 +377,7 @@ class TestCase1_1(TestCase1):
             "min_depth": 100,
             "dr_flp": 5,
             "dr_bathy": 500,
+            "nb_modes": 100,
         }
         # Flat bottom
         self.range_dependence = True
@@ -410,6 +416,8 @@ class TestCase1_2(TestCase1):
             "min_depth": 100,
             "dr_flp": 5,
             "dr_bathy": 500,
+            "nb_modes": 100,
+
         }
         # Flat bottom
         self.range_dependence = True
@@ -447,6 +455,7 @@ class TestCase1_3(TestCase1):
             "min_depth": 100,
             "dr_flp": 5,
             "dr_bathy": 500,
+            "nb_modes": 100,
         }
         # Flat bottom
         self.range_dependence = True
@@ -482,6 +491,7 @@ class TestCase1_4(TestCase1):
             "max_range_m": 50 * 1e3,
             "dr_flp": 5,
             "dr_bathy": 500,
+            "nb_modes": 100,
         }
         # Flat bottom
         self.range_dependence = True
@@ -502,7 +512,7 @@ class TestCase1_4(TestCase1):
 
     def load_ssp(self):
         # Load ssp mat file
-        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+        data_dir = os.path.join(PROJECT_ROOT, "data", "ssp", "mmdpm")
         fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
         ssp_mat = sio.loadmat(fpath)
         self.z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()
@@ -542,7 +552,8 @@ class TestCase2_0(TestCase2):
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "dr_flp": 5,
-            "dr_bathy": 500,
+            "dr_bathy": 500, 
+            "nb_modes": 100,
         }
         # Flat bottom
         self.range_dependence = False
@@ -569,6 +580,7 @@ class TestCase2_1(TestCase2):
             "azimuth": 0,
             "dr_flp": 5,
             "dr_bathy": 500,
+            "nb_modes": 100,
         }
         # Flat bottom
         self.range_dependence = True
@@ -609,6 +621,7 @@ class TestCase2_2(TestCase2):
             "rcv_lat": 52.22,
             "dr_flp": 5,
             "dr_bathy": 500,
+            "nb_modes": 100,
         }
         # Flat bottom
         self.range_dependence = True
@@ -617,7 +630,8 @@ class TestCase2_2(TestCase2):
         self.process()
 
     def write_bathy(self):
-        bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\shallow_water\GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
+        fname = "GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
+        bathy_nc_path = os.path.join(PROJECT_ROOT, "data", "bathy", "shallow_water", fname)
         # Load real profile around OBS RR48
         extract_2D_bathy_profile(
             bathy_nc_path=bathy_nc_path,
@@ -633,7 +647,7 @@ class TestCase2_2(TestCase2):
 
     def load_ssp(self):
         # Load ssp mat file
-        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+        data_dir = os.path.join(PROJECT_ROOT, "data", "ssp", "mmdpm")
         fpath = os.path.join(
             data_dir,
             "shallow_water",
@@ -682,6 +696,7 @@ class TestCase3_1(TestCase3):
             "rcv_lat": -27.58,
             "dr_flp": 5,
             "dr_bathy": 1000,
+            "nb_modes": 100,
             "called_by_subprocess": False,
         }
 
@@ -692,7 +707,10 @@ class TestCase3_1(TestCase3):
         self.process()
 
     def write_bathy(self):
-        bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+        # bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+        fname = "GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+        bathy_nc_path = os.path.join(PROJECT_ROOT, "data", "bathy", "mmdpm", "PVA_RR48", fname)
+
         # Load real profile around OBS RR48
         extract_2D_bathy_profile(
             bathy_nc_path=bathy_nc_path,
@@ -709,7 +727,7 @@ class TestCase3_1(TestCase3):
 
     def load_ssp(self):
         # Load ssp mat file
-        data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm"
+        data_dir = os.path.join(PROJECT_ROOT, "data", "ssp", "mmdpm")
         fpath = os.path.join(data_dir, "PVA_RR48", f"mmdpm_test_PVA_RR48_ssp.mat")
         ssp_mat = sio.loadmat(fpath)
         self.z_ssp = ssp_mat["ssp"]["z"][0, 0].flatten()

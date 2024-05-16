@@ -1,3 +1,4 @@
+import os 
 from colorama import Fore
 
 """ Usefull constants """
@@ -37,4 +38,7 @@ LEGEND_FONTSIZE = 18
 SUPLABEL_FONTSIZE = 22
 
 # Parrallel processing
-N_CORES = 10
+if os.name == "nt":
+    N_CORES = 10  # Windows PC
+else:
+    N_CORES = 100   # Linux plateforme TIM

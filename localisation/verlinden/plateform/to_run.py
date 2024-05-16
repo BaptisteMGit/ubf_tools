@@ -56,6 +56,8 @@ def test():
 def run_swir():
     rcv_info_dw = {
         "id": ["RR45", "RR48", "RR44"],
+        # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
+        # "id": ["RRpftim0", "RRpftim1"],
         "lons": [],
         "lats": [],
     }
@@ -84,13 +86,16 @@ def run_swir():
     )
 
     src_sig *= np.hanning(len(src_sig))
+    nfft = None 
     src = AcousticSource(
         signal=src_sig,
         time=t_src_sig,
         name="ship",
         waveguide_depth=min_waveguide_depth,
+        nfft=nfft,
     )
 
+    print(f"nfft = {src.nfft}")
     (
         fullpath_dataset_propa,
         fullpath_dataset_propa_grid,
@@ -100,7 +105,34 @@ def run_swir():
     )
 
 
+
 if __name__ == "__main__":
 
-    test()
-    # run_swir()
+    run_swir()
+
+    # test()
+    # import os
+    # import zarr
+    # import xarray as xr 
+
+    # path = "/home/data/localisation_dataset/testcase3_1/propa_grid_src/propa_grid_src_65.6098_65.8902_-27.6593_-27.4407_100_100_ship.zarr"
+    # root = "/home/data/localisation_dataset/testcase3_1"
+    # folders = ["propa_grid", "propa_grid_src"]
+    # fname = "65.7009_65.7991_-27.5581_-27.5219_100_100.zarr"
+    # for folder in folders:
+    #     if folder == "propa_grid_src":
+    #         src = "ship"
+    #         fname = fname[:-5] + "_" + src + ".zarr"
+
+    #     fpath = os.path.join(root, folder, f"{folder}_{fname}")
+    #     zarr_store = zarr.open(fpath)
+    #     for f in folders:
+    #         zarr_store.attrs.update({f"{f}_done": False})
+    #     zarr.consolidate_metadata(fpath)
+
+    # fpath = "/home/data/localisation_dataset/testcase3_1/propa/propa_65.7009_65.7991_-27.5581_-27.5219.zarr"
+
+    # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+
+    # print()
+

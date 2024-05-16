@@ -29,6 +29,7 @@ from localisation.verlinden.plateform.init_dataset import (
 
 from localisation.verlinden.verlinden_utils import get_azimuth_rcv
 from cst import C0
+from localisation.verlinden.plateform.plateform_cst import N_WORKERS
 
 
 def grid_tf(ds, dx=100, dy=100, rcv_info=None):
@@ -107,7 +108,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     # chunk_lon = max(1, ds.sizes["lon"] // 10)
     # chunk_lat = max(1, ds.sizes["lat"] // 10)
     # , chunks=(1, chunk_lat, chunk_lon, 1)
-    tf_gridded_array = da.empty(tf_gridded_shape, dtype=np.float32)
+    tf_gridded_array = da.empty(tf_gridded_shape, dtype=np.complex64)
     ds["tf_gridded"] = (
         tf_gridded_dim,
         tf_gridded_array,
@@ -126,7 +127,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
         for lat_s in lat_slices:
             ds_sub = ds.isel(lat=lat_s, lon=lon_s)
 
-            tf_sub = np.empty_like(ds_sub.tf_gridded)
+            tf_sub = np.empty_like(ds_sub.tf_gridded, dtype=np.complex64)
 
             for i_rcv in ds.idx_rcv.values:
                 ds_to_pop = ds_sub.sel(idx_rcv=i_rcv)
@@ -167,7 +168,7 @@ def grid_synthesis(
     src,
     apply_delay=True,
 ):
-    with Client(n_workers=6, threads_per_worker=1) as client:
+    with Client(n_workers=N_WORKERS, threads_per_worker=1) as client:
         print(client.dashboard_link)
 
         # Set path to save the dataset and save existing vars
@@ -189,7 +190,7 @@ def grid_synthesis(
         time_vector = np.arange(0, T_tot, dt)
 
         # Loop over sub_regions of the grid
-        nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded)
+        nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=0.5*1e9)
         lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
         ds.coords["library_signal_time"] = time_vector
@@ -273,11 +274,10 @@ def compute_received_signal(
         transmited_field_f = transmited_field_f * delay_f
 
     # Fourier synthesis of the received signal -> time domain
-    n_workers = 6
     chunk_shape = (
         ds.sizes["idx_rcv"],
-        ds.sizes["lat"] // n_workers,
-        ds.sizes["lon"] // n_workers,
+        ds.sizes["lat"] // N_WORKERS,
+        ds.sizes["lon"] // N_WORKERS,
         ds.sizes["kraken_freq"],
     )
     transmited_field_f = da.from_array(transmited_field_f, chunks=chunk_shape)

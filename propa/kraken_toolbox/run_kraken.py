@@ -178,41 +178,84 @@ def assign_frequency_intervalls(frequencies, n_workers, mode="equally_distribute
     return assigned_frequency_ranges, nb_used_workers
 
 
-def run_field(filename, parallel=False, worker_pid=None):
+def run_exec(exec, filename, parallel, worker_pid, silent):
+    """
+    Run executable (field / kraken).
+
+    :param exec: (str) Executable name
+    :param filename: (str) Env filename without the .env extension
+    :param parallel: (bool) Run in parallel mode
+    :param worker_pid: (int) Worker process id
+    :param silent: (bool) Silent mode
+    :return:
+
+    """
+    if os.name == "nt":
+        ext = ".exe"
+        silent_redirection = " >NUL 2>&1"
+    else:
+        ext = ""
+        silent_redirection = " >/dev/null 2>&1"
+
     if parallel and (os.name == "nt"):
         if worker_pid is not None:
             parallel_working_dir = os.getcwd()
             subprocess_working_dir = os.path.join(parallel_working_dir, "bin")
-            fpath_to_kraken = os.path.join(subprocess_working_dir, "field.exe")
-            cmd = f"{fpath_to_kraken} {filename}"
+            fpath_to_exec = os.path.join(subprocess_working_dir, exec)
+            cmd = f"{fpath_to_exec} {filename}"
         else:
             raise ValueError(f"worker_pid must be specified with parallel set to True.")
     else:
-        cmd = "field"
+        cmd = exec
 
-    # Run Fortran version of Field
-    os.system(f"{cmd} {filename}")
-
-
-def run_kraken(filename, parallel=False, worker_pid=None, silent=True):
-    if parallel and (os.name == "nt"):
-        if worker_pid is not None:
-            parallel_working_dir = os.getcwd()
-            subprocess_working_dir = os.path.join(parallel_working_dir, "bin")
-            fpath_to_kraken = os.path.join(subprocess_working_dir, "kraken.exe")
-            cmd = f"{fpath_to_kraken} {filename}"
-        else:
-            raise ValueError(f"worker_pid must be specified with parallel set to True.")
-    else:
-        cmd = "kraken"
-
-    # Avoid warning
+    cmd += ext
     to_ex = f"{cmd} {filename}"
     if silent:
-        to_ex = to_ex + " >/dev/null 2>&1"
+        # Silent to avoid warning
+        to_ex += silent_redirection
 
     # Run Fortran version of Kraken
     os.system(to_ex)
+
+
+def run_field(filename, parallel=False, worker_pid=None, silent=False):
+    """
+    Run field executable.
+
+    :param filename: (str) Env filename without the .env extension
+    :param parallel: (bool) Run in parallel mode (default: False)
+    :param worker_pid: (int) Worker process id
+    :param silent: (bool) Silent mode (default: True)
+    :return:
+
+    """
+    run_exec(
+        exec="field",
+        filename=filename,
+        parallel=parallel,
+        worker_pid=worker_pid,
+        silent=silent,
+    )
+
+
+def run_kraken(filename, parallel=False, worker_pid=None, silent=True):
+    """
+    Run kraken executable.
+
+    :param filename: (str) Env filename without the .env extension
+    :param parallel: (bool) Run in parallel mode (default: False
+    :param worker_pid: (int) Worker process id
+    :param silent: (bool) Silent mode (default: True)
+    :return:
+
+    """
+    run_exec(
+        exec="kraken",
+        filename=filename,
+        parallel=parallel,
+        worker_pid=worker_pid,
+        silent=silent,
+    )
 
 
 def clear_kraken_parallel_working_dir(root):
@@ -295,8 +338,8 @@ def runkraken_broadband_range_dependent(
     parallel=False,
 ):
     """KRAKEN is capable of running broadband simulations with range independent environments
-    and single frequency simulations with range dependent environments. Yet, for some reason,
-    it is not capable of running broadband simulations with range dependent environments.
+    and single frequency simulations with range dependent environments. Yet, the available version is not capable of
+     running broadband simulations with range dependent environments.
     This function is a workaround to this issue. It runs KRAKEN with a range dependent environment
     for each frequency of the broadband simulation and then merge the results in a single pressure field.
     """

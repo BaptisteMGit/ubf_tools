@@ -3,7 +3,6 @@ import scipy.io as sio
 import matplotlib.pyplot as plt
 
 from cst import SAND_PROPERTIES, RHO_W
-from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 from propa.kraken_toolbox.kraken_env import (
     KrakenEnv,
     KrakenTopHalfspace,
@@ -94,7 +93,7 @@ class TestCase:
         self.rcv_lat = None
         self.dr_flp = None
         self.dr_bathy = None
-        self.nb_modes = None 
+        self.nb_modes = None
         self.plot_medium = False
         self.plot_bottom = False
         self.plot_bathy = False
@@ -417,7 +416,6 @@ class TestCase1_2(TestCase1):
             "dr_flp": 5,
             "dr_bathy": 500,
             "nb_modes": 100,
-
         }
         # Flat bottom
         self.range_dependence = True
@@ -552,7 +550,7 @@ class TestCase2_0(TestCase2):
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "dr_flp": 5,
-            "dr_bathy": 500, 
+            "dr_bathy": 500,
             "nb_modes": 100,
         }
         # Flat bottom
@@ -631,7 +629,9 @@ class TestCase2_2(TestCase2):
 
     def write_bathy(self):
         fname = "GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
-        bathy_nc_path = os.path.join(PROJECT_ROOT, "data", "bathy", "shallow_water", fname)
+        bathy_nc_path = os.path.join(
+            PROJECT_ROOT, "data", "bathy", "shallow_water", fname
+        )
         # Load real profile around OBS RR48
         extract_2D_bathy_profile(
             bathy_nc_path=bathy_nc_path,
@@ -708,8 +708,9 @@ class TestCase3_1(TestCase3):
 
     def write_bathy(self):
         # bathy_nc_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
-        fname = "GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
-        bathy_nc_path = os.path.join(PROJECT_ROOT, "data", "bathy", "mmdpm", "PVA_RR48", fname)
+        bathy_nc_path = os.path.join(
+            PROJECT_ROOT, "data", "bathy", "mmdpm", "PVA_RR48", BATHY_FILENAME
+        )
 
         # Load real profile around OBS RR48
         extract_2D_bathy_profile(

@@ -29,7 +29,7 @@ from localisation.verlinden.plateform.init_dataset import (
 
 from localisation.verlinden.verlinden_utils import get_azimuth_rcv
 from cst import C0
-from localisation.verlinden.plateform.plateform_cst import N_WORKERS
+from localisation.verlinden.plateform.params import N_WORKERS
 
 
 def grid_tf(ds, dx=100, dy=100, rcv_info=None):
@@ -244,46 +244,6 @@ def grid_synthesis(
     zarr.consolidate_metadata(ds.fullpath_dataset_propa_grid_src)
 
     return ds
-
-
-def compute_received_signal(
-    ds, propagating_freq, propagating_spectrum, norm_factor, nfft_inv, apply_delay
-):
-
-    # Received signal spectrum resulting from the convolution of the src signal and the impulse response
-    transmited_field_f = mult_along_axis(
-        ds.tf_gridded, propagating_spectrum * norm_factor, axis=-1
-    )
-
-    # Apply corresponding delay to the signal
-    if apply_delay:
-        tau = ds.delay_rcv.min(
-            dim="idx_rcv"
-        )  # Delay to apply to the signal to take into account the propagation time
-
-        # Expand tau to the signal shape
-        tau = tau.expand_dims({"kraken_freq": ds.sizes["kraken_freq"]}, axis=-1)
-        # Derive delay factor
-        tau_vec = mult_along_axis(tau, propagating_freq, axis=-1)
-        delay_f = np.exp(1j * 2 * np.pi * tau_vec)
-        # Expand delay factor to the signal shape
-        delay_f = tau.copy(deep=True, data=delay_f).expand_dims(
-            {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
-        )
-        # Apply delay
-        transmited_field_f = transmited_field_f * delay_f
-
-    # Fourier synthesis of the received signal -> time domain
-    chunk_shape = (
-        ds.sizes["idx_rcv"],
-        ds.sizes["lat"] // N_WORKERS,
-        ds.sizes["lon"] // N_WORKERS,
-        ds.sizes["kraken_freq"],
-    )
-    transmited_field_f = da.from_array(transmited_field_f, chunks=chunk_shape)
-    transmited_field_t = np.fft.irfft(transmited_field_f, axis=-1, n=nfft_inv).compute()
-
-    return transmited_field_t
 
 
 def populate_dataset(ds, src, **kwargs):

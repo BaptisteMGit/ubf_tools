@@ -19,7 +19,6 @@ import pandas as pd
 import dask.array as da
 
 from pyproj import Geod
-from dask.diagnostics import ProgressBar
 from localisation.verlinden.plateform.utils import set_attrs
 from propa.kraken_toolbox.run_kraken import runkraken
 from localisation.verlinden.verlinden_utils import (
@@ -105,19 +104,7 @@ def init_dataset(
     # Set attributes
     set_attrs(xr_dataset, grid_info, testcase)
 
-    # Chunk
-    # xr_dataset = xr_dataset.chunk({"idx_rcv": 1})
-
-    # Save zarr (light data)
-    # with ProgressBar():
-    # xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=True, mode="w")
-
     # Create arrays to store transfer functions
-    # Frequency vector
-    # nfft = 1024
-    # fs = 100
-    # nfft = 2**5
-    # fs = 10
     positive_freq = np.fft.rfftfreq(nfft, 1 / fs)
     xr_dataset.coords["kraken_freq"] = positive_freq
 
@@ -169,6 +156,14 @@ def init_dataset(
 
     # Store zarr without computing
     xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="w")
+
+    # Log simulation info
+    import pandas as pd
+
+    log_path = os.path.join(
+        os.path.dirname(xr_dataset.fullpath_dataset_propa), "simu_log.csv"
+    )
+    log_df = pd.read_csv()
 
     return xr_dataset
 

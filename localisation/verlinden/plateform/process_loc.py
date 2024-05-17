@@ -15,6 +15,7 @@
 import numpy as np
 import xarray as xr
 
+from cst import C0
 from localisation.verlinden.verlinden_utils import (
     init_event_src_traj,
     init_grid_around_event_src_traj,
@@ -27,11 +28,52 @@ from localisation.verlinden.verlinden_utils import (
 # ======================================================================================================================
 
 
-def add_event(xr_dataset):
-    pass
+def add_event(ds, src_info, apply_delay):
+
+    pos_src_info = src_info["pos"]
+    src = src_info["sig"]["src"]
+
+    propagating_freq = src.positive_freq
+    propagating_spectrum = src.positive_spectrum
+
+    k0 = 2 * np.pi * propagating_freq / C0
+    norm_factor = np.exp(1j * k0) / (4 * np.pi)
+
+    nfft_inv = (
+        4 * src.nfft
+    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    T_tot = 1 / src.df
+    dt = T_tot / nfft_inv
+    time_vector = np.arange(0, T_tot, dt)
+
+    # transmited_field_f = mult_along_axis(
+    #     ds.tf_gridded, propagating_spectrum * norm_factor, axis=-1
+    # )
+
+    # Apply corresponding delay to the signal
+    for i_pos in range(pos_src_info["n_pos"]):
+        transmited_field_f = ds.tf_gridded.sel(
+            lon=pos_src_info["lons"][i_pos],
+            lat=pos_src_info["lats"][i_pos],
+            method="nearest",
+        )
+        if apply_delay:
+            tau = ds.delay_rcv.min(dim="idx_rcv").sel(
+                lon=pos_src_info["lons"][i_pos],
+                lat=pos_src_info["lats"][i_pos],
+                method="nearest",
+            )  # Delay to apply to the signal to take into account the propagation time
+
+            # Derive delay factor
+            tau_vec = tau.values * propagating_freq
+            delay_f = np.exp(1j * 2 * np.pi * tau_vec)
+            # Apply delay
+            transmited_field_f = transmited_field_f * delay_f
+
+        transmited_sig_t = np.fft.irfft(transmited_field_f, n=nfft_inv, axis=-1)
 
 
-def load_subset(fpath, src_info, grid_info, dt):
+def load_subset(fpath, pos_src_info, grid_info, dt):
     """
     Load a subset of the dataset around the source to be localized.
     """
@@ -39,8 +81,8 @@ def load_subset(fpath, src_info, grid_info, dt):
     ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
     # Define limits of the subset area
-    init_event_src_traj(src_info, dt)
-    init_grid_around_event_src_traj(src_info, grid_info)
+    init_event_src_traj(pos_src_info, dt)
+    init_grid_around_event_src_traj(pos_src_info, grid_info)
 
     # Extract area around the source
     ds_subset = ds.sel(
@@ -52,8 +94,14 @@ def load_subset(fpath, src_info, grid_info, dt):
 
 
 if __name__ == "__main__":
+
+    from signals import pulse, generate_ship_signal
+    from localisation.verlinden.AcousticComponent import AcousticSource
+
+    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa_grid_src\propa_grid_src_65.5973_65.8993_-27.6673_-27.3979_100_100_debug_pulse.zarr"
+
     fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa\propa_65.5973_65.8993_-27.6673_-27.3979.zarr"
-    # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
     dt = 7
     v_knots = 20  # 20 knots
@@ -64,7 +112,7 @@ if __name__ == "__main__":
 
     fs = 100
     duration = 200  # 1000 s
-    nmax_ship = 1
+    nmax_ship = 5
     src_stype = "ship"
 
     rcv_info = {
@@ -86,7 +134,7 @@ if __name__ == "__main__":
         "crs": "WGS84",
     }
 
-    src_info = {
+    event_pos_info = {
         "speed": v_ship,
         "depth": z_src,
         "duration": duration,
@@ -95,10 +143,9 @@ if __name__ == "__main__":
         "route_azimuth": route_azimuth,
         "initial_pos": initial_ship_pos,
     }
-
     # Event
     f0_event = 1.5  # Fundamental frequency of the ship signal
-    event_src_info = {
+    event_sig_info = {
         "sig_type": "ship",
         "f0": f0_event,
         "std_fi": f0_event * 10 / 100,
@@ -106,7 +153,29 @@ if __name__ == "__main__":
         "fs": fs,
     }
 
-    src_info["event"] = event_src_info
+    src_sig, t_src_sig = generate_ship_signal(
+        Ttot=dt,
+        f0=event_sig_info["f0"],
+        std_fi=event_sig_info["std_fi"],
+        tau_corr_fi=event_sig_info["tau_corr_fi"],
+        fs=event_sig_info["fs"],
+    )
+
+    src_sig *= np.hanning(len(src_sig))
+    nfft = None
+    min_waveguide_depth = 5000
+    src = AcousticSource(
+        signal=src_sig,
+        time=t_src_sig,
+        name="ship",
+        waveguide_depth=min_waveguide_depth,
+        nfft=nfft,
+    )
+    event_sig_info["src"] = src
+
+    src_info = {}
+    src_info["pos"] = event_pos_info
+    src_info["sig"] = event_sig_info
 
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
@@ -122,4 +191,7 @@ if __name__ == "__main__":
         dlon_bathy=dlon,
     )
 
-    load_subset(fpath, src_info, grid_info, dt)
+    ds_subset = load_subset(
+        fpath, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
+    )
+    add_event(ds=ds_subset, src_info=src_info, apply_delay=True)

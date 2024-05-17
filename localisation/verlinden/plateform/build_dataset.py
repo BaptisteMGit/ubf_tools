@@ -25,7 +25,7 @@ from propa.kraken_toolbox.run_kraken import runkraken, clear_kraken_parallel_wor
 from localisation.verlinden.plateform.init_dataset import init_dataset
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 
-from localisation.verlinden.plateform.plateform_cst import N_WORKERS, MAX_RAM_GB
+from localisation.verlinden.plateform.params import N_WORKERS, MAX_RAM_GB
 
 # ======================================================================================================================
 # Functions

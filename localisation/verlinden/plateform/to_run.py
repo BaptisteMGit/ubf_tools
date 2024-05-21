@@ -107,5 +107,5 @@ def run_swir():
 
 if __name__ == "__main__":
 
-    # run_swir()
-    test()
+    run_swir()
+    # test()

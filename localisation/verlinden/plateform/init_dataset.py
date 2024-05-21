@@ -19,7 +19,11 @@ import pandas as pd
 import dask.array as da
 
 from pyproj import Geod
-from localisation.verlinden.plateform.utils import set_attrs
+from localisation.verlinden.plateform.utils import (
+    set_attrs,
+    init_simu_info_dataset,
+    set_simu_unique_id,
+)
 from propa.kraken_toolbox.run_kraken import runkraken
 from localisation.verlinden.verlinden_utils import (
     get_range_from_rcv,
@@ -157,13 +161,36 @@ def init_dataset(
     # Store zarr without computing
     xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="w")
 
-    # Log simulation info
-    import pandas as pd
+    # # Save simu info in netcdf
+    # folder = os.path.dirname(os.path.dirname(xr_dataset.fullpath_dataset_propa))
+    # ds_info_path = os.path.join(folder, "simu_index.nc")
 
-    log_path = os.path.join(
-        os.path.dirname(xr_dataset.fullpath_dataset_propa), "simu_log.csv"
-    )
-    log_df = pd.read_csv()
+    # if os.path.exists(ds_info_path):
+    #     # Load ds
+    #     ds_info = xr.open_dataset(ds_info_path)
+
+    # else:
+    #     # Create ds
+    #     ds_info = init_simu_info_dataset()
+
+    # # Add new simu
+    # id_to_write_in = (~ds_info.launched).idxmax()
+    # ds_info.launched.loc[id_to_write_in] = True
+    # ds_info.min_dist.loc[id_to_write_in] = minimum_distance_around_rcv
+
+    # nf = xr_dataset.sizes["kraken_freq"]
+    # ds_info.nfreq.loc[id_to_write_in] = nf
+    # ds_info.freq.loc[id_to_write_in][:nf] = xr_dataset.kraken_freq.values
+
+    # nr = xr_dataset.sizes["idx_rcv"]
+    # ds_info.nrcv.loc[id_to_write_in] = nr
+    # ds_info.rcv_id.loc[id_to_write_in][:nr] = xr_dataset.rcv_id.values
+
+    # ds_info.boundaries_label.loc[id_to_write_in] = xr_dataset.attrs["boundaries_label"]
+    # set_simu_unique_id(ds_info, id_to_write_in)
+
+    # # Save ds
+    # ds_info.to_netcdf(ds_info_path)
 
     return xr_dataset
 

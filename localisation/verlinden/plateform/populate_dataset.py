@@ -160,6 +160,9 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     ds = ds.drop_vars("tf")
 
+    # Update info in dataset
+    # update_info_status(ds, part_done="propa_grid")
+
     return ds
 
 
@@ -190,7 +193,9 @@ def grid_synthesis(
         time_vector = np.arange(0, T_tot, dt)
 
         # Loop over sub_regions of the grid
-        nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=0.5*1e9)
+        nregion = get_region_number(
+            ds.sizes["lon"], ds.tf_gridded, max_size_bytes=0.5 * 1e9
+        )
         lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
         ds.coords["library_signal_time"] = time_vector

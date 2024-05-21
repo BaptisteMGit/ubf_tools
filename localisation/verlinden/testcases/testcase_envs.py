@@ -23,8 +23,7 @@ from localisation.verlinden.testcases.testcase_bathy import (
     mmdpm_profile,
     extract_2D_bathy_profile,
 )
-from localisation.verlinden.verlinden_path import TC_WORKING_DIR
-from path import PROJECT_ROOT
+from localisation.verlinden.params import TC_WORKING_DIR, PROJECT_ROOT, BATHY_FILENAME
 
 ##########################################################################################
 # Useful constants

@@ -62,7 +62,7 @@ def run_swir():
         "lats": [],
     }
     tc = TestCase3_1()
-    min_dist = 1 * 1e3
+    min_dist = 22 * 1e3
     dx, dy = 100, 100
 
     # Define source signal
@@ -107,4 +107,5 @@ def run_swir():
 
 if __name__ == "__main__":
 
-    run_swir()
+    # run_swir()
+    test()

@@ -5,7 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from publication.PublicationFigure import PubFigure
-from localisation.verlinden.verlinden_path import TC_WORKING_DIR
+from localisation.verlinden.params import TC_WORKING_DIR
 from get_data.bathymetry.bathy_profile_extraction import extract_bathy_profile
 from propa.kraken_toolbox.run_kraken import get_subprocess_working_dir
 

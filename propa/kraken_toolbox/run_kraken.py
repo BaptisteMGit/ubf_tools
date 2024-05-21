@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*-coding:utf-8 -*-
 """
-@File    :   run_kraken.py
+@File    :   run_kraken_exec.py
 @Time    :   2024/02/21 15:34:27
 @Author  :   Menetrier Baptiste 
 @Version :   1.0
@@ -14,18 +14,13 @@
 # ======================================================================================================================
 
 import os
-import time
-
-# import pathos
-import psutil
 import shutil
-import multiprocessing
 import numpy as np
+import multiprocessing
 
-# from tqdm import tqdm
-from cst import BAR_FORMAT, N_CORES
-from propa.kraken_toolbox.usefull_path import KRAKEN_BIN_DIRECTORY
-from propa.kraken_toolbox.kraken_env import KrakenEnv, KrakenFlp
+from cst import N_CORES
+from propa.kraken_toolbox.params import KRAKEN_BIN_DIRECTORY
+from propa.kraken_toolbox.kraken_env import KrakenEnv
 from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import find_optimal_intervals
 
@@ -105,9 +100,9 @@ def runkraken(
     else:  # Run range independent simulation (no parallelization for now)
 
         # Run Fortran version of Kraken
-        run_kraken(env.filename)
+        run_kraken_exec(env.filename)
         # Run Fortran version of Field
-        run_field(env.filename)
+        run_field_exec(env.filename)
 
         # Read pressure field for the current frequency
         _, _, _, _, read_freq, _, field_pos, pressure_field = readshd(
@@ -218,7 +213,7 @@ def run_exec(exec, filename, parallel, worker_pid, silent):
     os.system(to_ex)
 
 
-def run_field(filename, parallel=False, worker_pid=None, silent=False):
+def run_field_exec(filename, parallel=False, worker_pid=None, silent=False):
     """
     Run field executable.
 
@@ -238,7 +233,7 @@ def run_field(filename, parallel=False, worker_pid=None, silent=False):
     )
 
 
-def run_kraken(filename, parallel=False, worker_pid=None, silent=True):
+def run_kraken_exec(filename, parallel=False, worker_pid=None, silent=True):
     """
     Run kraken executable.
 
@@ -267,17 +262,6 @@ def clear_kraken_parallel_working_dir(root):
     for root, dirs, files in os.walk(dir):
         for d in dirs:
             shutil.rmtree(os.path.join(root, d))
-
-
-def get_child_pids():
-    """
-    Get child process pid.
-
-    :return:
-    """
-    parent_pid = multiprocessing.current_process().pid
-    children = psutil.Process(parent_pid).children(recursive=True)
-    return [child.pid for child in children]
 
 
 def get_subprocess_working_dir(env_root, worker_pid):
@@ -316,7 +300,7 @@ def init_parallel_kraken_working_dirs(env, env_root, worker_pid):
             os.makedirs(bin_folder)
 
         # Copy bin files to subprocess working directory
-        # (that's ugly but it works... calling kraken.exe and field.exe simultaneously from different process leads to errors)
+        # (that's ugly but it works... calling kraken.exe and field.exe simultaneously from different process fails on Windows OS)
         for bin in [
             "kraken.exe",
             "field.exe",
@@ -346,13 +330,6 @@ def runkraken_broadband_range_dependent(
     # Root dir to share with subprocesses
     worker_pid = os.getpid()
     env_root = env.root
-
-    # Loop over frequencies
-    # for ifreq in tqdm(
-    #     range(len(frequencies)),
-    #     bar_format=BAR_FORMAT,
-    #     desc=desc,
-    # ):
 
     for ifreq in range(len(frequencies)):
         # Initialize environment with the current frequency and provided range dependent environment
@@ -384,9 +361,9 @@ def runkraken_broadband_range_dependent(
             flp.write_flp()
 
         # Run Fortran version of Kraken
-        run_kraken(env.filename, parallel, worker_pid)
+        run_kraken_exec(env.filename, parallel, worker_pid)
         # Run Fortran version of Field
-        run_field(env.filename, parallel, worker_pid)
+        run_field_exec(env.filename, parallel, worker_pid)
 
         # Read pressure field for the current frequency
         _, _, _, _, read_freq, _, field_pos, pressure = readshd(

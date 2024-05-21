@@ -1,8 +1,10 @@
 import io
 import os
 import shutil
+import psutil
 import numpy as np
 import numpy as np
+import multiprocessing
 import moviepy.editor as mpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -185,7 +187,7 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
         **kwargs,
     )
 
-    # Calculating the stdandard deviation of x from
+    # Calculating the standard deviation of x from
     # the squareroot of the variance and multiplying
     # with the given number of standard deviations.
     scale_x = np.sqrt(cov[0, 0]) * n_std
@@ -205,6 +207,17 @@ def confidence_ellipse(x, y, ax, n_std=3.0, facecolor="none", **kwargs):
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
     # render plot with "plt.show()".
+
+
+def get_child_pids():
+    """
+    Get child process pid.
+
+    :return:
+    """
+    parent_pid = multiprocessing.current_process().pid
+    children = psutil.Process(parent_pid).children(recursive=True)
+    return [child.pid for child in children]
 
 
 if __name__ == "__main__":

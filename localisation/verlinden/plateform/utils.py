@@ -15,10 +15,17 @@
 import os
 import numpy as np
 import pandas as pd
+import xarray as xr
 import dask.array as da
 
+from cst import C0
 from misc import mult_along_axis
-from localisation.verlinden.plateform.params import N_WORKERS, ROOT_DATASET_PATH
+from localisation.verlinden.plateform.params import N_WORKERS
+from localisation.verlinden.params import ROOT_DATASET_PATH
+from localisation.verlinden.verlinden_utils import (
+    get_range_src_rcv_range,
+    add_noise_to_signal,
+)
 
 
 def set_attrs(xr_dataset, grid_info, testcase):
@@ -273,3 +280,192 @@ def compute_received_signal(
     transmited_field_t = np.fft.irfft(transmited_field_f, axis=-1, n=nfft_inv).compute()
 
     return transmited_field_t
+
+
+def init_simu_info_dataset():
+    n_simu = 100
+    n_rcv_max = 10
+    n_freq_max = 513
+
+    simu_id = np.arange(0, n_simu, dtype=int)
+    simu_unique_id = np.zeros(n_simu, dtype="<U128")
+
+    simu_launched = np.zeros(n_simu, dtype=bool)
+    simu_propa_done = np.zeros(n_simu, dtype=bool)
+    simu_propa_grid_done = np.zeros(n_simu, dtype=bool)
+    simu_propa_grid_src_done = np.zeros(n_simu, dtype=bool)
+
+    simu_min_dist = np.zeros(n_simu, dtype=float)
+    simu_nfreq = np.zeros(n_simu, dtype=int)
+
+    simu_freq = np.zeros((n_simu, n_freq_max), dtype=float)
+    simu_freq[:] = np.nan
+    freq_idx = np.arange(0, n_freq_max, dtype=int)
+
+    boundaries_label = np.zeros(n_simu, dtype="<U64")
+    simu_rcv_id = np.zeros((n_simu, n_rcv_max), dtype="<U16")
+
+    rcv_idx = np.arange(0, n_rcv_max, dtype=int)
+    nrcv = np.zeros(n_simu, dtype=int)
+
+    ds_info = xr.Dataset(
+        data_vars=dict(
+            unique_id=("simu_id", simu_unique_id),
+            launched=("simu_id", simu_launched),
+            min_dist=("simu_id", simu_min_dist),
+            nfreq=("simu_id", simu_nfreq),
+            freq=(("simu_id", "freq_idx"), simu_freq),
+            boundaries_label=("simu_id", boundaries_label),
+            rcv_id=(("simu_id", "rcv_idx"), simu_rcv_id),
+            nrcv=("simu_id", nrcv),
+            propa_done=("simu_id", simu_propa_done),
+            propa_grid_done=("simu_id", simu_propa_grid_done),
+            propa_grid_src_done=("simu_id", simu_propa_grid_src_done),
+        ),
+        coords=dict(
+            simu_id=("simu_id", simu_id),
+            freq_idx=("freq_idx", freq_idx),
+            rcv_idx=("rcv_idx", rcv_idx),
+        ),
+    )
+
+    return ds_info
+
+
+def set_simu_unique_id(ds, id_to_write_in):
+    nf = ds.nfreq.sel(simu_id=id_to_write_in).values
+    boundaries_label = ds.boundaries_label.sel(simu_id=id_to_write_in).values
+    freq = ds.freq.sel(simu_id=id_to_write_in).values
+    rcv_id = "_".join(
+        ds.rcv_id.sel(simu_id=id_to_write_in).values[
+            : ds.nrcv.sel(simu_id=id_to_write_in).values
+        ]
+    )
+    ds.unique_id.loc[id_to_write_in] = (
+        f"{boundaries_label}_{nf}_{np.nanmin(freq):.2f}_{np.nanmax(freq):.2f}_{rcv_id}"
+    )
+
+
+def get_ds_info_path(ds):
+    folder = os.path.dirname(os.path.dirname(ds.fullpath_dataset_propa))
+    ds_info_path = os.path.join(folder, "simu_index.nc")
+    return ds_info_path
+
+
+def update_info_status(ds, part_done):
+    path = get_ds_info_path(ds)
+    with xr.open_dataset(path) as ds_info:
+        id_to_write_in = (~ds_info.launched).idxmax() - 1
+        var_to_update = f"{part_done}_done"
+        ds_info[var_to_update].loc[id_to_write_in] = True
+    ds_info.to_netcdf(path)
+
+
+def init_event_dataset(xr_dataset, src_info, rcv_info):
+    """
+    Initialize the dataset for the event.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Library dataset.
+    src_info : dict
+        Source information.
+    rcv_info : dict
+        Receiver information.
+    interp_src_pos_on_grid : bool, optional
+        Interpolate source positions on grid. The default is False.
+
+    Returns
+    -------
+    xr.Dataset
+        Initialized dataset.
+
+    """
+
+    lon_src, lat_src, t_src = src_info["lons"], src_info["lats"], src_info["time"]
+    r_src_rcv = get_range_src_rcv_range(lon_src, lat_src, rcv_info)
+    delay_src_rcv = r_src_rcv / C0
+
+    xr_dataset.coords["event_signal_time"] = []
+    xr_dataset.coords["src_trajectory_time"] = t_src.astype(np.float32)
+
+    xr_dataset["lon_src"] = (["src_trajectory_time"], lon_src.astype(np.float32))
+    xr_dataset["lat_src"] = (["src_trajectory_time"], lat_src.astype(np.float32))
+    xr_dataset["r_src_rcv"] = (
+        ["idx_rcv", "src_trajectory_time"],
+        np.array(r_src_rcv).astype(np.float32),
+    )
+    xr_dataset["delay_src_rcv"] = (
+        ["idx_rcv", "src_trajectory_time"],
+        np.array(delay_src_rcv).astype(np.float32),
+    )
+
+    xr_dataset["event_signal_time"].attrs["units"] = "s"
+    xr_dataset["src_trajectory_time"].attrs["units"] = "s"
+    xr_dataset["lon_src"].attrs["long_name"] = "lon_src"
+    xr_dataset["lat_src"].attrs["long_name"] = "lat_src"
+    xr_dataset["r_src_rcv"].attrs["long_name"] = "Range from receiver to source"
+    xr_dataset["event_signal_time"].attrs["units"] = "Time"
+    xr_dataset["src_trajectory_time"].attrs["long_name"] = "Time"
+
+
+def add_noise_to_dataset(xr_dataset, target_var, snr_dB):
+    """
+    Add noise to signal.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+
+    Returns
+    -------
+    None
+
+    """
+    for i_rcv in xr_dataset.idx_rcv.values:
+        rcv_sig = xr_dataset[target_var].sel(idx_rcv=i_rcv).values
+
+        if snr_dB is not None:
+            # Add noise to received signal
+            xr_dataset[target_var].loc[dict(idx_rcv=i_rcv)] = add_noise_to_signal(
+                np.copy(rcv_sig),
+                snr_dB=snr_dB,
+            )
+
+
+def add_noise_to_library(xr_dataset, target_var, snr_dB):
+    """
+    Add noise to library signal.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+
+    Returns
+    -------
+    None
+
+    """
+    target_var = "rcv_signal_library"
+    add_noise_to_dataset(xr_dataset, target_var, snr_dB)
+
+
+def add_noise_to_library(xr_dataset, target_var, snr_dB):
+    """
+    Add noise to event signal.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+
+    Returns
+    -------
+    None
+
+    """
+    target_var = "event_signal"
+    add_noise_to_dataset(xr_dataset, target_var, snr_dB)

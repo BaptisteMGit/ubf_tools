@@ -16,12 +16,10 @@ import numpy as np
 import xarray as xr
 
 from cst import C0
-from localisation.verlinden.verlinden_utils import (
-    init_event_src_traj,
-    init_grid_around_event_src_traj,
-    get_bathy_grid_size,
-    load_rhumrum_obs_pos,
-)
+from misc import mult_along_axis
+from localisation.verlinden.plateform.utils import init_event_dataset
+
+# from localisation.verlinden.verlinden_utils import *
 
 # ======================================================================================================================
 # Functions
@@ -44,33 +42,43 @@ def add_event(ds, src_info, apply_delay):
     )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
     T_tot = 1 / src.df
     dt = T_tot / nfft_inv
-    time_vector = np.arange(0, T_tot, dt)
+    time_vector = np.arange(0, T_tot, dt, dtype=np.float32)
 
-    # transmited_field_f = mult_along_axis(
-    #     ds.tf_gridded, propagating_spectrum * norm_factor, axis=-1
-    # )
+    init_event_dataset(ds, pos_src_info, rcv_info)
+
+    ds["event_signal_time"] = time_vector
+    signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
+    rcv_signal_event = np.empty(
+        tuple(ds.sizes[d] for d in signal_event_dim), dtype=np.float32
+    )
+    ds["event_signal"] = (signal_event_dim, rcv_signal_event)
 
     # Apply corresponding delay to the signal
     for i_pos in range(pos_src_info["n_pos"]):
-        transmited_field_f = ds.tf_gridded.sel(
+        tf = ds.tf_gridded.sel(
             lon=pos_src_info["lons"][i_pos],
             lat=pos_src_info["lats"][i_pos],
             method="nearest",
         )
+        transmited_sig_f = mult_along_axis(
+            tf, propagating_spectrum * norm_factor, axis=-1
+        )
         if apply_delay:
-            tau = ds.delay_rcv.min(dim="idx_rcv").sel(
-                lon=pos_src_info["lons"][i_pos],
-                lat=pos_src_info["lats"][i_pos],
-                method="nearest",
-            )  # Delay to apply to the signal to take into account the propagation time
+            # tau = ds.delay_rcv.min(dim="idx_rcv").sel(
+            #     lon=pos_src_info["lons"][i_pos],
+            #     lat=pos_src_info["lats"][i_pos],
+            #     method="nearest",
+            # )  # Delay to apply to the signal to take into account the propagation time
+            tau = ds.delay_src_rcv.min(dim="idx_rcv").isel(src_trajectory_time=i_pos)
 
             # Derive delay factor
             tau_vec = tau.values * propagating_freq
             delay_f = np.exp(1j * 2 * np.pi * tau_vec)
             # Apply delay
-            transmited_field_f = transmited_field_f * delay_f
+            transmited_sig_f *= delay_f
 
-        transmited_sig_t = np.fft.irfft(transmited_field_f, n=nfft_inv, axis=-1)
+        transmited_sig_t = np.fft.irfft(transmited_sig_f, n=nfft_inv, axis=-1)
+        ds.event_signal[dict(src_trajectory_time=i_pos)] = transmited_sig_t
 
 
 def load_subset(fpath, pos_src_info, grid_info, dt):
@@ -98,9 +106,9 @@ if __name__ == "__main__":
     from signals import pulse, generate_ship_signal
     from localisation.verlinden.AcousticComponent import AcousticSource
 
-    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa_grid_src\propa_grid_src_65.5973_65.8993_-27.6673_-27.3979_100_100_debug_pulse.zarr"
+    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa_grid_src\propa_grid_src_65.5973_65.8993_-27.6673_-27.3979_100_100_ship.zarr"
 
-    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa\propa_65.5973_65.8993_-27.6673_-27.3979.zarr"
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa\propa_65.5973_65.8993_-27.6673_-27.3979.zarr"
     ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
     dt = 7
@@ -162,7 +170,7 @@ if __name__ == "__main__":
     )
 
     src_sig *= np.hanning(len(src_sig))
-    nfft = None
+    nfft = 2**3
     min_waveguide_depth = 5000
     src = AcousticSource(
         signal=src_sig,
@@ -195,3 +203,16 @@ if __name__ == "__main__":
         fpath, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
     )
     add_event(ds=ds_subset, src_info=src_info, apply_delay=True)
+
+    # Add noise to dataset
+    add_noise_to_dataset(ds_subset, snr_dB=snr_i)
+    # Derive correlation vector for the entire grid
+    add_correlation_to_dataset(ds_subset)
+
+    add_event_correlation(xr_dataset=ds_subset)
+
+    build_ambiguity_surf(
+        ds_subset,
+        idx_similarity_metric=i_sim_metric,
+        i_noise=i,
+    )

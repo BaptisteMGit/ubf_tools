@@ -101,7 +101,8 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
         ds.attrs["dy"] = dy
         set_propa_grid_path(ds)
 
-    # Loop over sub_regions of the grid
+    # Save existing vars (no need to save tf)
+    ds.drop_vars("tf").to_zarr(ds.fullpath_dataset_propa_grid, mode="w")
 
     tf_gridded_dim = ["idx_rcv", "lat", "lon", "kraken_freq"]
     tf_gridded_shape = [ds.sizes[dim] for dim in tf_gridded_dim]
@@ -120,8 +121,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
     # Save to zarr without computing
-    ds_init = ds.drop_vars("tf")
-    ds_init.to_zarr(ds.fullpath_dataset_propa_grid, mode="a", compute=False)
+    ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="a", compute=False)
 
     for lon_s in lon_slices:
         for lat_s in lat_slices:

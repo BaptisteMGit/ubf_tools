@@ -40,12 +40,13 @@ def runkraken(
         env.range_dependent_env and env.broadband_run
     ):  # Run broadband range dependent simulation
 
-        # Clear working dirs
-        if clear:
-            clear_kraken_parallel_working_dir(root=env.root)
-
         # Run parallel
         if parallel:
+
+            # Clear working dirs
+            if clear:
+                clear_kraken_parallel_working_dir(root=env.root)
+
             if n_workers is None:
                 n_workers = min(len(frequencies), N_CORES)
             else:
@@ -196,8 +197,8 @@ def run_exec(exec, filename, parallel, worker_pid, silent):
         if worker_pid is not None:
             parallel_working_dir = os.getcwd()
             subprocess_working_dir = os.path.join(parallel_working_dir, "bin")
-            fpath_to_exec = os.path.join(subprocess_working_dir, exec)
-            cmd = f"{fpath_to_exec} {filename}"
+            cmd = os.path.join(subprocess_working_dir, exec)
+            # cmd = f"{fpath_to_exec} {filename}"
         else:
             raise ValueError(f"worker_pid must be specified with parallel set to True.")
     else:

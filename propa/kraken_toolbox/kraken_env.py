@@ -932,7 +932,6 @@ class KrakenEnv:
         plt.suptitle("Waveguide properties")
         plt.tight_layout()
         pfig = PubFigure(titlepad=50, labelpad=25)
-        pfig.set_all_fontsize()
 
 
 class KrakenFlp:

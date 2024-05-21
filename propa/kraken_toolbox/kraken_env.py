@@ -50,7 +50,6 @@ class KrakenMedium:
         ]
 
         self.set_interp_code()
-        # self.write_lines()
 
     def set_interp_code(self):
         if self.interpolation_method_ == "C_linear":
@@ -1085,6 +1084,9 @@ class KrakenFlp:
 
 
 if __name__ == "__main__":
+    project_root = os.getcwd()
+    test_root = os.path.join(project_root, r"propa\kraken_toolbox\tests\kraken_env")
+
     top_hs = KrakenTopHalfspace()
 
     z_ssp = np.array([0.0, 100.0, 500, 600, 700, 1000.0])
@@ -1094,8 +1096,9 @@ if __name__ == "__main__":
     # medium.plot_medium()
     # plt.show()
 
+    bathy_fpath = os.path.join(test_root, "bathy_data.csv")
     bathy = Bathymetry(
-        data_file=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd\bathy_data.csv",
+        data_file=bathy_fpath,
         interpolation_method="linear",
         units="m",
     )
@@ -1111,7 +1114,7 @@ if __name__ == "__main__":
 
     env = KrakenEnv(
         title="Test de la classe KrakenEnv",
-        env_root=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd",
+        env_root=test_root,
         env_filename="test_kraken_rd",
         freq=[10, 50, 16, 25, 20, 21, 62, 85, 93, 714, 16, 25, 20, 21, 62],
         kraken_top_hs=top_hs,
@@ -1119,6 +1122,7 @@ if __name__ == "__main__":
         kraken_attenuation=att,
         kraken_bottom_hs=bott_hs,
         kraken_field=field,
+        kraken_bathy=bathy,
     )
 
     env.write_env()

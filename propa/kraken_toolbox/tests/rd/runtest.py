@@ -5,7 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from cst import SAND_PROPERTIES, TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
-from propa.kraken_toolbox.utils import runkraken
+from propa.kraken_toolbox.run_kraken import run_kraken_exec
 from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.plot_utils import plotshd
 from propa.kraken_toolbox.kraken_env import (
@@ -99,7 +99,7 @@ def range_dependent_test():
     )
     flp.write_flp()
 
-    runkraken(env_filename)
+    run_kraken_exec(env_filename)
     plotshd(env_filename + ".shd", title="Step K", tl_max=110, tl_min=60, bathy=bathy)
 
     PlotTitle, _, _, _, read_freq, _, field_pos, pressure = readshd(
@@ -166,7 +166,7 @@ def cpu_time_test():
         )
         flp.write_flp()
 
-        runkraken(env_filename)
+        run_kraken_exec(env_filename)
 
         delta_t = time.time() - t0
         cpu_time.append(delta_t)
@@ -225,7 +225,7 @@ def postprocess_accuracy_test():
         )
         flp.write_flp()
 
-        runkraken(env_filename)
+        run_kraken_exec(env_filename)
 
         plotshd(env_filename + ".shd", tl_min=60, tl_max=110, title="Step K", freq=20)
         plt.show()

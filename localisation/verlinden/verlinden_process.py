@@ -18,7 +18,7 @@ import shutil
 import numpy as np
 import xarray as xr
 
-from localisation.verlinden.verlinden_path import (
+from localisation.verlinden.params import (
     VERLINDEN_OUTPUT_FOLDER,
     VERLINDEN_ANALYSIS_FOLDER,
 )

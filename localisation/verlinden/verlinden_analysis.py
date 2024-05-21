@@ -29,10 +29,9 @@ from localisation.verlinden.verlinden_analysis_report import (
 )
 
 from localisation.verlinden.plot_utils import plot_localisation_moviepy
-from localisation.verlinden.verlinden_path import (
+from localisation.verlinden.params import (
     VERLINDEN_OUTPUT_FOLDER,
     VERLINDEN_ANALYSIS_FOLDER,
-    VERLINDEN_POPULATED_FOLDER,
 )
 
 from publication.PublicationFigure import PubFigure

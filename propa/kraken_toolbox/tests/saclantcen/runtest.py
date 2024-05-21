@@ -19,8 +19,7 @@ from propa.kraken_toolbox.utils import default_nb_rcv_z
 from localisation.verlinden.AcousticComponent import AcousticSource
 
 from cst import SAND_PROPERTIES, TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
-from propa.kraken_toolbox.kraken_rd_broadband import runkraken_broadband_range_dependent
-from propa.kraken_toolbox.utils import runkraken
+from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.plot_utils import plotshd_from_pressure_field, plotshd
 from propa.kraken_toolbox.post_process import (
     postprocess_received_signal,
@@ -252,8 +251,8 @@ def run_testcase(testcase=1, freq_to_plot=200):
             delay=DELAYS,
         )
     else:
-        broadband_pressure_field = runkraken_broadband_range_dependent(
-            range_dependent_env=env,
+        broadband_pressure_field = runkraken(
+            env=env,
             flp=flp,
             frequencies=source.kraken_freq,
         )

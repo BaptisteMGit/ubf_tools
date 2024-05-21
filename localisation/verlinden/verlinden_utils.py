@@ -47,8 +47,7 @@ from propa.kraken_toolbox.run_kraken import runkraken
 
 # from propa.kraken_toolbox.plot_utils import plotshd
 
-from localisation.verlinden.verlinden_path import VERLINDEN_POPULATED_FOLDER
-from path import PROJECT_ROOT
+from localisation.verlinden.params import VERLINDEN_POPULATED_FOLDER, PROJECT_ROOT
 
 
 def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase):
@@ -2144,6 +2143,7 @@ def init_event_src_traj(src_info, dt):
 
     src_info["lons"] = np.array(traj.lons)
     src_info["lats"] = np.array(traj.lats)
+    src_info["n_pos"] = len(src_info["lons"])
 
 
 def init_grid_around_event_src_traj(src_info, grid_info):

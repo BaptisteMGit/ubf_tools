@@ -85,12 +85,13 @@ def test():
 
     top_hs, medium, att, bott_hs, field, bathy, env_filename = define_test_env()
     source = AcousticSource(s, t, waveguide_depth=bathy.bathy_depth.min())
+    freqs = source.kraken_freq
 
     env = KrakenEnv(
         title="Test de la classe KrakenEnv",
-        env_root=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd_broadband",
+        env_root=test_root,
         env_filename=env_filename,
-        freq=100,
+        freq=freqs,
         kraken_top_hs=top_hs,
         kraken_medium=medium,
         kraken_attenuation=att,
@@ -100,7 +101,6 @@ def test():
         rModes=np.arange(1, 30, dr),
     )
 
-    freqs = source.kraken_freq
     src_depth = 18
     rcv_r_max = 30
     rcv_z_max = 3000
@@ -108,15 +108,16 @@ def test():
     flp = KrakenFlp(
         env=env,
         src_depth=src_depth,
-        mode_theory="coupled",
+        mode_theory="adiabatic",
         rcv_r_max=rcv_r_max,
         rcv_z_max=rcv_z_max,
     )
 
-    broadband_pressure_field, _ = runkraken(env=env, flp=flp, frequencies=freqs)
-
-    # for ifreq in range(len(freqs)):
-    for ifreq in [0, 250, 400]:
+    broadband_pressure_field, _ = runkraken(
+        env=env, flp=flp, frequencies=freqs, parallel=True, n_workers=6
+    )
+    ifreq_to_plot = [i_f for i_f in range(len(freqs)) if i_f % 10 == 0]
+    for ifreq in ifreq_to_plot:
         pressure_field_to_plot = broadband_pressure_field[ifreq, ...]
         plotshd_from_pressure_field(
             env_filename + ".shd",
@@ -126,7 +127,8 @@ def test():
             title=f"Step K - f = {freqs[ifreq]} Hz",
             freq=freqs[ifreq],
         )
-    plt.show()
+        img_path = os.path.join(test_root, "tl_profiles", f"stepK_f{freqs[ifreq]}.png")
+        plt.savefig(img_path)
 
     (
         time_vector,
@@ -159,6 +161,11 @@ def test():
                 f"Received signal (r={r}m, z={z}m)\n" + r"$\Delta_r$" + f"={dr*1e3}m",
                 fontsize=TITLE_FONTSIZE,
             )
+            plt.tight_layout()
+            img_path = os.path.join(
+                test_root, "received_signals", f"received_signal_{key}.png"
+            )
+            plt.savefig(img_path)
 
     pd.DataFrame(pd_dict).to_csv(
         f"propagated_signal_dr_{dr}.csv",
@@ -193,7 +200,6 @@ def test():
 
 
 if __name__ == "__main__":
-    working_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd_broadband"
-    os.chdir(working_dir)
-
+    test_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\rd_broadband"
+    os.chdir(test_root)
     test()

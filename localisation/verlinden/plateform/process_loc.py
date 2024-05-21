@@ -12,14 +12,32 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import os
 import numpy as np
 import xarray as xr
+import pandas as pd
 
 from cst import C0
 from misc import mult_along_axis
-from localisation.verlinden.plateform.utils import init_event_dataset
+from localisation.verlinden.plateform.utils import (
+    init_event_dataset,
+    init_ambiguity_surface,
+    init_corr_library,
+    init_corr_event,
+    add_noise_to_library,
+    add_correlation_library,
+    add_noise_to_event,
+    add_correlation_event,
+    build_process_output_path,
+    add_ambiguity_surf,
+)
+from localisation.verlinden.verlinden_utils import (
+    init_event_src_traj,
+    init_grid_around_event_src_traj,
+    load_rhumrum_obs_pos,
+    get_bathy_grid_size,
+)
 
-# from localisation.verlinden.verlinden_utils import *
 
 # ======================================================================================================================
 # Functions
@@ -44,14 +62,14 @@ def add_event(ds, src_info, apply_delay):
     dt = T_tot / nfft_inv
     time_vector = np.arange(0, T_tot, dt, dtype=np.float32)
 
-    init_event_dataset(ds, pos_src_info, rcv_info)
+    ds = init_event_dataset(ds, pos_src_info, rcv_info)
 
     ds["event_signal_time"] = time_vector
     signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
     rcv_signal_event = np.empty(
         tuple(ds.sizes[d] for d in signal_event_dim), dtype=np.float32
     )
-    ds["event_signal"] = (signal_event_dim, rcv_signal_event)
+    ds["rcv_signal_event"] = (signal_event_dim, rcv_signal_event)
 
     # Apply corresponding delay to the signal
     for i_pos in range(pos_src_info["n_pos"]):
@@ -64,11 +82,7 @@ def add_event(ds, src_info, apply_delay):
             tf, propagating_spectrum * norm_factor, axis=-1
         )
         if apply_delay:
-            # tau = ds.delay_rcv.min(dim="idx_rcv").sel(
-            #     lon=pos_src_info["lons"][i_pos],
-            #     lat=pos_src_info["lats"][i_pos],
-            #     method="nearest",
-            # )  # Delay to apply to the signal to take into account the propagation time
+            # Delay to apply to the signal to take into account the propagation time
             tau = ds.delay_src_rcv.min(dim="idx_rcv").isel(src_trajectory_time=i_pos)
 
             # Derive delay factor
@@ -78,7 +92,12 @@ def add_event(ds, src_info, apply_delay):
             transmited_sig_f *= delay_f
 
         transmited_sig_t = np.fft.irfft(transmited_sig_f, n=nfft_inv, axis=-1)
-        ds.event_signal[dict(src_trajectory_time=i_pos)] = transmited_sig_t
+        ds.rcv_signal_event[dict(src_trajectory_time=i_pos)] = transmited_sig_t
+
+    # Init corr for event signal
+    ds = init_corr_event(ds)
+
+    return ds
 
 
 def load_subset(fpath, pos_src_info, grid_info, dt):
@@ -99,6 +118,111 @@ def load_subset(fpath, pos_src_info, grid_info, dt):
     )
 
     return ds_subset
+
+
+def init_dataset(
+    main_ds_path,
+    src_info,
+    grid_info,
+    dt,
+    similarity_metrics,
+    snrs_dB,
+    n_noise_realisations=100,
+):
+    # Load subset of the main dataset
+    ds = load_subset(
+        main_ds_path, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
+    )
+
+    # Initialisation time
+    now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    ds.attrs["init_time"] = now
+
+    # Add similarity metrics info to the dataset
+    n_similarity_metrics = len(similarity_metrics)
+    ds.coords["idx_similarity_metric"] = np.arange(n_similarity_metrics)
+    ds["similarity_metrics"] = (["idx_similarity_metric"], similarity_metrics)
+    ds["idx_similarity_metric"].attrs["long_name"] = "Similarity metric index"
+    ds["idx_similarity_metric"].attrs["unit"] = ""
+
+    # Noise info
+    ds.coords["snr"] = snrs_dB
+    ds.coords["idx_noise_realisation"] = np.arange(n_noise_realisations)
+    ds["snr"].attrs["unit"] = "dB"
+    ds["idx_noise_realisation"].attrs["long_name"] = "Noise realisation index"
+    ds["idx_noise_realisation"].attrs["unit"] = ""
+
+    # Output path
+    build_process_output_path(ds, src_info, grid_info)
+
+    # Save previously computed data
+    ds.to_zarr(ds.output_path, mode="w", compute=True)
+
+    # Init corr for library signal
+    ds = init_corr_library(ds)
+
+    return ds
+
+
+def process(
+    main_ds_path,
+    src_info,
+    grid_info,
+    dt,
+    similarity_metrics,
+    snrs_dB,
+    n_noise_realisations=100,
+):
+
+    # Load subset and init usefull vars
+    ds = init_dataset(
+        main_ds_path=main_ds_path,
+        src_info=src_info,
+        grid_info=grid_info,
+        dt=dt,
+        similarity_metrics=similarity_metrics,
+        snrs_dB=snrs_dB,
+        n_noise_realisations=n_noise_realisations,
+    )
+
+    # Add event to the dataset
+    ds = add_event(ds, src_info, apply_delay=True)
+
+    # Init ambiguity surface
+    ds = init_ambiguity_surface(ds)
+    ds_no_noise = ds.copy(deep=True)
+
+    # Save to zarr without computing
+    ds_no_noise.to_zarr(ds_no_noise.output_path, mode="a", compute=False)
+
+    # Loop over the snr values
+    for idx_snr, snr_i in enumerate(snrs_dB):
+        # snr_tag = get_snr_tag(snr_i)
+
+        # Add noise to library signal
+        ds = ds_no_noise.copy(
+            deep=True
+        )  # Copy to avoid overwriting the original dataset
+        ds = add_noise_to_library(ds, snr_dB=snr_i)
+        # Derive correlation vector for the entire grid
+        ds = add_correlation_library(ds)
+
+        # Loop over different realisation of noise for a given SNR
+        for i in range(n_noise_realisations):
+            print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
+
+            # Add event to dataset
+            ds = add_noise_to_event(ds, snr_dB=snr_i)
+            # Derive cross-correlation vector for each source position
+            ds = add_correlation_event(ds)
+
+            for i_sim_metric in range(len(similarity_metrics)):
+                # Compute ambiguity surface
+                ds = add_ambiguity_surf(
+                    ds,
+                    idx_similarity_metric=i_sim_metric,
+                    i_noise=i,
+                )
 
 
 if __name__ == "__main__":
@@ -199,20 +323,43 @@ if __name__ == "__main__":
         dlon_bathy=dlon,
     )
 
-    ds_subset = load_subset(
-        fpath, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
+    # ds_subset = load_subset(
+    #     fpath, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
+    # )
+    # ds_subset = add_event(ds=ds_subset, src_info=src_info, apply_delay=True)
+
+    # # Control the signal
+    # import matplotlib.pyplot as plt
+
+    # plt.figure()
+    # ds_subset.rcv_signal_event.isel(idx_rcv=0, src_trajectory_time=0).plot(
+    #     label=ds_subset.rcv_id.isel(idx_rcv=0).values
+    # )
+    # ds_subset.rcv_signal_event.isel(idx_rcv=1, src_trajectory_time=0).plot(
+    #     label=ds_subset.rcv_id.isel(idx_rcv=1).values
+    # )
+    # plt.legend()
+    # plt.show()
+
+    process(
+        main_ds_path=fpath,
+        src_info=src_info,
+        grid_info=grid_info,
+        dt=dt,
+        similarity_metrics=["correlation"],
+        snrs_dB=[0],
+        n_noise_realisations=100,
     )
-    add_event(ds=ds_subset, src_info=src_info, apply_delay=True)
+    # ds_subset = init_ambiguity_surface(ds_subset)
+# Add noise to dataset
+# add_noise_to_dataset(ds_subset, snr_dB=snr_i)
+# # Derive correlation vector for the entire grid
+# add_correlation_to_dataset(ds_subset)
 
-    # Add noise to dataset
-    add_noise_to_dataset(ds_subset, snr_dB=snr_i)
-    # Derive correlation vector for the entire grid
-    add_correlation_to_dataset(ds_subset)
+# add_event_correlation(xr_dataset=ds_subset)
 
-    add_event_correlation(xr_dataset=ds_subset)
-
-    build_ambiguity_surf(
-        ds_subset,
-        idx_similarity_metric=i_sim_metric,
-        i_noise=i,
-    )
+# build_ambiguity_surf(
+#     ds_subset,
+#     idx_similarity_metric=i_sim_metric,
+#     i_noise=i,
+# )

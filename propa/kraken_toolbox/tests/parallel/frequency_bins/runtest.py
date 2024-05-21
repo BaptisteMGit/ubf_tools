@@ -160,6 +160,8 @@ def g(fi, alpha, k, z, fmin, fmax):
 
 
 if __name__ == "__main__":
+    import os
+
     pfig = PubFigure()
 
     fmin = 1
@@ -196,6 +198,13 @@ if __name__ == "__main__":
     plt.grid()
     plt.legend()
     plt.tight_layout()
-    img_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\kraken_perf\freq_bands_repartition_parallel.png"
+    # img_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\kraken_perf\freq_bands_repartition_parallel.png"
+
+    project_root = os.getcwd()
+    img_path = os.path.join(
+        project_root,
+        r"propa\kraken_toolbox\tests\parallel\frequency_bins",
+        "freq_bands_repartition_parallel.png",
+    )
     plt.savefig(img_path)
     # print(assigned_frequency_ranges)

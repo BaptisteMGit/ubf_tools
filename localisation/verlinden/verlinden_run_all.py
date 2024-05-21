@@ -1,7 +1,7 @@
 from verlinden_process import verlinden_main
 from verlinden_analysis import analysis_main
 from verlinden_utils import load_rhumrum_obs_pos
-from testcases.testcase_envs import (
+from .testcases.testcase_envs import (
     testcase1_0,
     testcase1_1,
     testcase1_2,

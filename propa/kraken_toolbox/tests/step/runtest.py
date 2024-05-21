@@ -1,6 +1,6 @@
 import os
 import matplotlib.pyplot as plt
-from propa.kraken_toolbox.utils import runkraken
+from propa.kraken_toolbox.run_kraken import run_kraken_exec
 from propa.kraken_toolbox.plot_utils import plotshd
 
 
@@ -9,8 +9,8 @@ working_dir = (
 )
 env_filename = "stepK_rd"
 os.chdir(working_dir)
-# runkraken(env_filename)
+run_kraken_exec(env_filename)
 
-plotshd(env_filename + ".shd", tl_min=60, tl_max=110, title="Step K")
-# plt.clim(60, 110)
-plt.show()
+plotshd(env_filename + ".shd", tl_min=60, tl_max=110)
+img_path = os.path.join(working_dir, f"tl_{env_filename}.png")
+plt.savefig(img_path)

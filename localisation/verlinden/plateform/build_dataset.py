@@ -12,6 +12,7 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import os
 import gc
 import zarr
 import numpy as np
@@ -25,7 +26,9 @@ from propa.kraken_toolbox.run_kraken import runkraken, clear_kraken_parallel_wor
 from localisation.verlinden.plateform.init_dataset import init_dataset
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 
-from localisation.verlinden.plateform.plateform_cst import N_WORKERS, MAX_RAM_GB
+from localisation.verlinden.plateform.utils import update_info_status
+from localisation.verlinden.plateform.params import N_WORKERS, MAX_RAM_GB
+
 
 # ======================================================================================================================
 # Functions
@@ -123,7 +126,6 @@ def build_dataset(
             )
             print(f"Region ({size * 1e-9} Go) saved in {time() - t0:.2f} s")
 
-
             # Ensure memory is freed
             del region_ds, region_tf, region_tf_data, region_to_save
             gc.collect()
@@ -134,6 +136,9 @@ def build_dataset(
     zarr_store = zarr.open(ds.fullpath_dataset_propa)
     zarr_store.attrs.update({"propa_done": True})
     zarr.consolidate_metadata(ds.fullpath_dataset_propa)
+
+    # Update info in dataset
+    # update_info_status(ds, part_done="propa")
 
     return ds.fullpath_dataset_propa
 

@@ -29,7 +29,7 @@ from localisation.verlinden.plateform.init_dataset import (
 
 from localisation.verlinden.verlinden_utils import get_azimuth_rcv
 from cst import C0
-from localisation.verlinden.plateform.plateform_cst import N_WORKERS
+from localisation.verlinden.plateform.params import N_WORKERS
 
 
 def grid_tf(ds, dx=100, dy=100, rcv_info=None):
@@ -101,7 +101,8 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
         ds.attrs["dy"] = dy
         set_propa_grid_path(ds)
 
-    # Loop over sub_regions of the grid
+    # Save existing vars (no need to save tf)
+    ds.drop_vars("tf").to_zarr(ds.fullpath_dataset_propa_grid, mode="w")
 
     tf_gridded_dim = ["idx_rcv", "lat", "lon", "kraken_freq"]
     tf_gridded_shape = [ds.sizes[dim] for dim in tf_gridded_dim]
@@ -120,8 +121,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
     # Save to zarr without computing
-    ds_init = ds.drop_vars("tf")
-    ds_init.to_zarr(ds.fullpath_dataset_propa_grid, mode="a", compute=False)
+    ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="a", compute=False)
 
     for lon_s in lon_slices:
         for lat_s in lat_slices:
@@ -160,6 +160,9 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     ds = ds.drop_vars("tf")
 
+    # Update info in dataset
+    # update_info_status(ds, part_done="propa_grid")
+
     return ds
 
 
@@ -190,7 +193,9 @@ def grid_synthesis(
         time_vector = np.arange(0, T_tot, dt)
 
         # Loop over sub_regions of the grid
-        nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=0.5*1e9)
+        nregion = get_region_number(
+            ds.sizes["lon"], ds.tf_gridded, max_size_bytes=0.5 * 1e9
+        )
         lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
         ds.coords["library_signal_time"] = time_vector
@@ -244,46 +249,6 @@ def grid_synthesis(
     zarr.consolidate_metadata(ds.fullpath_dataset_propa_grid_src)
 
     return ds
-
-
-def compute_received_signal(
-    ds, propagating_freq, propagating_spectrum, norm_factor, nfft_inv, apply_delay
-):
-
-    # Received signal spectrum resulting from the convolution of the src signal and the impulse response
-    transmited_field_f = mult_along_axis(
-        ds.tf_gridded, propagating_spectrum * norm_factor, axis=-1
-    )
-
-    # Apply corresponding delay to the signal
-    if apply_delay:
-        tau = ds.delay_rcv.min(
-            dim="idx_rcv"
-        )  # Delay to apply to the signal to take into account the propagation time
-
-        # Expand tau to the signal shape
-        tau = tau.expand_dims({"kraken_freq": ds.sizes["kraken_freq"]}, axis=-1)
-        # Derive delay factor
-        tau_vec = mult_along_axis(tau, propagating_freq, axis=-1)
-        delay_f = np.exp(1j * 2 * np.pi * tau_vec)
-        # Expand delay factor to the signal shape
-        delay_f = tau.copy(deep=True, data=delay_f).expand_dims(
-            {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
-        )
-        # Apply delay
-        transmited_field_f = transmited_field_f * delay_f
-
-    # Fourier synthesis of the received signal -> time domain
-    chunk_shape = (
-        ds.sizes["idx_rcv"],
-        ds.sizes["lat"] // N_WORKERS,
-        ds.sizes["lon"] // N_WORKERS,
-        ds.sizes["kraken_freq"],
-    )
-    transmited_field_f = da.from_array(transmited_field_f, chunks=chunk_shape)
-    transmited_field_t = np.fft.irfft(transmited_field_f, axis=-1, n=nfft_inv).compute()
-
-    return transmited_field_t
 
 
 def populate_dataset(ds, src, **kwargs):

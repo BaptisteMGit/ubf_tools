@@ -266,8 +266,6 @@ def plotshd_from_pressure_field(
 
 
 """ Plot environment profiles """
-
-
 def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     if ax is None:
         plt.figure(figsize=(10, 8))
@@ -440,3 +438,7 @@ def color_domains(ax, min_x, max_x, z, z_bottom=None):
         )
     else:
         pass
+
+
+if __name__ == '__main__':
+    pass

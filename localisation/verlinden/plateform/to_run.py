@@ -86,6 +86,7 @@ def run_swir():
     )
 
     src_sig *= np.hanning(len(src_sig))
+    # nfft = None
     nfft = 2**3
     src = AcousticSource(
         signal=src_sig,

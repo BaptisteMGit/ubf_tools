@@ -118,11 +118,11 @@ def build_dataset(
                 ds.fullpath_dataset_propa,
                 mode="r+",
                 region={
-                    "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
+                    "idx_rcv": slice(None),
                     "all_az": r_az_slice,
-                    "kraken_freq": slice(0, ds.sizes["kraken_freq"]),
-                    "kraken_depth": slice(0, ds.sizes["kraken_depth"]),
-                    "kraken_range": slice(0, ds.sizes["kraken_range"]),
+                    "kraken_freq": slice(None),
+                    "kraken_depth": slice(None),
+                    "kraken_range": slice(None),
                 },
             )
             print(f"Region ({size * 1e-9} Go) saved in {time() - t0:.2f} s")

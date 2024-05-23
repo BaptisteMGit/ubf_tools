@@ -55,14 +55,14 @@ def test():
 
 def run_swir():
     rcv_info_dw = {
-        # "id": ["RR45", "RR48", "RR44"],
+        "id": ["RR45", "RR48", "RR44"],
         # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
-        "id": ["RRdebug0", "RRdebug1"],
+        # "id": ["RRdebug0", "RRdebug1"],
         "lons": [],
         "lats": [],
     }
     tc = TestCase3_1()
-    min_dist = 22 * 1e3
+    min_dist = 5 * 1e3
     dx, dy = 100, 100
 
     # Define source signal
@@ -86,8 +86,8 @@ def run_swir():
     )
 
     src_sig *= np.hanning(len(src_sig))
-    # nfft = None
-    nfft = 2**3
+    nfft = None
+    # nfft = 2**3
     src = AcousticSource(
         signal=src_sig,
         time=t_src_sig,
@@ -110,3 +110,8 @@ if __name__ == "__main__":
 
     run_swir()
     # test()
+
+    # import xarray as xr 
+    # path = "/home/data/localisation_dataset/testcase3_1/propa/propa_65.5523_65.9926_-27.7023_-27.4882.zarr"
+    # ds = xr.open_dataset(path, engine="zarr", chunks={})
+    # print()

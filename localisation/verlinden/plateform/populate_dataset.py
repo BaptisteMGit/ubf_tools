@@ -120,11 +120,22 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded)
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
+    lat_chunksize = int(ds.sizes['lat'] // nregion)
+    lon_chunksize = int(ds.sizes['lon'] / nregion)
+    # lon_chunksize = ds.sizes['lon']
+    idx_rcv_chunksize, freq_chunksize = ds.sizes["idx_rcv"], ds.sizes["kraken_freq"]
+
+    chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, freq_chunksize)
+    # chunksize = tuple([ds.sizes[v] for v in  tf_gridded_dim])
+    ds["tf_gridded"] = ds.tf_gridded.chunk(chunksize)
+
     # Save to zarr without computing
     ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="a", compute=False)
 
-    for lon_s in lon_slices:
-        for lat_s in lat_slices:
+    print(ds.tf_gridded)
+    lon_s = slice(None)
+    for lat_s in lat_slices:    
+        for lon_s in lon_slices:
             ds_sub = ds.isel(lat=lat_s, lon=lon_s)
 
             tf_sub = np.empty_like(ds_sub.tf_gridded, dtype=np.complex64)
@@ -140,16 +151,18 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
                     tf_az = tf.sel(all_az=az).sel(kraken_range=r_az, method="nearest")
                     tf_sub[i_rcv, az_mask_2d, :] = tf_az.values.T
 
-            ds_sub.tf_gridded[dict(lat=lat_s, lon=lon_s)] = tf_sub
-            sub_region_to_save = ds_sub.tf_gridded[dict(lat=lat_s, lon=lon_s)]
+            # ds_sub.tf_gridded[dict(lat=lat_s, lon=lon_s)] = tf_sub
+            ds.tf_gridded[dict(lat=lat_s, lon=lon_s)] = tf_sub
+            sub_region_to_save = ds.tf_gridded[dict(lat=lat_s, lon=lon_s)]
+            print(sub_region_to_save)
             sub_region_to_save.to_zarr(
                 ds.fullpath_dataset_propa_grid,
                 mode="r+",
                 region={
-                    "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
+                    "idx_rcv": slice(None),
                     "lat": lat_s,
                     "lon": lon_s,
-                    "kraken_freq": slice(0, ds.sizes["kraken_freq"]),
+                    "kraken_freq": slice(None),
                 },
             )
 

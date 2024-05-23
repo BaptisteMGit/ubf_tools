@@ -311,12 +311,13 @@ def compute_received_signal(
         transmited_field_f = transmited_field_f * delay_f
 
     # Fourier synthesis of the received signal -> time domain
-    chunk_shape = (
-        ds.sizes["idx_rcv"],
-        ds.sizes["lat"] // N_WORKERS,
-        ds.sizes["lon"] // N_WORKERS,
-        ds.sizes["kraken_freq"],
-    )
+    # chunk_shape = (
+    #     ds.sizes["idx_rcv"],
+    #     ds.sizes["lat"] // N_WORKERS,
+    #     ds.sizes["lon"] // N_WORKERS,
+    #     ds.sizes["kraken_freq"],
+    # )
+    chunk_shape = ds.rcv_signal_library.data.chunksize
     transmited_field_f = da.from_array(transmited_field_f, chunks=chunk_shape)
     transmited_field_t = np.fft.irfft(transmited_field_f, axis=-1, n=nfft_inv).compute()
 

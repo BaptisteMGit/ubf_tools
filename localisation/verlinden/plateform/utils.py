@@ -17,11 +17,13 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 import dask.array as da
+import scipy.fft as sp_fft
+import scipy.signal as signal
 
 from cst import C0
-from misc import mult_along_axis
+from misc import mult_along_axis, fft_convolve_f
 from localisation.verlinden.plateform.params import N_WORKERS
-from localisation.verlinden.params import ROOT_DATASET_PATH
+from localisation.verlinden.params import ROOT_DATASET, ROOT_PROCESS
 from localisation.verlinden.verlinden_utils import (
     get_range_src_rcv_range,
     add_noise_to_signal,
@@ -86,7 +88,7 @@ def set_attrs(xr_dataset, grid_info, testcase):
 
 
 def build_root_dir(testcase_name):
-    root_dir = os.path.join(ROOT_DATASET_PATH, testcase_name)
+    root_dir = os.path.join(ROOT_DATASET, testcase_name)
     if not os.path.exists(root_dir):
         os.makedirs(root_dir)
     return root_dir
@@ -215,6 +217,36 @@ def build_src_label(src_name, f0=None, fs=None, std_fi=None, tau_corr_fi=None):
 
 def build_grid_label(dx, dy):
     return f"{dx}_{dy}"
+
+
+def build_process_output_path(xr_dataset, src_info, grid_info):
+    """
+    Build the output path for the process.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Dataset.
+    src_info : dict
+        Source information.
+    grid_info : dict
+        Grid information.
+    """
+
+    path_components = os.path.normpath(
+        xr_dataset.fullpath_dataset_propa_grid_src
+    ).split(os.path.sep)
+    testcase_name = path_components[-3]
+    src_label = src_info["sig"]["sig_type"]
+    boundaries_label = build_boundaries_label(grid_info)
+
+    output_folder = f"{boundaries_label}_{src_label}"
+    output_dir = os.path.join(ROOT_PROCESS, testcase_name, output_folder)
+    output_fname = f"{xr_dataset.attrs['init_time']}.zarr"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    xr_dataset.attrs["output_path"] = os.path.join(output_dir, output_fname)
 
 
 def get_region_number(nregion_max, var, max_size_bytes=0.1 * 1e9):
@@ -409,10 +441,328 @@ def init_event_dataset(xr_dataset, src_info, rcv_info):
     xr_dataset["event_signal_time"].attrs["units"] = "Time"
     xr_dataset["src_trajectory_time"].attrs["long_name"] = "Time"
 
+    return xr_dataset
 
-def add_noise_to_dataset(xr_dataset, target_var, snr_dB):
+
+def init_ambiguity_surface(xr_dataset):
+
+    ambiguity_surface_dim = [
+        "idx_rcv_pairs",
+        "idx_similarity_metric",
+        "src_trajectory_time",
+        "snr",
+        "lat",
+        "lon",
+    ]
+    chunksize = dict(xr_dataset.rcv_signal_library.chunksizes)
+    chunk_shape = (
+        xr_dataset.sizes["idx_rcv_pairs"],
+        1,
+        xr_dataset.sizes["src_trajectory_time"],
+        1,
+        chunksize["lat"],
+        chunksize["lon"],
+    )
+
+    ambiguity_surface = da.empty(
+        tuple(xr_dataset.sizes[d] for d in ambiguity_surface_dim),
+        dtype=np.float32,
+        chunks=chunk_shape,
+    )
+
+    # Create ambiguity surface dataarray
+    xr_dataset["ambiguity_surface"] = (
+        ambiguity_surface_dim,
+        ambiguity_surface,
+    )
+    xr_dataset["ambiguity_surface_combined"] = (
+        ambiguity_surface_dim[1:],
+        ambiguity_surface[0, ...],
+    )
+    # Add attributes
+    xr_dataset.ambiguity_surface.attrs["long_name"] = "Ambiguity surface"
+    xr_dataset.ambiguity_surface.attrs["units"] = "dB"
+    xr_dataset.ambiguity_surface_combined.attrs["long_name"] = (
+        "Ambiguity surface combined"
+    )
+    xr_dataset.ambiguity_surface_combined.attrs["units"] = "dB"
+
+    # Create detected position dataarrays
+    detected_pos_dim = [
+        "idx_rcv_pairs",
+        "idx_similarity_metric",
+        "src_trajectory_time",
+        "snr",
+        "idx_noise_realisation",
+    ]
+
+    chunk_shape = (
+        xr_dataset.sizes["idx_rcv_pairs"],
+        1,
+        xr_dataset.sizes["src_trajectory_time"],
+        1,
+        1,
+    )
+
+    detected_pos_init_lon = da.empty(
+        tuple(xr_dataset.sizes[d] for d in detected_pos_dim),
+        dtype=np.float32,
+        chunks=chunk_shape,
+    )
+    detected_pos_init_lat = da.empty(
+        tuple(xr_dataset.sizes[d] for d in detected_pos_dim),
+        dtype=np.float32,
+        chunks=chunk_shape,
+    )
+
+    xr_dataset["detected_pos_lon"] = (detected_pos_dim, detected_pos_init_lon)
+    xr_dataset["detected_pos_lat"] = (detected_pos_dim, detected_pos_init_lat)
+    xr_dataset["detected_pos_lon_combined"] = (
+        detected_pos_dim[1:],
+        detected_pos_init_lon[0, ...],
+    )
+    xr_dataset["detected_pos_lat_combined"] = (
+        detected_pos_dim[1:],
+        detected_pos_init_lat[0, ...],
+    )
+
+    return xr_dataset
+
+
+def init_corr(xr_dataset):
+    xr_dataset = init_corr_library(xr_dataset)
+    xr_dataset = init_corr_event(xr_dataset)
+    return xr_dataset
+
+
+def init_corr_library(xr_dataset):
+    xr_dataset = init_target_corr(xr_dataset, target="library")
+    return xr_dataset
+
+
+def init_corr_event(xr_dataset):
+    xr_dataset = init_target_corr(xr_dataset, target="event")
+    return xr_dataset
+
+
+def init_target_corr(xr_dataset, target):
+    if target == "library":
+        target_time = "library_signal_time"
+        corr_lags = "library_corr_lags"
+        corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
+        corr_label = "library_corr"
+        corr_long_name = r"$R_{ij}^{l}(\tau)$"
+
+    elif target == "event":
+        target_time = "event_signal_time"
+        corr_lags = "event_corr_lags"
+        corr_dim = ["idx_rcv_pairs", "src_trajectory_time", "event_corr_lags"]
+        corr_label = "event_corr"
+        corr_long_name = r"$R_{ij}^{e}(\tau)$"
+    else:
+        raise ValueError("Invalid target")
+
+    lags_idx = signal.correlation_lags(
+        xr_dataset.sizes[target_time], xr_dataset.sizes[target_time]
+    )
+    lags = lags_idx * xr_dataset[target_time].diff(target_time).values[0]
+
+    xr_dataset.coords[corr_lags] = lags
+    xr_dataset[corr_lags].attrs["units"] = "s"
+    xr_dataset[corr_lags].attrs["long_name"] = "Correlation lags"
+
+    if target == "library":
+        chunksize = dict(xr_dataset.rcv_signal_library.chunksizes)
+        chunk_shape = (
+            xr_dataset.sizes["idx_rcv_pairs"],
+            chunksize["lat"],
+            chunksize["lon"],
+            xr_dataset.sizes["library_corr_lags"],
+        )
+    elif target == "event":
+        chunk_shape = (
+            xr_dataset.sizes["idx_rcv_pairs"],
+            xr_dataset.sizes["src_trajectory_time"],
+            xr_dataset.sizes["event_corr_lags"],
+        )
+    else:
+        raise ValueError("Invalid target")
+
+    dummy_array = da.empty(
+        tuple(xr_dataset.sizes[d] for d in corr_dim),
+        dtype=np.float32,
+        chunks=chunk_shape,
+    )
+    xr_dataset[corr_label] = (corr_dim, dummy_array)
+    xr_dataset[corr_label].attrs["long_name"] = corr_long_name
+
+    return xr_dataset
+
+
+def add_correlation_library(xr_dataset):
     """
-    Add noise to signal.
+    Derive library signals cross-correlation for each grid pixel.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+
+    Returns
+    -------
+    None
+
+    """
+
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.library_corr)
+    lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
+
+    for lon_s in lon_slices:
+        for lat_s in lat_slices:
+            ds_sub = xr_dataset.isel(lat=lat_s, lon=lon_s)
+            ds_sub = add_correlation_library_subset(ds_sub)
+
+            sub_region_to_save = ds_sub.library_corr
+            sub_region_to_save.to_zarr(
+                xr_dataset.output_path,
+                mode="r+",
+                region={
+                    "idx_rcv_pairs": slice(None),
+                    "lat": lat_s,
+                    "lon": lon_s,
+                    "library_corr_lags": slice(None),
+                },
+            )
+
+    xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+
+    return xr_dataset
+
+
+def add_correlation_library_subset(xr_dataset):
+    """
+    Derive library signals cross-correlation for each grid pixel.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+
+    Returns
+    -------
+    None
+
+    """
+
+    # Faster FFT approach
+    ax = 2
+    nlag = xr_dataset.sizes["library_corr_lags"]
+
+    # library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
+    # library_corr = np.empty(
+    #     tuple(xr_dataset.sizes[d] for d in library_corr_dim), dtype=np.float32
+    # )
+
+    for i_pair in range(xr_dataset.sizes["idx_rcv_pairs"]):
+        rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
+        in1 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0]).values.astype(
+            np.float64
+        )
+        in2 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1]).values.astype(
+            np.float64
+        )
+
+        nfft = sp_fft.next_fast_len(nlag, True)
+
+        sig_0 = sp_fft.rfft(
+            in1,
+            n=nfft,
+            axis=-1,
+        )
+        sig_1 = sp_fft.rfft(
+            in2,
+            n=nfft,
+            axis=-1,
+        )
+
+        corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
+        corr_01_fft = corr_01_fft[:, :, slice(nlag)]
+
+        autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
+        autocorr0 = autocorr0[:, :, slice(nlag)]
+
+        autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
+        autocorr1 = autocorr1[:, :, slice(nlag)]
+
+        n0 = corr_01_fft.shape[-1] // 2
+        corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
+        corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
+        corr_01_fft /= corr_norm
+        xr_dataset.library_corr[dict(idx_rcv_pairs=i_pair)] = corr_01_fft.astype(
+            np.float32
+        )
+        # library_corr[i_pair, ...] = corr_01_fft
+
+    # Assign to dataset
+    # xr_dataset["library_corr"].values = library_corr.astype(np.float32)
+
+    return xr_dataset
+
+
+def add_correlation_event(xr_dataset):
+    """
+    Derive cross-correlation for each source position.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+
+    Returns
+    -------
+    None
+
+    """
+
+    # Derive cross_correlation vector for each src position
+    for i_ship in range(xr_dataset.sizes["src_trajectory_time"]):
+        for i_pair, rcv_pair in enumerate(xr_dataset.rcv_pairs):
+            # Cast to float 64 to avoid 0 values in the cross correlation vector
+            s0 = (
+                xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[0])
+                .isel(src_trajectory_time=i_ship)
+                .values
+            ).astype(np.float64)
+            s1 = (
+                xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[1])
+                .isel(src_trajectory_time=i_ship)
+                .values
+            ).astype(np.float64)
+
+            corr_01 = signal.correlate(s0, s1)
+            autocorr0 = signal.correlate(s0, s0)
+            autocorr1 = signal.correlate(s1, s1)
+            n0 = corr_01.shape[0] // 2
+            corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
+
+            xr_dataset.event_corr[
+                dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
+            ] = corr_01.astype(np.float32)
+
+    xr_dataset.event_corr.to_zarr(xr_dataset.output_path, mode="r+")
+
+    return xr_dataset
+
+
+def add_noise(xr_dataset, snr_dB):
+    add_noise_to_library(xr_dataset, snr_dB)
+    add_noise_to_event(xr_dataset, snr_dB)
+    return xr_dataset
+
+
+def add_noise_to_target(xr_dataset, target_var, snr_dB):
+    """
+    Add noise to the target signal.
 
     Parameters
     ----------
@@ -434,8 +784,10 @@ def add_noise_to_dataset(xr_dataset, target_var, snr_dB):
                 snr_dB=snr_dB,
             )
 
+    return xr_dataset
 
-def add_noise_to_library(xr_dataset, target_var, snr_dB):
+
+def add_noise_to_library(xr_dataset, snr_dB):
     """
     Add noise to library signal.
 
@@ -450,10 +802,33 @@ def add_noise_to_library(xr_dataset, target_var, snr_dB):
 
     """
     target_var = "rcv_signal_library"
-    add_noise_to_dataset(xr_dataset, target_var, snr_dB)
+
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.rcv_signal_library)
+    lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
+
+    for lon_s in lon_slices:
+        for lat_s in lat_slices:
+            ds_sub = xr_dataset.isel(lat=lat_s, lon=lon_s)
+            ds_sub = add_noise_to_target(xr_dataset, target_var, snr_dB)
+
+            sub_region_to_save = ds_sub.rcv_signal_library
+            sub_region_to_save.to_zarr(
+                xr_dataset.output_path,
+                mode="r+",
+                region={
+                    "idx_rcv": slice(None),
+                    "lat": lat_s,
+                    "lon": lon_s,
+                    "library_signal_time": slice(None),
+                },
+            )
+
+    xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+
+    return xr_dataset
 
 
-def add_noise_to_library(xr_dataset, target_var, snr_dB):
+def add_noise_to_event(xr_dataset, snr_dB):
     """
     Add noise to event signal.
 
@@ -467,5 +842,333 @@ def add_noise_to_library(xr_dataset, target_var, snr_dB):
     None
 
     """
-    target_var = "event_signal"
-    add_noise_to_dataset(xr_dataset, target_var, snr_dB)
+    target_var = "rcv_signal_event"
+    xr_dataset = add_noise_to_target(xr_dataset, target_var, snr_dB)
+    xr_dataset.rcv_signal_event.to_zarr(xr_dataset.output_path, mode="r+")
+
+    return xr_dataset
+
+
+def add_ambiguity_surf(
+    xr_dataset, idx_snr, idx_similarity_metric, i_noise, verbose=True
+):
+    """
+    Derive ambiguity surface for each receiver pair and source position.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+    idx_snr : int
+        Index of the signal to noise ratio.
+    idx_similarity_metric : int
+        Index of the similarity metric.
+    i_noise : int
+        Index of the noise realization.
+    verbose : bool, optional
+        Verbose. The default is True.
+
+    Returns
+    -------
+    None
+
+    """
+    xr_subset = xr_dataset.isel(
+        dict(
+            snr=slice(idx_snr, idx_snr + 1),
+            idx_similarity_metric=slice(
+                idx_similarity_metric, idx_similarity_metric + 1
+            ),
+        )
+    )
+
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.ambiguity_surface)
+    lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
+
+    for lon_s in lon_slices:
+        for lat_s in lat_slices:
+            ds_sub = xr_subset.isel(lat=lat_s, lon=lon_s)
+            ds_sub = add_ambiguity_surf_subset(ds_sub, verbose)
+
+            # Save ambiguity surface
+            # print(ds_sub.ambiguity_surface.values)
+            sub_region_to_save = ds_sub.ambiguity_surface
+            sub_region_to_save.to_zarr(
+                xr_dataset.output_path,
+                mode="r+",
+                region={
+                    "idx_rcv_pairs": slice(None),
+                    "idx_similarity_metric": slice(
+                        idx_similarity_metric, idx_similarity_metric + 1
+                    ),
+                    "lat": lat_s,
+                    "lon": lon_s,
+                    "snr": slice(idx_snr, idx_snr + 1),
+                    "src_trajectory_time": slice(None),
+                },
+            )
+
+            # Save ambiguity surface combined
+            sub_region_to_save = ds_sub.ambiguity_surface_combined
+            sub_region_to_save.to_zarr(
+                xr_dataset.output_path,
+                mode="r+",
+                region={
+                    "idx_similarity_metric": slice(
+                        idx_similarity_metric, idx_similarity_metric + 1
+                    ),
+                    "lat": lat_s,
+                    "lon": lon_s,
+                    "snr": slice(idx_snr, idx_snr + 1),
+                    "src_trajectory_time": slice(None),
+                },
+            )
+
+    # Load full dataset to search for detected positions in the ambiguity surface
+    xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+    # Search for detected positions
+    xr_subset = xr_dataset.isel(
+        dict(
+            snr=slice(idx_snr, idx_snr + 1),
+            idx_similarity_metric=slice(
+                idx_similarity_metric, idx_similarity_metric + 1
+            ),
+        )
+    )
+    xr_subset = get_detected_pos(xr_subset, idx_similarity_metric, i_noise)
+    # Save detected positions
+    for det in ["detected_pos_lon", "detected_pos_lat"]:
+        sub_region_to_save = xr_subset[det].isel(
+            dict(idx_noise_realisation=slice(i_noise, i_noise + 1))
+        )
+        sub_region_to_save.to_zarr(
+            xr_dataset.output_path,
+            mode="r+",
+            region={
+                "idx_noise_realisation": slice(i_noise, i_noise + 1),
+                "idx_rcv_pairs": slice(None),
+                "idx_similarity_metric": slice(
+                    idx_similarity_metric, idx_similarity_metric + 1
+                ),
+                "snr": slice(idx_snr, idx_snr + 1),
+                "src_trajectory_time": slice(None),
+            },
+        )
+    # Reload full dataset
+    xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+
+    return xr_dataset
+
+
+def add_ambiguity_surf_subset(xr_subset, verbose=True):
+    """
+    Derive ambiguity surface for each receiver pair and source position.
+
+    Parameters
+    ----------
+    xr_subset : xr.Dataset
+        Subset to process.
+    idx_similarity_metric : int
+        Index of the similarity metric.
+    i_noise : int
+        Index of the noise realization.
+    verbose : bool, optional
+        Verbose. The default is True.
+
+    Returns
+    -------
+    None
+
+    """
+
+    similarity_metric = xr_subset.similarity_metrics.values[0]
+
+    if verbose:
+        det_msg = (
+            f"Building ambiguity surface using {similarity_metric} as similarity metric"
+        )
+        print("# " + det_msg + " #")
+
+    ambiguity_surfaces = []
+    for i_pair in xr_subset.idx_rcv_pairs:
+        lib_data = xr_subset.library_corr.sel(idx_rcv_pairs=i_pair)
+        event_data = xr_subset.event_corr.sel(idx_rcv_pairs=i_pair)
+        amb_surf_da = derive_ambiguity(
+            lib_data, event_data, xr_subset.src_trajectory_time, similarity_metric
+        )
+        ambiguity_surfaces.append(amb_surf_da)
+
+    # Merge dataarrays
+    amb_surf_merged = xr.merge(ambiguity_surfaces)
+    xr_subset.ambiguity_surface[dict(idx_similarity_metric=0, snr=0)] = amb_surf_merged[
+        "ambiguity_surface"
+    ]
+
+    amb_surf_combined = amb_surf_merged.ambiguity_surface.prod(dim="idx_rcv_pairs") ** (
+        1 / len(xr_subset.idx_rcv_pairs)
+    )
+    xr_subset.ambiguity_surface_combined[dict(idx_similarity_metric=0, snr=0)] = (
+        amb_surf_combined
+    )
+
+    return xr_subset
+
+
+def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
+    """
+    Derive ambiguity surface for each receiver pair and source position.
+
+    Parameters
+    ----------
+    lib_data : xr.DataArray
+        Library Dataarray.
+    event_data : xr.DataArray
+        Event DataArray.
+    src_traj_times : np.ndarray
+        Source trajectory times.
+    similarity_metric : str
+        Similarity metric.
+
+    Returns
+    -------
+    xr.DataArray
+        Ambiguity surface.
+
+    """
+
+    ambiguity_surface_dim = ["idx_rcv_pairs", "src_trajectory_time", "lat", "lon"]
+    ambiguity_surface = np.empty(
+        (1, len(src_traj_times)) + tuple(lib_data.sizes[d] for d in ["lat", "lon"])
+    )
+
+    da_amb_surf = xr.DataArray(
+        data=ambiguity_surface,
+        dims=ambiguity_surface_dim,
+        coords={
+            "idx_rcv_pairs": [lib_data.idx_rcv_pairs.values],
+            "src_trajectory_time": src_traj_times,
+            "lat": lib_data.lat.values,
+            "lon": lib_data.lon.values,
+        },
+        name="ambiguity_surface",
+    )
+
+    lib_data_array = lib_data.values
+
+    for i_src_time, src_time in enumerate(src_traj_times):
+
+        event_vector = event_data.sel(src_trajectory_time=src_time)
+        event_vector_array = event_vector.values
+
+        if similarity_metric == "intercorr0":
+            amb_surf = mult_along_axis(
+                lib_data_array,
+                event_vector_array,
+                axis=2,
+            )
+            autocorr_lib_0 = np.sum(lib_data_array**2, axis=2)
+            autocorr_event_0 = np.sum(event_vector_array**2)
+
+            norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
+            amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
+            amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
+            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
+
+        elif similarity_metric == "lstsquares":
+            diff = lib_data_array - event_vector_array
+            amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
+            amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
+            amb_surf = (
+                1 - amb_surf
+            )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface
+            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
+
+        elif similarity_metric == "hilbert_env_intercorr0":
+            lib_env = np.abs(signal.hilbert(lib_data_array))
+            event_env = np.abs(signal.hilbert(event_vector_array))
+
+            amb_surf = mult_along_axis(
+                lib_env,
+                event_env,
+                axis=2,
+            )
+
+            autocorr_lib_0 = np.sum(lib_env**2, axis=2)
+            autocorr_event_0 = np.sum(event_env**2)
+
+            norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
+            amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
+            amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
+            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
+
+        # TODO: remove this part
+        if np.any(np.isnan(amb_surf)):
+            print(amb_surf)
+
+    return da_amb_surf
+
+
+def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"):
+    """
+    Derive detected position from ambiguity surface.
+
+    Parameters
+    ----------
+    xr_dataset : xr.Dataset
+        Populated dataset.
+    snr_dB : float
+        Signal to noise ratio.
+    idx_similarity_metric : int
+        Index of the similarity metric.
+    i_noise : int
+        Index of the noise realization.
+    method : str, optional
+        Method to detect source position. The default is "absmax".
+
+    Returns
+    -------
+    None
+
+    """
+    ambiguity_surface = xr_dataset.ambiguity_surface
+    ambiguity_surface_combined = xr_dataset.ambiguity_surface_combined
+
+    if method == "absmax":
+        max_pos_idx = ambiguity_surface.argmax(dim=["lon", "lat"])
+        ilon_detected = max_pos_idx["lon"]  # Index of detected longitude
+        ilat_detected = max_pos_idx["lat"]  # Index of detected longitude
+
+        detected_lon = xr_dataset.lon.isel(lon=ilon_detected.compute()).values
+        detected_lat = xr_dataset.lat.isel(lat=ilat_detected.compute()).values
+
+        max_pos_combined_idx = ambiguity_surface_combined.argmax(dim=["lon", "lat"])
+        ilon_detected_combined = max_pos_combined_idx[
+            "lon"
+        ]  # Index of detected longitude
+        ilat_detected_combined = max_pos_combined_idx[
+            "lat"
+        ]  # Index of detected longitude
+
+        detected_lon_combined = xr_dataset.lon.isel(
+            lon=ilon_detected_combined.compute()
+        ).values
+        detected_lat_combined = xr_dataset.lat.isel(
+            lat=ilat_detected_combined.compute()
+        ).values
+
+    # TODO : add other methods to take a larger number of values into account
+    else:
+        raise ValueError("Method not supported")
+
+    # Store detected position in dataset
+    dict_sel = dict(
+        idx_noise_realisation=i_noise,
+        # idx_similarity_metric=idx_similarity_metric,
+    )
+    # ! need to use loc when assigning values to a DataArray to avoid silent failing !
+    xr_dataset.detected_pos_lon.loc[dict_sel] = detected_lon
+    xr_dataset.detected_pos_lat.loc[dict_sel] = detected_lat
+    xr_dataset.detected_pos_lon_combined.loc[dict_sel] = detected_lon_combined
+    xr_dataset.detected_pos_lat_combined.loc[dict_sel] = detected_lat_combined
+
+    return xr_dataset

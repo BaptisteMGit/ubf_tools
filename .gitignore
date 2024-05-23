@@ -157,6 +157,12 @@ env_desc_img/
 *.nc
 # Zarr data 
 *.zarr
+# Avoid commiting zip files 
+*.zip
+*.7z
+
+# Data folder 
+data/
 
 # Wav files
 *.wav

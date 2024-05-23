@@ -142,24 +142,35 @@ def init_dataset(
     xr_dataset.coords["kraken_range"] = kraken_range
     xr_dataset.coords["kraken_depth"] = kraken_depth
 
+    # Chunk dataset 
+    # chunk_dict = {}
+    # for coord in list(xr_dataset.coords):
+    #     chunk_dict[coord] = xr_dataset.sizes[coord]
+    # for coord in ["idx_rcv"]:
+    #     chunk_dict[coord] = 1
+
+    # xr_dataset = xr_dataset.chunk(chunk_dict)
+
+    # Save dataset before adding tf array 
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=True, mode="w")
+
     # Transfert function array
     tf_dims = ["idx_rcv", "all_az", "kraken_freq", "kraken_depth", "kraken_range"]
     tf_shape = [xr_dataset.sizes[dim] for dim in tf_dims]
 
+    # Chunk new variable tf
+    tf_chunksize = {}
+    for d in ["idx_rcv", "all_az"]:
+        tf_chunksize[d] = 1
+    for d in tf_dims[2:]:
+        tf_chunksize[d] = xr_dataset.sizes[d]
+
     tf_arr = da.empty(tf_shape, dtype=np.complex64)
     xr_dataset["tf"] = (tf_dims, tf_arr)
-
-    # Chunk new variable tf
-    chunk_dict = {}
-    for coord in list(xr_dataset.coords):
-        chunk_dict[coord] = xr_dataset.sizes[coord]
-    for coord in ["idx_rcv", "all_az"]:
-        chunk_dict[coord] = 1
-
-    xr_dataset = xr_dataset.chunk(chunk_dict)
+    xr_dataset["tf"] = xr_dataset.tf.chunk(tf_chunksize)
 
     # Store zarr without computing
-    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="w")
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="a")
 
     # # Save simu info in netcdf
     # folder = os.path.dirname(os.path.dirname(xr_dataset.fullpath_dataset_propa))

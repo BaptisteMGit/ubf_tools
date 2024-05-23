@@ -260,12 +260,21 @@ def get_region_number(nregion_max, var, max_size_bytes=0.1 * 1e9):
 
 
 def get_lonlat_sub_regions(ds, nregion):
-    lat_slices_lim = np.linspace(0, ds.sizes["lat"], nregion + 1, dtype=int)
+    step = ds.sizes["lat"] // nregion 
+    lat_slices_lim = np.arange(0, ds.sizes["lat"], step=step)
+    lat_slices_lim = np.append(lat_slices_lim, ds.sizes["lat"])
+
+    # lat_slices_lim = np.linspace(0, ds.sizes["lat"], nregion + 1, dtype=int)
     lat_slices = [
         slice(lat_slices_lim[i], lat_slices_lim[i + 1])
         for i in range(len(lat_slices_lim) - 1)
     ]
-    lon_slices_lim = np.linspace(0, ds.sizes["lon"], nregion + 1, dtype=int)
+
+    step = ds.sizes["lon"] // nregion 
+    lon_slices_lim = np.arange(0, ds.sizes["lon"], step=step)
+    lon_slices_lim = np.append(lon_slices_lim, ds.sizes["lon"])
+
+    # lon_slices_lim = np.linspace(0, ds.sizes["lon"], nregion + 1, dtype=int)
     lon_slices = [
         slice(lon_slices_lim[i], lon_slices_lim[i + 1])
         for i in range(len(lon_slices_lim) - 1)

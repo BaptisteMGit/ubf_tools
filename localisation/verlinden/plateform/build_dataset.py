@@ -65,15 +65,16 @@ def build_dataset(
     freq = ds.kraken_freq.values
 
     # Loop over dataset regions
-    nregion = int(np.ceil(((ds.sizes["all_az"] * ds.sizes["idx_rcv"]) / N_WORKERS)))
+    nregion_workers = int(np.ceil(((ds.sizes["all_az"] * ds.sizes["idx_rcv"]) / N_WORKERS)))
+    
+    nregion_memory = ds.sizes["all_az"]
+    max_size_bytes = 1 * 1e9  # 1 Go
+    size = ds.tf.nbytes / nregion_memory
+    while size <= max_size_bytes and nregion_memory > 1:  # At least 1 region
+        nregion_memory -= 1
+        size = ds.tf.nbytes / nregion_memory
 
-    # nregion = ds.sizes["all_az"]
-    # # max_size_bytes = 1 * 1e9  # 1 Go
-    # max_size_bytes = MAX_RAM_GB / N_WORKERS
-    # size = ds.tf.nbytes / nregion
-    # while size <= max_size_bytes and nregion > 1:  # At least 1 region
-    #     nregion -= 1
-    #     size = ds.tf.nbytes / nregion
+    nregion = max(nregion_memory, nregion_workers)
 
     # Regions are defined by azimuth slices
     az_limits = np.linspace(0, ds.sizes["all_az"], nregion + 1, dtype=int)

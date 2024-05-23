@@ -21,5 +21,5 @@ if os.name == "nt":
     MAX_RAM_GB = 14
 else:
     # Linux
-    N_WORKERS = 80
+    N_WORKERS = 90
     MAX_RAM_GB = 125

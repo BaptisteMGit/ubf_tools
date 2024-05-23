@@ -102,10 +102,9 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
     root_dir = build_root_dir(testcase.name)
     grid_label = build_grid_label(dx, dy)
     fullpath_dataset_propa_grid = build_propa_grid_path(
-        root_dir,
-        boundaries_label, grid_label
+        root_dir, boundaries_label, grid_label
     )
-    
+
     if not os.path.exists(fullpath_dataset_propa):
         steps = [0, 1]  # All steps required
     else:

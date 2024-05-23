@@ -108,10 +108,47 @@ def run_swir():
 
 if __name__ == "__main__":
 
-    run_swir()
+    # run_swir()
     # test()
 
-    # import xarray as xr 
+    import xarray as xr
+    from localisation.verlinden.plateform.populate_dataset import grid_synthesis
+
+    # MAnual synthesis
+    min_waveguide_depth = 5000
+    dt = 10
+    fs = 100  # Sampling frequency
+    f0_lib = 1  # Fundamental frequency of the ship signal
+    src_info = {
+        "sig_type": "ship",
+        "f0": f0_lib,
+        "std_fi": f0_lib * 1 / 100,
+        "tau_corr_fi": 1 / f0_lib,
+        "fs": fs,
+    }
+    src_sig, t_src_sig = generate_ship_signal(
+        Ttot=dt,
+        f0=src_info["f0"],
+        std_fi=src_info["std_fi"],
+        tau_corr_fi=src_info["tau_corr_fi"],
+        fs=src_info["fs"],
+    )
+
+    src_sig *= np.hanning(len(src_sig))
+    nfft = None
+    # nfft = 2**3
+    src = AcousticSource(
+        signal=src_sig,
+        time=t_src_sig,
+        name="ship",
+        waveguide_depth=min_waveguide_depth,
+        nfft=nfft,
+    )
+
+    path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa_grid\propa_grid_65.5523_65.9926_-27.7023_-27.4882_100_100.zarr"
+    ds = xr.open_dataset(path, engine="zarr", chunks={})
+    ds = grid_synthesis(ds, src)
+
     # path = "/home/data/localisation_dataset/testcase3_1/propa/propa_65.5523_65.9926_-27.7023_-27.4882.zarr"
     # ds = xr.open_dataset(path, engine="zarr", chunks={})
     # print()

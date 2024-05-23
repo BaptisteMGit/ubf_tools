@@ -19,28 +19,19 @@ import os
 
 if os.name == "nt":
     PROJECT_ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd"
-    DATA_ROOT = os.path.join(PROJECT_ROOT, "localisation", "verlinden")
+    DATA_ROOT = os.path.join(PROJECT_ROOT, "localisation", "verlinden", "data")
 else:
     PROJECT_ROOT = "/home/program/ubf_tools"
     DATA_ROOT = "/home/data"
 
-ROOT_DATASET_PATH = os.path.join(DATA_ROOT, "localisation_dataset")
+ROOT_DATASET = os.path.join(DATA_ROOT, "localisation_dataset")
+ROOT_ANALYSIS = os.path.join(DATA_ROOT, "localisation_analysis")
+ROOT_PROCESS = os.path.join(DATA_ROOT, "localisation_process")
 
-BATHY_FILENAME = "GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
-
-ROOT_IMG = os.path.join(PROJECT_ROOT, "img", "localisation")
+VERLINDEN_ANALYSIS_FOLDER = os.path.join(DATA_ROOT, "localisation_analysis")
+TC_WORKING_DIR = os.path.join(DATA_ROOT, "testcase_working_directory")
 
 VERLINDEN_POPULATED_FOLDER = os.path.join(
-    PROJECT_ROOT, "localisation", "verlinden", "verlinden_process_populated_library"
+    DATA_ROOT, "verlinden_process_populated_library"
 )
-VERLINDEN_OUTPUT_FOLDER = os.path.join(
-    PROJECT_ROOT, "localisation", "verlinden", "verlinden_process_output"
-)
-TC_WORKING_DIR = os.path.join(
-    PROJECT_ROOT, "localisation", "verlinden", "testcase_working_directory"
-)
-VERLINDEN_ANALYSIS_FOLDER = os.path.join(
-    PROJECT_ROOT, "localisation", "verlinden", "verlinden_process_analysis"
-)
-
 BATHY_FILENAME = "GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"

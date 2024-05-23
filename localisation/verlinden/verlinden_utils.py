@@ -31,7 +31,7 @@ from pyproj import Geod
 # from scipy.sparse import csr_matrix
 
 from cst import BAR_FORMAT, C0, N_CORES
-from misc import mult_along_axis
+from misc import mult_along_axis, fft_convolve_f
 from signals import ship_noise, pulse, pulse_train, generate_ship_signal
 from publication.PublicationFigure import PubFigure
 
@@ -48,7 +48,6 @@ from propa.kraken_toolbox.run_kraken import runkraken
 # from propa.kraken_toolbox.plot_utils import plotshd
 
 from localisation.verlinden.params import VERLINDEN_POPULATED_FOLDER, PROJECT_ROOT
-
 
 def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase):
     """
@@ -1080,7 +1079,7 @@ def init_event_dataset(xr_dataset, src_info, rcv_info, interp_src_pos_on_grid=Fa
         xr_dataset.attrs["source_positions"] = "Not interpolated on grid"
         xr_dataset.attrs["src_pos"] = "not_on_grid"
 
-    # return xr_dataset
+    return xr_dataset
 
 
 def check_waveguide_cutoff(
@@ -1183,36 +1182,6 @@ def add_noise_to_dataset(xr_dataset, snr_dB):
     #         else:
     #             # xr_dataset.attrs["snr_dB"] = "Noiseless"
     #             pass  # TODO: need to be updated to fit with snr integration in a single dataset
-
-
-def fft_convolve_f(a0, a1, axis=-1, workers=8):
-    """
-    Compute the cross-correlation of two real signals using their Fourier transforms a0 and a1.
-
-    Parameters
-    ----------
-    a0 : np.ndarray
-        Fourier transform of the first signal.
-    a1 : np.ndarray
-        Fourier transform of the second signal.
-    axis : int, optional
-        Axis along which to compute the cross-correlation. The default is -1.
-    workers : int, optional
-        Number of workers. The default is 8.
-
-    Returns
-    -------
-    np.ndarray
-        Cross-correlation of a0 and a1.
-
-    """
-
-    # Compute the cross-correlation of a0 and a1 using the FFT
-    corr_01 = sp_fft.irfft(a0 * np.conj(a1), axis=axis, workers=workers)
-    # Reorganise so that tau = 0 corresponds to the center of the array
-    nmid = corr_01.shape[-1] // 2 + 1
-    corr_01 = np.concatenate((corr_01[..., nmid:], corr_01[..., :nmid]), axis=axis)
-    return corr_01
 
 
 def init_corr_library(xr_dataset):

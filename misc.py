@@ -5,6 +5,7 @@ import psutil
 import numpy as np
 import numpy as np
 import multiprocessing
+import scipy.fft as sp_fft
 import moviepy.editor as mpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -218,6 +219,36 @@ def get_child_pids():
     parent_pid = multiprocessing.current_process().pid
     children = psutil.Process(parent_pid).children(recursive=True)
     return [child.pid for child in children]
+
+
+def fft_convolve_f(a0, a1, axis=-1, workers=8):
+    """
+    Compute the cross-correlation of two real signals using their Fourier transforms a0 and a1.
+
+    Parameters
+    ----------
+    a0 : np.ndarray
+        Fourier transform of the first signal.
+    a1 : np.ndarray
+        Fourier transform of the second signal.
+    axis : int, optional
+        Axis along which to compute the cross-correlation. The default is -1.
+    workers : int, optional
+        Number of workers. The default is 8.
+
+    Returns
+    -------
+    np.ndarray
+        Cross-correlation of a0 and a1.
+
+    """
+
+    # Compute the cross-correlation of a0 and a1 using the FFT
+    corr_01 = sp_fft.irfft(a0 * np.conj(a1), axis=axis, workers=workers)
+    # Reorganise so that tau = 0 corresponds to the center of the array
+    nmid = corr_01.shape[-1] // 2 + 1
+    corr_01 = np.concatenate((corr_01[..., nmid:], corr_01[..., :nmid]), axis=axis)
+    return corr_01
 
 
 if __name__ == "__main__":

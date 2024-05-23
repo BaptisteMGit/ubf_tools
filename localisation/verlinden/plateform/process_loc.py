@@ -38,6 +38,8 @@ from localisation.verlinden.verlinden_utils import (
     get_bathy_grid_size,
 )
 
+from localisation.verlinden.plateform.analysis_loc import analysis
+
 
 # ======================================================================================================================
 # Functions
@@ -196,14 +198,14 @@ def process(
     ds_no_noise.to_zarr(ds_no_noise.output_path, mode="a", compute=False)
 
     # Loop over the snr values
-    for idx_snr, snr_i in enumerate(snrs_dB):
-        # snr_tag = get_snr_tag(snr_i)
+    for idx_snr, snr_dB_i in enumerate(snrs_dB):
+        # snr_tag = get_snr_tag(snr_dB_i)
 
         # Add noise to library signal
         ds = ds_no_noise.copy(
             deep=True
         )  # Copy to avoid overwriting the original dataset
-        ds = add_noise_to_library(ds, snr_dB=snr_i)
+        ds = add_noise_to_library(ds, snr_dB=snr_dB_i)
         # Derive correlation vector for the entire grid
         ds = add_correlation_library(ds)
 
@@ -212,17 +214,20 @@ def process(
             print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
 
             # Add event to dataset
-            ds = add_noise_to_event(ds, snr_dB=snr_i)
+            ds = add_noise_to_event(ds, snr_dB=snr_dB_i)
             # Derive cross-correlation vector for each source position
             ds = add_correlation_event(ds)
+            # ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
 
             for i_sim_metric in range(len(similarity_metrics)):
-                # Compute ambiguity surface
+                # Compute.a ambiguity surface
                 ds = add_ambiguity_surf(
                     ds,
+                    idx_snr=idx_snr,
                     idx_similarity_metric=i_sim_metric,
                     i_noise=i,
                 )
+    return ds
 
 
 if __name__ == "__main__":
@@ -323,43 +328,40 @@ if __name__ == "__main__":
         dlon_bathy=dlon,
     )
 
-    # ds_subset = load_subset(
-    #     fpath, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
-    # )
-    # ds_subset = add_event(ds=ds_subset, src_info=src_info, apply_delay=True)
-
-    # # Control the signal
-    # import matplotlib.pyplot as plt
-
-    # plt.figure()
-    # ds_subset.rcv_signal_event.isel(idx_rcv=0, src_trajectory_time=0).plot(
-    #     label=ds_subset.rcv_id.isel(idx_rcv=0).values
-    # )
-    # ds_subset.rcv_signal_event.isel(idx_rcv=1, src_trajectory_time=0).plot(
-    #     label=ds_subset.rcv_id.isel(idx_rcv=1).values
-    # )
-    # plt.legend()
-    # plt.show()
-
-    process(
+    ds = process(
         main_ds_path=fpath,
         src_info=src_info,
         grid_info=grid_info,
         dt=dt,
-        similarity_metrics=["correlation"],
-        snrs_dB=[0],
-        n_noise_realisations=100,
+        similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+        snrs_dB=[0, 5],
+        n_noise_realisations=3,
     )
-    # ds_subset = init_ambiguity_surface(ds_subset)
-# Add noise to dataset
-# add_noise_to_dataset(ds_subset, snr_dB=snr_i)
-# # Derive correlation vector for the entire grid
-# add_correlation_to_dataset(ds_subset)
 
-# add_event_correlation(xr_dataset=ds_subset)
+    snrs = ds.snr.values
+    similarity_metrics = ds.similarity_metrics.values
 
-# build_ambiguity_surf(
-#     ds_subset,
-#     idx_similarity_metric=i_sim_metric,
-#     i_noise=i,
-# )
+    plot_info = {
+        "plot_video": False,
+        "plot_one_tl_profile": False,
+        "plot_ambiguity_surface_dist": False,
+        "plot_received_signal": True,
+        "plot_emmited_signal": True,
+        "plot_ambiguity_surface": True,
+        "plot_ship_trajectory": True,
+        "plot_pos_error": False,
+        "plot_correlation": True,
+        "tl_freq_to_plot": [20],
+        "lon_offset": 0.005,
+        "lat_offset": 0.005,
+        "n_instant_to_plot": 10,
+        "n_rcv_signals_to_plot": 2,
+    }
+
+    analysis(
+        fpath=ds.output_path,
+        snrs=snrs,
+        similarity_metrics=similarity_metrics,
+        grid_info=grid_info,
+        plot_info=plot_info,
+    )

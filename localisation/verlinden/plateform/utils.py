@@ -311,12 +311,6 @@ def compute_received_signal(
         transmited_field_f = transmited_field_f * delay_f
 
     # Fourier synthesis of the received signal -> time domain
-    # chunk_shape = (
-    #     ds.sizes["idx_rcv"],
-    #     ds.sizes["lat"] // N_WORKERS,
-    #     ds.sizes["lon"] // N_WORKERS,
-    #     ds.sizes["kraken_freq"],
-    # )
     chunk_shape = ds.rcv_signal_library.data.chunksize
     transmited_field_f = da.from_array(transmited_field_f, chunks=chunk_shape)
     transmited_field_t = np.fft.irfft(transmited_field_f, axis=-1, n=nfft_inv).compute()
@@ -536,13 +530,6 @@ def init_ambiguity_surface(xr_dataset):
         detected_pos_init_lat[0, ...],
     )
 
-    # xr_dataset["ambiguity_surface"] = xr_dataset["ambiguity_surface"].expand_dims(
-    #     {"snr": xr_dataset.sizes["snr"]}, axis=0
-    # )
-    # xr_dataset["ambiguity_surface_combined"] = xr_dataset[
-    #     "ambiguity_surface_combined"
-    # ].expand_dims({"snr": xr_dataset.sizes["snr"]}, axis=0)
-
     return xr_dataset
 
 
@@ -664,9 +651,6 @@ def add_correlation_library(xr_dataset, idx_snr):
                 },
             )
 
-    # xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
-    # xr_dataset.isel(snr=idx_snr)
-
     return xr_dataset
 
 
@@ -688,11 +672,6 @@ def add_correlation_library_subset(xr_dataset):
     # Faster FFT approach
     ax = 2
     nlag = xr_dataset.sizes["library_corr_lags"]
-
-    # library_corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
-    # library_corr = np.empty(
-    #     tuple(xr_dataset.sizes[d] for d in library_corr_dim), dtype=np.float32
-    # )
 
     for i_pair in range(xr_dataset.sizes["idx_rcv_pairs"]):
         rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
@@ -732,10 +711,6 @@ def add_correlation_library_subset(xr_dataset):
         xr_dataset.library_corr[dict(idx_rcv_pairs=i_pair)] = corr_01_fft.astype(
             np.float32
         )
-        # library_corr[i_pair, ...] = corr_01_fft
-
-    # Assign to dataset
-    # xr_dataset["library_corr"].values = library_corr.astype(np.float32)
 
     return xr_dataset
 
@@ -792,7 +767,6 @@ def add_correlation_event(xr_dataset, idx_snr):
             "src_trajectory_time": slice(None),
         },
     )
-    # xr_dataset.event_corr.to_zarr(xr_dataset.output_path, mode="r+")
 
     return xr_dataset
 
@@ -881,8 +855,6 @@ def add_noise_to_library(xr_dataset, idx_snr, snr_dB):
                     "library_signal_time": slice(None),
                 },
             )
-
-    # xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
 
     return xr_dataset
 
@@ -993,13 +965,6 @@ def add_ambiguity_surf(
             ]
             sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
 
-            # xr_dataset.ambiguity_surface_combined[dict(lat=lat_s, lon=lon_s)] = (
-            #     ds_sub.ambiguity_surface_combined
-            # )
-            # sub_region_to_save = xr_dataset.ambiguity_surface_combined[
-            #     dict(lat=lat_s, lon=lon_s)
-            # ]
-            # sub_region_to_save = ds_sub.ambiguity_surface_combined
             sub_region_to_save.to_zarr(
                 xr_dataset.output_path,
                 mode="r+",
@@ -1014,17 +979,6 @@ def add_ambiguity_surf(
                 },
             )
 
-    # Load full dataset to search for detected positions in the ambiguity surface
-    # xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
-    # Search for detected positions
-    # xr_subset = xr_dataset.isel(
-    #     dict(
-    #         snr=slice(idx_snr, idx_snr + 1),
-    #         idx_similarity_metric=slice(
-    #             idx_similarity_metric, idx_similarity_metric + 1
-    #         ),
-    #     )
-    # )
     xr_subset = get_detected_pos(xr_subset, idx_similarity_metric, i_noise)
     # Save detected positions
     for det in ["detected_pos_lon", "detected_pos_lat"]:

@@ -221,7 +221,6 @@ def process(
 
     # Loop over the snr values
     for idx_snr, snr_dB_i in enumerate(snrs_dB):
-        # snr_tag = get_snr_tag(snr_dB_i)
 
         # Add noise to library signal
         ds = ds_no_noise.isel(snr=idx_snr)
@@ -244,7 +243,6 @@ def process(
             ds = add_noise_to_event(ds, idx_snr=idx_snr, snr_dB=snr_dB_i)
             # Derive cross-correlation vector for each source position
             ds = add_correlation_event(ds, idx_snr=idx_snr)
-            # ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
 
             for i_sim_metric in range(len(similarity_metrics)):
                 # Compute ambiguity surface
@@ -255,7 +253,9 @@ def process(
                     i_noise=i,
                 )
 
+    # Reload full dataset
     ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
+
     return ds
 
 
@@ -263,12 +263,7 @@ if __name__ == "__main__":
 
     from signals import pulse, generate_ship_signal
     from localisation.verlinden.AcousticComponent import AcousticSource
-
-    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa_grid_src\propa_grid_src_65.5973_65.8993_-27.6673_-27.3979_100_100_ship.zarr"
-
-    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa\propa_65.5973_65.8993_-27.6673_-27.3979.zarr"
-    # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
-    from localisation.verlinden.params import DATA_ROOT, ROOT_DATASET
+    from localisation.verlinden.params import ROOT_DATASET
 
     testcase = "testcase3_1"
     root_dir = os.path.join(
@@ -279,8 +274,6 @@ if __name__ == "__main__":
     root_propa_grid = os.path.join(root_dir, "propa_grid")
     root_propa_grid_src = os.path.join(root_dir, "propa_grid_src")
 
-    # fname = "propa_65.5523_65.9926_-27.7023_-27.4882_backup.zarr"
-    # p = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\data\localisation_dataset\testcase3_1\propa\propa_65.5523_65.9926_-27.7023_-27.4882_backup.zarr"
     fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
     fpath = os.path.join(root_propa_grid_src, fname)
 

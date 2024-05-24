@@ -99,6 +99,13 @@ def add_event(ds, src_info, apply_delay):
     # Init corr for event signal
     ds = init_corr_event(ds)
 
+    # Expand rcv_signal_library to snr dims
+    ds["rcv_signal_event"] = ds["rcv_signal_event"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
+
+    ds["event_corr"] = ds["event_corr"].expand_dims({"snr": ds.sizes["snr"]}, axis=0)
+
     return ds
 
 
@@ -157,6 +164,11 @@ def init_dataset(
     # Output path
     build_process_output_path(ds, src_info, grid_info)
 
+    # Expand rcv_signal_library to snr dims
+    ds["rcv_signal_library"] = ds["rcv_signal_library"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
+
     # Rechunk to ensure dask chunks are aligned with the encoding chunks
     for v in list(ds):
         if ds[v].chunks is not None:  # if var is a dask array
@@ -166,6 +178,10 @@ def init_dataset(
 
     # Init corr for library signal
     ds = init_corr_library(ds)
+    # Expand library_corr to snr dims
+    ds["library_corr"] = ds["library_corr"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
 
     return ds
 
@@ -200,37 +216,46 @@ def process(
 
     # Save to zarr without computing
     ds_no_noise.to_zarr(ds_no_noise.output_path, mode="a", compute=False)
+    no_noise_lib = np.copy(ds_no_noise.rcv_signal_library.values)
+    no_noise_event = np.copy(ds_no_noise.rcv_signal_event.values)
 
     # Loop over the snr values
     for idx_snr, snr_dB_i in enumerate(snrs_dB):
         # snr_tag = get_snr_tag(snr_dB_i)
 
         # Add noise to library signal
-        ds = ds_no_noise.copy(
-            deep=True
-        )  # Copy to avoid overwriting the original dataset
-        ds = add_noise_to_library(ds, snr_dB=snr_dB_i)
+        ds = ds_no_noise.isel(snr=idx_snr)
+
+        ds["rcv_signal_library"].values = no_noise_lib[
+            0, ...
+        ]  # Reset to the original signal
+        ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i)
         # Derive correlation vector for the entire grid
-        ds = add_correlation_library(ds)
+        ds = add_correlation_library(ds, idx_snr=idx_snr)
 
         # Loop over different realisation of noise for a given SNR
         for i in range(n_noise_realisations):
             print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
 
             # Add event to dataset
-            ds = add_noise_to_event(ds, snr_dB=snr_dB_i)
+            ds["rcv_signal_event"].values = no_noise_event[
+                0, ...
+            ]  # Reset to the original signal
+            ds = add_noise_to_event(ds, idx_snr=idx_snr, snr_dB=snr_dB_i)
             # Derive cross-correlation vector for each source position
-            ds = add_correlation_event(ds)
+            ds = add_correlation_event(ds, idx_snr=idx_snr)
             # ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
 
             for i_sim_metric in range(len(similarity_metrics)):
-                # Compute.a ambiguity surface
+                # Compute ambiguity surface
                 ds = add_ambiguity_surf(
                     ds,
                     idx_snr=idx_snr,
                     idx_similarity_metric=i_sim_metric,
                     i_noise=i,
                 )
+
+    ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
     return ds
 
 
@@ -336,7 +361,7 @@ if __name__ == "__main__":
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 35
+    grid_offset_cells = 2
 
     grid_info = dict(
         offset_cells_lon=grid_offset_cells,
@@ -354,7 +379,7 @@ if __name__ == "__main__":
         dt=dt,
         similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
         snrs_dB=[0, 5],
-        n_noise_realisations=3,
+        n_noise_realisations=1,
     )
 
     snrs = ds.snr.values

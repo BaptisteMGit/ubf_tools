@@ -157,6 +157,10 @@ def init_dataset(
     # Output path
     build_process_output_path(ds, src_info, grid_info)
 
+    # Rechunk to ensure dask chunks are aligned with the encoding chunks
+    for v in list(ds):
+        if ds[v].chunks is not None:  # if var is a dask array
+            ds[v] = ds[v].chunk(ds[v].encoding["preferred_chunks"])
     # Save previously computed data
     ds.to_zarr(ds.output_path, mode="w", compute=True)
 
@@ -235,10 +239,25 @@ if __name__ == "__main__":
     from signals import pulse, generate_ship_signal
     from localisation.verlinden.AcousticComponent import AcousticSource
 
-    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa_grid_src\propa_grid_src_65.5973_65.8993_-27.6673_-27.3979_100_100_ship.zarr"
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa_grid_src\propa_grid_src_65.5973_65.8993_-27.6673_-27.3979_100_100_ship.zarr"
 
     # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa\propa_65.5973_65.8993_-27.6673_-27.3979.zarr"
-    ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    from localisation.verlinden.params import DATA_ROOT, ROOT_DATASET
+
+    testcase = "testcase3_1"
+    root_dir = os.path.join(
+        ROOT_DATASET,
+        testcase,
+    )
+    root_propa = os.path.join(root_dir, "propa")
+    root_propa_grid = os.path.join(root_dir, "propa_grid")
+    root_propa_grid_src = os.path.join(root_dir, "propa_grid_src")
+
+    # fname = "propa_65.5523_65.9926_-27.7023_-27.4882_backup.zarr"
+    # p = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\data\localisation_dataset\testcase3_1\propa\propa_65.5523_65.9926_-27.7023_-27.4882_backup.zarr"
+    fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
+    fpath = os.path.join(root_propa_grid_src, fname)
 
     dt = 7
     v_knots = 20  # 20 knots
@@ -253,9 +272,9 @@ if __name__ == "__main__":
     src_stype = "ship"
 
     rcv_info = {
-        # "id": ["RR45", "RR48", "RR44"],
+        "id": ["RR45", "RR48", "RR44"],
         # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
-        "id": ["RRdebug0", "RRdebug1"],
+        # "id": ["RRdebug0", "RRdebug1"],
         "lons": [],
         "lats": [],
     }
@@ -299,7 +318,7 @@ if __name__ == "__main__":
     )
 
     src_sig *= np.hanning(len(src_sig))
-    nfft = 2**3
+    nfft = None
     min_waveguide_depth = 5000
     src = AcousticSource(
         signal=src_sig,

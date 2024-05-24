@@ -23,7 +23,7 @@ from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap
 import matplotlib.patches as patches
 
 
-pubfig = PubFigure()
+pubfig = PubFigure(legend_fontsize=20)
 
 # ======================================================================================================================
 # Functions
@@ -82,7 +82,8 @@ def plot_swir_bathy():
 
 def plot_swir_obs(ds_bathy):
     rcv_info = {
-        "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
+        # "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
+        "id": ["RR45", "RR48", "RR44"],
         "lons": [],
         "lats": [],
         "z": [],
@@ -137,7 +138,8 @@ def plot_sim_area(rcv_info, minimum_distance_around_rcv, dx, dy):
 def plot_swir_bathy_obs():
 
     dx, dy = 100, 100
-    minimum_distance_around_rcv = 50 * 1e3
+    minimum_distance_around_rcv = 5 * 1e3
+    deg_offset = 0.1
 
     plt.figure()
     ds_bathy = plot_swir_bathy()
@@ -147,14 +149,72 @@ def plot_swir_bathy_obs():
     plt.xlabel("Longitude [°E]")
     plt.ylabel("Latitude [°N]")
     plt.title("SWIR bathymetry and OBS position")
-    plt.ylim(min(rcv_info["lats"]) - 0.5, max(rcv_info["lats"]) + 0.7)
-    plt.xlim(min(rcv_info["lons"]) - 0.5, max(rcv_info["lons"]) + 0.7)
-    plt.grid()
+    ymin, ymax = (
+        min(rcv_info["lats"]) - deg_offset,
+        max(rcv_info["lats"]) + deg_offset + 0.2,
+    )
+    xmin, xmax = (
+        min(rcv_info["lons"]) - deg_offset,
+        max(rcv_info["lons"]) + deg_offset + 0.2,
+    )
+    plt.ylim(ymin, ymax)
+    plt.xlim(xmin, xmax)
 
-    plt.legend(ncol=3, fontsize=14)
+    # # Plot border
+    # xmin, xmax = plt.gca().get_xlim()
+    # ymin, ymax = plt.gca().get_ylim()
+    # width = xmax - xmin
+    # height = ymax - ymin
+    # rect = patches.Rectangle(
+    #     (xmin, ymin),
+    #     width=width - 0.001,
+    #     height=height - 0.001,
+    #     linewidth=5,
+    #     edgecolor="r",
+    #     facecolor="none",
+    #     # label="Simulation area",
+    # )
+    # plt.gca().add_patch(rect)
+
+    ax = plt.gca()
+    fig = plt.gcf()
+    # Largeur des bordures en points
+    border_width_points = 6  # largeur de la bordure blanche
+    border_width_inches = (
+        border_width_points / 72
+    )  # convertir en pouces (1 pouce = 72 points)
+    border_width_fig = (
+        border_width_inches / fig.get_size_inches()[0]
+    )  # convertir en unités de figure
+
+    # Ajouter la bordure pointillée noire (plus étroite)
+    add_dotted_border(ax, "black", border_width_points, (0, (5, 5)))
+
+    # # Ajuster la position des axes pour décaler la bordure à l'intérieur
+    pos = ax.get_position()
+    ax.set_position(
+        [
+            pos.x0 + border_width_fig,
+            pos.y0 + border_width_fig,
+            pos.width + 2 * border_width_fig,
+            pos.height + 2 * border_width_fig,
+        ]
+    )
+
+    plt.grid()
+    plt.legend(ncol=2)
 
     path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR\swir_bathy_obs.png"
     plt.savefig(path, dpi=300, bbox_inches="tight")
+
+
+# Fonction pour ajouter une bordure pointillée
+def add_dotted_border(ax, color, linewidth, linestyle):
+    for spine in ax.spines.values():
+        spine.set_edgecolor(color)
+        spine.set_linewidth(linewidth)
+        spine.set_linestyle(linestyle)
+        spine.set_capstyle("butt")
 
 
 if __name__ == "__main__":

@@ -260,7 +260,7 @@ def get_region_number(nregion_max, var, max_size_bytes=0.1 * 1e9):
 
 
 def get_lonlat_sub_regions(ds, nregion):
-    step = ds.sizes["lat"] // nregion 
+    step = ds.sizes["lat"] // nregion
     lat_slices_lim = np.arange(0, ds.sizes["lat"], step=step)
     lat_slices_lim = np.append(lat_slices_lim, ds.sizes["lat"])
 
@@ -270,7 +270,7 @@ def get_lonlat_sub_regions(ds, nregion):
         for i in range(len(lat_slices_lim) - 1)
     ]
 
-    step = ds.sizes["lon"] // nregion 
+    step = ds.sizes["lon"] // nregion
     lon_slices_lim = np.arange(0, ds.sizes["lon"], step=step)
     lon_slices_lim = np.append(lon_slices_lim, ds.sizes["lon"])
 
@@ -536,6 +536,13 @@ def init_ambiguity_surface(xr_dataset):
         detected_pos_init_lat[0, ...],
     )
 
+    # xr_dataset["ambiguity_surface"] = xr_dataset["ambiguity_surface"].expand_dims(
+    #     {"snr": xr_dataset.sizes["snr"]}, axis=0
+    # )
+    # xr_dataset["ambiguity_surface_combined"] = xr_dataset[
+    #     "ambiguity_surface_combined"
+    # ].expand_dims({"snr": xr_dataset.sizes["snr"]}, axis=0)
+
     return xr_dataset
 
 
@@ -609,7 +616,7 @@ def init_target_corr(xr_dataset, target):
     return xr_dataset
 
 
-def add_correlation_library(xr_dataset):
+def add_correlation_library(xr_dataset, idx_snr):
     """
     Derive library signals cross-correlation for each grid pixel.
 
@@ -627,16 +634,29 @@ def add_correlation_library(xr_dataset):
     nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.library_corr)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
 
+    lat_chunksize = int(xr_dataset.sizes["lat"] // nregion)
+    lon_chunksize = int(xr_dataset.sizes["lon"] / nregion)
+    idx_rcv_chunksize, corr_chunksize = (
+        xr_dataset.sizes["idx_rcv"],
+        xr_dataset.sizes["library_corr_lags"],
+    )
+    chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, corr_chunksize)
+    xr_dataset["library_corr"] = xr_dataset.library_corr.chunk(chunksize)
+
     for lon_s in lon_slices:
         for lat_s in lat_slices:
             ds_sub = xr_dataset.isel(lat=lat_s, lon=lon_s)
             ds_sub = add_correlation_library_subset(ds_sub)
 
-            sub_region_to_save = ds_sub.library_corr
+            xr_dataset.library_corr[dict(lat=lat_s, lon=lon_s)] = ds_sub.library_corr
+            sub_region_to_save = xr_dataset.library_corr[dict(lat=lat_s, lon=lon_s)]
+            sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
+
             sub_region_to_save.to_zarr(
                 xr_dataset.output_path,
                 mode="r+",
                 region={
+                    "snr": slice(idx_snr, idx_snr + 1),
                     "idx_rcv_pairs": slice(None),
                     "lat": lat_s,
                     "lon": lon_s,
@@ -644,7 +664,8 @@ def add_correlation_library(xr_dataset):
                 },
             )
 
-    xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+    # xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+    # xr_dataset.isel(snr=idx_snr)
 
     return xr_dataset
 
@@ -719,7 +740,7 @@ def add_correlation_library_subset(xr_dataset):
     return xr_dataset
 
 
-def add_correlation_event(xr_dataset):
+def add_correlation_event(xr_dataset, idx_snr):
     """
     Derive cross-correlation for each source position.
 
@@ -759,7 +780,19 @@ def add_correlation_event(xr_dataset):
                 dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
             ] = corr_01.astype(np.float32)
 
-    xr_dataset.event_corr.to_zarr(xr_dataset.output_path, mode="r+")
+    sub_region_to_save = xr_dataset.event_corr
+    sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
+    sub_region_to_save.to_zarr(
+        xr_dataset.output_path,
+        mode="r+",
+        region={
+            "snr": slice(idx_snr, idx_snr + 1),
+            "idx_rcv_pairs": slice(None),
+            "event_corr_lags": slice(None),
+            "src_trajectory_time": slice(None),
+        },
+    )
+    # xr_dataset.event_corr.to_zarr(xr_dataset.output_path, mode="r+")
 
     return xr_dataset
 
@@ -797,7 +830,7 @@ def add_noise_to_target(xr_dataset, target_var, snr_dB):
     return xr_dataset
 
 
-def add_noise_to_library(xr_dataset, snr_dB):
+def add_noise_to_library(xr_dataset, idx_snr, snr_dB):
     """
     Add noise to library signal.
 
@@ -816,16 +849,32 @@ def add_noise_to_library(xr_dataset, snr_dB):
     nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.rcv_signal_library)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
 
+    lat_chunksize = int(xr_dataset.sizes["lat"] // nregion)
+    lon_chunksize = int(xr_dataset.sizes["lon"] / nregion)
+    idx_rcv_chunksize, time_chunksize = (
+        xr_dataset.sizes["idx_rcv"],
+        xr_dataset.sizes["library_signal_time"],
+    )
+    chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, time_chunksize)
+    xr_dataset["rcv_signal_library"] = xr_dataset.rcv_signal_library.chunk(chunksize)
+
     for lon_s in lon_slices:
         for lat_s in lat_slices:
             ds_sub = xr_dataset.isel(lat=lat_s, lon=lon_s)
-            ds_sub = add_noise_to_target(xr_dataset, target_var, snr_dB)
+            ds_sub = add_noise_to_target(ds_sub, target_var, snr_dB)
 
-            sub_region_to_save = ds_sub.rcv_signal_library
+            xr_dataset.rcv_signal_library[dict(lat=lat_s, lon=lon_s)] = (
+                ds_sub.rcv_signal_library
+            )
+            sub_region_to_save = xr_dataset.rcv_signal_library[
+                dict(lat=lat_s, lon=lon_s)
+            ]
+            sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
             sub_region_to_save.to_zarr(
                 xr_dataset.output_path,
                 mode="r+",
                 region={
+                    "snr": slice(idx_snr, idx_snr + 1),
                     "idx_rcv": slice(None),
                     "lat": lat_s,
                     "lon": lon_s,
@@ -833,12 +882,12 @@ def add_noise_to_library(xr_dataset, snr_dB):
                 },
             )
 
-    xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+    # xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
 
     return xr_dataset
 
 
-def add_noise_to_event(xr_dataset, snr_dB):
+def add_noise_to_event(xr_dataset, idx_snr, snr_dB):
     """
     Add noise to event signal.
 
@@ -854,7 +903,19 @@ def add_noise_to_event(xr_dataset, snr_dB):
     """
     target_var = "rcv_signal_event"
     xr_dataset = add_noise_to_target(xr_dataset, target_var, snr_dB)
-    xr_dataset.rcv_signal_event.to_zarr(xr_dataset.output_path, mode="r+")
+
+    sub_region_to_save = xr_dataset.rcv_signal_event
+    sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
+    sub_region_to_save.to_zarr(
+        xr_dataset.output_path,
+        mode="r+",
+        region={
+            "snr": slice(idx_snr, idx_snr + 1),
+            "idx_rcv": slice(None),
+            "event_signal_time": slice(None),
+            "src_trajectory_time": slice(None),
+        },
+    )
 
     return xr_dataset
 
@@ -885,7 +946,7 @@ def add_ambiguity_surf(
     """
     xr_subset = xr_dataset.isel(
         dict(
-            snr=slice(idx_snr, idx_snr + 1),
+            # snr=slice(idx_snr, idx_snr + 1),
             idx_similarity_metric=slice(
                 idx_similarity_metric, idx_similarity_metric + 1
             ),
@@ -901,8 +962,13 @@ def add_ambiguity_surf(
             ds_sub = add_ambiguity_surf_subset(ds_sub, verbose)
 
             # Save ambiguity surface
-            # print(ds_sub.ambiguity_surface.values)
-            sub_region_to_save = ds_sub.ambiguity_surface
+            xr_subset.ambiguity_surface[dict(lat=lat_s, lon=lon_s)] = (
+                ds_sub.ambiguity_surface
+            )
+            sub_region_to_save = xr_subset.ambiguity_surface[dict(lat=lat_s, lon=lon_s)]
+            sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
+
+            # sub_region_to_save = ds_sub.ambiguity_surface
             sub_region_to_save.to_zarr(
                 xr_dataset.output_path,
                 mode="r+",
@@ -919,7 +985,21 @@ def add_ambiguity_surf(
             )
 
             # Save ambiguity surface combined
-            sub_region_to_save = ds_sub.ambiguity_surface_combined
+            xr_subset.ambiguity_surface_combined[dict(lat=lat_s, lon=lon_s)] = (
+                ds_sub.ambiguity_surface_combined
+            )
+            sub_region_to_save = xr_subset.ambiguity_surface_combined[
+                dict(lat=lat_s, lon=lon_s)
+            ]
+            sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
+
+            # xr_dataset.ambiguity_surface_combined[dict(lat=lat_s, lon=lon_s)] = (
+            #     ds_sub.ambiguity_surface_combined
+            # )
+            # sub_region_to_save = xr_dataset.ambiguity_surface_combined[
+            #     dict(lat=lat_s, lon=lon_s)
+            # ]
+            # sub_region_to_save = ds_sub.ambiguity_surface_combined
             sub_region_to_save.to_zarr(
                 xr_dataset.output_path,
                 mode="r+",
@@ -935,22 +1015,25 @@ def add_ambiguity_surf(
             )
 
     # Load full dataset to search for detected positions in the ambiguity surface
-    xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+    # xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
     # Search for detected positions
-    xr_subset = xr_dataset.isel(
-        dict(
-            snr=slice(idx_snr, idx_snr + 1),
-            idx_similarity_metric=slice(
-                idx_similarity_metric, idx_similarity_metric + 1
-            ),
-        )
-    )
+    # xr_subset = xr_dataset.isel(
+    #     dict(
+    #         snr=slice(idx_snr, idx_snr + 1),
+    #         idx_similarity_metric=slice(
+    #             idx_similarity_metric, idx_similarity_metric + 1
+    #         ),
+    #     )
+    # )
     xr_subset = get_detected_pos(xr_subset, idx_similarity_metric, i_noise)
     # Save detected positions
     for det in ["detected_pos_lon", "detected_pos_lat"]:
+
         sub_region_to_save = xr_subset[det].isel(
             dict(idx_noise_realisation=slice(i_noise, i_noise + 1))
         )
+        sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
+
         sub_region_to_save.to_zarr(
             xr_dataset.output_path,
             mode="r+",
@@ -965,7 +1048,7 @@ def add_ambiguity_surf(
             },
         )
     # Reload full dataset
-    xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
+    # xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
 
     return xr_dataset
 
@@ -1010,14 +1093,14 @@ def add_ambiguity_surf_subset(xr_subset, verbose=True):
 
     # Merge dataarrays
     amb_surf_merged = xr.merge(ambiguity_surfaces)
-    xr_subset.ambiguity_surface[dict(idx_similarity_metric=0, snr=0)] = amb_surf_merged[
+    xr_subset.ambiguity_surface[dict(idx_similarity_metric=0)] = amb_surf_merged[
         "ambiguity_surface"
     ]
 
     amb_surf_combined = amb_surf_merged.ambiguity_surface.prod(dim="idx_rcv_pairs") ** (
         1 / len(xr_subset.idx_rcv_pairs)
     )
-    xr_subset.ambiguity_surface_combined[dict(idx_similarity_metric=0, snr=0)] = (
+    xr_subset.ambiguity_surface_combined[dict(idx_similarity_metric=0)] = (
         amb_surf_combined
     )
 

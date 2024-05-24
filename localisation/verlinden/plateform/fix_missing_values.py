@@ -1,5 +1,5 @@
-import os 
-import xarray as xr 
+import os
+import xarray as xr
 
 from localisation.verlinden.plateform.build_dataset import build_dataset
 
@@ -23,25 +23,30 @@ from localisation.verlinden.plateform.populate_dataset import (
 )
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1
 from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+from localisation.verlinden.params import DATA_ROOT, ROOT_DATASET
 
+testcase = "testcase3_1"
+root_dir = os.path.join(
+    ROOT_DATASET,
+    testcase,
+)
+root_propa = os.path.join(root_dir, "propa")
+root_propa_grid = os.path.join(root_dir, "propa_grid")
 
-
-root_propa = "/home/data/localisation_dataset/testcase3_1/propa/"
-root_propa_grid = "/home/data/localisation_dataset/testcase3_1/propa_grid/"
-
-
+# fname = "propa_65.5523_65.9926_-27.7023_-27.4882_backup.zarr"
+# p = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\data\localisation_dataset\testcase3_1\propa\propa_65.5523_65.9926_-27.7023_-27.4882_backup.zarr"
 fname = "propa_65.5523_65.9926_-27.7023_-27.4882_backup.zarr"
 path = os.path.join(root_propa, fname)
+
 ds_master = xr.open_dataset(path, engine="zarr", chunks={})
 
-
 rcv_info = {
-        "id": ["RR45", "RR48", "RR44"],
-        # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
-        # "id": ["RRdebug0", "RRdebug1"],
-        "lons": [],
-        "lats": [],
-    }
+    "id": ["RR45", "RR48", "RR44"],
+    # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
+    # "id": ["RRdebug0", "RRdebug1"],
+    "lons": [],
+    "lats": [],
+}
 testcase = TestCase3_1()
 min_dist = 5 * 1e3
 dx, dy = 100, 100
@@ -89,21 +94,24 @@ fullpath_dataset_propa = build_propa_path(testcase.name, boundaries_label)
 root_dir = build_root_dir(testcase.name)
 grid_label = build_grid_label(dx, dy)
 fullpath_dataset_propa_grid = build_propa_grid_path(
-    root_dir,
-    boundaries_label, grid_label
+    root_dir, boundaries_label, grid_label
 )
 
 ds = init_dataset(
-        rcv_info=rcv_info,
-        testcase=testcase,
-        minimum_distance_around_rcv=min_dist,
-        dx=dx,
-        dy=dy,
-        nfft=src.nfft,
-        fs=src.fs,
-    )
+    rcv_info=rcv_info,
+    testcase=testcase,
+    minimum_distance_around_rcv=min_dist,
+    dx=dx,
+    dy=dy,
+    nfft=src.nfft,
+    fs=src.fs,
+)
 
 ds["tf"] = ds_master.tf
 ds["propa_done"] = True
+ds["propa_grid_done"] = False
+ds["propa_grid_src_done"] = False
+# ds.attrs["dataset_root_dir"] = root_dir
+# ds.attrs["fullpath_dataset_propa"] = fullpath_dataset_propa
+# ds.attrs["fullpath_dataset_propa_grid"] = fullpath_dataset_propa_grid
 ds.to_zarr(ds.fullpath_dataset_propa, compute=True, mode="w")
-

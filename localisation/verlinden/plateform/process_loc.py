@@ -216,8 +216,8 @@ def process(
 
     # Save to zarr without computing
     ds_no_noise.to_zarr(ds_no_noise.output_path, mode="a", compute=False)
-    no_noise_lib = np.copy(ds_no_noise.rcv_signal_library.values)
-    no_noise_event = np.copy(ds_no_noise.rcv_signal_event.values)
+    no_noise_lib = np.copy(ds_no_noise.rcv_signal_library.isel(snr=0).values)
+    no_noise_event = np.copy(ds_no_noise.rcv_signal_event.isel(snr=0).values)
 
     # Loop over the snr values
     for idx_snr, snr_dB_i in enumerate(snrs_dB):
@@ -225,9 +225,9 @@ def process(
         # Add noise to library signal
         ds = ds_no_noise.isel(snr=idx_snr)
 
-        ds["rcv_signal_library"].values = no_noise_lib[
-            0, ...
-        ]  # Reset to the original signal
+        ds["rcv_signal_library"].values = np.copy(
+            no_noise_lib
+        )  # Reset to the original signal
         ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i)
         # Derive correlation vector for the entire grid
         ds = add_correlation_library(ds, idx_snr=idx_snr)
@@ -236,10 +236,8 @@ def process(
         for i in range(n_noise_realisations):
             print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
 
-            # Add event to dataset
-            ds["rcv_signal_event"].values = no_noise_event[
-                0, ...
-            ]  # Reset to the original signal
+            # Reset to the original signal
+            ds["rcv_signal_event"].values = np.copy(no_noise_event)
             ds = add_noise_to_event(ds, idx_snr=idx_snr, snr_dB=snr_dB_i)
             # Derive cross-correlation vector for each source position
             ds = add_correlation_event(ds, idx_snr=idx_snr)
@@ -354,7 +352,7 @@ if __name__ == "__main__":
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 2
+    grid_offset_cells = 3
 
     grid_info = dict(
         offset_cells_lon=grid_offset_cells,
@@ -365,14 +363,18 @@ if __name__ == "__main__":
         dlon_bathy=dlon,
     )
 
+    n_noise_realisations = 1
+    snr = np.arange(-10, 5, 1)
+    # n_noise_realisations = 1
+    # snr = [0, -5]
     ds = process(
         main_ds_path=fpath,
         src_info=src_info,
         grid_info=grid_info,
         dt=dt,
         similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
-        snrs_dB=[0, 5],
-        n_noise_realisations=1,
+        snrs_dB=snr,
+        n_noise_realisations=n_noise_realisations,
     )
 
     snrs = ds.snr.values

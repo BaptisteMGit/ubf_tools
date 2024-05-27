@@ -1561,12 +1561,19 @@ def add_noise_to_signal(sig, snr_dB, noise_type="gaussian"):
             P_sig * 10 ** (-snr_dB / 10)
         )  # Noise level for each position
 
+        print(f"Desired SNR: {snr_dB} dB")
+        print("Signal power at first pos : ", P_sig[0])
+        # print("Noise level at first pos : ", sigma_noise[0])
+        # print(P_sig, sigma_noise)
+
         if sig.ndim == 2:  # 2D array (event signal) (pos, time)
 
             if noise_type == "gaussian":
                 # Generate gaussian noise
                 for i_ship in range(sig.shape[0]):
                     noise = np.random.normal(0, sigma_noise[i_ship], sig.shape[-1])
+                    # achieved_snr =  10 * np.log10(np.sum(sig[i_ship]**2) / np.sum(noise**2))
+                    # print("Acheived snr = ", achieved_snr)
                     sig[i_ship, :] += noise
             else:
                 raise ValueError("Noise type not supported")
@@ -1579,6 +1586,8 @@ def add_noise_to_signal(sig, snr_dB, noise_type="gaussian"):
                         noise = np.random.normal(
                             0, sigma_noise[i_lon, i_lat], sig.shape[-1]
                         )
+                        # achieved_snr =  10 * np.log10(np.sum(sig[i_lon, i_lat, :]**2) / np.sum(noise**2))
+                        # print("Acheived snr = ", achieved_snr)
                         sig[i_lon, i_lat, :] += noise
             else:
                 raise ValueError("Noise type not supported")

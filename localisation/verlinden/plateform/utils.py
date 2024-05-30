@@ -603,7 +603,7 @@ def init_target_corr(xr_dataset, target):
     return xr_dataset
 
 
-def add_correlation_library(xr_dataset, idx_snr):
+def add_correlation_library(xr_dataset, idx_snr, verbose=True):
     """
     Derive library signals cross-correlation for each grid pixel.
 
@@ -617,6 +617,8 @@ def add_correlation_library(xr_dataset, idx_snr):
     None
 
     """
+    if verbose:
+        print(f"Add library correlation to dataset")
 
     nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.library_corr)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
@@ -715,7 +717,7 @@ def add_correlation_library_subset(xr_dataset):
     return xr_dataset
 
 
-def add_correlation_event(xr_dataset, idx_snr):
+def add_correlation_event(xr_dataset, idx_snr, verbose=True):
     """
     Derive cross-correlation for each source position.
 
@@ -729,6 +731,9 @@ def add_correlation_event(xr_dataset, idx_snr):
     None
 
     """
+    if verbose:
+        print(f"Addevent correlation to dataset")
+    
 
     # Derive cross_correlation vector for each src position
     for i_ship in range(xr_dataset.sizes["src_trajectory_time"]):
@@ -804,7 +809,7 @@ def add_noise_to_target(xr_dataset, target_var, snr_dB):
     return xr_dataset
 
 
-def add_noise_to_library(xr_dataset, idx_snr, snr_dB):
+def add_noise_to_library(xr_dataset, idx_snr, snr_dB, verbose=True):
     """
     Add noise to library signal.
 
@@ -818,6 +823,9 @@ def add_noise_to_library(xr_dataset, idx_snr, snr_dB):
     None
 
     """
+    if verbose:
+        print(f"Add noise to library signal")
+
     target_var = "rcv_signal_library"
 
     nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.rcv_signal_library)
@@ -859,7 +867,7 @@ def add_noise_to_library(xr_dataset, idx_snr, snr_dB):
     return xr_dataset
 
 
-def add_noise_to_event(xr_dataset, idx_snr, snr_dB):
+def add_noise_to_event(xr_dataset, idx_snr, snr_dB, verbose=True):
     """
     Add noise to event signal.
 
@@ -873,6 +881,10 @@ def add_noise_to_event(xr_dataset, idx_snr, snr_dB):
     None
 
     """
+
+    if verbose:
+        print(f"Add noise to event signal")
+    
     target_var = "rcv_signal_event"
     xr_dataset = add_noise_to_target(xr_dataset, target_var, snr_dB)
 
@@ -916,6 +928,10 @@ def add_ambiguity_surf(
     None
 
     """
+
+    if verbose: 
+        print("Derive ambiguity surface")
+
     xr_subset = xr_dataset.isel(
         dict(
             # snr=slice(idx_snr, idx_snr + 1),

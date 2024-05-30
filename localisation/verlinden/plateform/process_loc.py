@@ -46,7 +46,10 @@ from localisation.verlinden.plateform.analysis_loc import analysis
 # ======================================================================================================================
 
 
-def add_event(ds, src_info, apply_delay):
+def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
+
+    if verbose:
+        print(f"Add event received signal to dataset: \n\t{src_info}")
 
     pos_src_info = src_info["pos"]
     src = src_info["sig"]["src"]
@@ -109,16 +112,22 @@ def add_event(ds, src_info, apply_delay):
     return ds
 
 
-def load_subset(fpath, pos_src_info, grid_info, dt):
+def load_subset(fpath, pos_src_info, grid_info, dt, verbose=True):
     """
     Load a subset of the dataset around the source to be localized.
     """
+
     # Load the dataset
     ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
     # Define limits of the subset area
     init_event_src_traj(pos_src_info, dt)
     init_grid_around_event_src_traj(pos_src_info, grid_info)
+
+    if verbose:
+        print(
+            f"Load dataset subset: \n\tlon ({grid_info['min_lon']}, {grid_info['max_lon']}) \n\tlat ({grid_info['min_lat']}, {grid_info['max_lat']})"
+        )
 
     # Extract area around the source
     ds_subset = ds.sel(
@@ -137,11 +146,15 @@ def init_dataset(
     similarity_metrics,
     snrs_dB,
     n_noise_realisations=100,
+    verbose=True,
 ):
     # Load subset of the main dataset
     ds = load_subset(
         main_ds_path, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
     )
+
+    if verbose:
+        print(f"Iniitialise dataset")
 
     # Initialisation time
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
@@ -189,6 +202,7 @@ def init_dataset(
 def process(
     main_ds_path,
     src_info,
+    rcv_info,
     grid_info,
     dt,
     similarity_metrics,
@@ -208,7 +222,7 @@ def process(
     )
 
     # Add event to the dataset
-    ds = add_event(ds, src_info, apply_delay=True)
+    ds = add_event(ds, src_info, rcv_info, apply_delay=True)
 
     # Init ambiguity surface
     ds = init_ambiguity_surface(ds)
@@ -370,6 +384,7 @@ if __name__ == "__main__":
     ds = process(
         main_ds_path=fpath,
         src_info=src_info,
+        rcv_info=rcv_info,
         grid_info=grid_info,
         dt=dt,
         similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],

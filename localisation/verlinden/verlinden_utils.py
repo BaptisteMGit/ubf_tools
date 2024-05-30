@@ -1561,8 +1561,8 @@ def add_noise_to_signal(sig, snr_dB, noise_type="gaussian"):
             P_sig * 10 ** (-snr_dB / 10)
         )  # Noise level for each position
 
-        print(f"Desired SNR: {snr_dB} dB")
-        print("Signal power at first pos : ", P_sig[0])
+        # print(f"Desired SNR: {snr_dB} dB")
+        # print("Signal power at first pos : ", P_sig[0])
         # print("Noise level at first pos : ", sigma_noise[0])
         # print(P_sig, sigma_noise)
 

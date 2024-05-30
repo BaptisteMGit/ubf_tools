@@ -1001,6 +1001,7 @@ def add_ambiguity_surf(
                 "src_trajectory_time": slice(None),
             },
         )
+
     # Reload full dataset
     # xr_dataset = xr.open_dataset(xr_dataset.output_path, engine="zarr", chunks={})
 

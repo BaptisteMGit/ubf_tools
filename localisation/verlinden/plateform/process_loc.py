@@ -284,7 +284,7 @@ if __name__ == "__main__":
 
     fs = 100
     duration = 200  # 1000 s
-    nmax_ship = 5
+    nmax_ship = 1
     src_stype = "ship"
 
     rcv_info = {
@@ -316,11 +316,11 @@ if __name__ == "__main__":
         "initial_pos": initial_ship_pos,
     }
     # Event
-    f0_event = 1.5  # Fundamental frequency of the ship signal
+    f0_event = 1  # Fundamental frequency of the ship signal
     event_sig_info = {
         "sig_type": "ship",
         "f0": f0_event,
-        "std_fi": f0_event * 10 / 100,
+        "std_fi": f0_event * 1 / 100,
         "tau_corr_fi": 1 / f0_event,
         "fs": fs,
     }
@@ -352,7 +352,7 @@ if __name__ == "__main__":
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 3
+    grid_offset_cells = 5
 
     grid_info = dict(
         offset_cells_lon=grid_offset_cells,
@@ -364,9 +364,9 @@ if __name__ == "__main__":
     )
 
     n_noise_realisations = 1
-    snr = np.arange(-10, 5, 1)
+    # snr = np.arange(-10, 5, 1)
     # n_noise_realisations = 1
-    # snr = [0, -5]
+    snr = [0]
     ds = process(
         main_ds_path=fpath,
         src_info=src_info,

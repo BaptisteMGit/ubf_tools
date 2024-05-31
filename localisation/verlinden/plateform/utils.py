@@ -732,8 +732,7 @@ def add_correlation_event(xr_dataset, idx_snr, verbose=True):
 
     """
     if verbose:
-        print(f"Addevent correlation to dataset")
-    
+        print(f"Add event correlation to dataset")
 
     # Derive cross_correlation vector for each src position
     for i_ship in range(xr_dataset.sizes["src_trajectory_time"]):
@@ -742,12 +741,12 @@ def add_correlation_event(xr_dataset, idx_snr, verbose=True):
             s0 = (
                 xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[0])
                 .isel(src_trajectory_time=i_ship)
-                .values
+                .data
             ).astype(np.float64)
             s1 = (
                 xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[1])
                 .isel(src_trajectory_time=i_ship)
-                .values
+                .data
             ).astype(np.float64)
 
             corr_01 = signal.correlate(s0, s1)
@@ -797,14 +796,19 @@ def add_noise_to_target(xr_dataset, target_var, snr_dB):
 
     """
     for i_rcv in xr_dataset.idx_rcv.values:
-        rcv_sig = xr_dataset[target_var].sel(idx_rcv=i_rcv).values
+        rcv_sig = xr_dataset[target_var].sel(idx_rcv=i_rcv).data
 
         if snr_dB is not None:
             # Add noise to received signal
             xr_dataset[target_var].loc[dict(idx_rcv=i_rcv)] = add_noise_to_signal(
-                np.copy(rcv_sig),
+                rcv_sig,
                 snr_dB=snr_dB,
             )
+
+            # xr_dataset[target_var].loc[dict(idx_rcv=i_rcv)] = add_noise_to_signal(
+            #     np.copy(rcv_sig),
+            #     snr_dB=snr_dB,
+            # )
 
     return xr_dataset
 
@@ -884,7 +888,7 @@ def add_noise_to_event(xr_dataset, idx_snr, snr_dB, verbose=True):
 
     if verbose:
         print(f"Add noise to event signal")
-    
+
     target_var = "rcv_signal_event"
     xr_dataset = add_noise_to_target(xr_dataset, target_var, snr_dB)
 
@@ -929,7 +933,7 @@ def add_ambiguity_surf(
 
     """
 
-    if verbose: 
+    if verbose:
         print("Derive ambiguity surface")
 
     xr_subset = xr_dataset.isel(
@@ -1010,6 +1014,27 @@ def add_ambiguity_surf(
             region={
                 "idx_noise_realisation": slice(i_noise, i_noise + 1),
                 "idx_rcv_pairs": slice(None),
+                "idx_similarity_metric": slice(
+                    idx_similarity_metric, idx_similarity_metric + 1
+                ),
+                "snr": slice(idx_snr, idx_snr + 1),
+                "src_trajectory_time": slice(None),
+            },
+        )
+
+    # Save combined detected positions
+    for det in ["detected_pos_lon_combined", "detected_pos_lat_combined"]:
+
+        sub_region_to_save = xr_subset[det].isel(
+            dict(idx_noise_realisation=slice(i_noise, i_noise + 1))
+        )
+        sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
+
+        sub_region_to_save.to_zarr(
+            xr_dataset.output_path,
+            mode="r+",
+            region={
+                "idx_noise_realisation": slice(i_noise, i_noise + 1),
                 "idx_similarity_metric": slice(
                     idx_similarity_metric, idx_similarity_metric + 1
                 ),

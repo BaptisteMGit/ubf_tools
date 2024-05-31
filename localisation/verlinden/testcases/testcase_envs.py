@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import scipy.io as sio
 import matplotlib.pyplot as plt
 
@@ -211,8 +212,8 @@ class TestCase:
         self.set_top_hs()
         self.set_medium()
         self.set_att()
-        self.set_field()
         self.set_bott_hs()
+        self.set_field()
         self.set_env()
         self.set_flp()
 
@@ -237,10 +238,19 @@ class TestCase:
 
     def set_field(self):
         n_rcv_z = default_nb_rcv_z(max(self.freq), self.max_depth, n_per_l=15)
+
+        c_low = min(
+            np.min(self.cp_ssp), np.min(self.bott_hs_properties["c_p"])
+        )  # Minimum p-wave speed in the problem as recommanded by Kraken manual to exclude interfacial waves
+        c_high = np.max(
+            self.bott_hs_properties["c_p"]
+        )  # Maximum p-wave speed in the bottom to limit the number of modes computed
+
         self.field = KrakenField(
             n_rcv_z=n_rcv_z,
             src_depth=self.src_depth,
             rcv_z_max=self.max_depth,
+            phase_speed_limits=[c_low, c_high],
         )
 
     def set_medium(self):

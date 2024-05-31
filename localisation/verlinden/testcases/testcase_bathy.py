@@ -42,7 +42,7 @@ def bathy_flat_seabed(
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
         plt.grid()
         plt.tight_layout()
-        pfig.set_all_fontsize()
+        # pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()
 
@@ -87,7 +87,7 @@ def bathy_sin_slope(
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
         plt.grid()
         plt.tight_layout()
-        pfig.set_all_fontsize()
+        # pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()
 
@@ -256,5 +256,6 @@ def extract_2D_bathy_profile(
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
         plt.grid()
         plt.tight_layout()
+        # pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()

@@ -1566,33 +1566,52 @@ def add_noise_to_signal(sig, snr_dB, noise_type="gaussian"):
         # print("Noise level at first pos : ", sigma_noise[0])
         # print(P_sig, sigma_noise)
 
-        if sig.ndim == 2:  # 2D array (event signal) (pos, time)
+        if noise_type == "gaussian":
+            # Generate 3D Gaussian noise matrix with corresponding sigma in each grid position
+            # Broadcasting sigma_noise to match the shape of sig for element-wise multiplication
+            noise = np.random.normal(0, 1, sig.shape) * sigma_noise[..., np.newaxis]
 
-            if noise_type == "gaussian":
-                # Generate gaussian noise
-                for i_ship in range(sig.shape[0]):
-                    noise = np.random.normal(0, sigma_noise[i_ship], sig.shape[-1])
-                    # achieved_snr =  10 * np.log10(np.sum(sig[i_ship]**2) / np.sum(noise**2))
-                    # print("Acheived snr = ", achieved_snr)
-                    sig[i_ship, :] += noise
-            else:
-                raise ValueError("Noise type not supported")
+        else:
+            raise ValueError("Noise type not supported")
 
-        elif sig.ndim == 3:  # 3D array (library signal) -> (x, y, time)
-            if noise_type == "gaussian":
-                # Generate gaussian noise
-                for i_lon in range(sig.shape[0]):
-                    for i_lat in range(sig.shape[1]):
-                        noise = np.random.normal(
-                            0, sigma_noise[i_lon, i_lat], sig.shape[-1]
-                        )
-                        # achieved_snr =  10 * np.log10(np.sum(sig[i_lon, i_lat, :]**2) / np.sum(noise**2))
-                        # print("Acheived snr = ", achieved_snr)
-                        sig[i_lon, i_lat, :] += noise
-            else:
-                raise ValueError("Noise type not supported")
+        # Add the noise to the original signal
+        noisy_sig = sig + noise
 
-    return sig
+        # for i_lon in range(sig.shape[0]):
+        #     for i_lat in range(sig.shape[1]):
+
+        #         achieved_snr = 10 * np.log10(
+        #             np.sum(sig[i_lon, i_lat, :] ** 2) / np.sum(noise[i_lon, i_lat, :]**2)
+        #         )
+        #         print("Acheived snr = ", achieved_snr)
+
+        # if sig.ndim == 2:  # 2D array (event signal) (pos, time)
+
+        #     if noise_type == "gaussian":
+        #         # Generate gaussian noise
+        #         for i_ship in range(sig.shape[0]):
+        #             noise = np.random.normal(0, sigma_noise[i_ship], sig.shape[-1])
+        #             # achieved_snr =  10 * np.log10(np.sum(sig[i_ship]**2) / np.sum(noise**2))
+        #             # print("Acheived snr = ", achieved_snr)
+        #             sig[i_ship, :] += noise
+        #     else:
+        #         raise ValueError("Noise type not supported")
+
+        # elif sig.ndim == 3:  # 3D array (library signal) -> (x, y, time)
+        #     if noise_type == "gaussian":
+        #         # Generate gaussian noise
+        #         for i_lon in range(sig.shape[0]):
+        #             for i_lat in range(sig.shape[1]):
+        #                 noise = np.random.normal(
+        #                     0, sigma_noise[i_lon, i_lat], sig.shape[-1]
+        #                 )
+        #                 # achieved_snr =  10 * np.log10(np.sum(sig[i_lon, i_lat, :]**2) / np.sum(noise**2))
+        #                 # print("Acheived snr = ", achieved_snr)
+        #                 sig[i_lon, i_lat, :] += noise
+        #     else:
+        #         raise ValueError("Noise type not supported")
+
+    return noisy_sig
 
 
 def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):

@@ -69,7 +69,7 @@ def run_swir():
         "lats": [],
     }
     tc = TestCase3_1()
-    min_dist = 5 * 1e3
+    min_dist = 4 * 1e3
     dx, dy = 100, 100
 
     # Define source signal
@@ -124,7 +124,8 @@ def common_process_loc():
     root_propa_grid = os.path.join(root_dir, "propa_grid")
     root_propa_grid_src = os.path.join(root_dir, "propa_grid_src")
 
-    fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
+    # fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
+    fname = "/home/data/localisation_dataset/testcase3_1/propa/propa_65.5624_65.9825_-27.6933_-27.4972.zarr"
     fpath = os.path.join(root_propa_grid_src, fname)
 
     # Source infos 
@@ -169,7 +170,7 @@ def common_process_loc():
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 60
+    grid_offset_cells = 90
 
     grid_info = dict(
         offset_cells_lon=grid_offset_cells,
@@ -180,8 +181,8 @@ def common_process_loc():
         dlon_bathy=dlon,
     )
 
-
     return fpath, event_pos_info, grid_info, rcv_info
+
 
 def set_event_sig_info(f0):
     # Event
@@ -191,7 +192,7 @@ def set_event_sig_info(f0):
     event_sig_info = {
         "sig_type": "ship",
         "f0": f0,
-        "std_fi": f0 * 10 / 100,
+        "std_fi": f0 * 1 / 100,
         "tau_corr_fi": 1 / f0,
         "fs": fs,
     }
@@ -251,7 +252,7 @@ def process_analysis(ds, grid_info):
 
 def run_process_loc():
 
-    n_noise = 200
+    n_noise = 100
     f0_library = 1
     snr = np.arange(-10, 5, 0.5)
     fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
@@ -279,7 +280,8 @@ def run_process_loc():
 
     """ Test with different spectral content """
 
-    f0 = 1.5*f0_library
+    snr = [15]
+    f0 = 2.5*f0_library
     dt, fs, event_sig_info = set_event_sig_info(f0)
     src_info = {}
     src_info["pos"] = event_pos_info
@@ -301,8 +303,12 @@ def run_process_loc():
 
 if __name__ == "__main__":
 
+    # Build dataset 
+    run_swir()
+
+    # Exploit dataset for localisation
     run_process_loc()
-    # run_swir()
+
     # test()
 
     # min_waveguide_depth = 5000

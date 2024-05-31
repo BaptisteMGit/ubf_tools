@@ -14,6 +14,7 @@
 # ======================================================================================================================
 import pandas as pd
 import xarray as xr
+import numpy as np
 import matplotlib.pyplot as plt
 
 from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
@@ -80,7 +81,7 @@ def plot_swir_bathy():
     return ds_bathy
 
 
-def plot_swir_obs(ds_bathy):
+def plot_swir_obs(ds_bathy, col=None):
     rcv_info = {
         # "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
         "id": ["RR45", "RR48", "RR44"],
@@ -102,6 +103,8 @@ def plot_swir_obs(ds_bathy):
         rcv_info["z_bathy"].append(z_bathy)
 
     markers = ["o", "s", "D", "X", "P", "H", "v", "^"]
+    if col is None:
+        col = ["k"] * len(rcv_info["id"])
     for i_obs, obs_id in enumerate(rcv_info["id"]):
         plt.scatter(
             rcv_info["lons"][i_obs],
@@ -109,7 +112,7 @@ def plot_swir_obs(ds_bathy):
             label=f"{obs_id}: {rcv_info['z'][i_obs]} m",
             s=130,
             zorder=10,
-            color="k",
+            color=col[i_obs],
             marker=markers[i_obs],
         )
 
@@ -176,35 +179,81 @@ def plot_swir_bathy_obs():
     # )
     # plt.gca().add_patch(rect)
 
-    ax = plt.gca()
-    fig = plt.gcf()
-    # Largeur des bordures en points
-    border_width_points = 6  # largeur de la bordure blanche
-    border_width_inches = (
-        border_width_points / 72
-    )  # convertir en pouces (1 pouce = 72 points)
-    border_width_fig = (
-        border_width_inches / fig.get_size_inches()[0]
-    )  # convertir en unités de figure
+    # ax = plt.gca()
+    # fig = plt.gcf()
+    # # Largeur des bordures en points
+    # border_width_points = 6  # largeur de la bordure blanche
+    # border_width_inches = (
+    #     border_width_points / 72
+    # )  # convertir en pouces (1 pouce = 72 points)
+    # border_width_fig = (
+    #     border_width_inches / fig.get_size_inches()[0]
+    # )  # convertir en unités de figure
 
-    # Ajouter la bordure pointillée noire (plus étroite)
-    add_dotted_border(ax, "black", border_width_points, (0, (5, 5)))
+    # # Ajouter la bordure pointillée noire (plus étroite)
+    # add_dotted_border(ax, "black", border_width_points, (0, (5, 5)))
 
-    # # Ajuster la position des axes pour décaler la bordure à l'intérieur
-    pos = ax.get_position()
-    ax.set_position(
-        [
-            pos.x0 + border_width_fig,
-            pos.y0 + border_width_fig,
-            pos.width + 2 * border_width_fig,
-            pos.height + 2 * border_width_fig,
-        ]
-    )
+    # # # Ajuster la position des axes pour décaler la bordure à l'intérieur
+    # pos = ax.get_position()
+    # ax.set_position(
+    #     [
+    #         pos.x0 + border_width_fig,
+    #         pos.y0 + border_width_fig,
+    #         pos.width + 2 * border_width_fig,
+    #         pos.height + 2 * border_width_fig,
+    #     ]
+    # )
 
     plt.grid()
     plt.legend(ncol=2)
 
-    path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR\swir_bathy_obs.png"
+    path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR\swir_bathy_obs_no_border.png"
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+
+
+def plot_swir_bathy_obs_src():
+    dx, dy = 100, 100
+    minimum_distance_around_rcv = 5 * 1e3
+
+    ds_bathy = plot_swir_bathy()
+    rcv_info = plot_swir_obs(ds_bathy)
+    grid_info = plot_sim_area(rcv_info, minimum_distance_around_rcv, dx, dy)
+
+    initial_ship_pos = {
+        "lon": rcv_info["lons"][0],
+        "lat": rcv_info["lats"][0] + 0.07,
+        "crs": "WGS84",
+    }
+
+    plt.figure()
+    plot_swir_bathy()
+    plot_swir_obs(ds_bathy, col=["k", "k", "k"])
+    plt.scatter(
+        initial_ship_pos["lon"],
+        initial_ship_pos["lat"],
+        label="Ship position",
+        s=150,
+        zorder=10,
+        color="r",
+        marker="*",
+    )
+    plt.xlabel("Longitude [°E]")
+    plt.ylabel("Latitude [°N]")
+    plt.title("SWIR bathymetry and OBS position")
+    ymin, ymax = (
+        grid_info["min_lat"],
+        grid_info["max_lat"],
+    )
+    xmin, xmax = (
+        grid_info["min_lon"],
+        grid_info["max_lon"],
+    )
+    plt.ylim(ymin, ymax)
+    plt.xlim(xmin, xmax)
+    plt.grid()
+    plt.legend(ncol=2)
+
+    path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR\swir_bathy_obs_no_border_src.png"
     plt.savefig(path, dpi=300, bbox_inches="tight")
 
 
@@ -217,5 +266,25 @@ def add_dotted_border(ax, color, linewidth, linestyle):
         spine.set_capstyle("butt")
 
 
+def plot_bathy_profile():
+    path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\testcase_working_directory\testcase3_1\bathy.csv"
+    df = pd.read_csv(path)
+    r, z = df.iloc[:, 0], df.iloc[:, 1]
+    plt.figure()
+    plt.plot(r, z)
+    plt.xlabel("Range [km]")
+    plt.ylabel("Depth [m]")
+    plt.title("Bathymetry profile")
+    plt.grid()
+    path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR\bathy_profile.png"
+    plt.savefig(path, dpi=300, bbox_inches="tight")
+
+    # Max variation
+    variation = np.diff(z)
+    max_var = np.max(np.abs(variation))
+
+
 if __name__ == "__main__":
-    plot_swir_bathy_obs()
+    # plot_swir_bathy_obs()
+    # plot_swir_bathy_obs_src()
+    plot_bathy_profile()

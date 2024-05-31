@@ -16,9 +16,11 @@ import os
 import numpy as np
 import xarray as xr
 import pandas as pd
+import dask.array as da
 
 from cst import C0
 from misc import mult_along_axis
+from dask.distributed import Client
 from localisation.verlinden.plateform.utils import (
     init_event_dataset,
     init_ambiguity_surface,
@@ -71,8 +73,11 @@ def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
 
     ds["event_signal_time"] = time_vector
     signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
-    rcv_signal_event = np.empty(
-        tuple(ds.sizes[d] for d in signal_event_dim), dtype=np.float32
+
+    # TODO change into dask array
+    chunks = (1, 1, len(time_vector))
+    rcv_signal_event = da.empty(
+        tuple(ds.sizes[d] for d in signal_event_dim), chunks=chunks, dtype=np.float32
     )
     ds["rcv_signal_event"] = (signal_event_dim, rcv_signal_event)
 
@@ -154,7 +159,7 @@ def init_dataset(
     )
 
     if verbose:
-        print(f"Iniitialise dataset")
+        print(f"Initialise dataset")
 
     # Initialisation time
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
@@ -208,6 +213,7 @@ def process(
     similarity_metrics,
     snrs_dB,
     n_noise_realisations=100,
+    verbose=False,
 ):
 
     # Load subset and init usefull vars
@@ -219,10 +225,18 @@ def process(
         similarity_metrics=similarity_metrics,
         snrs_dB=snrs_dB,
         n_noise_realisations=n_noise_realisations,
+        verbose=True,
     )
 
+    # from time import time
+
+    # t0 = time()
+    # n_workers = 8
+    # with Client(n_workers=n_workers, threads_per_worker=1) as client:
+    #     print(client.dashboard_link)
+
     # Add event to the dataset
-    ds = add_event(ds, src_info, rcv_info, apply_delay=True)
+    ds = add_event(ds, src_info, rcv_info, apply_delay=True, verbose=verbose)
 
     # Init ambiguity surface
     ds = init_ambiguity_surface(ds)
@@ -230,8 +244,11 @@ def process(
 
     # Save to zarr without computing
     ds_no_noise.to_zarr(ds_no_noise.output_path, mode="a", compute=False)
-    no_noise_lib = np.copy(ds_no_noise.rcv_signal_library.isel(snr=0).values)
-    no_noise_event = np.copy(ds_no_noise.rcv_signal_event.isel(snr=0).values)
+    # no_noise_lib = np.copy(ds_no_noise.rcv_signal_library.isel(snr=0).values)
+    # no_noise_event = np.copy(ds_no_noise.rcv_signal_event.isel(snr=0).values)
+
+    no_noise_lib = ds_no_noise.rcv_signal_library.isel(snr=0).data
+    no_noise_event = ds_no_noise.rcv_signal_event.isel(snr=0).data
 
     # Loop over the snr values
     for idx_snr, snr_dB_i in enumerate(snrs_dB):
@@ -239,22 +256,27 @@ def process(
         # Add noise to library signal
         ds = ds_no_noise.isel(snr=idx_snr)
 
-        ds["rcv_signal_library"].values = np.copy(
-            no_noise_lib
-        )  # Reset to the original signal
-        ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i)
+        # ds["rcv_signal_library"].values = np.copy(
+        #     no_noise_lib
+        # )  # Reset to the original signal
+
+        ds["rcv_signal_library"].values = no_noise_lib  # Reset to the original signal
+        ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose)
         # Derive correlation vector for the entire grid
-        ds = add_correlation_library(ds, idx_snr=idx_snr)
+        ds = add_correlation_library(ds, idx_snr=idx_snr, verbose=verbose)
 
         # Loop over different realisation of noise for a given SNR
         for i in range(n_noise_realisations):
             print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
 
             # Reset to the original signal
-            ds["rcv_signal_event"].values = np.copy(no_noise_event)
-            ds = add_noise_to_event(ds, idx_snr=idx_snr, snr_dB=snr_dB_i)
+            ds["rcv_signal_event"].values = no_noise_event
+            # ds["rcv_signal_event"].values = np.copy(no_noise_event)
+            ds = add_noise_to_event(
+                ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose
+            )
             # Derive cross-correlation vector for each source position
-            ds = add_correlation_event(ds, idx_snr=idx_snr)
+            ds = add_correlation_event(ds, idx_snr=idx_snr, verbose=verbose)
 
             for i_sim_metric in range(len(similarity_metrics)):
                 # Compute ambiguity surface
@@ -263,10 +285,13 @@ def process(
                     idx_snr=idx_snr,
                     idx_similarity_metric=i_sim_metric,
                     i_noise=i,
+                    verbose=verbose,
                 )
 
     # Reload full dataset
     ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
+
+    # print(f"Process duration: {time()-t0} s")
 
     return ds
 
@@ -330,11 +355,11 @@ if __name__ == "__main__":
         "initial_pos": initial_ship_pos,
     }
     # Event
-    f0_event = 1  # Fundamental frequency of the ship signal
+    f0_event = 5  # Fundamental frequency of the ship signal
     event_sig_info = {
         "sig_type": "ship",
         "f0": f0_event,
-        "std_fi": f0_event * 1 / 100,
+        "std_fi": f0_event * 10 / 100,
         "tau_corr_fi": 1 / f0_event,
         "fs": fs,
     }
@@ -366,7 +391,7 @@ if __name__ == "__main__":
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 5
+    grid_offset_cells = 40
 
     grid_info = dict(
         offset_cells_lon=grid_offset_cells,
@@ -380,7 +405,7 @@ if __name__ == "__main__":
     n_noise_realisations = 1
     # snr = np.arange(-10, 5, 1)
     # n_noise_realisations = 1
-    snr = [0]
+    snr = [200]
     ds = process(
         main_ds_path=fpath,
         src_info=src_info,

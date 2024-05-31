@@ -499,13 +499,16 @@ class KrakenAttenuation:
 class KrakenField:
     def __init__(
         self,
-        phase_speed_limits=[0.0, 20000],
+        phase_speed_limits=None,
         src_depth=[5],
         n_rcv_z=1000,
         rcv_z_min=0.0,
         rcv_z_max=1000.0,
         rcv_r_max=0.0,
     ):
+        if phase_speed_limits is None:
+            self.phase_speed_limits_ = [0.0, 2000.0]
+            
         self.phase_speed_limits_ = np.array(phase_speed_limits)
 
         self.src_depth_ = np.array(src_depth)

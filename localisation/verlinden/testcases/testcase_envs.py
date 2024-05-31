@@ -1,4 +1,5 @@
 import os
+import numpy as np
 import scipy.io as sio
 import matplotlib.pyplot as plt
 
@@ -209,8 +210,8 @@ class TestCase:
         self.set_top_hs()
         self.set_medium()
         self.set_att()
-        self.set_field()
         self.set_bott_hs()
+        self.set_field()
         self.set_env()
         self.set_flp()
 
@@ -235,10 +236,19 @@ class TestCase:
 
     def set_field(self):
         n_rcv_z = default_nb_rcv_z(max(self.freq), self.max_depth, n_per_l=15)
+
+        c_low = min(
+            np.min(self.cp_ssp), np.min(self.bott_hs_properties["c_p"])
+        )  # Minimum p-wave speed in the problem as recommanded by Kraken manual to exclude interfacial waves
+        c_high = np.max(
+            self.bott_hs_properties["c_p"]
+        )  # Maximum p-wave speed in the bottom to limit the number of modes computed
+
         self.field = KrakenField(
             n_rcv_z=n_rcv_z,
             src_depth=self.src_depth,
             rcv_z_max=self.max_depth,
+            phase_speed_limits=[c_low, c_high],
         )
 
     def set_medium(self):
@@ -737,34 +747,34 @@ class TestCase3_1(TestCase3):
 if __name__ == "__main__":
 
     # Test class
-    tc1_0 = TestCase1_0(mode="show")
-    # tc1_1 = TestCase1_1(mode="show")
-    # tc1_2 = TestCase1_2(mode="show")
-    # tc1_3 = TestCase1_3(mode="show")
-    # tc1_4 = TestCase1_4(mode="show")
-    # tc2_0 = TestCase2_0(mode="show")
+    # tc1_0 = TestCase1_0(mode="show")
+    # # tc1_1 = TestCase1_1(mode="show")
+    # # tc1_2 = TestCase1_2(mode="show")
+    # # tc1_3 = TestCase1_3(mode="show")
+    # # tc1_4 = TestCase1_4(mode="show")
+    # # tc2_0 = TestCase2_0(mode="show")
 
-    tc_varin = {
-        "freq": [20, 30, 40],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-    }
-    tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
+    # tc_varin = {
+    #     "freq": [20, 30, 40],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    # }
+    # tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
 
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        tc2_1.update(tc_varin)
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     tc2_1.update(tc_varin)
 
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-    }
-    tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    # }
+    # tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
 
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        tc2_2.update(tc_varin)
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     tc2_2.update(tc_varin)
 
     tc_varin = {
         "freq": [20],

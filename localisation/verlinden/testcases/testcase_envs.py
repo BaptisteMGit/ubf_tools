@@ -115,6 +115,7 @@ class TestCase:
         self.flp_n_rcv_z = None
         self.flp_rcv_z_min = None
         self.flp_rcv_z_max = None
+        self.mode_theory = None
 
         # Environment directory
         self.env_dir = ""
@@ -140,6 +141,7 @@ class TestCase:
             "dr_bathy": 500,
             "nb_modes": 100,
             "called_by_subprocess": False,
+            "mode_theory": "adiabatic",
         }
 
         # Set env directory
@@ -151,7 +153,7 @@ class TestCase:
             "c_p": 1650,  # P-wave celerity (m/s)
             "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
             "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
-            "a_s": 2.5,  # Shear wave attenuation (dB/wavelength)
+            "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
             "z": None,
         }
 
@@ -311,6 +313,7 @@ class TestCase:
             n_rcv_r=self.flp_n_rcv_r,
             nb_modes=self.nb_modes,
             mode_addition="coherent",
+            mode_theory=self.mode_theory,
         )
 
     def write_kraken_files(self):
@@ -697,6 +700,7 @@ class TestCase3_1(TestCase3):
             "dr_bathy": 1000,
             "nb_modes": 100,
             "called_by_subprocess": False,
+            "mode_theory": "coupled",
         }
 
         # Flat bottom
@@ -737,34 +741,34 @@ class TestCase3_1(TestCase3):
 if __name__ == "__main__":
 
     # Test class
-    tc1_0 = TestCase1_0(mode="show")
-    # tc1_1 = TestCase1_1(mode="show")
-    # tc1_2 = TestCase1_2(mode="show")
-    # tc1_3 = TestCase1_3(mode="show")
-    # tc1_4 = TestCase1_4(mode="show")
-    # tc2_0 = TestCase2_0(mode="show")
+    # tc1_0 = TestCase1_0(mode="show")
+    # # tc1_1 = TestCase1_1(mode="show")
+    # # tc1_2 = TestCase1_2(mode="show")
+    # # tc1_3 = TestCase1_3(mode="show")
+    # # tc1_4 = TestCase1_4(mode="show")
+    # # tc2_0 = TestCase2_0(mode="show")
 
-    tc_varin = {
-        "freq": [20, 30, 40],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-    }
-    tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
+    # tc_varin = {
+    #     "freq": [20, 30, 40],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    # }
+    # tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
 
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        tc2_1.update(tc_varin)
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     tc2_1.update(tc_varin)
 
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-    }
-    tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    # }
+    # tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
 
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        tc2_2.update(tc_varin)
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     tc2_2.update(tc_varin)
 
     tc_varin = {
         "freq": [20],
@@ -772,6 +776,7 @@ if __name__ == "__main__":
         "azimuth": 0,
         "rcv_lon": 65.943,
         "rcv_lat": -27.5792,
+        "mode_theory": "coupled",
     }
     tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
 

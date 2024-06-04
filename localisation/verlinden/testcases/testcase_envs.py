@@ -790,9 +790,9 @@ if __name__ == "__main__":
     }
     tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
 
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        tc3_1.update(tc_varin)
+    # for az in range(0, 360, 30):
+    #     tc_varin["azimuth"] = az
+    #     tc3_1.update(tc_varin)
 
     # # Test case 1.0
     # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}

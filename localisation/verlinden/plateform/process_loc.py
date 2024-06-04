@@ -88,21 +88,22 @@ def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
             lat=pos_src_info["lats"][i_pos],
             method="nearest",
         )
-        transmited_sig_f = mult_along_axis(
+        transmitted_sig_f = mult_along_axis(
             tf, propagating_spectrum * norm_factor, axis=-1
         )
         if apply_delay:
             # Delay to apply to the signal to take into account the propagation time
-            tau = ds.delay_src_rcv.min(dim="idx_rcv").isel(src_trajectory_time=i_pos)
+            tau = ds.delay_src_rcv.min(dim="idx_rcv").isel(src_trajectory_time=i_pos).values
+            # tau = ds.delay_rcv.isel(idx_rcv=0).sel(lat=pos_src_info["lats"][i_pos], lon=pos_src_info["lons"][i_pos], method="nearest").values
 
             # Derive delay factor
-            tau_vec = tau.values * propagating_freq
+            tau_vec = tau * propagating_freq
             delay_f = np.exp(1j * 2 * np.pi * tau_vec)
             # Apply delay
-            transmited_sig_f *= delay_f
+            transmitted_sig_f *= delay_f
 
-        transmited_sig_t = np.fft.irfft(transmited_sig_f, n=nfft_inv, axis=-1)
-        ds.rcv_signal_event[dict(src_trajectory_time=i_pos)] = transmited_sig_t
+        transmitted_sig_t = np.fft.irfft(transmitted_sig_f, n=nfft_inv, axis=-1)
+        ds.rcv_signal_event[dict(src_trajectory_time=i_pos)] = transmitted_sig_t
 
     # Init corr for event signal
     ds = init_corr_event(ds)
@@ -260,7 +261,7 @@ def process(
         #     no_noise_lib
         # )  # Reset to the original signal
 
-        ds["rcv_signal_library"].values = no_noise_lib  # Reset to the original signal
+        ds["rcv_signal_library"].values = no_noise_lib.copy()  # Reset to the original signal
         ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose)
         # Derive correlation vector for the entire grid
         ds = add_correlation_library(ds, idx_snr=idx_snr, verbose=verbose)
@@ -270,7 +271,7 @@ def process(
             print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
 
             # Reset to the original signal
-            ds["rcv_signal_event"].values = no_noise_event
+            ds["rcv_signal_event"].values = no_noise_event.copy()
             # ds["rcv_signal_event"].values = np.copy(no_noise_event)
             ds = add_noise_to_event(
                 ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose

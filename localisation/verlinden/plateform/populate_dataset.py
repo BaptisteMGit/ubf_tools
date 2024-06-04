@@ -117,7 +117,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     ds["tf_gridded"].attrs["units"] = ""
     ds["tf_gridded"].attrs["long_name"] = "Transfer function gridded"
 
-    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded)
+    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=5*1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
     lat_chunksize = int(ds.sizes['lat'] // nregion)
@@ -217,7 +217,7 @@ def grid_synthesis(
 
     # Loop over sub_regions of the grid
     nregion = get_region_number(
-        ds.sizes["lon"], ds.tf_gridded
+        ds.sizes["lon"], ds.tf_gridded, max_size_bytes=5*1e9
     )
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 

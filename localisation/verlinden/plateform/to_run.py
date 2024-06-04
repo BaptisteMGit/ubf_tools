@@ -125,7 +125,7 @@ def common_process_loc():
     root_propa_grid_src = os.path.join(root_dir, "propa_grid_src")
 
     # fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
-    fname = "/home/data/localisation_dataset/testcase3_1/propa/propa_65.5624_65.9825_-27.6933_-27.4972.zarr"
+    fname = "propa_grid_src_65.5624_65.9825_-27.6933_-27.4972_100_100_ship.zarr"
     fpath = os.path.join(root_propa_grid_src, fname)
 
     # Source infos 
@@ -170,7 +170,8 @@ def common_process_loc():
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 90
+    grid_offset_cells = 30
+    # grid_offset_cells = 10
 
     grid_info = dict(
         offset_cells_lon=grid_offset_cells,
@@ -219,6 +220,7 @@ def set_event_sig_info(f0):
 
     return dt, fs, event_sig_info
 
+
 def process_analysis(ds, grid_info):
     snrs = ds.snr.values
     similarity_metrics = ds.similarity_metrics.values
@@ -252,9 +254,38 @@ def process_analysis(ds, grid_info):
 
 def run_process_loc():
 
+    f0_library = 1
+    fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
+
+    # """ Single test to ensure everything is ok """
+    # n_noise = 1
+    # snr = [-10, 0, 5]
+    # f0 = f0_library
+    # dt, fs, event_sig_info = set_event_sig_info(f0)
+    # src_info = {}
+    # src_info["pos"] = event_pos_info
+    # src_info["sig"] = event_sig_info
+
+    # ds = process(
+    #     main_ds_path=fpath,
+    #     src_info=src_info,
+    #     rcv_info=rcv_info,
+    #     grid_info=grid_info,
+    #     dt=dt,
+    #     similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+    #     snrs_dB=snr,
+    #     n_noise_realisations=n_noise,
+    #     verbose=True,
+    # )
+
+    # process_analysis(ds, grid_info)
+
+
     n_noise = 100
     f0_library = 1
     snr = np.arange(-10, 5, 0.5)
+    # snr = np.arange(-5, 5, 1)
+    # snr = [-10, 5]
     fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
 
     """ Test with same spectral content """
@@ -273,38 +304,41 @@ def run_process_loc():
         similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
         snrs_dB=snr,
         n_noise_realisations=n_noise,
+        verbose=True,
     )
 
     process_analysis(ds, grid_info)
 
 
-    """ Test with different spectral content """
+    # """ Test with different spectral content """
 
-    snr = [15]
-    f0 = 2.5*f0_library
-    dt, fs, event_sig_info = set_event_sig_info(f0)
-    src_info = {}
-    src_info["pos"] = event_pos_info
-    src_info["sig"] = event_sig_info
+    # n_noise = 100
+    # snr = [15]
+    # f0 = 1.5*f0_library
+    # dt, fs, event_sig_info = set_event_sig_info(f0)
+    # src_info = {}
+    # src_info["pos"] = event_pos_info
+    # src_info["sig"] = event_sig_info
 
-    ds = process(
-        main_ds_path=fpath,
-        src_info=src_info,
-        rcv_info=rcv_info,
-        grid_info=grid_info,
-        dt=dt,
-        similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
-        snrs_dB=snr,
-        n_noise_realisations=n_noise,
-    )
+    # ds = process(
+    #     main_ds_path=fpath,
+    #     src_info=src_info,
+    #     rcv_info=rcv_info,
+    #     grid_info=grid_info,
+    #     dt=dt,
+    #     similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+    #     snrs_dB=snr,
+    #     n_noise_realisations=n_noise,
+    #     verbose=True,
+    # )
 
-    process_analysis(ds, grid_info)
+    # process_analysis(ds, grid_info)
 
 
 if __name__ == "__main__":
 
     # Build dataset 
-    run_swir()
+    # run_swir()
 
     # Exploit dataset for localisation
     run_process_loc()

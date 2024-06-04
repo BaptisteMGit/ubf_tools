@@ -288,7 +288,7 @@ def compute_received_signal(
 ):
 
     # Received signal spectrum resulting from the convolution of the src signal and the impulse response
-    transmited_field_f = mult_along_axis(
+    transmitted_field_f = mult_along_axis(
         ds.tf_gridded, propagating_spectrum * norm_factor, axis=-1
     )
 
@@ -308,14 +308,14 @@ def compute_received_signal(
             {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
         )
         # Apply delay
-        transmited_field_f = transmited_field_f * delay_f
+        transmitted_field_f = transmitted_field_f * delay_f
 
     # Fourier synthesis of the received signal -> time domain
     chunk_shape = ds.rcv_signal_library.data.chunksize
-    transmited_field_f = da.from_array(transmited_field_f, chunks=chunk_shape)
-    transmited_field_t = np.fft.irfft(transmited_field_f, axis=-1, n=nfft_inv).compute()
+    transmitted_field_f = da.from_array(transmitted_field_f, chunks=chunk_shape)
+    transmitted_field_t = np.fft.irfft(transmitted_field_f, axis=-1, n=nfft_inv).compute()
 
-    return transmited_field_t
+    return transmitted_field_t
 
 
 def init_simu_info_dataset():
@@ -620,7 +620,7 @@ def add_correlation_library(xr_dataset, idx_snr, verbose=True):
     if verbose:
         print(f"Add library correlation to dataset")
 
-    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.library_corr)
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.library_corr, max_size_bytes=5*1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
 
     lat_chunksize = int(xr_dataset.sizes["lat"] // nregion)
@@ -832,7 +832,7 @@ def add_noise_to_library(xr_dataset, idx_snr, snr_dB, verbose=True):
 
     target_var = "rcv_signal_library"
 
-    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.rcv_signal_library)
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.rcv_signal_library, max_size_bytes=5*1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
 
     lat_chunksize = int(xr_dataset.sizes["lat"] // nregion)
@@ -945,7 +945,7 @@ def add_ambiguity_surf(
         )
     )
 
-    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.ambiguity_surface)
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.ambiguity_surface, max_size_bytes=5*1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
 
     for lon_s in lon_slices:
@@ -1127,7 +1127,7 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
 
     ambiguity_surface_dim = ["idx_rcv_pairs", "src_trajectory_time", "lat", "lon"]
     ambiguity_surface = np.empty(
-        (1, len(src_traj_times)) + tuple(lib_data.sizes[d] for d in ["lat", "lon"])
+        (1, len(src_traj_times)) + tuple(lib_data.sizes[d] for d in ["lat", "lon"]), dtype=np.float32
     )
 
     da_amb_surf = xr.DataArray(
@@ -1142,12 +1142,12 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
         name="ambiguity_surface",
     )
 
-    lib_data_array = lib_data.values
+    lib_data_array = lib_data.values.astype(np.float64)     # Cast to float64 to avoid devision by 0
 
     for i_src_time, src_time in enumerate(src_traj_times):
 
         event_vector = event_data.sel(src_trajectory_time=src_time)
-        event_vector_array = event_vector.values
+        event_vector_array = event_vector.values.astype(np.float64)
 
         if similarity_metric == "intercorr0":
             amb_surf = mult_along_axis(
@@ -1193,6 +1193,9 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
         # TODO: remove this part
         if np.any(np.isnan(amb_surf)):
             print(amb_surf)
+            print(autocorr_lib_0)
+            print(autocorr_event_0)
+            print(norm)
 
     return da_amb_surf
 

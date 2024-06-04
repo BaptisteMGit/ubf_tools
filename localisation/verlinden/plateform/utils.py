@@ -288,7 +288,7 @@ def compute_received_signal(
 ):
 
     # Received signal spectrum resulting from the convolution of the src signal and the impulse response
-    transmited_field_f = mult_along_axis(
+    transmitted_field_f = mult_along_axis(
         ds.tf_gridded, propagating_spectrum * norm_factor, axis=-1
     )
 
@@ -308,14 +308,14 @@ def compute_received_signal(
             {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
         )
         # Apply delay
-        transmited_field_f = transmited_field_f * delay_f
+        transmitted_field_f = transmitted_field_f * delay_f
 
     # Fourier synthesis of the received signal -> time domain
     chunk_shape = ds.rcv_signal_library.data.chunksize
-    transmited_field_f = da.from_array(transmited_field_f, chunks=chunk_shape)
-    transmited_field_t = np.fft.irfft(transmited_field_f, axis=-1, n=nfft_inv).compute()
+    transmitted_field_f = da.from_array(transmitted_field_f, chunks=chunk_shape)
+    transmitted_field_t = np.fft.irfft(transmitted_field_f, axis=-1, n=nfft_inv).compute()
 
-    return transmited_field_t
+    return transmitted_field_t
 
 
 def init_simu_info_dataset():
@@ -1193,6 +1193,9 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
         # TODO: remove this part
         if np.any(np.isnan(amb_surf)):
             print(amb_surf)
+            print(autocorr_lib_0)
+            print(autocorr_event_0)
+            print(norm)
 
     return da_amb_surf
 

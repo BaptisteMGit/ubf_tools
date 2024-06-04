@@ -170,7 +170,8 @@ def common_process_loc():
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 90
+    grid_offset_cells = 30
+    # grid_offset_cells = 10
 
     grid_info = dict(
         offset_cells_lon=grid_offset_cells,
@@ -280,9 +281,11 @@ def run_process_loc():
     # process_analysis(ds, grid_info)
 
 
-    n_noise = 5
+    n_noise = 100
     f0_library = 1
     snr = np.arange(-10, 5, 0.5)
+    # snr = np.arange(-5, 5, 1)
+    # snr = [-10, 5]
     fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
 
     """ Test with same spectral content """

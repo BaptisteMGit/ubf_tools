@@ -266,6 +266,8 @@ def plotshd_from_pressure_field(
 
 
 """ Plot environment profiles """
+
+
 def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     if ax is None:
         plt.figure(figsize=(10, 8))
@@ -282,7 +284,7 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     else:
         cs = cs_ssp
 
-    # No need to plot the C-wave attenuation if it is 0 and as is not 0
+    # No need to plot the C-wave celerity if it is 0 and cs is not 0
     if np.all(cp == 0) and not np.all(cs == 0):
         cp = np.ones(z.size) * np.nan
         min_cp = np.nan
@@ -293,7 +295,8 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
         max_cp = np.max(cp)
         plot_cp = True
 
-    # No need to plot the S-wave attenuation if it is 0 and ap is not 0
+    # No need to plot the S-wave celerity if it is 0 and cp is not 0
+    cs = 0
     if np.all(cs == 0) and not np.all(cp == 0):
         cs = np.ones(z.size) * np.nan
         min_cs = np.nan
@@ -307,14 +310,14 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     if plot_cp:
         col1 = "red"
         ax.plot(cp, z, color=col1, label="C-wave")
-    ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]")
+    ax.set_xlabel("Celerity " + r"[$m.s^{-1}$]")
 
     if plot_cs:
         col2 = "blue"
         ax.plot(cs, z, color=col2, label="S-wave")
 
     ax.invert_yaxis()
-    ax.legend()
+    ax.legend(loc="upper right")
 
     # Color domains with water and sediment
     min_x = np.nanmin([min_cp, min_cs])
@@ -370,7 +373,7 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
     if plot_ap:
         col1 = "red"
         ax.plot(ap, z, color=col1, label="C-wave")
-    ax.set_xlabel("Attenuation " + r"[$dB.\lambda^{-1}$]")
+    ax.set_xlabel(r"$\alpha$ " + r"[$dB.\lambda^{-1}$]")
 
     if plot_as:
         col2 = "blue"
@@ -389,7 +392,7 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
     color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
 
     ax.invert_yaxis()
-    ax.legend()
+    ax.legend(loc="upper right")
 
 
 def plot_density(rho, z, z_bottom=None, ax=None):
@@ -403,9 +406,9 @@ def plot_density(rho, z, z_bottom=None, ax=None):
     else:
         pass
 
-    ax.plot(rho, z, label="Density", color="k")
+    ax.plot(rho, z, label=r"$\rho$", color="k")
     ax.invert_yaxis()
-    ax.set_xlabel("Density " + r"[$g.cm^{-3}$]")
+    ax.set_xlabel(r"$\rho$ " + r"[$g.cm^{-3}$]")
 
     # Color domains with water and sediment
     min_x = np.min(rho)
@@ -440,5 +443,5 @@ def color_domains(ax, min_x, max_x, z, z_bottom=None):
         pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass

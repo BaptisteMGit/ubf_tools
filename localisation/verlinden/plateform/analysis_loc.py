@@ -1046,7 +1046,29 @@ def get_pos_error(ds):
             "idx_noise_realisation": ds.idx_noise_realisation,
         },
     )
-    return pos_error
+
+    # Broadcast real positions to the shape of the estimated positions
+    lat_src = ds.lat_src.broadcast_like(ds.detected_pos_lat_combined)
+    lon_src = ds.lon_src.broadcast_like(ds.detected_pos_lon_combined)
+
+    _, _, pos_error_combined = geod.inv(
+        lats1=lat_src,
+        lons1=lon_src,
+        lats2=ds.detected_pos_lat_combined,
+        lons2=ds.detected_pos_lon_combined,
+    )
+
+    # Convert to xr array
+    pos_error_combined = xr.DataArray(
+        pos_error_combined,
+        dims=["src_trajectory_time", "idx_noise_realisation"],
+        coords={
+            "src_trajectory_time": ds.src_trajectory_time,
+            "idx_noise_realisation": ds.idx_noise_realisation,
+        },
+    )
+
+    return pos_error, pos_error_combined
 
 
 def get_pos_error_metrics(pos_error):
@@ -1381,6 +1403,7 @@ def analysis(
 
     global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN,95_percentile,99_percentile,dynamic_range"
     global_log = [global_header_log]
+    global_log_combined = [global_header_log]
 
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 
@@ -1506,11 +1529,14 @@ def analysis(
                     n_instant_to_plot=n_rcv_signals_to_plot,
                 )
 
-            pos_error = get_pos_error(ds_snr_sim)
+            pos_error, pos_error_combined = get_pos_error(ds_snr_sim)
             pos_error_metrics = get_pos_error_metrics(pos_error)
+            pos_error_combined_metrics = get_pos_error_metrics(pos_error_combined)
 
-            amb_surf, __ = get_ambiguity_surface(ds_snr_sim)
+            amb_surf, amb_surf_combined = get_ambiguity_surface(ds_snr_sim)
             amb_dynamic_range = (amb_surf.max() - amb_surf.min()).round(2).values
+            amb_dynamic_range_combined = (amb_surf_combined.max() - amb_surf_combined.min()).round(2).values
+
 
             global_line = (
                 f"{similarity_metric}, {snr}, {pos_error_metrics['median']:.1f}, {pos_error_metrics['mean']:.1f},"
@@ -1519,7 +1545,15 @@ def analysis(
                 f"{amb_dynamic_range:.1f}"
             )
 
+            global_line_combined = (
+                f"{similarity_metric}, {snr}, {pos_error_combined_metrics['median']:.1f}, {pos_error_combined_metrics['mean']:.1f},"
+                f"{pos_error_combined_metrics['std']:.1f}, {pos_error_combined_metrics['rmse']:.1f}, {pos_error_combined_metrics['max']:.1f},"
+                f"{pos_error_combined_metrics['min']:.1f}, {pos_error_combined_metrics['95_percentile']:.1f}, {pos_error_combined_metrics['99_percentile']:.1f},"
+                f"{amb_dynamic_range:.1f}"
+            )
+
             global_log.append(global_line)
+            global_log_combined.append(global_line_combined)
 
             # Write report in txt file
             local_log = [
@@ -1544,10 +1578,38 @@ def analysis(
             with open(local_report_fpath, "w") as f:
                 f.writelines("\n".join(local_log))
 
+                        # Write report in txt file
+            local_log_combined = [
+                f"Detection metric: {similarity_metric}",
+                f"SNR: {ds_snr_sim.snr.values}dB",
+                f"Number of sensors: {ds_snr_sim.dims['idx_rcv']}",
+                f"Number of sensors pairs: {ds_snr_sim.dims['idx_rcv_pairs']}",
+                # f"Positions of the source: {ds_snr_sim.attrs['source_positions']}",
+                f"Number of source positions analysed: {ds_snr_sim.dims['src_trajectory_time']}",
+                f"Ambiguity surface dynamic (max - min): {amb_dynamic_range_combined:.1f}dB",
+                f"Position error median: {pos_error_combined_metrics['median']:.1f}m",
+                f"Position error mean: {pos_error_combined_metrics['mean']:.1f}m",
+                f"Position error std: {pos_error_combined_metrics['std']:.1f}m",
+                f"Position rmse: {pos_error_combined_metrics['rmse']:.1f}m",
+                f"Position error max: {pos_error_combined_metrics['max']:.1f}m",
+                f"Position error min: {pos_error_combined_metrics['min']:.1f}m",
+                f"Position error 95 percentile: {pos_error_combined_metrics['95_percentile']:.1f}m",
+                f"Position error 99 percentile: {pos_error_combined_metrics['99_percentile']:.1f}m",
+            ]
+
+            local_report_fpath = os.path.join(img_root, "loc_report_combined.txt")
+            with open(local_report_fpath, "w") as f:
+                f.writelines("\n".join(local_log_combined))
+
     # Write global report in txt file
     global_report_fpath = os.path.join(analysis_root, "global_report.txt")
     with open(global_report_fpath, "w") as f:
         f.writelines("\n".join(global_log))
+
+    # Write global report in txt file
+    global_report_fpath_combined = os.path.join(analysis_root, "global_report_combined.txt")
+    with open(global_report_fpath_combined, "w") as f:
+        f.writelines("\n".join(global_log_combined))
 
     # Analysis global report
     # perf_metrics = ["RMSE", "STD"]
@@ -1567,17 +1629,6 @@ def analysis(
             "dynamic_range": float,
         },
     )
-    # list_perf_metrics = [
-    #     ["95_percentile"],
-    #     ["99_percentile"],
-    #     ["MEDIAN"],
-    #     ["MEAN"],
-    #     ["STD"],
-    #     ["RMSE"],
-    #     ["MAX"],
-    #     ["MIN"],
-    #     ["dynamic_range"],
-    # ]
 
     list_perf_metrics = [
         "95_percentile",
@@ -1591,12 +1642,46 @@ def analysis(
         "dynamic_range",
     ]
     # for perf_metrics in list_perf_metrics:
+    img_path = os.path.join(os.path.dirname(global_report_fpath), "global_report")
+    if not os.path.exists(img_path):
+        os.makedirs(img_path)
+
     plot_localisation_performance(
         data=data,
         testcase_name=testcase_name,
         similarity_metrics=similarity_metrics,
         metrics_to_plot=list_perf_metrics,
-        img_path=os.path.dirname(global_report_fpath),
+        img_path=img_path,
+    )
+
+
+    data = pd.read_csv(
+        global_report_fpath_combined,
+        sep=",",
+        dtype={
+            "SNR": str,
+            "MEDIAN": float,
+            "MEAN": float,
+            "STD": float,
+            "RMSE": float,
+            "MAX": float,
+            "MIN": float,
+            "95_percentile": float,
+            "99_percentile": float,
+            "dynamic_range": float,
+        },
+    )
+
+    # for perf_metrics in list_perf_metrics:
+    img_path = os.path.join(os.path.dirname(global_report_fpath_combined), "global_report_combined")
+    if not os.path.exists(img_path):
+        os.makedirs(img_path)
+    plot_localisation_performance(
+        data=data,
+        testcase_name=testcase_name,
+        similarity_metrics=similarity_metrics,
+        metrics_to_plot=list_perf_metrics,
+        img_path=img_path,
     )
 
 

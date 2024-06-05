@@ -62,7 +62,7 @@ def test():
 
 def run_swir():
     rcv_info_dw = {
-        "id": ["RR45", "RR48", "RR44"],
+        "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
         # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
         # "id": ["RRdebug0", "RRdebug1"],
         "lons": [],
@@ -140,7 +140,8 @@ def common_process_loc():
 
     # Receiver infos
     rcv_info = {
-        "id": ["RR45", "RR48", "RR44"],
+        # "id": ["RR45", "RR48", "RR44"],
+        "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
         "lons": [],
         "lats": [],
     }
@@ -170,7 +171,7 @@ def common_process_loc():
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 50
+    grid_offset_cells = 100
     # grid_offset_cells = 10
 
     grid_info = dict(
@@ -280,9 +281,10 @@ def run_process_loc():
     # process_analysis(ds, grid_info)
 
 
-    n_noise = 10
+    n_noise = 1
     f0_library = 1
-    snr = np.arange(-15, 10, 0.5)
+    snr = [0]
+    # snr = np.arange(-15, 10, 0.5)
     # snr = np.arange(-10, 5, 1)
     # snr = [-10, 5]
     fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
@@ -337,7 +339,7 @@ def run_process_loc():
 if __name__ == "__main__":
 
     # Build dataset 
-    # run_swir()
+    run_swir()
 
     # Exploit dataset for localisation
     run_process_loc()

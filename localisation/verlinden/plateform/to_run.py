@@ -170,7 +170,7 @@ def common_process_loc():
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 30
+    grid_offset_cells = 50
     # grid_offset_cells = 10
 
     grid_info = dict(
@@ -197,7 +197,6 @@ def set_event_sig_info(f0):
         "tau_corr_fi": 1 / f0,
         "fs": fs,
     }
-
 
     src_sig, t_src_sig = generate_ship_signal(
         Ttot=dt,
@@ -281,10 +280,10 @@ def run_process_loc():
     # process_analysis(ds, grid_info)
 
 
-    n_noise = 100
+    n_noise = 10
     f0_library = 1
-    snr = np.arange(-10, 5, 0.5)
-    # snr = np.arange(-5, 5, 1)
+    snr = np.arange(-15, 10, 0.5)
+    # snr = np.arange(-10, 5, 1)
     # snr = [-10, 5]
     fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
 
@@ -342,6 +341,39 @@ if __name__ == "__main__":
 
     # Exploit dataset for localisation
     run_process_loc()
+
+    # Analysis
+    # fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
+    # snrs = np.arange(-2, 2, 1)
+    # # snrs = [0, 1]
+    # # fpath = "/home/data/localisation_process/testcase3_1/65.5799_65.6386_-27.6077_-27.5554_ship/20240604_100723.zarr"
+    # fpath = "/home/data/localisation_process/testcase3_1/65.5799_65.6386_-27.6077_-27.5554_ship/20240604_101151.zarr"
+    # similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
+
+    # plot_info = {
+    #     "plot_video": False,
+    #     "plot_one_tl_profile": False,
+    #     "plot_ambiguity_surface_dist": False,
+    #     "plot_received_signal": True,
+    #     "plot_emmited_signal": True,
+    #     "plot_ambiguity_surface": True,
+    #     "plot_ship_trajectory": True,
+    #     "plot_pos_error": False,
+    #     "plot_correlation": True,
+    #     "tl_freq_to_plot": [20],
+    #     "lon_offset": 0.005,
+    #     "lat_offset": 0.005,
+    #     "n_instant_to_plot": 10,
+    #     "n_rcv_signals_to_plot": 2,
+    # }
+
+    # analysis(
+    #     fpath=fpath,
+    #     snrs=snrs,
+    #     similarity_metrics=similarity_metrics,
+    #     grid_info=grid_info,
+    #     plot_info=plot_info,
+    # )
 
     # test()
 

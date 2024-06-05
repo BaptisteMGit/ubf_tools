@@ -232,7 +232,7 @@ def plot_swir_bathy_obs_src():
         initial_ship_pos["lon"],
         initial_ship_pos["lat"],
         label="Ship position",
-        s=150,
+        s=400,
         zorder=10,
         color="r",
         marker="*",
@@ -286,5 +286,5 @@ def plot_bathy_profile():
 
 if __name__ == "__main__":
     # plot_swir_bathy_obs()
-    # plot_swir_bathy_obs_src()
-    plot_bathy_profile()
+    plot_swir_bathy_obs_src()
+    # plot_bathy_profile()

@@ -445,7 +445,7 @@ class KrakenBottomHalfspace:
         )
         plot_density(rho=self.rho_bot_halfspace, z=self.z_in_bottom, ax=axs[2])
         plt.suptitle("Bottom properties")
-        plt.tight_layout()
+        # plt.tight_layout()
 
 
 class KrakenAttenuation:
@@ -508,7 +508,7 @@ class KrakenField:
     ):
         if phase_speed_limits is None:
             self.phase_speed_limits_ = [0.0, 2000.0]
-            
+
         self.phase_speed_limits_ = np.array(phase_speed_limits)
 
         self.src_depth_ = np.array(src_depth)
@@ -817,6 +817,7 @@ class KrakenEnv:
     # Plotting tools
     def plot_env(self, plot_src=False, src_depth=None):
 
+        pfig = PubFigure(titlepad=50, labelpad=25)
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
         axs[0].set_ylabel("Depth [m]")
         # Plot ssp
@@ -933,8 +934,7 @@ class KrakenEnv:
         #         axs[i].scatter(xmax, rcv_depth, s=50, color="k", marker=">")
 
         plt.suptitle("Waveguide properties")
-        plt.tight_layout()
-        pfig = PubFigure(titlepad=50, labelpad=25)
+        # plt.tight_layout(w_pad=3)
 
 
 class KrakenFlp:

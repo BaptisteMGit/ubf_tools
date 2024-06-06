@@ -22,7 +22,7 @@ def postprocess_ir(shd_fpath, source, rcv_range, rcv_depth):
     pressure_field = np.squeeze(pressure, axis=(1, 2))  # 3D array (nfreq, nz, nr)
 
     # No need to process the entire grid :  extract pressure field at desired positions
-    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath, rcv_depth, rcv_range)
+    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath=shd_fpath, rcv_depth=rcv_depth, rcv_range=rcv_range)
     pressure_field = pressure_field[:, zz, rr]
 
     # Get rid of frequencies below the cutoff frequency

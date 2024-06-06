@@ -24,6 +24,8 @@ from localisation.verlinden.plateform.utils import (
     init_simu_info_dataset,
     set_simu_unique_id,
 )
+
+from propa.kraken_toolbox.utils import get_rcv_pos_idx
 from propa.kraken_toolbox.run_kraken import runkraken
 from localisation.verlinden.verlinden_utils import (
     get_range_from_rcv,
@@ -125,7 +127,7 @@ def init_dataset(
     testcase.update(testcase_varin)
 
     # Run kraken
-    _, field_pos = runkraken(
+    pressure_field, field_pos = runkraken(
         env=testcase.env,
         flp=testcase.flp,
         frequencies=testcase.env.freq,
@@ -133,8 +135,14 @@ def init_dataset(
         verbose=False,
     )
 
+
     kraken_range = field_pos["r"]["r"]
     kraken_depth = field_pos["r"]["z"]
+
+    # TODO : pass z_src as param 
+    z_src = np.array([5])
+    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath=testcase.env.shd_fpath, rcv_depth=z_src, rcv_range=kraken_range)
+    pressure_field = pressure_field[:, zz, rr]
 
     # List of all azimuts
     xr_dataset.coords["all_az"] = np.unique(xr_dataset.azimuths_rcv.values.flatten())

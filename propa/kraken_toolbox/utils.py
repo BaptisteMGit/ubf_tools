@@ -68,8 +68,8 @@ def default_nb_rcv_z(fmax, max_depth, n_per_l=7):
     # Jensen et al 2000 : advise between 5 and 10 points per wavelength p.446
     if n_per_l < 5:
         n_per_l = 5
-    elif n_per_l > 10:
-        n_per_l = 10
+    # elif n_per_l > 10:
+    #     n_per_l = 10
 
     lmin = C0 / fmax
     nz = int(np.ceil(max_depth / lmin * n_per_l))
@@ -92,8 +92,8 @@ def get_rcv_pos_idx(
     if kraken_range is None and kraken_depth is None:
         # Dummy read to get frequencies used by kraken and field grid information
         _, _, _, _, _, _, field_pos, pressure = readshd(filename=shd_fpath, freq=0)
-        nr = pressure.shape[2]
-        nz = pressure.shape[1]
+        nr = pressure.shape[-1]
+        nz = pressure.shape[-2]
         kraken_range = field_pos["r"]["r"]
         kraken_depth = field_pos["r"]["z"]
     else:

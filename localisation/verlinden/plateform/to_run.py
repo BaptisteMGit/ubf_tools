@@ -141,7 +141,7 @@ def common_process_loc():
     # Receiver infos
     rcv_info = {
         # "id": ["RR45", "RR48", "RR44"],
-        "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
+        "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
         "lons": [],
         "lats": [],
     }

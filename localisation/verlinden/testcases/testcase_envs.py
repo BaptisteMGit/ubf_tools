@@ -215,6 +215,8 @@ class TestCase:
         self.set_bott_hs()
         self.set_field()
         self.set_env()
+        # Write env to set dependent to true
+        self.env.write_env()
         self.set_flp()
 
     def load_ssp(self):

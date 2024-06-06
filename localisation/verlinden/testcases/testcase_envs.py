@@ -232,6 +232,7 @@ class TestCase:
         self.bott_hs = KrakenBottomHalfspace(
             halfspace_properties=self.bott_hs_properties
         )
+        self.bott_hs.derive_sedim_layer_max_depth(z_max=self.max_depth)
 
     def set_att(self):
         self.att = KrakenAttenuation(
@@ -239,7 +240,8 @@ class TestCase:
         )
 
     def set_field(self):
-        n_rcv_z = default_nb_rcv_z(max(self.freq), self.max_depth, n_per_l=15)
+        z_max = self.bott_hs.sedim_layer_max_depth
+        n_rcv_z = default_nb_rcv_z(max(self.freq), z_max, n_per_l=12)
 
         c_low = min(
             np.min(self.cp_ssp), np.min(self.bott_hs_properties["c_p"])
@@ -251,7 +253,7 @@ class TestCase:
         self.field = KrakenField(
             n_rcv_z=n_rcv_z,
             src_depth=self.src_depth,
-            rcv_z_max=self.max_depth,
+            rcv_z_max=z_max,
             phase_speed_limits=[c_low, c_high],
         )
 
@@ -308,12 +310,17 @@ class TestCase:
         self.flp_n_rcv_r = self.max_range_m / self.dr_flp + 1
 
         # Source = ship radiating sound at 5m depth
-        if self.flp_n_rcv_z is None:
-            self.flp_n_rcv_z = 1
-        if self.flp_rcv_z_min is None:
-            self.flp_rcv_z_min = 5
-        if self.flp_rcv_z_max is None:
-            self.flp_rcv_z_max = 5
+        # if self.flp_n_rcv_z is None:
+        #     self.flp_n_rcv_z = 1
+        # if self.flp_rcv_z_min is None:
+        #     self.flp_rcv_z_min = 5
+        # if self.flp_rcv_z_max is None:
+        #     self.flp_rcv_z_max = 5
+
+
+        self.flp_n_rcv_z = default_nb_rcv_z(max(self.freq), self.bott_hs.sedim_layer_max_depth, n_per_l=50)
+        self.flp_rcv_z_min = 0
+        self.flp_rcv_z_max = self.bott_hs.sedim_layer_max_depth
 
         self.flp = KrakenFlp(
             env=self.env,

@@ -109,11 +109,21 @@ def plot_swir_obs(ds_bathy, col=None):
         plt.scatter(
             rcv_info["lons"][i_obs],
             rcv_info["lats"][i_obs],
-            label=f"{obs_id}: {rcv_info['z'][i_obs]} m",
+            # label=f"{obs_id}: {rcv_info['z'][i_obs]} m",
             s=130,
             zorder=10,
-            color=col[i_obs],
-            marker=markers[i_obs],
+            color="k",
+            # color=col[i_obs],
+            # marker=markers[i_obs],
+        )
+
+        # Plot obs_id next to the point
+        plt.text(
+            rcv_info["lons"][i_obs] + 0.01,
+            rcv_info["lats"][i_obs] - 0.01,
+            f"{obs_id}",
+            fontsize=22,
+            color="k",
         )
 
     plt.gca().axis("equal")
@@ -231,12 +241,21 @@ def plot_swir_bathy_obs_src():
     plt.scatter(
         initial_ship_pos["lon"],
         initial_ship_pos["lat"],
-        label="Ship position",
+        # label="Ship position",
         s=400,
         zorder=10,
         color="r",
         marker="*",
     )
+
+    plt.text(
+        initial_ship_pos["lon"] + 0.01,
+        initial_ship_pos["lat"] - 0.01,
+        "ship",
+        fontsize=22,
+        color="k",
+    )
+
     plt.xlabel("Longitude [°E]")
     plt.ylabel("Latitude [°N]")
     plt.title("SWIR bathymetry and OBS position")
@@ -251,10 +270,11 @@ def plot_swir_bathy_obs_src():
     plt.ylim(ymin, ymax)
     plt.xlim(xmin, xmax)
     plt.grid()
-    plt.legend(ncol=2)
+    # plt.legend(ncol=2)
 
     path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR\swir_bathy_obs_no_border_src.png"
     plt.savefig(path, dpi=300, bbox_inches="tight")
+    # plt.show()
 
 
 # Fonction pour ajouter une bordure pointillée

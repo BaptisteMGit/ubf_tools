@@ -12,7 +12,7 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
-import os 
+import os
 import numpy as np
 from signals import pulse, generate_ship_signal
 from localisation.verlinden.AcousticComponent import AcousticSource
@@ -24,7 +24,11 @@ from localisation.verlinden.params import ROOT_DATASET
 
 from localisation.verlinden.plateform.process_loc import process
 from localisation.verlinden.plateform.analysis_loc import analysis
-from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos, get_bathy_grid_size
+from localisation.verlinden.verlinden_utils import (
+    load_rhumrum_obs_pos,
+    get_bathy_grid_size,
+)
+
 
 def test():
     rcv_info_dw = {
@@ -112,9 +116,10 @@ def run_swir():
         rcv_info=rcv_info_dw, testcase=tc, min_dist=min_dist, dx=dx, dy=dy, src=src
     )
 
+
 def common_process_loc():
 
-    # Set path to gridded dataset 
+    # Set path to gridded dataset
     testcase = "testcase3_1"
     root_dir = os.path.join(
         ROOT_DATASET,
@@ -128,7 +133,7 @@ def common_process_loc():
     fname = "propa_grid_src_65.5624_65.9825_-27.6933_-27.4972_100_100_ship.zarr"
     fpath = os.path.join(root_propa_grid_src, fname)
 
-    # Source infos 
+    # Source infos
     z_src = 5
     v_knots = 20  # 20 knots
     v_ship = v_knots * 1852 / 3600  # m/s
@@ -150,7 +155,7 @@ def common_process_loc():
         rcv_info["lons"].append(pos_obs.lon)
         rcv_info["lats"].append(pos_obs.lat)
 
-    # Set initial position of the source 
+    # Set initial position of the source
     initial_ship_pos = {
         "lon": rcv_info["lons"][0],
         "lat": rcv_info["lats"][0] + 0.07,
@@ -198,7 +203,6 @@ def set_event_sig_info(f0):
         "fs": fs,
     }
 
-
     src_sig, t_src_sig = generate_ship_signal(
         Ttot=dt,
         f0=event_sig_info["f0"],
@@ -208,13 +212,15 @@ def set_event_sig_info(f0):
     )
 
     src_sig *= np.hanning(len(src_sig))
+    # src_sig *= np.hamming(len(src_sig))
+
     min_waveguide_depth = 5000
     src = AcousticSource(
         signal=src_sig,
         time=t_src_sig,
         name="ship",
         waveguide_depth=min_waveguide_depth,
-        nfft=None,
+        nfft=2**10,
     )
     event_sig_info["src"] = src
 
@@ -251,7 +257,6 @@ def process_analysis(ds, grid_info):
     )
 
 
-
 def run_process_loc():
 
     f0_library = 1
@@ -279,7 +284,6 @@ def run_process_loc():
     # )
 
     # process_analysis(ds, grid_info)
-
 
     n_noise = 100
     f0_library = 1
@@ -309,7 +313,6 @@ def run_process_loc():
 
     process_analysis(ds, grid_info)
 
-
     # """ Test with different spectral content """
 
     # n_noise = 100
@@ -337,7 +340,7 @@ def run_process_loc():
 
 if __name__ == "__main__":
 
-    # Build dataset 
+    # Build dataset
     # run_swir()
 
     # Exploit dataset for localisation

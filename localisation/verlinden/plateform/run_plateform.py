@@ -159,6 +159,7 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
         fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src
 
     return (
+        ds,
         fullpath_dataset_propa,
         fullpath_dataset_propa_grid,
         fullpath_dataset_propa_grid_src,

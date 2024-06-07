@@ -122,7 +122,7 @@ def init_dataset(
         azimuth=0,
         rcv_lon=rcv_info["lons"][0],
         rcv_lat=rcv_info["lats"][0],
-        freq=[1],
+        freq=[5],
     )
     testcase.update(testcase_varin)
 
@@ -135,14 +135,8 @@ def init_dataset(
         verbose=False,
     )
 
-
     kraken_range = field_pos["r"]["r"]
     kraken_depth = field_pos["r"]["z"]
-
-    # TODO : pass z_src as param 
-    z_src = np.array([5])
-    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath=testcase.env.shd_fpath, rcv_depth=z_src, rcv_range=kraken_range)
-    pressure_field = pressure_field[:, zz, rr]
 
     # List of all azimuts
     xr_dataset.coords["all_az"] = np.unique(xr_dataset.azimuths_rcv.values.flatten())
@@ -150,7 +144,7 @@ def init_dataset(
     xr_dataset.coords["kraken_range"] = kraken_range
     xr_dataset.coords["kraken_depth"] = kraken_depth
 
-    # Chunk dataset 
+    # Chunk dataset
     # chunk_dict = {}
     # for coord in list(xr_dataset.coords):
     #     chunk_dict[coord] = xr_dataset.sizes[coord]
@@ -159,7 +153,7 @@ def init_dataset(
 
     # xr_dataset = xr_dataset.chunk(chunk_dict)
 
-    # Save dataset before adding tf array 
+    # Save dataset before adding tf array
     xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=True, mode="w")
 
     # Transfert function array

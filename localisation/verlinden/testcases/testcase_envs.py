@@ -98,6 +98,8 @@ class TestCase:
         self.plot_bottom = False
         self.plot_bathy = False
         self.plot_env = False
+        # Src
+        self.z_src = None
         # Ssp
         self.z_ssp = None
         self.cp_ssp = None
@@ -117,6 +119,7 @@ class TestCase:
         self.flp_rcv_z_min = None
         self.flp_rcv_z_max = None
         self.mode_theory = None
+        self.mode_addition = None
 
         # Environment directory
         self.env_dir = ""
@@ -143,6 +146,9 @@ class TestCase:
             "nb_modes": 100,
             "called_by_subprocess": False,
             "mode_theory": "adiabatic",
+            "mode_addition": "coherent",
+            "z_src": 5,
+            "src_depth": None,
         }
 
         # Set env directory
@@ -246,8 +252,9 @@ class TestCase:
         c_low = min(
             np.min(self.cp_ssp), np.min(self.bott_hs_properties["c_p"])
         )  # Minimum p-wave speed in the problem as recommanded by Kraken manual to exclude interfacial waves
-        c_high = np.max(
-            self.bott_hs_properties["c_p"]
+        c_low = np.max(c_low - 200, 0)
+        c_high = (
+            np.max(self.bott_hs_properties["c_p"]) + 500
         )  # Maximum p-wave speed in the bottom to limit the number of modes computed
 
         self.field = KrakenField(
@@ -309,18 +316,19 @@ class TestCase:
     def set_flp(self):
         self.flp_n_rcv_r = self.max_range_m / self.dr_flp + 1
 
-        # Source = ship radiating sound at 5m depth
-        # if self.flp_n_rcv_z is None:
-        #     self.flp_n_rcv_z = 1
-        # if self.flp_rcv_z_min is None:
-        #     self.flp_rcv_z_min = 5
-        # if self.flp_rcv_z_max is None:
-        #     self.flp_rcv_z_max = 5
+        # # Source = ship radiating sound at 5m depth
+        if self.flp_n_rcv_z is None:
+            self.flp_n_rcv_z = 1
+        if self.flp_rcv_z_min is None:
+            self.flp_rcv_z_min = 5
+        if self.flp_rcv_z_max is None:
+            self.flp_rcv_z_max = 5
 
-
-        self.flp_n_rcv_z = default_nb_rcv_z(max(self.freq), self.bott_hs.sedim_layer_max_depth, n_per_l=50)
-        self.flp_rcv_z_min = 0
-        self.flp_rcv_z_max = self.bott_hs.sedim_layer_max_depth
+        # self.flp_n_rcv_z = default_nb_rcv_z(
+        #     max(self.freq), self.bott_hs.sedim_layer_max_depth, n_per_l=12
+        # )
+        # self.flp_rcv_z_min = 0
+        # self.flp_rcv_z_max = self.bott_hs.sedim_layer_max_depth
 
         self.flp = KrakenFlp(
             env=self.env,
@@ -331,7 +339,7 @@ class TestCase:
             rcv_r_max=self.max_range_m * 1e-3,
             n_rcv_r=self.flp_n_rcv_r,
             nb_modes=self.nb_modes,
-            mode_addition="coherent",
+            mode_addition=self.mode_addition,
             mode_theory=self.mode_theory,
         )
 
@@ -366,13 +374,16 @@ class TestCase1_0(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "dr_flp": 5,
             "nb_modes": 100,
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
+
         # Flat bottom
         self.range_dependence = False
 
@@ -391,7 +402,7 @@ class TestCase1_1(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
@@ -399,6 +410,9 @@ class TestCase1_1(TestCase1):
             "dr_bathy": 500,
             "nb_modes": 100,
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
+
         # Flat bottom
         self.range_dependence = True
 
@@ -430,7 +444,7 @@ class TestCase1_2(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
@@ -438,6 +452,9 @@ class TestCase1_2(TestCase1):
             "dr_bathy": 500,
             "nb_modes": 100,
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
+
         # Flat bottom
         self.range_dependence = True
 
@@ -468,7 +485,7 @@ class TestCase1_3(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
@@ -476,6 +493,8 @@ class TestCase1_3(TestCase1):
             "dr_bathy": 500,
             "nb_modes": 100,
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = True
 
@@ -505,13 +524,15 @@ class TestCase1_4(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
             "dr_flp": 5,
             "dr_bathy": 500,
             "nb_modes": 100,
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = True
 
@@ -566,7 +587,7 @@ class TestCase2_0(TestCase2):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
@@ -574,6 +595,8 @@ class TestCase2_0(TestCase2):
             "dr_bathy": 500,
             "nb_modes": 100,
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = False
 
@@ -592,7 +615,7 @@ class TestCase2_1(TestCase2):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
@@ -601,6 +624,8 @@ class TestCase2_1(TestCase2):
             "dr_bathy": 500,
             "nb_modes": 100,
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = True
 
@@ -632,7 +657,7 @@ class TestCase2_2(TestCase2):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
             "azimuth": 0,
@@ -642,6 +667,8 @@ class TestCase2_2(TestCase2):
             "dr_bathy": 500,
             "nb_modes": 100,
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = True
 
@@ -709,7 +736,7 @@ class TestCase3_1(TestCase3):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
             "azimuth": 0,
@@ -720,7 +747,10 @@ class TestCase3_1(TestCase3):
             "nb_modes": 100,
             "called_by_subprocess": False,
             "mode_theory": "coupled",
+            # "mode_theory": "adiabatic",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
 
         # Flat bottom
         self.range_dependence = True

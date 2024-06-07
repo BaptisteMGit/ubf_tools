@@ -249,12 +249,13 @@ class TestCase:
         z_max = np.ceil(self.bott_hs.sedim_layer_max_depth + 5)
         n_rcv_z = default_nb_rcv_z(max(self.freq), z_max, n_per_l=12)
 
+        c_offset = 0
         c_low = min(
             np.min(self.cp_ssp), np.min(self.bott_hs_properties["c_p"])
         )  # Minimum p-wave speed in the problem as recommanded by Kraken manual to exclude interfacial waves
-        c_low = np.max(c_low - 500, 0)
+        c_low = np.max(c_low - c_offset, 0)
         c_high = (
-            np.max(self.bott_hs_properties["c_p"]) + 500
+            np.max(self.bott_hs_properties["c_p"]) + c_offset
         )  # Maximum p-wave speed in the bottom to limit the number of modes computed
 
         self.field = KrakenField(

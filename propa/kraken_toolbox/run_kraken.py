@@ -367,9 +367,12 @@ def runkraken_broadband_range_dependent(
         run_field_exec(env.filename, parallel, worker_pid)
 
         # Read pressure field for the current frequency
-        _, _, _, _, read_freq, _, field_pos, pressure = readshd(
-            filename=env.filename + ".shd", freq=frequencies[ifreq]
-        )
+        try:
+            _, _, _, _, read_freq, _, field_pos, pressure = readshd(
+                filename=env.filename + ".shd", freq=frequencies[ifreq]
+            )
+        except:
+            print("error")
 
         # Initialize broadband pressure field array
         if ifreq == 0:

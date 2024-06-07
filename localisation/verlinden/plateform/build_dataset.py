@@ -182,9 +182,10 @@ def compute_tf_chunk_dask(
             ]
         )
 
-    dask_tf_chunk = da.from_array(
-        np.squeeze(tf_chunk, (1, 2)), chunks=block_info[None]["chunk-shape"][2:]
-    )
+        dask_tf_chunk = da.from_array(
+            np.squeeze(tf_chunk, (1, 2)), chunks=block_info[None]["chunk-shape"][2:]
+        )
+
     return dask_tf_chunk
 
 

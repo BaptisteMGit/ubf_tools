@@ -117,11 +117,11 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     ds["tf_gridded"].attrs["units"] = ""
     ds["tf_gridded"].attrs["long_name"] = "Transfer function gridded"
 
-    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=2*1e9)
+    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=2 * 1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
-    lat_chunksize = int(ds.sizes['lat'] // nregion)
-    lon_chunksize = int(ds.sizes['lon'] / nregion)
+    lat_chunksize = int(ds.sizes["lat"] // nregion)
+    lon_chunksize = int(ds.sizes["lon"] / nregion)
     # lon_chunksize = ds.sizes['lon']
     idx_rcv_chunksize, freq_chunksize = ds.sizes["idx_rcv"], ds.sizes["kraken_freq"]
 
@@ -132,7 +132,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     # Save to zarr without computing
     ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="a", compute=False)
 
-    for lat_s in lat_slices:    
+    for lat_s in lat_slices:
         for lon_s in lon_slices:
             ds_sub = ds.isel(lat=lat_s, lon=lon_s)
 
@@ -216,22 +216,22 @@ def grid_synthesis(
     ds.rcv_signal_library.attrs["long_name"] = r"$s_{i}$"
 
     # Loop over sub_regions of the grid
-    nregion = get_region_number(
-        ds.sizes["lon"], ds.tf_gridded, max_size_bytes=2*1e9
-    )
+    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=2 * 1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
 
-
-    lat_chunksize = int(ds.sizes['lat'] // nregion)
-    lon_chunksize = int(ds.sizes['lon'] / nregion)
-    idx_rcv_chunksize, time_chunksize = ds.sizes["idx_rcv"], ds.sizes["library_signal_time"]
+    lat_chunksize = int(ds.sizes["lat"] // nregion)
+    lon_chunksize = int(ds.sizes["lon"] / nregion)
+    idx_rcv_chunksize, time_chunksize = (
+        ds.sizes["idx_rcv"],
+        ds.sizes["library_signal_time"],
+    )
     chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, time_chunksize)
     ds["rcv_signal_library"] = ds.rcv_signal_library.chunk(chunksize)
 
     # Save to zarr without computing
     ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="a", compute=False)
 
-    print(ds.rcv_signal_library)
+    # print(ds.rcv_signal_library)
     for lon_s in lon_slices:
         for lat_s in lat_slices:
             ds_sub = ds.isel(lat=lat_s, lon=lon_s)
@@ -248,7 +248,7 @@ def grid_synthesis(
 
             ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)] = transmited_field_t
             sub_region_to_save = ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)]
-            print(sub_region_to_save)
+            # print(sub_region_to_save)
             # Save to zarr
             sub_region_to_save.to_zarr(
                 ds.fullpath_dataset_propa_grid_src,

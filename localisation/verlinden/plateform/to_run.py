@@ -109,12 +109,15 @@ def run_swir():
 
     print(f"nfft = {src.nfft}")
     (
+        ds,
         fullpath_dataset_propa,
         fullpath_dataset_propa_grid,
         fullpath_dataset_propa_grid_sr,
     ) = run_on_plateform(
         rcv_info=rcv_info_dw, testcase=tc, min_dist=min_dist, dx=dx, dy=dy, src=src
     )
+
+    return ds
 
 
 def common_process_loc():
@@ -130,7 +133,8 @@ def common_process_loc():
     root_propa_grid_src = os.path.join(root_dir, "propa_grid_src")
 
     # fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
-    fname = "propa_grid_src_65.5624_65.9825_-27.6933_-27.4972_100_100_ship.zarr"
+    # fname = "propa_grid_src_65.5624_65.9825_-27.6933_-27.4972_100_100_ship.zarr"
+    fname = "propa_grid_src_65.7086_65.7880_-27.5680_-27.4972_100_100_ship.zarr"
     fpath = os.path.join(root_propa_grid_src, fname)
 
     # Source infos
@@ -146,7 +150,8 @@ def common_process_loc():
     # Receiver infos
     rcv_info = {
         # "id": ["RR45", "RR48", "RR44"],
-        "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
+        # "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
+        "id": ["RRdebug0", "RRdebug1"],
         "lons": [],
         "lats": [],
     }
@@ -159,7 +164,7 @@ def common_process_loc():
     # Set initial position of the source
     initial_ship_pos = {
         "lon": rcv_info["lons"][0],
-        "lat": rcv_info["lats"][0] + 0.07,
+        "lat": rcv_info["lats"][0] + 0.001,
         "crs": "WGS84",
     }
 
@@ -260,8 +265,8 @@ def process_analysis(ds, grid_info):
 
 def run_process_loc():
 
-    f0_library = 1
-    fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
+    # f0_library = 1
+    # fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
 
     # """ Single test to ensure everything is ok """
     # n_noise = 1
@@ -343,11 +348,15 @@ def run_process_loc():
 if __name__ == "__main__":
 
     # Build dataset
-    run_swir()
+    ds = run_swir()
 
-    # Exploit dataset for localisation
+    # # Exploit dataset for localisation
     run_process_loc()
 
+    # path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\data\localisation_dataset\testcase3_1\propa_grid_src\propa_grid_src_65.7086_65.7880_-27.5680_-27.4972_100_100_ship.zarr"
+    # import xarray as xr
+
+    # ds = xr.open_dataset(path)
     # Analysis
     # fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
     # snrs = np.arange(-2, 2, 1)

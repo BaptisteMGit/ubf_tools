@@ -250,6 +250,10 @@ def build_process_output_path(xr_dataset, src_info, grid_info):
 
 
 def get_region_number(nregion_max, var, max_size_bytes=0.1 * 1e9):
+
+    max_bytes_allowed = 2.1 * 1e9
+    max_size_bytes = min(max_size_bytes, max_bytes_allowed)
+
     nregion = nregion_max
     # max_size_bytes = 0.1 * 1e9  # 100 Mo
     size = var.nbytes / nregion
@@ -620,7 +624,7 @@ def add_correlation_library(xr_dataset, idx_snr, verbose=True):
     if verbose:
         print(f"Add library correlation to dataset")
 
-    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.library_corr, max_size_bytes=5*1e9)
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.library_corr, max_size_bytes=2*1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
 
     lat_chunksize = int(xr_dataset.sizes["lat"] // nregion)
@@ -832,7 +836,7 @@ def add_noise_to_library(xr_dataset, idx_snr, snr_dB, verbose=True):
 
     target_var = "rcv_signal_library"
 
-    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.rcv_signal_library, max_size_bytes=5*1e9)
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.rcv_signal_library, max_size_bytes=2*1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
 
     lat_chunksize = int(xr_dataset.sizes["lat"] // nregion)
@@ -945,7 +949,7 @@ def add_ambiguity_surf(
         )
     )
 
-    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.ambiguity_surface, max_size_bytes=5*1e9)
+    nregion = get_region_number(xr_dataset.sizes["lon"], xr_dataset.ambiguity_surface, max_size_bytes=2*1e9)
     lon_slices, lat_slices = get_lonlat_sub_regions(xr_dataset, nregion)
 
     for lon_s in lon_slices:

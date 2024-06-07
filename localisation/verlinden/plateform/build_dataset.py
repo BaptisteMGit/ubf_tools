@@ -164,7 +164,7 @@ def compute_tf_chunk_dask(
     f = freq[freq > fc]
 
     # Run kraken
-    tf_chunk, _ = runkraken(
+    tf_chunk, field_pos = runkraken(
         env=testcase.env,
         flp=testcase.flp,
         frequencies=f,

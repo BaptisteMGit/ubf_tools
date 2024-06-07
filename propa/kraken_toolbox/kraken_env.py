@@ -398,7 +398,7 @@ class KrakenBottomHalfspace:
 
     def derive_sedim_layer_max_depth(self, z_max):
         sedim_layer_z = z_max + self.sedim_layer_depth
-        self.sedim_layer_max_depth = min(sedim_layer_z, self.sedim_layer_max_z)
+        self.sedim_layer_max_depth = np.ceil(min(sedim_layer_z, self.sedim_layer_max_z))
 
     def write_lines(self, use_bathymetry=False):
         # Get bathymetry code
@@ -661,7 +661,8 @@ class KrakenEnv:
 
         # if self.bathy.use_bathy:
         # Defined max depth of the sediment layer
-        self.bottom_hs.derive_sedim_layer_max_depth(z_max=self.bathy.bathy_depth.max())
+        if self.bottom_hs.sedim_layer_max_depth is None :
+            self.bottom_hs.derive_sedim_layer_max_depth(z_max=self.bathy.bathy_depth.max())
 
         self.range_dependent_env = False
 

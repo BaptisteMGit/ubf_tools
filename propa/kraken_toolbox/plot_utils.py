@@ -130,9 +130,6 @@ def plotshd(
         Pos["r"]["r"] = Pos["r"]["r"] / 1000.0
         xlab = "Range [km]"
 
-    # Plot the data
-    tej = plt.get_cmap("jet", 256).reversed()
-    plt.pcolor(Pos["r"]["r"], Pos["r"]["z"], tlt, shading="auto", cmap=tej)
     if tl_min is not None:
         tlmin_plot = tl_min
     else:
@@ -142,7 +139,21 @@ def plotshd(
         tlmax_plot = tl_max
     else:
         tlmax_plot = tlmax
-    plt.clim(tlmin_plot, tlmax_plot)
+    # tlmin_plot = 30
+    # tlmax_plot = 80
+    # Plot the data
+    tej = plt.get_cmap("jet", 256).reversed()
+    plt.pcolor(
+        Pos["r"]["r"],
+        Pos["r"]["z"],
+        tlt,
+        shading="auto",
+        cmap=tej,
+        vmin=tlmin_plot,
+        vmax=tlmax_plot,
+    )
+
+    # plt.clim(tlmin_plot, tlmax_plot)
 
     if bathy is not None:
         plt.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k")

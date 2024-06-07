@@ -48,6 +48,17 @@ class CalibTestCase(TestCase):
         self.flp_rcv_z_min = 10
         self.flp_rcv_z_max = 90
 
+        tc_default_varin = {
+            "freq": [25],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+            "dr_flp": 5,
+            "nb_modes": 100,
+            "mode_addition": "coupled",
+        }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
+
         self.process()
 
 

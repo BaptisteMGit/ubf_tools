@@ -64,16 +64,18 @@ def test():
     )
 
 
-def run_swir():
+def run_swir(rcv_id):
     rcv_info_dw = {
         # "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
-        # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
-        "id": ["RRdebug0", "RRdebug1"],
+        # "id": ["RR44", "RR45", "RR48"],
+        # "id": ["R1", "R2", "R3"],
+        "id": rcv_id,
         "lons": [],
         "lats": [],
     }
     tc = TestCase3_1()
-    min_dist = 4 * 1e3
+    # tc.name = "testcase_3_10"
+    min_dist = 3 * 1e3
     dx, dy = 100, 100
 
     # Define source signal
@@ -109,6 +111,7 @@ def run_swir():
 
     print(f"nfft = {src.nfft}")
     (
+        ds,
         fullpath_dataset_propa,
         fullpath_dataset_propa_grid,
         fullpath_dataset_propa_grid_sr,
@@ -116,22 +119,25 @@ def run_swir():
         rcv_info=rcv_info_dw, testcase=tc, min_dist=min_dist, dx=dx, dy=dy, src=src
     )
 
+    return ds
 
-def common_process_loc():
+
+def common_process_loc(rcv_id):
 
     # Set path to gridded dataset
-    testcase = "testcase3_1"
-    root_dir = os.path.join(
-        ROOT_DATASET,
-        testcase,
-    )
-    root_propa = os.path.join(root_dir, "propa")
-    root_propa_grid = os.path.join(root_dir, "propa_grid")
-    root_propa_grid_src = os.path.join(root_dir, "propa_grid_src")
+    # testcase = "testcase3_1"
+    # root_dir = os.path.join(
+    #     ROOT_DATASET,
+    #     testcase,
+    # )
+    # root_propa = os.path.join(root_dir, "propa")
+    # root_propa_grid = os.path.join(root_dir, "propa_grid")
+    # root_propa_grid_src = os.path.join(root_dir, "propa_grid_src")
 
-    # fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
-    fname = "propa_grid_src_65.5624_65.9825_-27.6933_-27.4972_100_100_ship.zarr"
-    fpath = os.path.join(root_propa_grid_src, fname)
+    # # fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
+    # fname = "propa_grid_src_65.5624_65.9825_-27.6933_-27.4972_100_100_ship.zarr"
+    # fpath = os.path.join(root_propa_grid_src, fname)
+    fpath = ds.fullpath_dataset_propa_grid_src
 
     # Source infos
     z_src = 5
@@ -146,7 +152,8 @@ def common_process_loc():
     # Receiver infos
     rcv_info = {
         # "id": ["RR45", "RR48", "RR44"],
-        "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
+        # "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
+        "id": rcv_id,
         "lons": [],
         "lats": [],
     }
@@ -159,7 +166,7 @@ def common_process_loc():
     # Set initial position of the source
     initial_ship_pos = {
         "lon": rcv_info["lons"][0],
-        "lat": rcv_info["lats"][0] + 0.07,
+        "lat": rcv_info["lats"][0] + 0.001,
         "crs": "WGS84",
     }
 
@@ -258,10 +265,10 @@ def process_analysis(ds, grid_info):
     )
 
 
-def run_process_loc():
+def run_process_loc(ds, rcv_id):
 
-    f0_library = 1
-    fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
+    # f0_library = 1
+    # fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
 
     # """ Single test to ensure everything is ok """
     # n_noise = 1
@@ -292,7 +299,7 @@ def run_process_loc():
     # snr = np.arange(-15, 10, 0.5)
     # snr = np.arange(-10, 5, 1)
     # snr = [-10, 5]
-    fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
+    fpath, event_pos_info, grid_info, rcv_info = common_process_loc(rcv_id)
 
     """ Test with same spectral content """
     f0 = f0_library
@@ -314,6 +321,36 @@ def run_process_loc():
     )
 
     process_analysis(ds, grid_info)
+
+    n_noise = 200
+    f0_library = 1
+    # snr = [0]
+    # snr = np.arange(-15, 10, 0.5)
+    snr = np.arange(-10, 5, 0.5)
+    # snr = [-10, 5]
+    fpath, event_pos_info, grid_info, rcv_info = common_process_loc(rcv_id)
+
+    """ Test with same spectral content """
+    f0 = f0_library
+    dt, fs, event_sig_info = set_event_sig_info(f0)
+    src_info = {}
+    src_info["pos"] = event_pos_info
+    src_info["sig"] = event_sig_info
+
+    ds = process(
+        main_ds_path=fpath,
+        src_info=src_info,
+        rcv_info=rcv_info,
+        grid_info=grid_info,
+        dt=dt,
+        similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+        snrs_dB=snr,
+        n_noise_realisations=n_noise,
+        verbose=True,
+    )
+
+    process_analysis(ds, grid_info)
+
 
     # """ Test with different spectral content """
 
@@ -343,93 +380,11 @@ def run_process_loc():
 if __name__ == "__main__":
 
     # Build dataset
-    run_swir()
+    # rcv_id = ["R1", "R2", "R3"]
+    rcv_id = ["RR41", "RR44", "RR45", "RR47", "RR48"]
+
+    # rcv_id = ["RRdebug0", "RRdebug1"]
+    ds = run_swir(rcv_id)
 
     # Exploit dataset for localisation
-    run_process_loc()
-
-    # Analysis
-    # fpath, event_pos_info, grid_info, rcv_info = common_process_loc()
-    # snrs = np.arange(-2, 2, 1)
-    # # snrs = [0, 1]
-    # # fpath = "/home/data/localisation_process/testcase3_1/65.5799_65.6386_-27.6077_-27.5554_ship/20240604_100723.zarr"
-    # fpath = "/home/data/localisation_process/testcase3_1/65.5799_65.6386_-27.6077_-27.5554_ship/20240604_101151.zarr"
-    # similarity_metrics = ["intercorr0", "hilbert_env_intercorr0"]
-
-    # plot_info = {
-    #     "plot_video": False,
-    #     "plot_one_tl_profile": False,
-    #     "plot_ambiguity_surface_dist": False,
-    #     "plot_received_signal": True,
-    #     "plot_emmited_signal": True,
-    #     "plot_ambiguity_surface": True,
-    #     "plot_ship_trajectory": True,
-    #     "plot_pos_error": False,
-    #     "plot_correlation": True,
-    #     "tl_freq_to_plot": [20],
-    #     "lon_offset": 0.005,
-    #     "lat_offset": 0.005,
-    #     "n_instant_to_plot": 10,
-    #     "n_rcv_signals_to_plot": 2,
-    # }
-
-    # analysis(
-    #     fpath=fpath,
-    #     snrs=snrs,
-    #     similarity_metrics=similarity_metrics,
-    #     grid_info=grid_info,
-    #     plot_info=plot_info,
-    # )
-
-    # test()
-
-    # min_waveguide_depth = 5000
-    # dt = 10
-    # fs = 100  # Sampling frequency
-    # f0_lib = 1  # Fundamental frequency of the ship signal
-    # src_info = {
-    #     "sig_type": "ship",
-    #     "f0": f0_lib,
-    #     "std_fi": f0_lib * 1 / 100,
-    #     "tau_corr_fi": 1 / f0_lib,
-    #     "fs": fs,
-    # }
-    # src_sig, t_src_sig = generate_ship_signal(
-    #     Ttot=dt,
-    #     f0=src_info["f0"],
-    #     std_fi=src_info["std_fi"],
-    #     tau_corr_fi=src_info["tau_corr_fi"],
-    #     fs=src_info["fs"],
-    # )
-
-    # src_sig *= np.hanning(len(src_sig))
-    # nfft = None
-    # # nfft = 2**3
-    # src = AcousticSource(
-    #     signal=src_sig,
-    #     time=t_src_sig,
-    #     name="ship",
-    #     waveguide_depth=min_waveguide_depth,
-    #     nfft=nfft,
-    # )
-
-    # import os
-    # import xarray as xr
-    # root_propa = "/home/data/localisation_dataset/testcase3_1/propa/"
-    # root_propa_grid = "/home/data/localisation_dataset/testcase3_1/propa_grid/"
-
-    # # path = "/home/data/localisation_dataset/testcase3_1/propa_grid/propa_grid_65.5523_65.9926_-27.7023_-27.4882_100_100.zarr"
-    # # fname = "propa_65.5523_65.9926_-27.7023_-27.4882.zarr"
-
-    # # DEBUG dataset
-    # fname = "propa_65.5523_65.9926_-27.7023_-27.4882.zarr"
-    # # fname = "propa_65.7390_65.7576_-27.5409_-27.5243.zarr"
-    # path = os.path.join(root_propa, fname)
-    # ds = xr.open_dataset(path, engine="zarr", chunks={})
-
-    # fname = "propa_grid_65.7390_65.7576_-27.5409_-27.5243_100_100.zarr"
-    # path = os.path.join(root_propa_grid, fname)
-    # ds_grid = xr.open_dataset(path, engine="zarr", chunks={})
-
-    # # # path = "/home/data/localisation_dataset/testcase3_1/propa/propa_65.5523_65.9926_-27.7023_-27.4882.zarr"
-    # # print()
+    run_process_loc(ds, rcv_id)

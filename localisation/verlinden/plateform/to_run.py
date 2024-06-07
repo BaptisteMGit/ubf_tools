@@ -286,12 +286,7 @@ def run_process_loc():
 
     # process_analysis(ds, grid_info)
 
-<<<<<<< HEAD
-    n_noise = 100
-=======
-
     n_noise = 1
->>>>>>> fce377b53acde7118f0b79ddf7ae83f447d807c4
     f0_library = 1
     snr = [0]
     # snr = np.arange(-15, 10, 0.5)
@@ -347,13 +342,8 @@ def run_process_loc():
 
 if __name__ == "__main__":
 
-<<<<<<< HEAD
     # Build dataset
-    # run_swir()
-=======
-    # Build dataset 
     run_swir()
->>>>>>> fce377b53acde7118f0b79ddf7ae83f447d807c4
 
     # Exploit dataset for localisation
     run_process_loc()

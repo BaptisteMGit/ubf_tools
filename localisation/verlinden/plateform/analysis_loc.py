@@ -426,6 +426,7 @@ def plot_ambiguity_surface(
     plot_info={},
     zoom=False,
     plot_hyperbol=False,
+    mode="analyis",
 ):
     """Plot ambiguity surface for each source position."""
     # Init folders
@@ -471,12 +472,12 @@ def plot_ambiguity_surface(
             plt.scatter(
                 ds.lon_src.isel(src_trajectory_time=i_src_time),
                 ds.lat_src.isel(src_trajectory_time=i_src_time),
-                # color="magenta",
-                facecolors="none",
-                edgecolors="magenta",
+                color="r",
+                # facecolors="none",
+                # edgecolors="magenta",
                 # fillstyle="none",
-                marker="o",
-                s=130,
+                marker="*",
+                s=400,
                 linewidths=2.5,
                 label=r"$X_{ship}$",
                 zorder=2,
@@ -496,9 +497,10 @@ def plot_ambiguity_surface(
                 det_pos_lon,
                 det_pos_lat,
                 marker="s",
-                facecolors="none",
-                edgecolors="magenta",
-                s=200,
+                color="k",
+                # facecolors="none",
+                # edgecolors="magenta",
+                s=400,
                 linewidths=2.5,
                 label="Estimated position",
                 zorder=3,
@@ -506,15 +508,22 @@ def plot_ambiguity_surface(
 
             for i_rcv in ds["idx_rcv"].values:
                 if i_rcv in rcv_pair:
-                    size = 130
+                    size = 150
                 else:
                     size = 50
                 plt.scatter(
                     ds.lon_rcv.isel(idx_rcv=i_rcv),
                     ds.lat_rcv.isel(idx_rcv=i_rcv),
                     marker="o",
-                    label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                    # label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
                     s=size,
+                )
+                plt.text(
+                    ds.lon_rcv.isel(idx_rcv=i_rcv) + 0.01,
+                    ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
+                    "ship",
+                    fontsize=30,
+                    color="k",
                 )
 
             # Plot line between rcv and display dist between rcv
@@ -532,7 +541,7 @@ def plot_ambiguity_surface(
                 "k",
                 linestyle="--",
                 zorder=1,
-                label=f"L = {dist}m",
+                label=f"L = {np.round(dist*1e-3, 2)}m",
             )
 
             # Plot line between the center of the rcv array and the ship
@@ -553,7 +562,7 @@ def plot_ambiguity_surface(
                 "k",
                 linestyle="-.",
                 zorder=1,
-                label=r"$r_{ship}$" + f" = {dist_center}m",
+                label=r"$r_{ship}$" + f" = {np.round(dist_center*1e-3, 2)}m",
             )
             # Add point at the center of the array
             plt.scatter(
@@ -582,9 +591,12 @@ def plot_ambiguity_surface(
                     ]
                 )
                 zoom_label = ""
-            plt.title(
-                f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair {pair_id})",
-            )
+
+            if mode == "analysis":
+                title = f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair {pair_id})"
+            else:
+                title = ""
+            plt.title(title)
             plt.legend(ncol=2)
             img_fpath = os.path.join(
                 img_folder,
@@ -628,13 +640,24 @@ def plot_ambiguity_surface(
             src_trajectory_time=i_src_time,
             idx_noise_realisation=-1,
         )
+        # plt.scatter(
+        #     det_pos_lon,
+        #     det_pos_lat,
+        #     marker="s",
+        #     facecolors="none",
+        #     edgecolors="magenta",
+        #     s=200,
+        #     linewidths=2.5,
+        #     label="Estimated position",
+        #     zorder=3,
+        # )
+
         plt.scatter(
             det_pos_lon,
             det_pos_lat,
             marker="s",
-            facecolors="none",
-            edgecolors="magenta",
-            s=200,
+            color="k",
+            s=400,
             linewidths=2.5,
             label="Estimated position",
             zorder=3,
@@ -1398,6 +1421,7 @@ def analysis(
     similarity_metrics=[],
     plot_info={},
     grid_info={},
+    mode="analysis",
 ):
     """Main function to analyse the localisation performance."""
 
@@ -1491,6 +1515,7 @@ def analysis(
                         nb_instant_to_plot=n_instant_to_plot,
                         plot_info=plot_info,
                         zoom=zoom,
+                        mode=mode,
                     )
 
             # Create video TODO : update
@@ -1535,8 +1560,9 @@ def analysis(
 
             amb_surf, amb_surf_combined = get_ambiguity_surface(ds_snr_sim)
             amb_dynamic_range = (amb_surf.max() - amb_surf.min()).round(2).values
-            amb_dynamic_range_combined = (amb_surf_combined.max() - amb_surf_combined.min()).round(2).values
-
+            amb_dynamic_range_combined = (
+                (amb_surf_combined.max() - amb_surf_combined.min()).round(2).values
+            )
 
             global_line = (
                 f"{similarity_metric}, {snr}, {pos_error_metrics['median']:.1f}, {pos_error_metrics['mean']:.1f},"
@@ -1578,7 +1604,7 @@ def analysis(
             with open(local_report_fpath, "w") as f:
                 f.writelines("\n".join(local_log))
 
-                        # Write report in txt file
+                # Write report in txt file
             local_log_combined = [
                 f"Detection metric: {similarity_metric}",
                 f"SNR: {ds_snr_sim.snr.values}dB",
@@ -1607,7 +1633,9 @@ def analysis(
         f.writelines("\n".join(global_log))
 
     # Write global report in txt file
-    global_report_fpath_combined = os.path.join(analysis_root, "global_report_combined.txt")
+    global_report_fpath_combined = os.path.join(
+        analysis_root, "global_report_combined.txt"
+    )
     with open(global_report_fpath_combined, "w") as f:
         f.writelines("\n".join(global_log_combined))
 
@@ -1654,7 +1682,6 @@ def analysis(
         img_path=img_path,
     )
 
-
     data = pd.read_csv(
         global_report_fpath_combined,
         sep=",",
@@ -1673,7 +1700,9 @@ def analysis(
     )
 
     # for perf_metrics in list_perf_metrics:
-    img_path = os.path.join(os.path.dirname(global_report_fpath_combined), "global_report_combined")
+    img_path = os.path.join(
+        os.path.dirname(global_report_fpath_combined), "global_report_combined"
+    )
     if not os.path.exists(img_path):
         os.makedirs(img_path)
     plot_localisation_performance(

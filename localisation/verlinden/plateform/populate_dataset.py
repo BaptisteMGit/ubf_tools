@@ -189,6 +189,9 @@ def grid_synthesis(
     # Set path to save the dataset and save existing vars
     ds.attrs["src_label"] = build_src_label(src_name=src.name)
     set_propa_grid_src_path(ds)
+    ds.attrs["fullpath_dataset_propa_grid_src"] = (
+        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\testzarr"
+    )
     ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
 
     propagating_freq = src.positive_freq

@@ -156,9 +156,9 @@ def common_process_loc(rcv_id):
     rcv_info = {
         # "id": ["RR45", "RR48", "RR44"],
         # "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
-        "id": rcv_id,
         # "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
         # "id": ["RRdebug0", "RRdebug1"],
+        "id": rcv_id,
         "lons": [],
         "lats": [],
     }
@@ -330,34 +330,34 @@ def run_process_loc(ds, rcv_id):
 
     process_analysis(ds, grid_info)
 
-    n_noise = 200
-    f0_library = 1
-    # snr = [0]
-    # snr = np.arange(-15, 10, 0.5)
-    snr = np.arange(-10, 5, 0.5)
-    # snr = [-10, 5]
-    fpath, event_pos_info, grid_info, rcv_info = common_process_loc(rcv_id)
+    # n_noise = 200
+    # f0_library = 1
+    # # snr = [0]
+    # # snr = np.arange(-15, 10, 0.5)
+    # snr = np.arange(-10, 5, 0.5)
+    # # snr = [-10, 5]
+    # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(rcv_id)
 
-    """ Test with same spectral content """
-    f0 = f0_library
-    dt, fs, event_sig_info = set_event_sig_info(f0)
-    src_info = {}
-    src_info["pos"] = event_pos_info
-    src_info["sig"] = event_sig_info
+    # """ Test with same spectral content """
+    # f0 = f0_library
+    # dt, fs, event_sig_info = set_event_sig_info(f0)
+    # src_info = {}
+    # src_info["pos"] = event_pos_info
+    # src_info["sig"] = event_sig_info
 
-    ds = process(
-        main_ds_path=fpath,
-        src_info=src_info,
-        rcv_info=rcv_info,
-        grid_info=grid_info,
-        dt=dt,
-        similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
-        snrs_dB=snr,
-        n_noise_realisations=n_noise,
-        verbose=True,
-    )
+    # ds = process(
+    #     main_ds_path=fpath,
+    #     src_info=src_info,
+    #     rcv_info=rcv_info,
+    #     grid_info=grid_info,
+    #     dt=dt,
+    #     similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+    #     snrs_dB=snr,
+    #     n_noise_realisations=n_noise,
+    #     verbose=True,
+    # )
 
-    process_analysis(ds, grid_info)
+    # process_analysis(ds, grid_info)
 
     # """ Test with different spectral content """
 
@@ -387,11 +387,15 @@ def run_process_loc(ds, rcv_id):
 if __name__ == "__main__":
 
     # Build dataset
-    # rcv_id = ["R1", "R2", "R3"]
-    rcv_id = ["RR41", "RR44", "RR45", "RR47", "RR48"]
+    rcv_id = ["R1", "R2", "R3"]
+    # rcv_id = ["RR41", "RR44", "RR45", "RR47", "RR48"]
 
     # rcv_id = ["RRdebug0", "RRdebug1"]
     ds = run_swir(rcv_id)
 
     # Exploit dataset for localisation
     run_process_loc(ds, rcv_id)
+
+    # import xarray as xr
+
+    # ds = xr.open_dataset(fpath)

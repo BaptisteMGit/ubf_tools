@@ -251,6 +251,22 @@ def fft_convolve_f(a0, a1, axis=-1, workers=8):
     return corr_01
 
 
+def generate_colors(n, colormap_name="Pastel1"):
+    """
+    Generate a list of n colors using a specified colormap.
+
+    Parameters:
+    - n: int, the number of colors to generate.
+    - colormap_name: str, the name of the colormap to use (default is 'Pastel1').
+
+    Returns:
+    - List of RGBA colors.
+    """
+    cmap = plt.get_cmap(colormap_name)
+    colors = [cmap(i / n) for i in range(n)]
+    return colors
+
+
 if __name__ == "__main__":
     # Test delete folders
     root_directory = "/path/to/your/directory"

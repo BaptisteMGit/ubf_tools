@@ -79,7 +79,7 @@ class TestCase:
         self, name, testcase_varin={}, title="Default testcase", desc="", mode="prod"
     ):
         self.name = f"{name}_{socket.gethostname()}"
-        # self.name = name 
+        # self.name = name
 
         self.testcase_varin = testcase_varin
         self.title = title
@@ -144,7 +144,7 @@ class TestCase:
             "azimuth": 0,
             "rcv_lon": -4.87,
             "rcv_lat": 52.22,
-            "dr_flp": 10,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
             "called_by_subprocess": False,
@@ -746,7 +746,7 @@ class TestCase3_1(TestCase3):
             "azimuth": 0,
             "rcv_lon": 65.94,
             "rcv_lat": -27.58,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 1000,
             "nb_modes": 100,
             "called_by_subprocess": False,

@@ -32,6 +32,8 @@ from localisation.verlinden.plateform.utils import (
     add_correlation_event,
     build_process_output_path,
     add_ambiguity_surf,
+    get_region_number,
+    get_lonlat_sub_regions,
 )
 from localisation.verlinden.verlinden_utils import (
     init_event_src_traj,
@@ -93,7 +95,11 @@ def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
         )
         if apply_delay:
             # Delay to apply to the signal to take into account the propagation time
-            tau = ds.delay_src_rcv.min(dim="idx_rcv").isel(src_trajectory_time=i_pos).values
+            tau = (
+                ds.delay_src_rcv.min(dim="idx_rcv")
+                .isel(src_trajectory_time=i_pos)
+                .values
+            )
             # tau = ds.delay_rcv.isel(idx_rcv=0).sel(lat=pos_src_info["lats"][i_pos], lon=pos_src_info["lons"][i_pos], method="nearest").values
 
             # Derive delay factor
@@ -188,10 +194,42 @@ def init_dataset(
         {"snr": ds.sizes["snr"]}, axis=0
     )
 
+    # Chunk rcv_signal_library according to lon/lat regions
+    max_size = 0.5 * 1e9
+    var = ds.rcv_signal_library
+    nregion_lon = get_region_number(
+        nregion_max=ds.sizes["lon"],
+        var=var,
+        max_size_bytes=max_size,
+    )
+    nregion_lat = get_region_number(
+        nregion_max=ds.sizes["lat"],
+        var=var,
+        max_size_bytes=max_size,
+    )
+    # Save nregions
+    ds.attrs["nregion_lon"] = nregion_lon
+    ds.attrs["nregion_lat"] = nregion_lat
+
+    chunksize = dict(ds.rcv_signal_library.chunksizes)
+    lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
+    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
+    chunksize = {
+        "snr": ds.sizes["snr"],
+        "idx_rcv": ds.sizes["idx_rcv"],
+        "lat": lat_chunksize,
+        "lon": lon_chunksize,
+        "library_signal_time": ds.sizes["library_signal_time"],
+    }
+    ds["rcv_signal_library"] = ds.rcv_signal_library.chunk(chunksize)
+    ds.rcv_signal_library.encoding["chunks"] = tuple(chunksize.values())
+    ds.rcv_signal_library.encoding["preferred_chunks"] = tuple(chunksize.values())
+
     # Rechunk to ensure dask chunks are aligned with the encoding chunks
     for v in list(ds):
         if ds[v].chunks is not None:  # if var is a dask array
             ds[v] = ds[v].chunk(ds[v].encoding["preferred_chunks"])
+
     # Save previously computed data
     ds.to_zarr(ds.output_path, mode="w", compute=True)
 
@@ -261,7 +299,9 @@ def process(
         #     no_noise_lib
         # )  # Reset to the original signal
 
-        ds["rcv_signal_library"].values = no_noise_lib.copy()  # Reset to the original signal
+        ds["rcv_signal_library"].values = (
+            no_noise_lib.copy()
+        )  # Reset to the original signal
         ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose)
         # Derive correlation vector for the entire grid
         ds = add_correlation_library(ds, idx_snr=idx_snr, verbose=verbose)

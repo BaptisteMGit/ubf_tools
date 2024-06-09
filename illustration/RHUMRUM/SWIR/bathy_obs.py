@@ -89,8 +89,8 @@ def plot_swir_obs(ds_bathy, col=None):
     rcv_info = {
         # "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
         # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
-        # "id": ["R1", "R2", "R3"],
-        "id": ["RR45", "RR48", "RR44"],
+        "id": ["R1", "R2", "R3"],
+        # "id": ["RR45", "RR48", "RR44"],
         "lons": [],
         "lats": [],
         "z": [],

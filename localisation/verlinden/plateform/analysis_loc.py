@@ -15,7 +15,7 @@ from cst import (
     LIBRARY_COLOR,
     EVENT_COLOR,
 )
-from misc import confidence_ellipse
+from misc import confidence_ellipse, generate_colors
 
 from pyproj import Geod
 from localisation.verlinden.verlinden_utils import (
@@ -434,7 +434,15 @@ def plot_ambiguity_surface(
     img_folder = init_plot_folders(img_root, "amb_s", sim_metric)
 
     amb_surf, amb_surf_combined = get_ambiguity_surface(ds)
+    # Add attrs
+    amb_surf.attrs["unit"] = "dB"
+    amb_surf_combined.attrs["unit"] = "dB"
+    amb_surf.attrs["long_name"] = r"$S_{i, j}$"
+    amb_surf_combined.attrs["long_name"] = r"$S$"
 
+    # Rcv colors
+    # rcv_colors = generate_colors(n=ds.sizes["idx_rcv"], colormap_name="Pastel1")
+    rcv_colors = ["lime", "deeppink", "yellow", "aqua"]
     for i_src_time in range(nb_instant_to_plot):
         for i_rcv_pair in ds["idx_rcv_pairs"].values:
             rcv_pair = ds["rcv_pairs"].sel(idx_rcv_pairs=i_rcv_pair).values
@@ -472,15 +480,15 @@ def plot_ambiguity_surface(
             plt.scatter(
                 ds.lon_src.isel(src_trajectory_time=i_src_time),
                 ds.lat_src.isel(src_trajectory_time=i_src_time),
-                color="r",
-                # facecolors="none",
-                # edgecolors="magenta",
+                # color="r",
+                facecolors="none",
+                edgecolors="red",
                 # fillstyle="none",
                 marker="*",
-                s=400,
-                linewidths=2.5,
+                s=450,
+                linewidths=2,
                 label=r"$X_{ship}$",
-                zorder=2,
+                zorder=10,
             )
 
             det_pos_lon = ds.detected_pos_lon.isel(
@@ -497,11 +505,11 @@ def plot_ambiguity_surface(
                 det_pos_lon,
                 det_pos_lat,
                 marker="s",
-                color="k",
-                # facecolors="none",
-                # edgecolors="magenta",
+                # color="k",
+                facecolors="none",
+                edgecolors="black",
                 s=400,
-                linewidths=2.5,
+                linewidths=3.5,
                 label="Estimated position",
                 zorder=3,
             )
@@ -515,15 +523,16 @@ def plot_ambiguity_surface(
                     ds.lon_rcv.isel(idx_rcv=i_rcv),
                     ds.lat_rcv.isel(idx_rcv=i_rcv),
                     marker="o",
+                    c=rcv_colors[i_rcv],
                     # label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
                     s=size,
                 )
                 plt.text(
                     ds.lon_rcv.isel(idx_rcv=i_rcv) + 0.01,
                     ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
-                    "ship",
+                    ds.rcv_id.isel(idx_rcv=i_rcv).values,
                     fontsize=30,
-                    color="k",
+                    color=rcv_colors[i_rcv],
                 )
 
             # Plot line between rcv and display dist between rcv
@@ -541,7 +550,7 @@ def plot_ambiguity_surface(
                 "k",
                 linestyle="--",
                 zorder=1,
-                label=f"L = {np.round(dist*1e-3, 2)}m",
+                label=f"L = {np.round(dist*1e-3, 2)}km",
             )
 
             # Plot line between the center of the rcv array and the ship
@@ -562,7 +571,7 @@ def plot_ambiguity_surface(
                 "k",
                 linestyle="-.",
                 zorder=1,
-                label=r"$r_{ship}$" + f" = {np.round(dist_center*1e-3, 2)}m",
+                label=r"$r_{ship}$" + f" = {np.round(dist_center*1e-3, 2)}km",
             )
             # Add point at the center of the array
             plt.scatter(
@@ -618,18 +627,31 @@ def plot_ambiguity_surface(
             x="lon", y="lat", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
         )
 
+        # plt.scatter(
+        #     ds.lon_src.isel(src_trajectory_time=i_src_time),
+        #     ds.lat_src.isel(src_trajectory_time=i_src_time),
+        #     # color="magenta",
+        #     facecolors="none",
+        #     edgecolors="magenta",
+        #     # fillstyle="none",
+        #     marker="o",
+        #     s=130,
+        #     linewidths=2.5,
+        #     label=r"$X_{ship}$",
+        #     zorder=2,
+        # )
         plt.scatter(
             ds.lon_src.isel(src_trajectory_time=i_src_time),
             ds.lat_src.isel(src_trajectory_time=i_src_time),
-            # color="magenta",
+            # color="r",
             facecolors="none",
-            edgecolors="magenta",
+            edgecolors="red",
             # fillstyle="none",
-            marker="o",
-            s=130,
-            linewidths=2.5,
+            marker="*",
+            s=450,
+            linewidths=2,
             label=r"$X_{ship}$",
-            zorder=2,
+            zorder=10,
         )
 
         det_pos_lon = ds.detected_pos_lon_combined.isel(
@@ -656,9 +678,11 @@ def plot_ambiguity_surface(
             det_pos_lon,
             det_pos_lat,
             marker="s",
-            color="k",
+            # color="k",
+            facecolors="none",
+            edgecolors="black",
             s=400,
-            linewidths=2.5,
+            linewidths=4,
             label="Estimated position",
             zorder=3,
         )
@@ -681,7 +705,7 @@ def plot_ambiguity_surface(
             "k",
             linestyle="-.",
             zorder=1,
-            label=r"$r_{ship}$" + f" = {dist_center}m",
+            label=r"$r_{ship}$" + f" = {np.round(dist_center*1e-3, 2)}km",
         )
         # Add point at the center of the array
         plt.scatter(
@@ -697,9 +721,17 @@ def plot_ambiguity_surface(
                 ds.lon_rcv.isel(idx_rcv=i_rcv),
                 ds.lat_rcv.isel(idx_rcv=i_rcv),
                 marker="o",
-                label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                color=rcv_colors[i_rcv],
                 s=50,
             )
+            plt.text(
+                ds.lon_rcv.isel(idx_rcv=i_rcv) + 0.01,
+                ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
+                ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                fontsize=30,
+                color=rcv_colors[i_rcv],
+            )
+
         if zoom:
             plt.xlim([ds.lon.min(), ds.lon.max()])
             plt.ylim([ds.lat.min(), ds.lat.max()])

@@ -19,7 +19,7 @@ import os
 
 if os.name == "nt":
     PROJECT_ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd"
-    DATA_ROOT = os.path.join(PROJECT_ROOT, "localisation", "verlinden", "data")
+    DATA_ROOT = os.path.join(PROJECT_ROOT, "data", "loc")
 else:
     PROJECT_ROOT = "/home/program/ubf_tools"
     DATA_ROOT = "/home/data"

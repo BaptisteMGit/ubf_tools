@@ -103,7 +103,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     # Save existing vars (no need to save tf)
     ds.drop_vars("tf").to_zarr(ds.fullpath_dataset_propa_grid, mode="w")
-
+    # ds = ds.drop_vars("tf")
     tf_gridded_dim = ["idx_rcv", "lat", "lon", "kraken_freq"]
     tf_gridded_shape = [ds.sizes[dim] for dim in tf_gridded_dim]
     # chunk_lon = max(1, ds.sizes["lon"] // 10)
@@ -165,6 +165,8 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
                 },
             )
 
+            # print(f"region processes in {time() - t0}s")
+
     # Open the Zarr store and update attrs
     zarr_store = zarr.open(ds.fullpath_dataset_propa)
     zarr_store.attrs.update({"propa_grid_done": True})
@@ -189,9 +191,9 @@ def grid_synthesis(
     # Set path to save the dataset and save existing vars
     ds.attrs["src_label"] = build_src_label(src_name=src.name)
     set_propa_grid_src_path(ds)
-    ds.attrs["fullpath_dataset_propa_grid_src"] = (
-        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\testzarr"
-    )
+    # ds.attrs["fullpath_dataset_propa_grid_src"] = (
+    #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\testzarr"
+    # )
     ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
 
     propagating_freq = src.positive_freq
@@ -219,11 +221,17 @@ def grid_synthesis(
     ds.rcv_signal_library.attrs["long_name"] = r"$s_{i}$"
 
     # Loop over sub_regions of the grid
-    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=2 * 1e9)
-    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
+    nregion_lon = get_region_number(
+        ds.sizes["lon"], ds.tf_gridded, max_size_bytes=1 * 1e9
+    )
+    nregion_lat = get_region_number(
+        ds.sizes["lat"], ds.tf_gridded, max_size_bytes=1 * 1e9
+    )
 
-    lat_chunksize = int(ds.sizes["lat"] // nregion)
-    lon_chunksize = int(ds.sizes["lon"] / nregion)
+    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
+
+    lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
+    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
     idx_rcv_chunksize, time_chunksize = (
         ds.sizes["idx_rcv"],
         ds.sizes["library_signal_time"],
@@ -266,7 +274,7 @@ def grid_synthesis(
 
     # Open the Zarr store and update attrs
     zarr_store = zarr.open(ds.fullpath_dataset_propa_grid_src)
-    zarr_store.attrs.update({"propa_done_grid_src": True})
+    zarr_store.attrs.update({"propa_grid_src_done": True})
     zarr.consolidate_metadata(ds.fullpath_dataset_propa_grid_src)
 
     return ds

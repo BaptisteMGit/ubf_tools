@@ -75,7 +75,7 @@ def run_swir(rcv_id):
     }
     tc = TestCase3_1()
     # tc.name = "testcase_3_10"
-    min_dist = 3 * 1e3
+    min_dist = 5 * 1e3
     dx, dy = 100, 100
 
     # Define source signal
@@ -112,7 +112,6 @@ def run_swir(rcv_id):
     print(f"nfft = {src.nfft}")
     (
         ds,
-        ds,
         fullpath_dataset_propa,
         fullpath_dataset_propa_grid,
         fullpath_dataset_propa_grid_sr,
@@ -122,10 +121,8 @@ def run_swir(rcv_id):
 
     return ds
 
-    return ds
 
-
-def common_process_loc(rcv_id):
+def common_process_loc(ds, rcv_id):
 
     # Set path to gridded dataset
     # testcase = "testcase3_1"
@@ -307,7 +304,7 @@ def run_process_loc(ds, rcv_id):
     # snr = np.arange(-15, 10, 0.5)
     # snr = np.arange(-10, 5, 1)
     # snr = [-10, 5]
-    fpath, event_pos_info, grid_info, rcv_info = common_process_loc(rcv_id)
+    fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
 
     """ Test with same spectral content """
     f0 = f0_library
@@ -391,11 +388,19 @@ if __name__ == "__main__":
     # rcv_id = ["RR41", "RR44", "RR45", "RR47", "RR48"]
 
     # rcv_id = ["RRdebug0", "RRdebug1"]
-    ds = run_swir(rcv_id)
+    # ds = run_swir(rcv_id)
 
-    # Exploit dataset for localisation
-    run_process_loc(ds, rcv_id)
+    # # Exploit dataset for localisation
+    # run_process_loc(ds, rcv_id)
 
-    # import xarray as xr
+    # Reanalyse
+    import xarray as xr
 
-    # ds = xr.open_dataset(fpath)
+    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_dataset\testcase3_1_AC198EBFF716\propa_grid_src\propa_grid_src_65.4903_65.6797_-27.7342_-27.5758_100_100_ship.zarr"
+    ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
+
+    # Processed dataset
+    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase3_1_AC198EBFF716\65.4670_65.6677_-27.7718_-27.5931_ship\20240609_122623.zarr"
+    ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    process_analysis(ds, grid_info)

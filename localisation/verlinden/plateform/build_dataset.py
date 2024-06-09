@@ -65,8 +65,10 @@ def build_dataset(
     freq = ds.kraken_freq.values
 
     # Loop over dataset regions
-    nregion_workers = int(np.ceil(((ds.sizes["all_az"] * ds.sizes["idx_rcv"]) / N_WORKERS)))
-    
+    nregion_workers = int(
+        np.ceil(((ds.sizes["all_az"] * ds.sizes["idx_rcv"]) / N_WORKERS))
+    )
+
     nregion_memory = ds.sizes["all_az"]
     max_size_bytes = 1 * 1e9  # 1 Go
     size = ds.tf.nbytes / nregion_memory
@@ -90,6 +92,8 @@ def build_dataset(
         print(client.dashboard_link)
 
         for r_az_slice in regions_az_slices:
+
+            t0 = time()
             region_ds = ds.isel(all_az=r_az_slice)
 
             # Compute transfer functions (tf) using `map_blocks`
@@ -113,7 +117,8 @@ def build_dataset(
             ds.tf[dict(all_az=r_az_slice)] = region_tf_data
             region_to_save = ds.tf[dict(all_az=r_az_slice)]
 
-            t0 = time()
+            print(f"Region ({size * 1e-9} Go) processed in {time() - t0:.2f} s")
+            t1 = time()
             region_to_save.to_zarr(
                 ds.fullpath_dataset_propa,
                 mode="r+",
@@ -125,7 +130,8 @@ def build_dataset(
                     "kraken_range": slice(None),
                 },
             )
-            print(f"Region ({size * 1e-9} Go) saved in {time() - t0:.2f} s")
+
+            print(f"Region ({size * 1e-9} Go) saved in {time() - t1:.2f} s")
 
             # Ensure memory is freed
             del region_ds, region_tf, region_tf_data, region_to_save
@@ -160,7 +166,7 @@ def compute_tf_chunk_dask(
     testcase.update(testcase_varin)
 
     # Propagating freq
-    fc = waveguide_cutoff_freq(waveguide_depth=testcase.min_depth)
+    fc = waveguide_cutoff_freq(waveguide_depth=testcase.min_depth) + 0.1
     f = freq[freq > fc]
 
     # Run kraken

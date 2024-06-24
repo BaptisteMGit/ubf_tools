@@ -152,6 +152,9 @@ class TestCase:
             "mode_addition": "coherent",
             "z_src": 5,
             "src_depth": None,
+            "flp_n_rcv_z": None,
+            "flp_rcv_z_min": None,
+            "flp_rcv_z_max": None,
         }
 
         # Set env directory
@@ -382,7 +385,7 @@ class TestCase1_0(TestCase1):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "nb_modes": 100,
         }
         for key, default_value in tc_default_varin.items():

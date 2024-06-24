@@ -661,8 +661,10 @@ class KrakenEnv:
 
         # if self.bathy.use_bathy:
         # Defined max depth of the sediment layer
-        if self.bottom_hs.sedim_layer_max_depth is None :
-            self.bottom_hs.derive_sedim_layer_max_depth(z_max=self.bathy.bathy_depth.max())
+        if self.bottom_hs.sedim_layer_max_depth is None:
+            self.bottom_hs.derive_sedim_layer_max_depth(
+                z_max=self.bathy.bathy_depth.max()
+            )
 
         self.range_dependent_env = False
 
@@ -967,7 +969,7 @@ class KrakenFlp:
         if self.env.range_dependent_env:
             self.n_profiles_ = self.env.modes_range.size
             self.profiles_ranges_ = self.env.modes_range
-            rcv_z_max = self.env.bottom_hs.sedim_layer_max_depth
+            # rcv_z_max = self.env.bottom_hs.sedim_layer_max_depth
         else:
             self.n_profiles_ = 1
             self.profiles_ranges_ = np.array([0.0])

@@ -650,7 +650,6 @@ def add_correlation_library(xr_dataset, idx_snr, verbose=True):
     # chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, corr_chunksize)
     # xr_dataset["library_corr"] = xr_dataset.library_corr.chunk(chunksize)
 
-    # TODO get chunksize from ds_library
     lon_slices, lat_slices = get_lonlat_sub_regions(
         xr_dataset, xr_dataset.nregion_lon, xr_dataset.nregion_lat
     )

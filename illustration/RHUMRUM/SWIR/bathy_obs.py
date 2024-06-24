@@ -236,8 +236,8 @@ def plot_swir_bathy_obs_src():
     grid_info = plot_sim_area(rcv_info, minimum_distance_around_rcv, dx, dy)
 
     initial_ship_pos = {
-        "lon": rcv_info["lons"][0],
-        "lat": rcv_info["lats"][0] + 0.07,
+        "lon": rcv_info["lons"][0] + 0.1,
+        "lat": rcv_info["lats"][0] - 0.03,
         "crs": "WGS84",
     }
 
@@ -314,5 +314,5 @@ def plot_bathy_profile():
 
 if __name__ == "__main__":
     plot_swir_bathy_obs()
-    # plot_swir_bathy_obs_src()
+    plot_swir_bathy_obs_src()
     # plot_bathy_profile()

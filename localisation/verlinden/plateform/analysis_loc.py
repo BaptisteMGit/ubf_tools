@@ -41,8 +41,10 @@ PFIG = PubFigure(
     label_fontsize=40,
     title_fontsize=40,
     ticks_fontsize=40,
-    legend_fontsize=14,
+    legend_fontsize=20,
 )
+
+RCV_COLORS = ["lime", "deeppink", "yellow", "aqua"]
 
 
 def plot_emmited_signal(xr_dataset, img_root):
@@ -428,6 +430,22 @@ def plot_ambiguity_surface(
     plot_hyperbol=False,
     mode="analyis",
 ):
+
+    # Load bathy
+    bathy_path = (
+        r"data/bathy/mmdpm/PVA_RR48/GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+    )
+    ds_bathy = xr.open_dataset(bathy_path)
+
+    blevels = [
+        -6000,
+        -5000,
+        -4000,
+        -3000,
+        -2000,
+        -1500,
+    ]
+
     """Plot ambiguity surface for each source position."""
     # Init folders
     sim_metric = str(ds.similarity_metrics.values)[:5]
@@ -441,18 +459,20 @@ def plot_ambiguity_surface(
     amb_surf_combined.attrs["long_name"] = r"$S$"
 
     # Rcv colors
-    # rcv_colors = generate_colors(n=ds.sizes["idx_rcv"], colormap_name="Pastel1")
-    rcv_colors = ["lime", "deeppink", "yellow", "aqua"]
+    # RCV_COLORS = generate_colors(n=ds.sizes["idx_rcv"], colormap_name="Pastel1")
     for i_src_time in range(nb_instant_to_plot):
         for i_rcv_pair in ds["idx_rcv_pairs"].values:
             rcv_pair = ds["rcv_pairs"].sel(idx_rcv_pairs=i_rcv_pair).values
             pair_id = ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values
 
             plt.figure()
+            ds_bathy.elevation.plot.contour(
+                levels=blevels, colors="k", linewidths=3, zorder=1
+            )
             target_amb_surf = amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             ).load()
-            vmin = target_amb_surf.quantile(0.35).values
+            vmin = target_amb_surf.quantile(0.50).values
             vmax = target_amb_surf.max()
             target_amb_surf.plot(
                 x="lon", y="lat", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
@@ -482,10 +502,10 @@ def plot_ambiguity_surface(
                 ds.lat_src.isel(src_trajectory_time=i_src_time),
                 # color="r",
                 facecolors="none",
-                edgecolors="red",
+                edgecolors="white",
                 # fillstyle="none",
                 marker="*",
-                s=450,
+                s=500,
                 linewidths=2,
                 label=r"$X_{ship}$",
                 zorder=10,
@@ -523,7 +543,7 @@ def plot_ambiguity_surface(
                     ds.lon_rcv.isel(idx_rcv=i_rcv),
                     ds.lat_rcv.isel(idx_rcv=i_rcv),
                     marker="o",
-                    c=rcv_colors[i_rcv],
+                    c=RCV_COLORS[i_rcv],
                     # label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
                     s=size,
                 )
@@ -532,7 +552,7 @@ def plot_ambiguity_surface(
                     ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
                     ds.rcv_id.isel(idx_rcv=i_rcv).values,
                     fontsize=30,
-                    color=rcv_colors[i_rcv],
+                    color=RCV_COLORS[i_rcv],
                 )
 
             # Plot line between rcv and display dist between rcv
@@ -605,6 +625,7 @@ def plot_ambiguity_surface(
                 title = f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair {pair_id})"
             else:
                 title = ""
+
             plt.title(title)
             plt.legend(ncol=2)
             img_fpath = os.path.join(
@@ -617,6 +638,9 @@ def plot_ambiguity_surface(
     """Combined ambiguity surface """
     for i_src_time in range(nb_instant_to_plot):
         plt.figure()
+        ds_bathy.elevation.plot.contour(
+            levels=blevels, colors="k", linewidths=3, zorder=1
+        )
 
         target_amb_surf_combined = amb_surf_combined.isel(
             src_trajectory_time=i_src_time
@@ -643,12 +667,10 @@ def plot_ambiguity_surface(
         plt.scatter(
             ds.lon_src.isel(src_trajectory_time=i_src_time),
             ds.lat_src.isel(src_trajectory_time=i_src_time),
-            # color="r",
             facecolors="none",
-            edgecolors="red",
-            # fillstyle="none",
+            edgecolors="white",
             marker="*",
-            s=450,
+            s=500,
             linewidths=2,
             label=r"$X_{ship}$",
             zorder=10,
@@ -721,7 +743,7 @@ def plot_ambiguity_surface(
                 ds.lon_rcv.isel(idx_rcv=i_rcv),
                 ds.lat_rcv.isel(idx_rcv=i_rcv),
                 marker="o",
-                color=rcv_colors[i_rcv],
+                color=RCV_COLORS[i_rcv],
                 s=50,
             )
             plt.text(
@@ -729,7 +751,7 @@ def plot_ambiguity_surface(
                 ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
                 ds.rcv_id.isel(idx_rcv=i_rcv).values,
                 fontsize=30,
-                color=rcv_colors[i_rcv],
+                color=RCV_COLORS[i_rcv],
             )
 
         if zoom:
@@ -751,9 +773,16 @@ def plot_ambiguity_surface(
             )
             zoom_label = ""
 
-        plt.title(
-            f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time})",
-        )
+        if mode == "analysis":
+            title = f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair {pair_id})"
+        else:
+            title = ""
+
+        plt.title(title)
+
+        # plt.title(
+        #     f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time})",
+        # )
         plt.legend(ncol=2)
         img_fpath = os.path.join(img_folder, f"comb_t{i_src_time}{zoom_label}.png")
         plt.savefig(img_fpath)
@@ -761,7 +790,7 @@ def plot_ambiguity_surface(
 
 
 def plot_ship_trajectory(
-    ds, img_root, plot_info={}, noise_realisation_to_plot=0, zoom=False
+    ds, img_root, plot_info={}, noise_realisation_to_plot=0, zoom=False, mode="analysis"
 ):
     """Plot ship trajectory."""
     # Init folders
@@ -769,21 +798,32 @@ def plot_ship_trajectory(
 
     # List of colors for each rcv pairs
     rcv_pair_colors = ["blue", "magenta", "green"]
+
     """ Plot single detection for a single noise realisation """
     for i_noise in range(noise_realisation_to_plot):
-
         for i_rcv_pair in ds.idx_rcv_pairs.values:
             pair_id = ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values
 
             plt.figure()  # figsize=(16, 8)
-            plt.plot(
+            # plt.plot(
+            #     ds.lon_src,
+            #     ds.lat_src,
+            #     marker="o",
+            #     color="red",
+            #     markersize=6,
+            #     zorder=6,
+            #     label=r"$X_{ref}$",
+            # )
+            plt.scatter(
                 ds.lon_src,
                 ds.lat_src,
-                marker="o",
-                color="red",
-                markersize=6,
-                zorder=6,
-                label=r"$X_{ref}$",
+                facecolors="none",
+                edgecolors="red",
+                marker="*",
+                s=450,
+                linewidths=2,
+                label=r"$X_{ship}$",
+                zorder=10,
             )
 
             # Plot rcv positions
@@ -792,9 +832,15 @@ def plot_ship_trajectory(
                     ds.lon_rcv.isel(idx_rcv=i_rcv),
                     ds.lat_rcv.isel(idx_rcv=i_rcv),
                     marker="o",
-                    s=100,
-                    zorder=2,
-                    label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                    color=RCV_COLORS[i_rcv],
+                    s=50,
+                )
+                plt.text(
+                    ds.lon_rcv.isel(idx_rcv=i_rcv) + 0.01,
+                    ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
+                    ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                    fontsize=30,
+                    color=RCV_COLORS[i_rcv],
                 )
 
             det_pos_lon = ds.detected_pos_lon.isel(
@@ -850,14 +896,25 @@ def plot_ship_trajectory(
         pair_id = str(ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values)
 
         plt.figure()  # figsize=(16, 8)
-        plt.plot(
+        # plt.plot(
+        #     ds.lon_src,
+        #     ds.lat_src,
+        #     marker="o",
+        #     color="red",
+        #     markersize=6,
+        #     zorder=6,
+        #     label=r"$X_{ref}$",
+        # )
+        plt.scatter(
             ds.lon_src,
             ds.lat_src,
-            marker="o",
-            color="red",
-            markersize=6,
-            zorder=6,
-            label=r"$X_{ref}$",
+            facecolors="none",
+            edgecolors="red",
+            marker="*",
+            s=450,
+            linewidths=2,
+            label=r"$X_{ship}$",
+            zorder=10,
         )
 
         # Plot rcv positions
@@ -866,9 +923,15 @@ def plot_ship_trajectory(
                 ds.lon_rcv.isel(idx_rcv=i_rcv),
                 ds.lat_rcv.isel(idx_rcv=i_rcv),
                 marker="o",
-                s=100,
-                zorder=4,
-                label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                color=RCV_COLORS[i_rcv],
+                s=50,
+            )
+            plt.text(
+                ds.lon_rcv.isel(idx_rcv=i_rcv) + 0.01,
+                ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
+                ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                fontsize=30,
+                color=RCV_COLORS[i_rcv],
             )
 
         det_pos_lon = ds.detected_pos_lon.isel(
@@ -877,17 +940,18 @@ def plot_ship_trajectory(
         det_pos_lat = ds.detected_pos_lat.isel(
             idx_rcv_pairs=i_rcv_pair, src_trajectory_time=0
         )
-        plt.scatter(
-            det_pos_lon,
-            det_pos_lat,
-            marker=".",
-            color=rcv_pair_colors[i_rcv_pair],
-            s=35,
-            alpha=0.3,
-            # linewidths=2.2,
-            zorder=5,
-            label=r"$X_{" + pair_id + r"}$",
-        )
+        if mode == "analysis":
+            plt.scatter(
+                det_pos_lon,
+                det_pos_lat,
+                marker=".",
+                color=rcv_pair_colors[i_rcv_pair],
+                s=35,
+                alpha=0.3,
+                # linewidths=2.2,
+                zorder=5,
+                label=r"$X_{" + pair_id + r"}$",
+            )
 
         plt.scatter(
             det_pos_lon.mean(),
@@ -897,7 +961,7 @@ def plot_ship_trajectory(
             s=200,
             linewidths=2.2,
             zorder=5,
-            label=r"$\hat{X_{" + pair_id + r"}}$",
+            # label=r"$\hat{X_{" + pair_id + r"}}$",
         )
 
         ax = plt.gca()
@@ -910,7 +974,8 @@ def plot_ship_trajectory(
             facecolor=rcv_pair_colors[i_rcv_pair],
             alpha=0.2,
             zorder=2,
-            label=r"$3\sigma$" + " confidence ellipse",
+            # label=r"$3\sigma$" + " confidence ellipse",
+            label=r"$\Sigma_{" + pair_id + r"}$",
         )
 
         if zoom:
@@ -942,24 +1007,43 @@ def plot_ship_trajectory(
 
     """ Plot detected positions for all noise realisations and all pairs """
     plt.figure()  # figsize=(16, 8)
-    plt.plot(
+    # plt.plot(
+    #     ds.lon_src,
+    #     ds.lat_src,
+    #     marker="o",
+    #     color="red",
+    #     markersize=6,
+    #     zorder=6,
+    #     label=r"$X_{ref}$",
+    # )
+
+    plt.scatter(
         ds.lon_src,
         ds.lat_src,
-        marker="o",
-        color="red",
-        markersize=6,
-        zorder=6,
-        label=r"$X_{ref}$",
+        facecolors="none",
+        edgecolors="red",
+        marker="*",
+        s=450,
+        linewidths=2,
+        label=r"$X_{ship}$",
+        zorder=10,
     )
+
     # Plot rcv positions
     for i_rcv in range(ds.sizes["idx_rcv"]):
         plt.scatter(
             ds.lon_rcv.isel(idx_rcv=i_rcv),
             ds.lat_rcv.isel(idx_rcv=i_rcv),
             marker="o",
-            s=100,
-            zorder=4,
-            label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+            color=RCV_COLORS[i_rcv],
+            s=50,
+        )
+        plt.text(
+            ds.lon_rcv.isel(idx_rcv=i_rcv) + 0.01,
+            ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
+            ds.rcv_id.isel(idx_rcv=i_rcv).values,
+            fontsize=30,
+            color=RCV_COLORS[i_rcv],
         )
 
     for i_rcv_pair in ds.idx_rcv_pairs.values:
@@ -971,17 +1055,18 @@ def plot_ship_trajectory(
         det_pos_lat = ds.detected_pos_lat.isel(
             idx_rcv_pairs=i_rcv_pair, src_trajectory_time=0
         )
-        plt.scatter(
-            det_pos_lon,
-            det_pos_lat,
-            marker=".",
-            color=rcv_pair_colors[i_rcv_pair],
-            s=35,
-            alpha=0.3,
-            # linewidths=2.2,
-            zorder=5,
-            label=r"$X_{" + pair_id + r"}$",
-        )
+        if mode == "analysis":
+            plt.scatter(
+                det_pos_lon,
+                det_pos_lat,
+                marker=".",
+                color=rcv_pair_colors[i_rcv_pair],
+                s=35,
+                alpha=0.3,
+                # linewidths=2.2,
+                zorder=5,
+                label=r"$X_{" + pair_id + r"}$",
+            )
 
         plt.scatter(
             det_pos_lon.mean(),
@@ -991,7 +1076,7 @@ def plot_ship_trajectory(
             s=200,
             linewidths=2.2,
             zorder=5,
-            label=r"$\hat{X_{" + pair_id + r"}}$",
+            # label=r"$\hat{X_{" + pair_id + r"}}$",
         )
 
         ax = plt.gca()
@@ -1030,16 +1115,18 @@ def plot_ship_trajectory(
     # Add combined detected positions
     det_pos_lon = ds.detected_pos_lon_combined.isel(src_trajectory_time=0)
     det_pos_lat = ds.detected_pos_lat_combined.isel(src_trajectory_time=0)
-    plt.scatter(
-        det_pos_lon,
-        det_pos_lat,
-        marker=".",
-        color="black",
-        s=35,
-        alpha=0.3,
-        zorder=10,
-        label=r"$X_{combined}$",
-    )
+
+    if mode == "analysis":
+        plt.scatter(
+            det_pos_lon,
+            det_pos_lat,
+            marker=".",
+            color="black",
+            s=35,
+            alpha=0.3,
+            zorder=10,
+            label=r"$X_{combined}$",
+        )
 
     plt.scatter(
         det_pos_lon.mean(),
@@ -1049,7 +1136,7 @@ def plot_ship_trajectory(
         s=200,
         linewidths=2.2,
         zorder=10,
-        label=r"$\hat{X_{combined}}$",
+        # label=r"$\hat{X_{combined}}$",
     )
 
     ax = plt.gca()
@@ -1571,6 +1658,7 @@ def analysis(
                         plot_info=plot_info,
                         noise_realisation_to_plot=0,
                         zoom=zoom,
+                        mode=mode,
                     )
 
             # Plot detection error

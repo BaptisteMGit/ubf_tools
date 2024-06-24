@@ -22,6 +22,7 @@ scikit-learn = "*"
 dask = "*"
 distributed = "*"
 zarr = "*"
+scikit-image = "*"
 
 [dev-packages]
 ipykernel = "*"

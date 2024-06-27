@@ -33,6 +33,7 @@ from localisation.verlinden.params import (
     ROOT_PROCESS,
     ROOT_ANALYSIS,
     DATA_ROOT,
+    BATHY_FILEPATH,
 )
 
 from publication.PublicationFigure import PubFigure
@@ -432,10 +433,10 @@ def plot_ambiguity_surface(
 ):
 
     # Load bathy
-    bathy_path = (
-        r"data/bathy/mmdpm/PVA_RR48/GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
-    )
-    ds_bathy = xr.open_dataset(bathy_path)
+    # bathy_path = (
+    #     r"data/bathy/mmdpm/PVA_RR48/GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+    # )
+    ds_bathy = xr.open_dataset(BATHY_FILEPATH)
 
     blevels = [
         -6000,

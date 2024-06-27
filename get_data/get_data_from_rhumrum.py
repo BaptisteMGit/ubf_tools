@@ -56,7 +56,7 @@ def get_rhumrum_data(
             corr_sig.plot()
 
         root_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM"
-        fname = f"signal_{chnl}_{station_id}_{date[0:9]}.wav"  # on sauvegarde les signaux corriges dans un fichier .wav
+        fname = f"signal_{chnl}_{station_id}_{date[0:10]}.wav"  # on sauvegarde les signaux corriges dans un fichier .wav
         fpath = os.path.join(root_data, fname)
         wavfile.write(
             fpath,
@@ -80,10 +80,10 @@ def get_rhumrum_data(
 
 
 if __name__ == "__main__":
-    date = "2013-05-31T6:00:00"  # Date and time of the beginning of the recording
+    date = "2013-05-10T00:00:00"  # Date and time of the beginning of the recording
 
     station_id = "RR44"
-    duration_sec = 60 * 60
+    duration_sec = 60 * 60 * 48
 
     raw_sig, filt_sig, corr_sig = get_rhumrum_data(
         station_id=station_id, date=date, duration_sec=duration_sec, plot=False

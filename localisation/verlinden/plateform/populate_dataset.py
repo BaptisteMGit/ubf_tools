@@ -117,11 +117,17 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     ds["tf_gridded"].attrs["units"] = ""
     ds["tf_gridded"].attrs["long_name"] = "Transfer function gridded"
 
-    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded, max_size_bytes=2 * 1e9)
-    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
+    nregion_lon = get_region_number(
+        ds.sizes["lon"], ds.tf_gridded, max_size_bytes=1 * 1e9
+    )
+    nregion_lat = get_region_number(
+        ds.sizes["lat"], ds.tf_gridded, max_size_bytes=1 * 1e9
+    )
+    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
 
-    lat_chunksize = int(ds.sizes["lat"] // nregion)
-    lon_chunksize = int(ds.sizes["lon"] / nregion)
+    lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
+    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
+
     # lon_chunksize = ds.sizes['lon']
     idx_rcv_chunksize, freq_chunksize = ds.sizes["idx_rcv"], ds.sizes["kraken_freq"]
 
@@ -174,9 +180,6 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     ds = ds.drop_vars("tf")
 
-    # Update info in dataset
-    # update_info_status(ds, part_done="propa_grid")
-
     return ds
 
 
@@ -222,10 +225,10 @@ def grid_synthesis(
 
     # Loop over sub_regions of the grid
     nregion_lon = get_region_number(
-        ds.sizes["lon"], ds.tf_gridded, max_size_bytes=1 * 1e9
+        ds.sizes["lon"], ds.rcv_signal_library, max_size_bytes=1 * 1e9
     )
     nregion_lat = get_region_number(
-        ds.sizes["lat"], ds.tf_gridded, max_size_bytes=1 * 1e9
+        ds.sizes["lat"], ds.rcv_signal_library, max_size_bytes=1 * 1e9
     )
 
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)

@@ -23,6 +23,7 @@ dask = "*"
 distributed = "*"
 zarr = "*"
 scikit-image = "*"
+copernicusmarine = "*"
 
 [dev-packages]
 ipykernel = "*"

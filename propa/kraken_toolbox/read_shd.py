@@ -1,3 +1,18 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+'''
+@File    :   read_shd.py
+@Time    :   2024/07/08 09:09:48
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Read shade file produce by FIELD.exe.
+'''
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
+
 import numpy as np
 
 

@@ -614,14 +614,14 @@ class KrakenEnv:
     ):
         self.simulation_title = title
 
-        self.root_= = env_root
+        self.root = env_root
         self.filename = env_filename
         # .env file path
-        self.env_fpath = os.path.join(self.root_=, self.filename + ".env")
+        self.env_fpath = os.path.join(self.root, self.filename + ".env")
         # .flp file path
-        self.flp_fpath = os.path.join(self.root_=, self.filename + ".flp")
+        self.flp_fpath = os.path.join(self.root, self.filename + ".flp")
         # .shd file path
-        self.shd_fpath = os.path.join(self.root_=, self.filename + ".shd")
+        self.shd_fpath = os.path.join(self.root, self.filename + ".shd")
 
         # List of ordered frequencies
         self.freq = np.array(freq)
@@ -806,14 +806,14 @@ class KrakenEnv:
 
     @property
     def root(self):
-        return self.root_=
+        return self.root
 
     @root.setter
     def root(self, root):
-        self.root_= = root
-        self.env_fpath = os.path.join(self.root_=, self.filename + ".env")
-        self.flp_fpath = os.path.join(self.root_=, self.filename + ".flp")
-        self.shd_fpath = os.path.join(self.root_=, self.filename + ".shd")
+        self.root = root
+        self.env_fpath = os.path.join(self.root, self.filename + ".env")
+        self.flp_fpath = os.path.join(self.root, self.filename + ".flp")
+        self.shd_fpath = os.path.join(self.root, self.filename + ".shd")
 
     # Plotting tools
     def plot_env(self, plot_src=False, src_depth=None):
@@ -988,7 +988,7 @@ class KrakenFlp:
 
         self.set_codes()
 
-    # TODO : add decorator to uptdate attributes on change ? 
+    # TODO : add decorator to uptdate attributes on change ?
 
     def set_codes(self):
         # source type

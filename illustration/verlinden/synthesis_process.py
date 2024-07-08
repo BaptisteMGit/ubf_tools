@@ -10,7 +10,7 @@ from propa.kraken_toolbox.post_process import (
     process_broadband,
 )
 
-from signals import pulse, ship_noise
+from signals.signals import pulse, ship_noise
 from propa.kraken_toolbox.plot_utils import plotshd
 
 img_path = (

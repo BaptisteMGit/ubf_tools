@@ -9,7 +9,7 @@ from propa.kraken_toolbox.post_process import (
     process_broadband,
 )
 
-from signals import pulse, pulse_train, ship_noise
+from signals.signals import pulse, pulse_train, ship_noise
 
 img_path = (
     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\generation_signaux"

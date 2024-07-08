@@ -32,7 +32,7 @@ from pyproj import Geod
 
 from cst import BAR_FORMAT, C0, N_CORES
 from misc import mult_along_axis, fft_convolve_f
-from signals import ship_noise, pulse, pulse_train, generate_ship_signal
+from signals.signals import ship_noise, pulse, pulse_train, generate_ship_signal
 from publication.PublicationFigure import PubFigure
 
 # from propa.kraken_toolbox.read_shd import readshd

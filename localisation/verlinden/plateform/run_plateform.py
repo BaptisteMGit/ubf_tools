@@ -14,7 +14,7 @@
 # ======================================================================================================================
 import xarray as xr
 
-from signals import pulse
+from signals.signals import pulse
 from localisation.verlinden.plateform.utils import *
 from localisation.verlinden.plateform.init_dataset import init_grid
 from localisation.verlinden.misc.AcousticComponent import AcousticSource

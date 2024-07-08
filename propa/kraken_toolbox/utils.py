@@ -6,7 +6,7 @@
 @Author  :   Menetrier Baptiste 
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   None
+@Desc    :   Kraken toolbox utilities.
 """
 
 # ======================================================================================================================

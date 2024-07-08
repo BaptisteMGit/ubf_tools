@@ -1,3 +1,17 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+'''
+@File    :   kraken_env.py
+@Time    :   2024/07/08 09:06:58
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Kraken environment class
+'''
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
 import os
 import copy
 import warnings

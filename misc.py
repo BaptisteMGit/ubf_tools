@@ -1,3 +1,17 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+'''
+@File    :   misc.py
+@Time    :   2024/07/08 09:13:24
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Miscellaneous functions.
+'''
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
 import io
 import os
 import shutil

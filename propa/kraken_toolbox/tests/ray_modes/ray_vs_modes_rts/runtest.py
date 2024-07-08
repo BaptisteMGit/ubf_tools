@@ -23,7 +23,7 @@ from propa.kraken_toolbox.kraken_env import (
 from propa.kraken_toolbox.plot_utils import plotmode
 from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.utils import default_nb_rcv_z
-from localisation.verlinden.misc.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 
 from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 

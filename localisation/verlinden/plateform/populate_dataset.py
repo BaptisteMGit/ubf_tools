@@ -354,7 +354,7 @@ if __name__ == "__main__":
     dt = 5
     min_waveguide_depth = 5000
     from localisation.verlinden.misc.AcousticComponent import AcousticSource
-    from signals import generate_ship_signal
+    from signals.signals import generate_ship_signal
 
     src_sig, t_src_sig = generate_ship_signal(
         Ttot=dt,

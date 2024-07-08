@@ -347,7 +347,7 @@ def process(
 
 if __name__ == "__main__":
 
-    from signals import pulse, generate_ship_signal
+    from signals.signals import pulse, generate_ship_signal
     from localisation.verlinden.misc.AcousticComponent import AcousticSource
     from localisation.verlinden.misc.params import ROOT_DATASET
 

@@ -17,7 +17,7 @@ import xarray as xr
 from signals import pulse
 from localisation.verlinden.plateform.utils import *
 from localisation.verlinden.plateform.init_dataset import init_grid
-from localisation.verlinden.AcousticComponent import AcousticSource
+from localisation.verlinden.misc.AcousticComponent import AcousticSource
 from localisation.verlinden.plateform.build_dataset import build_dataset
 from localisation.verlinden.plateform.populate_dataset import (
     populate_dataset,

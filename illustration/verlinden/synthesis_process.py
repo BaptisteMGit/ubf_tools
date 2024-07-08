@@ -4,7 +4,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 from scipy import signal
 
-from localisation.verlinden.AcousticComponent import AcousticSource
+from localisation.verlinden.misc.AcousticComponent import AcousticSource
 from propa.kraken_toolbox.post_process import (
     postprocess_received_signal,
     process_broadband,

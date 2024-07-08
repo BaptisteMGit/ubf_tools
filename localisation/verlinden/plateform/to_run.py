@@ -15,7 +15,7 @@
 import os
 import numpy as np
 from signals import pulse, generate_ship_signal
-from localisation.verlinden.AcousticComponent import AcousticSource
+from localisation.verlinden.misc.AcousticComponent import AcousticSource
 from localisation.verlinden.testcases.testcase_envs import (
     TestCase1_0,
     TestCase1_1,
@@ -27,8 +27,8 @@ from localisation.verlinden.testcases.testcase_envs import (
 )
 from localisation.verlinden.plateform.run_plateform import run_on_plateform
 from signals import pulse, generate_ship_signal
-from localisation.verlinden.AcousticComponent import AcousticSource
-from localisation.verlinden.params import ROOT_DATASET
+from localisation.verlinden.misc.AcousticComponent import AcousticSource
+from localisation.verlinden.misc.params import ROOT_DATASET
 
 from localisation.verlinden.plateform.process_loc import process
 from localisation.verlinden.plateform.analysis_loc import analysis

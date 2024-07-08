@@ -2,7 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from signals import pulse, pulse_train, ship_noise, generate_ship_signal
-from localisation.verlinden.AcousticComponent import AcousticSource
+from localisation.verlinden.misc.AcousticComponent import AcousticSource
 
 from publication.PublicationFigure import PubFigure
 

@@ -18,12 +18,12 @@ import shutil
 import numpy as np
 import xarray as xr
 
-from localisation.verlinden.params import (
+from localisation.verlinden.misc.params import (
     VERLINDEN_OUTPUT_FOLDER,
     VERLINDEN_ANALYSIS_FOLDER,
 )
 
-from localisation.verlinden.verlinden_utils import *
+from localisation.verlinden.misc.verlinden_utils import *
 
 
 def populate_grid(

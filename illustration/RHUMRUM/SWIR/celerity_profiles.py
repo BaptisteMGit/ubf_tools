@@ -1,32 +1,8 @@
 import os
+import arlpy
 import xarray as xr
 import matplotlib.pyplot as plt
 
-# path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\cmems_mod_glo_phy-all_my_0.25deg_P1D-m_multi-vars_65.75E_27.50S_0.51-5902.06m_2013-05-31.nc"
-# path_std = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\cmems_mod_glo_phy-mnstd_my_0.25deg_P1D-m_multi-vars_65.75E_27.50S_0.51-5902.06m_2013-05-31.nc"
-
-# ds = xr.open_dataset(path)
-# ds_std = xr.open_dataset(path_std)
-
-# plt.figure()
-# ds.so_glor.plot(y="depth", yincrease=False)
-# plt.show()
-
-# plt.figure()
-# ds.thetao_glor.plot(y="depth", yincrease=False)
-# plt.show()
-
-# plt.figure()
-# thetao_min = ds_std.thetao_mean - 3 * ds_std.thetao_std
-# thetao_max = ds_std.thetao_mean + 3 * ds_std.thetao_std
-# thetao_min.plot(y="depth", yincrease=False)
-# thetao_max.plot(y="depth", yincrease=False)
-# ds_std.thetao_mean.plot(y="depth", yincrease=False)
-# # ds_std.thetao_std.plot(y="depth", yincrease=False)
-# plt.show()
-
-
-import arlpy
 from publication.PublicationFigure import PubFigure
 
 pubfig = PubFigure(legend_fontsize=20)

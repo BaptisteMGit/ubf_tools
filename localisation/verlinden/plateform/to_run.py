@@ -32,7 +32,7 @@ from localisation.verlinden.misc.params import ROOT_DATASET
 
 from localisation.verlinden.plateform.process_loc import process
 from localisation.verlinden.plateform.analysis_loc import analysis
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     load_rhumrum_obs_pos,
     get_bathy_grid_size,
 )

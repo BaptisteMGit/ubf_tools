@@ -24,7 +24,7 @@ from localisation.verlinden.plateform.populate_dataset import (
     grid_synthesis,
 )
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1
-from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
 
 def run_plateform_test():

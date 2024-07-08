@@ -27,7 +27,7 @@ from localisation.verlinden.plateform.init_dataset import (
     get_range_from_rcv,
 )
 
-from localisation.verlinden.verlinden_utils import get_azimuth_rcv
+from localisation.verlinden.misc.verlinden_utils import get_azimuth_rcv
 from cst import C0
 from localisation.verlinden.plateform.params import N_WORKERS
 
@@ -315,7 +315,7 @@ if __name__ == "__main__":
 
     ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
-    from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+    from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
     fname = "propa_dataset_65.5928_65.9521_-27.6662_-27.5711.zarr"
     fpath = os.path.join(root, fname)

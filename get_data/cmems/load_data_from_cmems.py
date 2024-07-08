@@ -18,7 +18,7 @@ import copernicusmarine
 import matplotlib.pyplot as plt
 
 from localisation.verlinden.plateform.init_dataset import init_grid
-from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
 
 # Dataset ID

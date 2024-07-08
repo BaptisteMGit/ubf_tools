@@ -17,7 +17,7 @@ import xarray as xr
 import numpy as np
 import matplotlib.pyplot as plt
 
-from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 from localisation.verlinden.plateform.init_dataset import init_grid
 from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap
 import matplotlib.patches as patches

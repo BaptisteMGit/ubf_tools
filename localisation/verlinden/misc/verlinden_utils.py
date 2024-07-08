@@ -39,7 +39,7 @@ from publication.PublicationFigure import PubFigure
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
 
 # from illustration.verlinden_nx2d import plot_angle_repartition
-from localisation.verlinden.AcousticComponent import AcousticSource
+from localisation.verlinden.misc.AcousticComponent import AcousticSource
 from propa.kraken_toolbox.post_process import (
     postprocess_received_signal_from_broadband_pressure_field,
 )
@@ -47,7 +47,7 @@ from propa.kraken_toolbox.run_kraken import runkraken
 
 # from propa.kraken_toolbox.plot_utils import plotshd
 
-from localisation.verlinden.params import VERLINDEN_POPULATED_FOLDER, PROJECT_ROOT
+from localisation.verlinden.misc.params import VERLINDEN_POPULATED_FOLDER, PROJECT_ROOT
 
 def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase):
     """

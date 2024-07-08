@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from signals import pulse
 from propa.kraken_toolbox.plot_utils import plotmode
 from propa.kraken_toolbox.run_kraken import runkraken
-from localisation.verlinden.AcousticComponent import AcousticSource
+from localisation.verlinden.misc.AcousticComponent import AcousticSource
 from localisation.verlinden.testcases.testcase_envs import TestCase
 from propa.kraken_toolbox.post_process import (
     postprocess_received_signal_from_broadband_pressure_field,

@@ -268,12 +268,13 @@ def process(
     )
 
     # Quick fix for received signal at rcv position : for r = 0 -> sig = 0
-    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values,method="nearest").lon.values
-    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values,method="nearest").lat.values
+    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
 
     for i in range(len(rcv_grid_lon)):
-        ds["rcv_signal_library"].loc[dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])] = np.nan
-
+        ds["rcv_signal_library"].loc[dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])] = (
+            np.nan
+        )
 
     # from time import time
     # t0 = time()
@@ -347,8 +348,8 @@ def process(
 if __name__ == "__main__":
 
     from signals import pulse, generate_ship_signal
-    from localisation.verlinden.AcousticComponent import AcousticSource
-    from localisation.verlinden.params import ROOT_DATASET
+    from localisation.verlinden.misc.AcousticComponent import AcousticSource
+    from localisation.verlinden.misc.params import ROOT_DATASET
 
     testcase = "testcase3_1"
     root_dir = os.path.join(

@@ -5,7 +5,7 @@ from localisation.verlinden.plateform.build_dataset import build_dataset
 
 import numpy as np
 from signals.signals import pulse, generate_ship_signal
-from localisation.verlinden.misc.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1
 
 
@@ -14,7 +14,7 @@ import xarray as xr
 from signals.signals import pulse
 from localisation.verlinden.plateform.utils import *
 from localisation.verlinden.plateform.init_dataset import init_grid
-from localisation.verlinden.misc.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 from localisation.verlinden.plateform.init_dataset import init_dataset
 from localisation.verlinden.plateform.build_dataset import build_dataset
 from localisation.verlinden.plateform.populate_dataset import (

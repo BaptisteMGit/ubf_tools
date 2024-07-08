@@ -39,7 +39,7 @@ from publication.PublicationFigure import PubFigure
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
 
 # from illustration.verlinden_nx2d import plot_angle_repartition
-from localisation.verlinden.misc.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 from propa.kraken_toolbox.post_process import (
     postprocess_received_signal_from_broadband_pressure_field,
 )

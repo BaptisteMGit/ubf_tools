@@ -24,7 +24,7 @@ from cst import C0
 from misc import mult_along_axis, fft_convolve_f
 from localisation.verlinden.plateform.params import N_WORKERS
 from localisation.verlinden.misc.params import ROOT_DATASET, ROOT_PROCESS
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     get_range_src_rcv_range,
     add_noise_to_signal,
 )

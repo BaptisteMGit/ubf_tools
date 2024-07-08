@@ -250,7 +250,7 @@ def compute_tf_chunk_dask(
 if __name__ == "__main__":
     # import xarray as xr
     from localisation.verlinden.testcases.testcase_envs import TestCase3_1
-    from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+    from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
     rcv_info_dw = {
         # "id": ["RR45", "RR48", "RR44"],

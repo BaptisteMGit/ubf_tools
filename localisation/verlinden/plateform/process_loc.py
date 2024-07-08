@@ -35,7 +35,7 @@ from localisation.verlinden.plateform.utils import (
     get_region_number,
     get_lonlat_sub_regions,
 )
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     init_event_src_traj,
     init_grid_around_event_src_traj,
     load_rhumrum_obs_pos,

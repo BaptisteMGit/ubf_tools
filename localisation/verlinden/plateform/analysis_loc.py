@@ -18,7 +18,7 @@ from cst import (
 from misc import confidence_ellipse, generate_colors
 
 from pyproj import Geod
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     get_bathy_grid_size,
     load_rhumrum_obs_pos,
 )

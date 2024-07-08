@@ -27,7 +27,7 @@ from localisation.verlinden.plateform.utils import (
 
 from propa.kraken_toolbox.utils import get_rcv_pos_idx
 from propa.kraken_toolbox.run_kraken import runkraken
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     get_range_from_rcv,
     set_azimuths,
     build_rcv_pairs,
@@ -297,7 +297,7 @@ def init_grid(rcv_info, minimum_distance_around_rcv, dx=100, dy=100):
 
 
 if __name__ == "__main__":
-    from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+    from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
     rcv_info_dw = {
         "id": ["RR45", "RR48", "RR44"],

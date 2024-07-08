@@ -267,8 +267,15 @@ def process(
         verbose=True,
     )
 
-    # from time import time
+    # Quick fix for received signal at rcv position : for r = 0 -> sig = 0
+    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values,method="nearest").lon.values
+    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values,method="nearest").lat.values
 
+    for i in range(len(rcv_grid_lon)):
+        ds["rcv_signal_library"].loc[dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])] = np.nan
+
+
+    # from time import time
     # t0 = time()
     # n_workers = 8
     # with Client(n_workers=n_workers, threads_per_worker=1) as client:

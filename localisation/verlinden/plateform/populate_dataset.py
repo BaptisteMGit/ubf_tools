@@ -242,6 +242,15 @@ def grid_synthesis(
     chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, time_chunksize)
     ds["rcv_signal_library"] = ds.rcv_signal_library.chunk(chunksize)
 
+    # Fix the values at the receiver positions
+    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
+
+    for i in range(len(rcv_grid_lon)):
+        ds["tf_gridded"].loc[
+            dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i], idx_rcv=i)
+        ] = 1
+
     # Save to zarr without computing
     ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="a", compute=False)
 

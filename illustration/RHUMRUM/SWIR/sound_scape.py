@@ -4,6 +4,15 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 import scipy.io.wavfile as wavfile
 
+from publication.PublicationFigure import PubFigure
+
+PFIG = PubFigure(
+    # label_fontsize=25,
+    # title_fontsize=25,
+    # ticks_fontsize=25,
+    # legend_fontsize=20,
+)
+
 fs = 100
 nperseg = 2**12
 noverlap = int(nperseg // 2)

@@ -159,10 +159,6 @@ def common_process_loc(ds, rcv_id):
 
     # Receiver infos
     rcv_info = {
-        # "id": ["RR45", "RR48", "RR44"],
-        # "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
-        # "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
-        # "id": ["RRdebug0", "RRdebug1"],
         "id": rcv_id,
         "lons": [],
         "lats": [],
@@ -425,7 +421,7 @@ def run_all_testcases():
 
     dt = 10
     fs = 100  # Sampling frequency
-    f0_lib = 1  # Fundamental frequency of the ship signal
+    f0_lib = 1.5  # Fundamental frequency of the ship signal
     src_info = {
         "sig_type": "ship",
         "f0": f0_lib,
@@ -442,14 +438,15 @@ def run_all_testcases():
     )
     src_sig *= np.hanning(len(src_sig))
 
-    snr = [10]
-    n_noise = 20
+    # snr = np.arange(-10, 0, 1)  # [10]
+    snr = [15]
+    n_noise = 1
     dt, fs, event_sig_info = set_event_sig_info(f0_lib)
 
     for tc in [
-        TestCase1_0,
-        TestCase1_1,
-        TestCase1_3,
+        # TestCase1_0,
+        # TestCase1_1,
+        # TestCase1_3,
         TestCase1_4,
         # TestCase2_1,
         # TestCase2_2,
@@ -462,7 +459,7 @@ def run_all_testcases():
             "lats": [],
         }
 
-        tc_var_in = {"max_range_m": 15 * 1e3}
+        tc_var_in = {"max_range_m": 30 * 1e3}
         tc = tc()
         tc.update(tc_var_in)
 
@@ -489,7 +486,6 @@ def run_all_testcases():
         )
 
         # Process loc
-
         fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
 
         src_info = {}
@@ -507,12 +503,23 @@ def run_all_testcases():
             n_noise_realisations=n_noise,
             verbose=True,
         )
+        # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_0_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_063914.zarr"
+        # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+        # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
 
         process_analysis(ds, grid_info)
 
 
 if __name__ == "__main__":
     import xarray as xr
+
+    rcv_id = ["R1", "R2", "R3"]
+
+    # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_4_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240630_125938.zarr"
+    # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
+    # process_analysis(ds, grid_info)
 
     run_all_testcases()
     # Build dataset

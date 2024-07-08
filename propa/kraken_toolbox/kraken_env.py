@@ -25,21 +25,21 @@ class KrakenMedium:
         nmesh=0,
         sigma=0.0,
     ):
-        self.interpolation_method_ = ssp_interpolation_method
+        self.interpolation_method = ssp_interpolation_method
 
-        self.z_ssp_ = np.array(z_ssp)  # Depth (m)
-        self.cp_ssp_ = np.array(c_p)  # Compression waves celerity (m/s)
-        self.cs_ssp_ = np.array(c_s)  # Shear waves celerity (m/s)
-        self.rho_ = np.array(rho)  # Density (g/cm3)
-        self.ap_ = np.array(
+        self.z_ssp = np.array(z_ssp)  # Depth (m)
+        self.cp_ssp = np.array(c_p)  # Compression waves celerity (m/s)
+        self.cs_ssp = np.array(c_s)  # Shear waves celerity (m/s)
+        self.rho = np.array(rho)  # Density (g/cm3)
+        self.ap = np.array(
             a_p
         )  # Compressional wave attenuation (defined in KrakenAttenuation)
-        self.as_ = np.array(
+        self.ash = np.array(
             a_s
         )  # Shear wave attenuation (defined in KrakenAttenuation)
 
-        self.nmesh_ = nmesh  # Number of mesh points to use initially, should be about 10 per vertical wavelenght (0 let KRAKEN decide)
-        self.sigma_ = sigma  # RMS roughness at the surface
+        self.nmesh = nmesh  # Number of mesh points to use initially, should be about 10 per vertical wavelenght (0 let KRAKEN decide)
+        self.sigma = sigma  # RMS roughness at the surface
 
         self.interp_code = None
         self.available_interpolation_methods = [
@@ -52,14 +52,14 @@ class KrakenMedium:
         self.set_interp_code()
 
     def set_interp_code(self):
-        if self.interpolation_method_ == "C_linear":
+        if self.interpolation_method == "C_linear":
             self.interp_code = "C"
-        elif self.interpolation_method_ == "N2_linear":
+        elif self.interpolation_method == "N2_linear":
             self.interp_code = "N"
-        elif self.interpolation_method_ == "cubic_spline":
+        elif self.interpolation_method == "cubic_spline":
             self.interp_code = "S"
         elif (
-            self.interpolation_method_ == "analytic"
+            self.interpolation_method == "analytic"
         ):  # Not recommended -> needs to "modify the analytic formulas in PROFIL.FOR in recompile and link"
             self.interp_code = "A"
             warnings.warn(
@@ -68,23 +68,23 @@ class KrakenMedium:
 
         else:
             raise ValueError(
-                f"Unknown interpolation method '{self.interpolation_method_}'. Please pick one of the following: {self.available_interpolation_methods}"
+                f"Unknown interpolation method '{self.interpolation_method}'. Please pick one of the following: {self.available_interpolation_methods}"
             )
 
     def write_lines(self, bottom_hs=None):
         # Medim info
         medium_info = align_var_description(
-            f"{self.nmesh_} {self.sigma_} {self.z_ssp_.max():.2f}",
+            f"{self.nmesh} {self.sigma} {self.z_ssp.max():.2f}",
             "Number of mesh points, RMS surface roughness, Max depth (units: m)",
         )
 
         # SSP bloc
         # Check variables size consistency
-        cp_check = (self.z_ssp_.size == self.cp_ssp_.size) or (self.cp_ssp_.size == 1)
-        cs_check = (self.z_ssp_.size == self.cs_ssp_.size) or (self.cs_ssp_.size == 1)
-        rho_check = (self.z_ssp_.size == self.rho_.size) or (self.rho_.size == 1)
-        ap_check = (self.z_ssp_.size == self.ap_.size) or (self.ap_.size == 1)
-        as_check = (self.z_ssp_.size == self.as_.size) or (self.as_.size == 1)
+        cp_check = (self.z_ssp.size == self.cp_ssp.size) or (self.cp_ssp.size == 1)
+        cs_check = (self.z_ssp.size == self.cs_ssp.size) or (self.cs_ssp.size == 1)
+        rhocheck = (self.z_ssp.size == self.rho.size) or (self.rho.size == 1)
+        apcheck = (self.z_ssp.size == self.ap.size) or (self.ap.size == 1)
+        ashcheck = (self.z_ssp.size == self.ash.size) or (self.ash.size == 1)
 
         if not cp_check:
             raise ValueError(
@@ -95,26 +95,26 @@ class KrakenMedium:
                 "Inconsistent SSP data: 'z_ssp', 'c_s' must have the same size"
             )
 
-        if not rho_check:
+        if not rhocheck:
             raise ValueError(
                 "Inconsistent SSP data: 'z_ssp' and 'rho' must have the same size or 'rho' must be a scalar"
             )
-        if not ap_check:
+        if not apcheck:
             raise ValueError(
                 "Inconsistent SSP data: 'z_ssp' and 'a_p' must have the same size or 'a_p' must be a scalar"
             )
-        if not as_check:
+        if not ashcheck:
             raise ValueError(
                 "Inconsistent SSP data: 'z_ssp' and 'a_s' must have the same size or 'a_s' must be a scalar"
             )
 
-        if self.rho_.size == 1 and (self.as_.size != 1 or self.ap_.size != 1):
-            self.rho_ = np.ones(self.z_ssp_.size) * self.rho_
-        if self.ap_.size == 1 and (self.rho_.size != 1 or self.as_.size != 1):
-            self.ap_ = np.ones(self.z_ssp_.size) * self.ap_
-        if self.as_.size == 1 and (self.rho_.size != 1 or self.ap_.size != 1):
-            self.as_ = np.ones(self.z_ssp_.size) * self.as_
-        if self.rho_.size == 1 and self.ap_.size == 1 and self.as_.size == 1:
+        if self.rho.size == 1 and (self.ash.size != 1 or self.ap.size != 1):
+            self.rho = np.ones(self.z_ssp.size) * self.rho
+        if self.ap.size == 1 and (self.rho.size != 1 or self.ash.size != 1):
+            self.ap = np.ones(self.z_ssp.size) * self.ap
+        if self.ash.size == 1 and (self.rho.size != 1 or self.ap.size != 1):
+            self.ash = np.ones(self.z_ssp.size) * self.ash
+        if self.rho.size == 1 and self.ap.size == 1 and self.ash.size == 1:
             scalar_flag = True
 
         # Write water column SSP bloc
@@ -122,37 +122,37 @@ class KrakenMedium:
         if not scalar_flag:
             ssp_bloc = [
                 align_var_description(
-                    f"{self.z_ssp_[0]:.2f} {self.cp_ssp_[0]:.2f} {self.cs_ssp_[0]:.2f} {self.rho_[0]:.2f} {self.ap_[0]:.2f} {self.as_[0]:.2f}",
+                    f"{self.z_ssp[0]:.2f} {self.cp_ssp[0]:.2f} {self.cs_ssp[0]:.2f} {self.rho[0]:.2f} {self.ap[0]:.2f} {self.ash[0]:.2f}",
                     ssp_desc,
                 )
             ]
         else:
             ssp_bloc = [
                 align_var_description(
-                    f"{self.z_ssp_[0]:.2f} {self.cp_ssp_[0]:.2f} {self.cs_ssp_:.2f} {self.rho_:.2f} {self.ap_:.2f} {self.as_:.2f}",
+                    f"{self.z_ssp[0]:.2f} {self.cp_ssp[0]:.2f} {self.cs_ssp:.2f} {self.rho:.2f} {self.ap:.2f} {self.ash:.2f}",
                     ssp_desc,
                 )
             ]
 
-        for i in range(1, self.z_ssp_.size):
+        for i in range(1, self.z_ssp.size):
             if not scalar_flag:
                 ssp_bloc.append(
-                    f"{self.z_ssp_[i]:.3} {self.cp_ssp_[i]:.2f} {self.cs_ssp_[i]:.2f} {self.ap_[i]:.2f} {self.as_[i]:.2f}\n"
+                    f"{self.z_ssp[i]:.3} {self.cp_ssp[i]:.2f} {self.cs_ssp[i]:.2f} {self.ap[i]:.2f} {self.ash[i]:.2f}\n"
                 )
             else:
-                ssp_bloc.append(f"{self.z_ssp_[i]:.2f} {self.cp_ssp_[i]:.2f} / \n")
+                ssp_bloc.append(f"{self.z_ssp[i]:.2f} {self.cp_ssp[i]:.2f} / \n")
 
         # Write ssp in sediment media layer bloc
         sedim_medium_info = align_var_description(
-            f"{self.nmesh_} {self.sigma_} {bottom_hs.sedim_layer_max_depth:.2f}",
+            f"{self.nmesh} {self.sigma} {bottom_hs.sedim_layer_max_depth:.2f}",
             "Number of mesh points in sediment layer, RMS surface roughness, Max depth (units: m)",
         )
         sedim_layer_prop_1 = align_var_description(
-            f"{self.z_ssp_.max():.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rho_bot_halfspace:.2f} {bottom_hs.ap_bot_halfspace:.2f} {bottom_hs.as_bot_halfspace:.2f}",
+            f"{self.z_ssp.max():.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rhobot_halfspace:.2f} {bottom_hs.apbot_halfspace:.2f} {bottom_hs.ashbot_halfspace:.2f}",
             ssp_desc,
         )
         sedim_layer_prop_2 = align_var_description(
-            f"{bottom_hs.sedim_layer_max_depth:.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rho_bot_halfspace:.2f} {bottom_hs.ap_bot_halfspace:.2f} {bottom_hs.as_bot_halfspace:.2f}",
+            f"{bottom_hs.sedim_layer_max_depth:.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rhobot_halfspace:.2f} {bottom_hs.apbot_halfspace:.2f} {bottom_hs.ashbot_halfspace:.2f}",
             ssp_desc,
         )
         ssp_sedim_bloc = [sedim_medium_info, sedim_layer_prop_1, sedim_layer_prop_2]
@@ -160,23 +160,23 @@ class KrakenMedium:
         self.lines = [medium_info] + ssp_bloc + ssp_sedim_bloc
 
     def set_default(self):
-        self.interpolation_method_ = "C_linear"
+        self.interpolation_method = "C_linear"
         self.set_interp_code()
-        self.z_ssp_ = np.array([0.0, 100.0])
-        self.cp_ssp_ = np.array([1500.0, 1500.0])
-        self.cs_ssp_ = np.array([0.0, 0.0])
-        self.rho_ = np.array([1.0, 1.0])
-        self.ap_ = np.array([0.0, 0.0])
-        self.as_ = np.array([0.0, 0.0])
-        self.nmesh_ = 0
-        self.sigma_ = 0.0
+        self.z_ssp = np.array([0.0, 100.0])
+        self.cp_ssp = np.array([1500.0, 1500.0])
+        self.cs_ssp = np.array([0.0, 0.0])
+        self.rho = np.array([1.0, 1.0])
+        self.ap = np.array([0.0, 0.0])
+        self.ash = np.array([0.0, 0.0])
+        self.nmesh = 0
+        self.sigma = 0.0
 
     def plot_medium(self):
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
         axs[0].set_ylabel("Depth [m]")
-        plot_ssp(cp_ssp=self.cp_ssp_, cs_ssp=self.cs_ssp_, z=self.z_ssp_, ax=axs[0])
-        plot_attenuation(ap=self.ap_, as_=self.as_, z=self.z_ssp_, ax=axs[1])
-        plot_density(rho=self.rho_, z=self.z_ssp_, ax=axs[2])
+        plot_ssp(cp_ssp=self.cp_ssp, cs_ssp=self.cs_ssp, z=self.z_ssp, ax=axs[0])
+        plot_attenuation(ap=self.ap, ash=self.ash, z=self.z_ssp, ax=axs[1])
+        plot_density(rho=self.rho, z=self.z_ssp, ax=axs[2])
         plt.suptitle("Medium properties")
         plt.tight_layout()
 
@@ -249,13 +249,13 @@ class KrakenTopHalfspace:
             self.cs_top_halfspace = self.halfspace_properties_[
                 "c_s"
             ]  # Shear waves celerity (units: m/s)
-            self.rho_top_halfspace = self.halfspace_properties_[
+            self.rhotop_halfspace = self.halfspace_properties_[
                 "rho"
             ]  # Density (units: g/cm3)
-            self.ap_top_halfspace = self.halfspace_properties_[
+            self.aptop_halfspace = self.halfspace_properties_[
                 "a_p"
             ]  # Top compressional wave attenuation (units: self.units)
-            self.as_top_halfspace = self.halfspace_properties_[
+            self.ashtop_halfspace = self.halfspace_properties_[
                 "a_s"
             ]  # Top shear wave attenuation (units: self.units)
 
@@ -318,7 +318,7 @@ class KrakenBottomHalfspace:
         alpha_wavelength=10,
     ):
         self.boundary_condition_ = boundary_condition
-        self.sigma_ = sigma
+        self.sigma = sigma
         self.halfspace_properties_ = halfspace_properties
 
         # Sedim layer depth
@@ -384,13 +384,13 @@ class KrakenBottomHalfspace:
             self.cs_bot_halfspace = self.halfspace_properties_[
                 "c_s"
             ]  # Shear waves celerity (units: m/s)
-            self.rho_bot_halfspace = self.halfspace_properties_[
+            self.rhobot_halfspace = self.halfspace_properties_[
                 "rho"
             ]  # Density (units: g/cm3)
-            self.ap_bot_halfspace = self.halfspace_properties_[
+            self.apbot_halfspace = self.halfspace_properties_[
                 "a_p"
             ]  # Top compressional wave attenuation (units: self.units)
-            self.as_bot_halfspace = self.halfspace_properties_[
+            self.ashbot_halfspace = self.halfspace_properties_[
                 "a_s"
             ]  # Top shear wave attenuation (units: self.units)
 
@@ -406,7 +406,7 @@ class KrakenBottomHalfspace:
 
         # Bottom halfspace info
         bottom_halfspace_info = align_var_description(
-            f"'{self.boundary_code+self.bathymetry_code}' {self.sigma_}",
+            f"'{self.boundary_code+self.bathymetry_code}' {self.sigma}",
             "Type of bottom boundary condition, Interfacial roughness",
         )
         self.lines = [bottom_halfspace_info]
@@ -414,7 +414,7 @@ class KrakenBottomHalfspace:
         if self.use_halfspace_properties:
             ssp_desc = "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), Density (g/cm3), C-wave attenuation , S-wave attenuation"
             half_space_prop = align_var_description(
-                f"{self.sedim_layer_max_depth:.2f} {self.cp_bot_halfspace:.2f} {self.cs_bot_halfspace:.2f} {self.rho_bot_halfspace:.2f} {self.ap_bot_halfspace:.2f} {self.as_bot_halfspace:.2f}",
+                f"{self.sedim_layer_max_depth:.2f} {self.cp_bot_halfspace:.2f} {self.cs_bot_halfspace:.2f} {self.rhobot_halfspace:.2f} {self.apbot_halfspace:.2f} {self.ashbot_halfspace:.2f}",
                 ssp_desc,
             )
             self.lines.append(half_space_prop)
@@ -423,7 +423,7 @@ class KrakenBottomHalfspace:
         self.halfspace_properties_ = SAND_PROPERTIES
         self.boundary_condition_ = "acousto_elastic"
         self.set_boundary_code()
-        self.sigma_ = 0.0
+        self.sigma = 0.0
         self.bathymetry_code = ""
 
     """ Associated plotting tools to represent bottom properties """
@@ -438,12 +438,12 @@ class KrakenBottomHalfspace:
             ax=axs[0],
         )
         plot_attenuation(
-            ap=self.ap_bot_halfspace,
-            as_=self.as_bot_halfspace,
+            ap=self.apbot_halfspace,
+            ash=self.ashbot_halfspace,
             z=self.z_in_bottom,
             ax=axs[1],
         )
-        plot_density(rho=self.rho_bot_halfspace, z=self.z_in_bottom, ax=axs[2])
+        plot_density(rho=self.rhobot_halfspace, z=self.z_in_bottom, ax=axs[2])
         plt.suptitle("Bottom properties")
         # plt.tight_layout()
 
@@ -714,45 +714,43 @@ class KrakenEnv:
             medium_copy = copy.deepcopy(self.medium)
 
             # Remove depths that exceed the bathymetry
-            idx = medium_copy.z_ssp_ <= depth
+            idx = medium_copy.z_ssp <= depth
 
-            medium_copy.z_ssp_ = medium_copy.z_ssp_[idx]
-            medium_copy.cp_ssp_ = medium_copy.cp_ssp_[idx]
+            medium_copy.z_ssp = medium_copy.z_ssp[idx]
+            medium_copy.cp_ssp = medium_copy.cp_ssp[idx]
 
             # Add a new SSP point interpolated to the bathymetry
             if (
-                depth > medium_copy.z_ssp_[-1]
+                depth > medium_copy.z_ssp[-1]
             ):  # make sure added point is greater in depth
-                medium_copy.cp_ssp_ = np.append(
-                    medium_copy.cp_ssp_,
-                    np.interp(depth, medium_copy.z_ssp_, medium_copy.cp_ssp_),
+                medium_copy.cp_ssp = np.append(
+                    medium_copy.cp_ssp,
+                    np.interp(depth, medium_copy.z_ssp, medium_copy.cp_ssp),
                 )
 
-                if medium_copy.cs_ssp_.size == self.medium.z_ssp_.size:
-                    medium_copy.cs_ssp_ = medium_copy.cs_ssp_[idx]
-                    medium_copy.cs_ssp_ = np.append(
-                        depth, medium_copy.z_ssp_, medium_copy.cs_ssp_
+                if medium_copy.cs_ssp.size == self.medium.z_ssp.size:
+                    medium_copy.cs_ssp = medium_copy.cs_ssp[idx]
+                    medium_copy.cs_ssp = np.append(
+                        depth, medium_copy.z_ssp, medium_copy.cs_ssp
                     )
 
-                if medium_copy.rho_.size == self.medium.z_ssp_.size:
-                    medium_copy.rho_ = medium_copy.rho_[idx]
-                    medium_copy.rho_ = np.append(
-                        depth, medium_copy.z_ssp_, medium_copy.rho_
+                if medium_copy.rho.size == self.medium.z_ssp.size:
+                    medium_copy.rho = medium_copy.rho[idx]
+                    medium_copy.rho = np.append(
+                        depth, medium_copy.z_ssp, medium_copy.rho
                     )
 
-                if medium_copy.ap_.size == self.medium.z_ssp_.size:
-                    medium_copy.ap_ = medium_copy.ap_[idx]
-                    medium_copy.ap_ = np.append(
-                        depth, medium_copy.z_ssp_, medium_copy.ap_
+                if medium_copy.ap.size == self.medium.z_ssp.size:
+                    medium_copy.ap = medium_copy.ap[idx]
+                    medium_copy.ap = np.append(depth, medium_copy.z_ssp, medium_copy.ap)
+
+                if medium_copy.ash.size == self.medium.z_ssp.size:
+                    medium_copy.ash = medium_copy.ash[idx]
+                    medium_copy.ash = np.append(
+                        depth, medium_copy.z_ssp, medium_copy.ash
                     )
 
-                if medium_copy.as_.size == self.medium.z_ssp_.size:
-                    medium_copy.as_ = medium_copy.as_[idx]
-                    medium_copy.as_ = np.append(
-                        depth, medium_copy.z_ssp_, medium_copy.as_
-                    )
-
-                medium_copy.z_ssp_ = np.append(medium_copy.z_ssp_, depth)
+                medium_copy.z_ssp = np.append(medium_copy.z_ssp, depth)
 
             # Write medium lines
             medium_copy.write_lines(bottom_hs=self.bottom_hs)
@@ -824,15 +822,15 @@ class KrakenEnv:
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
         axs[0].set_ylabel("Depth [m]")
         # Plot ssp
-        if np.array(self.medium.cp_ssp_).size == 1:
-            cp_med = np.ones(self.medium.z_ssp_.size) * self.medium.cp_ssp_
+        if np.array(self.medium.cp_ssp).size == 1:
+            cp_med = np.ones(self.medium.z_ssp.size) * self.medium.cp_ssp
         else:
-            cp_med = self.medium.cp_ssp_
+            cp_med = self.medium.cp_ssp
 
-        if np.array(self.medium.cs_ssp_).size == 1:
-            cs_med = np.ones(self.medium.z_ssp_.size) * self.medium.cs_ssp_
+        if np.array(self.medium.cs_ssp).size == 1:
+            cs_med = np.ones(self.medium.z_ssp.size) * self.medium.cs_ssp
         else:
-            cs_med = self.medium.cs_ssp_
+            cs_med = self.medium.cs_ssp
 
         if np.array(self.bottom_hs.cp_bot_halfspace).size == 1:
             cp_bot = (
@@ -852,8 +850,8 @@ class KrakenEnv:
 
         cp_env = np.append(cp_med, cp_bot)
         cs_env = np.append(cs_med, cs_bot)
-        z_bottom = self.medium.z_ssp_[-1]
-        z_env = np.append(self.medium.z_ssp_, self.bottom_hs.z_in_bottom + z_bottom)
+        z_bottom = self.medium.z_ssp[-1]
+        z_env = np.append(self.medium.z_ssp, self.bottom_hs.z_in_bottom + z_bottom)
         plot_ssp(
             cp_ssp=cp_env,
             cs_ssp=cs_env,
@@ -863,58 +861,58 @@ class KrakenEnv:
         )
 
         # Plot attenuation
-        if np.array(self.medium.ap_).size == 1:
-            ap_med = np.ones(self.medium.z_ssp_.size) * self.medium.ap_
+        if np.array(self.medium.ap).size == 1:
+            apmed = np.ones(self.medium.z_ssp.size) * self.medium.ap
         else:
-            ap_med = self.medium.ap_
+            apmed = self.medium.ap
 
-        if np.array(self.medium.as_).size == 1:
-            as_med = np.ones(self.medium.z_ssp_.size) * self.medium.as_
+        if np.array(self.medium.ash).size == 1:
+            ashmed = np.ones(self.medium.z_ssp.size) * self.medium.ash
         else:
-            as_med = self.medium.as_
+            ashmed = self.medium.ash
 
-        if np.array(self.bottom_hs.ap_bot_halfspace).size == 1:
-            ap_bot = (
+        if np.array(self.bottom_hs.apbot_halfspace).size == 1:
+            apbot = (
                 np.ones(self.bottom_hs.z_in_bottom.size)
-                * self.bottom_hs.ap_bot_halfspace
+                * self.bottom_hs.apbot_halfspace
             )
         else:
-            ap_bot = self.bottom_hs.ap_bot_halfspace
+            apbot = self.bottom_hs.apbot_halfspace
 
-        if np.array(self.bottom_hs.as_bot_halfspace).size == 1:
-            as_bot = (
+        if np.array(self.bottom_hs.ashbot_halfspace).size == 1:
+            ashbot = (
                 np.ones(self.bottom_hs.z_in_bottom.size)
-                * self.bottom_hs.as_bot_halfspace
+                * self.bottom_hs.ashbot_halfspace
             )
         else:
-            as_bot = self.bottom_hs.as_bot_halfspace
+            ashbot = self.bottom_hs.ashbot_halfspace
 
-        ap_env = np.append(ap_med, ap_bot)
-        as_env = np.append(as_med, as_bot)
+        apenv = np.append(apmed, apbot)
+        ashenv = np.append(ashmed, ashbot)
         plot_attenuation(
-            ap=ap_env,
-            as_=as_env,
+            ap=apenv,
+            ash=ashenv,
             z=z_env,
             z_bottom=z_bottom,
             ax=axs[1],
         )
 
         # Plot density
-        if np.array(self.medium.rho_).size == 1:
-            rho_med = np.ones(self.medium.z_ssp_.size) * self.medium.rho_
+        if np.array(self.medium.rho).size == 1:
+            rhomed = np.ones(self.medium.z_ssp.size) * self.medium.rho
         else:
-            rho_med = self.medium.rho_
+            rhomed = self.medium.rho
 
-        if np.array(self.bottom_hs.rho_bot_halfspace).size == 1:
-            rho_bot = (
+        if np.array(self.bottom_hs.rhobot_halfspace).size == 1:
+            rhobot = (
                 np.ones(self.bottom_hs.z_in_bottom.size)
-                * self.bottom_hs.rho_bot_halfspace
+                * self.bottom_hs.rhobot_halfspace
             )
         else:
-            rho_bot = self.bottom_hs.rho_bot_halfspace
+            rhobot = self.bottom_hs.rhobot_halfspace
 
-        rho_env = np.append(rho_med, rho_bot)
-        plot_density(rho=rho_env, z=z_env, z_bottom=z_bottom, ax=axs[2])
+        rhoenv = np.append(rhomed, rhobot)
+        plot_density(rho=rhoenv, z=z_env, z_bottom=z_bottom, ax=axs[2])
 
         if plot_src:
             for i in range(3):

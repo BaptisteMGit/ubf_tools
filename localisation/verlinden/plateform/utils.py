@@ -1228,11 +1228,11 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
             da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
         # TODO: remove this part
-        if np.any(np.isnan(amb_surf)):
-            print(amb_surf)
-            print(autocorr_lib_0)
-            print(autocorr_event_0)
-            print(norm)
+        # if np.any(np.isnan(amb_surf)):
+        #     print(amb_surf)
+        #     print(autocorr_lib_0)
+        #     print(autocorr_event_0)
+        #     print(norm)
 
     return da_amb_surf
 

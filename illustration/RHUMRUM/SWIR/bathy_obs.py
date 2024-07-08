@@ -350,7 +350,8 @@ def plot_bathy_profile():
 
 
 if __name__ == "__main__":
-    rcv_id = ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"]
+    rcv_id = ["RR41", "RR44", "RR45", "RR47"]
+    # rcv_id = ["R1", "R2", "R3"]
     plot_swir_bathy_obs(rcv_id)
     plot_swir_bathy_obs_src(rcv_id)
     # plot_bathy_profile()

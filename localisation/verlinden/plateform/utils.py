@@ -706,35 +706,45 @@ def add_correlation_library_subset(xr_dataset):
             np.float64
         )
 
-        nfft = sp_fft.next_fast_len(nlag, True)
+        # new implementatin
+        r_12 = signal.fftconvolve(in1, in2[..., ::-1], mode="full", axes=-1)
+        r_11 = signal.fftconvolve(in1, in1[..., ::-1], mode="full", axes=-1)
+        r_22 = signal.fftconvolve(in2, in2[..., ::-1], mode="full", axes=-1)
 
-        sig_0 = sp_fft.rfft(
-            in1,
-            n=nfft,
-            axis=-1,
-        )
-        sig_1 = sp_fft.rfft(
-            in2,
-            n=nfft,
-            axis=-1,
-        )
+        n0 = r_12.shape[-1] // 2
+        norm = np.sqrt(r_11[..., n0] * r_22[..., n0])
+        norm = np.repeat(np.expand_dims(norm, axis=-1), nlag, axis=-1)
+        c_12 = r_12 / norm
+        xr_dataset.library_corr[dict(idx_rcv_pairs=i_pair)] = c_12.astype(np.float32)
 
-        corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
-        corr_01_fft = corr_01_fft[:, :, slice(nlag)]
+        # Compute cross-correlation
+        # nfft = sp_fft.next_fast_len(nlag, True)
 
-        autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
-        autocorr0 = autocorr0[:, :, slice(nlag)]
+        # sig_0 = sp_fft.rfft(
+        #     in1,
+        #     n=nfft,
+        #     axis=-1,
+        # )
+        # sig_1 = sp_fft.rfft(
+        #     in2,
+        #     n=nfft,
+        #     axis=-1,
+        # )
 
-        autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
-        autocorr1 = autocorr1[:, :, slice(nlag)]
+        # corr_01 = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
+        # corr_01 = corr_01[:, :, slice(nlag)]
 
-        n0 = corr_01_fft.shape[-1] // 2
-        corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
-        corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
-        corr_01_fft /= corr_norm
-        xr_dataset.library_corr[dict(idx_rcv_pairs=i_pair)] = corr_01_fft.astype(
-            np.float32
-        )
+        # autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
+        # autocorr0 = autocorr0[:, :, slice(nlag)]
+
+        # autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
+        # autocorr1 = autocorr1[:, :, slice(nlag)]
+
+        # n0 = corr_01.shape[-1] // 2
+        # corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
+        # corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
+        # corr_01 /= corr_norm
+        # xr_dataset.library_corr[dict(idx_rcv_pairs=i_pair)] = corr_01.astype(np.float32)
 
     return xr_dataset
 

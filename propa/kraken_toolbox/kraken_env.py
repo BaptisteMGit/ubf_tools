@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*-coding:utf-8 -*-
-'''
+"""
 @File    :   kraken_env.py
 @Time    :   2024/07/08 09:06:58
 @Author  :   Menetrier Baptiste 
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Kraken environment class
-'''
+"""
 
 # ======================================================================================================================
 # Import
@@ -628,14 +628,14 @@ class KrakenEnv:
     ):
         self.simulation_title = title
 
-        self.root = env_root
+        self.root_ = env_root
         self.filename = env_filename
         # .env file path
-        self.env_fpath = os.path.join(self.root, self.filename + ".env")
+        self.env_fpath = os.path.join(self.root_, self.filename + ".env")
         # .flp file path
-        self.flp_fpath = os.path.join(self.root, self.filename + ".flp")
+        self.flp_fpath = os.path.join(self.root_, self.filename + ".flp")
         # .shd file path
-        self.shd_fpath = os.path.join(self.root, self.filename + ".shd")
+        self.shd_fpath = os.path.join(self.root_, self.filename + ".shd")
 
         # List of ordered frequencies
         self.freq = np.array(freq)
@@ -820,14 +820,14 @@ class KrakenEnv:
 
     @property
     def root(self):
-        return self.root
+        return self.root_
 
     @root.setter
     def root(self, root):
-        self.root = root
-        self.env_fpath = os.path.join(self.root, self.filename + ".env")
-        self.flp_fpath = os.path.join(self.root, self.filename + ".flp")
-        self.shd_fpath = os.path.join(self.root, self.filename + ".shd")
+        self.root_ = root
+        self.env_fpath = os.path.join(self.root_, self.filename + ".env")
+        self.flp_fpath = os.path.join(self.root_, self.filename + ".flp")
+        self.shd_fpath = os.path.join(self.root_, self.filename + ".shd")
 
     # Plotting tools
     def plot_env(self, plot_src=False, src_depth=None):

@@ -333,9 +333,9 @@ def run_process_loc(ds, rcv_id):
 
     # process_analysis(ds, grid_info)
 
-    n_noise = 20
-    f0_library = 1
-    snr = [-5]
+    n_noise = 1
+    f0_library = 5
+    snr = [15]
     # snr = np.arange(-15, 10, 0.5)
     # snr = np.arange(-20, 0, 1)
     # snr = [-10, 5]
@@ -421,7 +421,7 @@ def run_all_testcases():
 
     dt = 10
     fs = 100  # Sampling frequency
-    f0_lib = 1.5  # Fundamental frequency of the ship signal
+    f0_lib = 5  # Fundamental frequency of the ship signal
     src_info = {
         "sig_type": "ship",
         "f0": f0_lib,
@@ -441,16 +441,16 @@ def run_all_testcases():
     # snr = np.arange(-10, 0, 1)  # [10]
     snr = [15]
     n_noise = 1
-    dt, fs, event_sig_info = set_event_sig_info(f0_lib)
+    dt, fs, event_sig_info = set_event_sig_info(f0=2)
 
     for tc in [
         # TestCase1_0,
         # TestCase1_1,
         # TestCase1_3,
-        TestCase1_4,
+        # TestCase1_4,
         # TestCase2_1,
         # TestCase2_2,
-        # TestCase3_1,
+        TestCase3_1,
     ]:
 
         rcv_info_dw = {
@@ -513,7 +513,7 @@ def run_all_testcases():
 if __name__ == "__main__":
     import xarray as xr
 
-    rcv_id = ["R1", "R2", "R3"]
+    # rcv_id = ["R1", "R2", "R3"]
 
     # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
     # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_4_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240630_125938.zarr"
@@ -522,6 +522,7 @@ if __name__ == "__main__":
     # process_analysis(ds, grid_info)
 
     run_all_testcases()
+
     # Build dataset
     # rcv_id = ["R1", "R2", "R3", "R4"]
     # rcv_id = ["RR41", "RR44", "RR45", "RR47"]

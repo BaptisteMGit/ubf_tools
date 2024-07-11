@@ -1,19 +1,20 @@
 #!/usr/bin/env python
 # -*-coding:utf-8 -*-
-'''
+"""
 @File    :   misc.py
 @Time    :   2024/07/08 09:13:24
 @Author  :   Menetrier Baptiste 
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Miscellaneous functions.
-'''
+"""
 
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
 import io
 import os
+import re
 import shutil
 import psutil
 import numpy as np
@@ -281,34 +282,101 @@ def generate_colors(n, colormap_name="Pastel1"):
     return colors
 
 
+def gather_acronyms(manuscript_folder, output_file):
+    acronyms = set()
+
+    # Define the regex pattern for the acronym lines
+    pattern = re.compile(r"\\newacronym\{(\w+)\}\{(\w+)\}\{([^}]+)\}")
+
+    # Walk through the manuscript folder
+    for root, _, files in os.walk(manuscript_folder):
+        for file in files:
+            if file == "glossary.tex":
+                filepath = os.path.join(root, file)
+                print(f"Processing file: {filepath}")
+                with open(filepath, "r") as f:
+                    content = f.readlines()
+                    for line in content:
+                        match = pattern.match(line.strip())
+                        if match:
+                            acronyms.add(line.strip())
+
+    # Write the collected acronyms to the output file
+    with open(output_file, "w") as f:
+        for acronym in sorted(acronyms):
+            f.write(acronym + "\n")
+
+
+def gather_bibliographies(manuscript_folder, output_file):
+    bib_entries = {}
+
+    # Define the regex pattern for the bibliography entry
+    entry_pattern = re.compile(r"@(\w+)\{([^,]+),")
+    note_pattern = re.compile(r"\s*note\s*=\s*\{[^}]+\},?\n?", re.IGNORECASE)
+
+    # Walk through the manuscript folder
+    for root, _, files in os.walk(manuscript_folder):
+        for file in files:
+            if file == "biblio.bib":
+                filepath = os.path.join(root, file)
+                with open(filepath, "r", encoding="utf-8") as f:
+                    content = f.read()
+                    # Split the content into individual entries
+                    entries = re.split(r"(@\w+\{[^,]+,)", content)
+                    for i in range(1, len(entries), 2):
+                        entry_header = entries[i]
+                        entry_body = entries[i + 1]
+                        # Remove note field
+                        entry_body = note_pattern.sub("", entry_body)
+                        # Reconstruct the entry
+                        entry = f"{entry_header}{entry_body}"
+                        # Extract the reference key
+                        ref_key = re.search(entry_pattern, entry_header).group(2)
+                        # Add the entry to the dictionary to ensure uniqueness
+                        bib_entries[ref_key] = entry
+
+    # Write the collected bibliography entries to the output file, sorted by reference key
+    with open(output_file, "w", encoding="utf-8") as f:
+        for ref_key in sorted(bib_entries):
+            f.write(bib_entries[ref_key])
+            f.write("\n")
+
+
 if __name__ == "__main__":
-    # Test delete folders
-    root_directory = "/path/to/your/directory"
-    folder_pattern = "pattern_to_match"
-    delete_folders(root_directory, folder_pattern)
+    # Usage
+    manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
+    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\glossary_acoustics.tex"
 
-    # # Test plot_animation_moviepy
-    # import os
-    # import xarray as xr
+    # gather_acronyms(manuscript_folder, output_file)
 
-    # path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case\verlinden_1_test_case.nc"
-    # ds = xr.open_dataset(path)
+    # Usage
+    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
 
-    # root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation\verlinden\test_case\isotropic\range_independent"
-    # root_img = os.path.join(root_img, ds.src_pos, f"dx{ds.dx}m_dy{ds.dy}m")
+    gather_bibliographies(manuscript_folder, output_file)
 
-    # # n = ds.dims["src_trajectory_time"]
-    # n = 30
-    # var_to_plot = ds.ambiguity_surface.isel(
-    #     idx_obs_pairs=0, src_trajectory_time=slice(0, n)
-    # )
-    # var_to_plot = -10 * np.log10(var_to_plot)
 
-    # plot_animation_moviepy(
-    #     var_to_plot=var_to_plot,
-    #     time_label="src_trajectory_time",
-    #     nb_frames=n,
-    #     anim_filename=os.path.join(root_img, "ambiguity_surf.mp4"),
-    #     fps_sec=5,
-    #     cmap="jet",
-    # )
+# # Test plot_animation_moviepy
+# import os
+# import xarray as xr
+
+# path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\test_case\verlinden_1_test_case.nc"
+# ds = xr.open_dataset(path)
+
+# root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\localisation\verlinden\test_case\isotropic\range_independent"
+# root_img = os.path.join(root_img, ds.src_pos, f"dx{ds.dx}m_dy{ds.dy}m")
+
+# # n = ds.dims["src_trajectory_time"]
+# n = 30
+# var_to_plot = ds.ambiguity_surface.isel(
+#     idx_obs_pairs=0, src_trajectory_time=slice(0, n)
+# )
+# var_to_plot = -10 * np.log10(var_to_plot)
+
+# plot_animation_moviepy(
+#     var_to_plot=var_to_plot,
+#     time_label="src_trajectory_time",
+#     nb_frames=n,
+#     anim_filename=os.path.join(root_img, "ambiguity_surf.mp4"),
+#     fps_sec=5,
+#     cmap="jet",
+# )

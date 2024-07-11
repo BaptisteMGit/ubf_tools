@@ -817,20 +817,20 @@ if __name__ == "__main__":
     # tc1_1 = TestCase1_1(mode="show")
     # tc1_2 = TestCase1_2(mode="show")
     # tc1_3 = TestCase1_3(mode="show")
-    # tc1_4 = TestCase1_4(mode="show")
+    tc1_4 = TestCase1_4(mode="show")
     # tc2_0 = TestCase2_0(mode="show")
 
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-        "rcv_lon": 65.943,
-        "rcv_lat": -27.5792,
-        "mode_theory": "coupled",
-    }
-    tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
-    tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
-    tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
+    # tc_varin = {
+    #     "freq": [20],
+    #     "max_range_m": 15 * 1e3,
+    #     "azimuth": 0,
+    #     "rcv_lon": 65.943,
+    #     "rcv_lat": -27.5792,
+    #     "mode_theory": "coupled",
+    # }
+    # tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
+    # tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
+    # tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
 
     # # Test case 2.2
     # tc_varin = {

@@ -439,7 +439,7 @@ def run_all_testcases():
     src_sig *= np.hanning(len(src_sig))
 
     # snr = np.arange(-10, 0, 1)  # [10]
-    snr = [15]
+    snr = [30]
     n_noise = 1
     dt, fs, event_sig_info = set_event_sig_info(f0=2)
 
@@ -447,10 +447,10 @@ def run_all_testcases():
         # TestCase1_0,
         # TestCase1_1,
         # TestCase1_3,
-        # TestCase1_4,
+        TestCase1_4,
         # TestCase2_1,
         # TestCase2_2,
-        TestCase3_1,
+        # TestCase3_1,
     ]:
 
         rcv_info_dw = {

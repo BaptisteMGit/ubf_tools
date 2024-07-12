@@ -697,8 +697,8 @@ def add_correlation_library_subset(xr_dataset):
     ax = 2
     nlag = xr_dataset.sizes["library_corr_lags"]
 
-    for i_pair in range(xr_dataset.sizes["idx_rcv_pairs"]):
-        rcv_pair = xr_dataset.rcv_pairs.isel(idx_rcv_pairs=i_pair)
+    for i_pair in xr_dataset.idx_rcv_pairs.values:
+        rcv_pair = xr_dataset.rcv_pairs.sel(idx_rcv_pairs=i_pair)
         in1 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0]).values.astype(
             np.float64
         )

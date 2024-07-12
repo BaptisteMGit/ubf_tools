@@ -124,7 +124,7 @@ def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
     return ds
 
 
-def load_subset(fpath, pos_src_info, grid_info, dt, verbose=True):
+def load_subset(fpath, pos_src_info, grid_info, dt, rcv_id, verbose=True):
     """
     Load a subset of the dataset around the source to be localized.
     """
@@ -147,6 +147,21 @@ def load_subset(fpath, pos_src_info, grid_info, dt, verbose=True):
         lat=slice(grid_info["min_lat"], grid_info["max_lat"]),
     )
 
+    # Keep desired receivers 
+    desired_idx = [idx for idx in ds_subset.idx_rcv.values if ds_subset.rcv_id.isel(idx_rcv=idx) in rcv_id]
+    ds_subset = ds_subset.sel(idx_rcv=desired_idx)
+
+    # RGet rid of useless pairs 
+    idx_rcv_pairs_to_keep = []
+    for id_p in ds_subset.idx_rcv_pairs:
+        p = ds_subset.rcv_pairs.isel(idx_rcv_pairs=id_p)
+        id_in_p_0 = p.isel(idx_rcv_in_pair=0).values
+        id_in_p_1 = p.isel(idx_rcv_in_pair=1).values
+        if id_in_p_0 in ds_subset.idx_rcv and id_in_p_1 in ds_subset.idx_rcv: 
+            idx_rcv_pairs_to_keep.append(id_p.values)
+
+    ds_subset = ds_subset.isel(idx_rcv_pairs=idx_rcv_pairs_to_keep)
+
     return ds_subset
 
 
@@ -154,6 +169,7 @@ def init_dataset(
     main_ds_path,
     src_info,
     grid_info,
+    rcv_info,
     dt,
     similarity_metrics,
     snrs_dB,
@@ -162,7 +178,7 @@ def init_dataset(
 ):
     # Load subset of the main dataset
     ds = load_subset(
-        main_ds_path, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
+        main_ds_path, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt, rcv_id=rcv_info["id"]
     )
 
     if verbose:
@@ -195,7 +211,7 @@ def init_dataset(
     )
 
     # Chunk rcv_signal_library according to lon/lat regions
-    max_size = 0.5 * 1e9
+    max_size = 1 * 1e9
     var = ds.rcv_signal_library
     nregion_lon = get_region_number(
         nregion_max=ds.sizes["lon"],
@@ -260,6 +276,7 @@ def process(
         main_ds_path=main_ds_path,
         src_info=src_info,
         grid_info=grid_info,
+        rcv_info=rcv_info,
         dt=dt,
         similarity_metrics=similarity_metrics,
         snrs_dB=snrs_dB,

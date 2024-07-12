@@ -89,8 +89,8 @@ def plot_swir_obs(ds_bathy, col=None):
     rcv_info = {
         # "id": ["RR41", "RR42", "RR43", "RR44", "RR45", "RR46", "RR47", "RR48"],
         # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
-        "id": ["R1", "R2", "R3"],
-        # "id": ["RR45", "RR48", "RR44"],
+        # "id": ["R1", "R2", "R3"],
+        "id": ["RR41", "RR44", "RR45", "RR47"],
         "lons": [],
         "lats": [],
         "z": [],
@@ -278,8 +278,8 @@ def plot_swir_bathy_obs_src():
     plt.grid()
     # plt.legend(ncol=2)
 
-    path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR\swir_bathy_obs_no_border_src.png"
-    # path = r"/home/program/ubf_tools/data/bathy/mmdpm/PVA_RR48/swir_bathy_obs_no_border_src.png"
+    # path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR\swir_bathy_obs_no_border_src.png"
+    path = r"/home/program/ubf_tools/data/bathy/mmdpm/PVA_RR48/swir_bathy_obs_no_border_src.png"
 
     plt.savefig(path, dpi=300, bbox_inches="tight")
     # plt.show()
@@ -313,6 +313,6 @@ def plot_bathy_profile():
 
 
 if __name__ == "__main__":
-    plot_swir_bathy_obs()
+    # plot_swir_bathy_obs()
     plot_swir_bathy_obs_src()
     # plot_bathy_profile()

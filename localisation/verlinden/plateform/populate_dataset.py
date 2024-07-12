@@ -27,7 +27,7 @@ from localisation.verlinden.plateform.init_dataset import (
     get_range_from_rcv,
 )
 
-from localisation.verlinden.verlinden_utils import get_azimuth_rcv
+from localisation.verlinden.misc.verlinden_utils import get_azimuth_rcv
 from cst import C0
 from localisation.verlinden.plateform.params import N_WORKERS
 
@@ -123,6 +123,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     nregion_lat = get_region_number(
         ds.sizes["lat"], ds.tf_gridded, max_size_bytes=1 * 1e9
     )
+<<<<<<< HEAD
 
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
 
@@ -131,6 +132,13 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     # lat_chunksize = int(ds.sizes["lat"] // nregion)
     # lon_chunksize = int(ds.sizes["lon"] / nregion)
+=======
+    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
+
+    lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
+    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
+
+>>>>>>> eda668f688f44e47a4af5a1c100dd94790eb5120
     # lon_chunksize = ds.sizes['lon']
     idx_rcv_chunksize, freq_chunksize = ds.sizes["idx_rcv"], ds.sizes["kraken_freq"]
 
@@ -182,9 +190,6 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     zarr.consolidate_metadata(ds.fullpath_dataset_propa)
 
     ds = ds.drop_vars("tf")
-
-    # Update info in dataset
-    # update_info_status(ds, part_done="propa_grid")
 
     return ds
 
@@ -247,6 +252,15 @@ def grid_synthesis(
     )
     chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, time_chunksize)
     ds["rcv_signal_library"] = ds.rcv_signal_library.chunk(chunksize)
+
+    # Fix the values at the receiver positions
+    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
+
+    for i in range(len(rcv_grid_lon)):
+        ds["tf_gridded"].loc[
+            dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i], idx_rcv=i)
+        ] = 1
 
     # Save to zarr without computing
     ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="a", compute=False)
@@ -312,7 +326,7 @@ if __name__ == "__main__":
 
     ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
-    from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+    from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
     fname = "propa_dataset_65.5928_65.9521_-27.6662_-27.5711.zarr"
     fpath = os.path.join(root, fname)
@@ -350,8 +364,8 @@ if __name__ == "__main__":
 
     dt = 5
     min_waveguide_depth = 5000
-    from localisation.verlinden.AcousticComponent import AcousticSource
-    from signals import generate_ship_signal
+    from signals.AcousticComponent import AcousticSource
+    from signals.signals import generate_ship_signal
 
     src_sig, t_src_sig = generate_ship_signal(
         Ttot=dt,

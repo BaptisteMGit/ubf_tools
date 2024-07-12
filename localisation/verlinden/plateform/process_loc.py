@@ -35,7 +35,7 @@ from localisation.verlinden.plateform.utils import (
     get_region_number,
     get_lonlat_sub_regions,
 )
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     init_event_src_traj,
     init_grid_around_event_src_traj,
     load_rhumrum_obs_pos,
@@ -284,8 +284,16 @@ def process(
         verbose=True,
     )
 
-    # from time import time
+    # Quick fix for received signal at rcv position : for r = 0 -> sig = 0
+    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
 
+    for i in range(len(rcv_grid_lon)):
+        ds["rcv_signal_library"].loc[dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])] = (
+            np.nan
+        )
+
+    # from time import time
     # t0 = time()
     # n_workers = 8
     # with Client(n_workers=n_workers, threads_per_worker=1) as client:
@@ -356,9 +364,9 @@ def process(
 
 if __name__ == "__main__":
 
-    from signals import pulse, generate_ship_signal
-    from localisation.verlinden.AcousticComponent import AcousticSource
-    from localisation.verlinden.params import ROOT_DATASET
+    from signals.signals import pulse, generate_ship_signal
+    from signals.AcousticComponent import AcousticSource
+    from localisation.verlinden.misc.params import ROOT_DATASET
 
     testcase = "testcase3_1"
     root_dir = os.path.join(

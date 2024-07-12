@@ -14,17 +14,25 @@
 # ======================================================================================================================
 import os
 import numpy as np
-from signals import pulse, generate_ship_signal
-from localisation.verlinden.AcousticComponent import AcousticSource
-from localisation.verlinden.testcases.testcase_envs import TestCase3_1
+from signals.signals import pulse, generate_ship_signal
+from signals.AcousticComponent import AcousticSource
+from localisation.verlinden.testcases.testcase_envs import (
+    TestCase1_0,
+    TestCase1_1,
+    TestCase1_3,
+    TestCase1_4,
+    TestCase2_1,
+    TestCase2_2,
+    TestCase3_1,
+)
 from localisation.verlinden.plateform.run_plateform import run_on_plateform
-from signals import pulse, generate_ship_signal
-from localisation.verlinden.AcousticComponent import AcousticSource
-from localisation.verlinden.params import ROOT_DATASET
+from signals.signals import pulse, generate_ship_signal
+from signals.AcousticComponent import AcousticSource
+from localisation.verlinden.misc.params import ROOT_DATASET
 
 from localisation.verlinden.plateform.process_loc import process
 from localisation.verlinden.plateform.analysis_loc import analysis
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     load_rhumrum_obs_pos,
     get_bathy_grid_size,
 )
@@ -151,10 +159,6 @@ def common_process_loc(ds, rcv_id):
 
     # Receiver infos
     rcv_info = {
-        # "id": ["RR45", "RR48", "RR44"],
-        # "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
-        # "id": ["RR41", "RR44", "RR45", "RR47", "RR48"],
-        # "id": ["RRdebug0", "RRdebug1"],
         "id": rcv_id,
         "lons": [],
         "lats": [],
@@ -326,9 +330,15 @@ def run_process_loc(ds, rcv_id):
 
     # process_analysis(ds, grid_info)
 
+<<<<<<< HEAD
     n_noise = 20
     f0_library = 1
     snr = [0]
+=======
+    n_noise = 1
+    f0_library = 5
+    snr = [15]
+>>>>>>> eda668f688f44e47a4af5a1c100dd94790eb5120
     # snr = np.arange(-15, 10, 0.5)
     fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
 
@@ -407,20 +417,131 @@ def run_process_loc(ds, rcv_id):
     # process_analysis(ds, grid_info)
 
 
+def run_all_testcases():
+    rcv_id = ["R1", "R2", "R3"]
+
+    dt = 10
+    fs = 100  # Sampling frequency
+    f0_lib = 5  # Fundamental frequency of the ship signal
+    src_info = {
+        "sig_type": "ship",
+        "f0": f0_lib,
+        "std_fi": f0_lib * 1 / 100,
+        "tau_corr_fi": 1 / f0_lib,
+        "fs": fs,
+    }
+    src_sig, t_src_sig = generate_ship_signal(
+        Ttot=dt,
+        f0=src_info["f0"],
+        std_fi=src_info["std_fi"],
+        tau_corr_fi=src_info["tau_corr_fi"],
+        fs=src_info["fs"],
+    )
+    src_sig *= np.hanning(len(src_sig))
+
+    # snr = np.arange(-10, 0, 1)  # [10]
+    snr = [15]
+    n_noise = 1
+    dt, fs, event_sig_info = set_event_sig_info(f0=2)
+
+    for tc in [
+        # TestCase1_0,
+        # TestCase1_1,
+        # TestCase1_3,
+        # TestCase1_4,
+        # TestCase2_1,
+        # TestCase2_2,
+        TestCase3_1,
+    ]:
+
+        rcv_info_dw = {
+            "id": rcv_id,
+            "lons": [],
+            "lats": [],
+        }
+
+        tc_var_in = {"max_range_m": 30 * 1e3}
+        tc = tc()
+        tc.update(tc_var_in)
+
+        min_dist = 5 * 1e3
+        dx, dy = 100, 100
+
+        # Define source signal
+        src = AcousticSource(
+            signal=src_sig,
+            time=t_src_sig,
+            name="ship",
+            waveguide_depth=tc.min_depth,
+            # nfft=5,
+        )
+
+        print(f"nfft = {src.nfft}")
+        (
+            ds,
+            fullpath_dataset_propa,
+            fullpath_dataset_propa_grid,
+            fullpath_dataset_propa_grid_sr,
+        ) = run_on_plateform(
+            rcv_info=rcv_info_dw, testcase=tc, min_dist=min_dist, dx=dx, dy=dy, src=src
+        )
+
+        # Process loc
+        fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
+
+        src_info = {}
+        src_info["pos"] = event_pos_info
+        src_info["sig"] = event_sig_info
+
+        ds = process(
+            main_ds_path=fpath,
+            src_info=src_info,
+            rcv_info=rcv_info,
+            grid_info=grid_info,
+            dt=dt,
+            similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+            snrs_dB=snr,
+            n_noise_realisations=n_noise,
+            verbose=True,
+        )
+        # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_0_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_063914.zarr"
+        # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+        # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
+
+        process_analysis(ds, grid_info)
+
+
 if __name__ == "__main__":
     # import xarray as xr
 
+    # rcv_id = ["R1", "R2", "R3"]
+
+    # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_4_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240630_125938.zarr"
+    # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
+    # process_analysis(ds, grid_info)
+
+    run_all_testcases()
+
     # Build dataset
     # rcv_id = ["R1", "R2", "R3", "R4"]
+<<<<<<< HEAD
     rcv_id = ["RR41", "RR44", "RR45", "RR47"]
 
     # # rcv_id = ["RRdebug0", "RRdebug1"]
+=======
+    # rcv_id = ["RR41", "RR44", "RR45", "RR47"]
+
+    # rcv_id = ["RRdebug0", "RRdebug1"]
+>>>>>>> eda668f688f44e47a4af5a1c100dd94790eb5120
     # ds = run_swir(rcv_id)
 
     # # Exploit dataset for localisation
     # rcv_id = ["RR41", "RR44", "RR45"]
     # run_process_loc(ds, rcv_id)
 
+<<<<<<< HEAD
     # # Process
     import xarray as xr
     # fpath = "/home/data/localisation_process/testcase3_1_6ba2059d7d31/65.2399_65.6436_-27.9360_-27.5769_ship/20240627_121330.zarr"
@@ -429,6 +550,11 @@ if __name__ == "__main__":
     fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
     process_analysis(ds, grid_info)
 
+=======
+    # Process
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_dataset\testcase3_1_AC198EBFF716\propa_grid_src\propa_grid_src_65.4903_65.6797_-27.7342_-27.5758_100_100_ship.zarr"
+    # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+>>>>>>> eda668f688f44e47a4af5a1c100dd94790eb5120
     # run_process_loc(ds, rcv_id)
 
     # # Reanalyse

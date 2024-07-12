@@ -168,7 +168,7 @@ class AcousticSource:
                 s = (2, 1)
             elif n_ax == 3:
                 s = (1, 3)
-            __, ax = plt.subplots(s[0], s[1], figsize=(10, 8))
+            __, ax = plt.subplots(s[0], s[1])
             self.plot_signal(ax=ax[0])
             if plot_psd:
                 self.plot_psd(ax=ax[1])

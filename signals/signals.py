@@ -1,3 +1,17 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   signals.py
+@Time    :   2024/07/08 09:13:43
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Define signals for underwater acoustics.
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
 import numpy as np
 import scipy.io as sio
 

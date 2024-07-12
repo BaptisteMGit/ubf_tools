@@ -23,8 +23,8 @@ from propa.kraken_toolbox.post_process import (
     postprocess_received_signal,
     postprocess_received_signal_from_broadband_pressure_field,
 )
-from signals import pulse
-from localisation.verlinden.AcousticComponent import AcousticSource
+from signals.signals import pulse
+from signals.AcousticComponent import AcousticSource
 
 
 def define_test_env():

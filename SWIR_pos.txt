@@ -1,8 +1,0 @@
-RHUM RUM RR46 : lon, lat = 65.5835, -27.7909
-
-D'après Léa Bouffaut
-Lat. 27.5−27.8°S, Long. 65.3−66.0°E
-
-        lon         lat         elev
-RR45    65.6019	-27.6581	-2822.00
-RR48    65.9430	-27.5792	-4830.00

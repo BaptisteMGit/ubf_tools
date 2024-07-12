@@ -4,17 +4,17 @@ import xarray as xr
 from localisation.verlinden.plateform.build_dataset import build_dataset
 
 import numpy as np
-from signals import pulse, generate_ship_signal
-from localisation.verlinden.AcousticComponent import AcousticSource
+from signals.signals import pulse, generate_ship_signal
+from signals.AcousticComponent import AcousticSource
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1
 
 
 import xarray as xr
 
-from signals import pulse
+from signals.signals import pulse
 from localisation.verlinden.plateform.utils import *
 from localisation.verlinden.plateform.init_dataset import init_grid
-from localisation.verlinden.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 from localisation.verlinden.plateform.init_dataset import init_dataset
 from localisation.verlinden.plateform.build_dataset import build_dataset
 from localisation.verlinden.plateform.populate_dataset import (
@@ -22,8 +22,8 @@ from localisation.verlinden.plateform.populate_dataset import (
     grid_synthesis,
 )
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1
-from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
-from localisation.verlinden.params import DATA_ROOT, ROOT_DATASET
+from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
+from localisation.verlinden.misc.params import DATA_ROOT, ROOT_DATASET
 
 testcase = "testcase3_1"
 root_dir = os.path.join(

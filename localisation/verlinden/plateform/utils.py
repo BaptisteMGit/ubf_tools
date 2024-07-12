@@ -23,8 +23,8 @@ import scipy.signal as signal
 from cst import C0
 from misc import mult_along_axis, fft_convolve_f
 from localisation.verlinden.plateform.params import N_WORKERS
-from localisation.verlinden.params import ROOT_DATASET, ROOT_PROCESS
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.params import ROOT_DATASET, ROOT_PROCESS
+from localisation.verlinden.misc.verlinden_utils import (
     get_range_src_rcv_range,
     add_noise_to_signal,
 )
@@ -1228,11 +1228,11 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
             da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
         # TODO: remove this part
-        if np.any(np.isnan(amb_surf)):
-            print(amb_surf)
-            print(autocorr_lib_0)
-            print(autocorr_event_0)
-            print(norm)
+        # if np.any(np.isnan(amb_surf)):
+        #     print(amb_surf)
+        #     print(autocorr_lib_0)
+        #     print(autocorr_event_0)
+        #     print(norm)
 
     return da_amb_surf
 

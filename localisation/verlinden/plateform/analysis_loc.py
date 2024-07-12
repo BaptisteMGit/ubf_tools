@@ -18,7 +18,7 @@ from cst import (
 from misc import confidence_ellipse, generate_colors
 
 from pyproj import Geod
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     get_bathy_grid_size,
     load_rhumrum_obs_pos,
 )
@@ -28,11 +28,12 @@ from localisation.verlinden.verlinden_analysis_report import (
     plot_localisation_performance,
 )
 
-from localisation.verlinden.plot_utils import plot_localisation_moviepy
-from localisation.verlinden.params import (
+from localisation.verlinden.misc.plot_utils import plot_localisation_moviepy
+from localisation.verlinden.misc.params import (
     ROOT_PROCESS,
     ROOT_ANALYSIS,
     DATA_ROOT,
+    BATHY_FILEPATH,
 )
 
 from publication.PublicationFigure import PubFigure
@@ -432,19 +433,19 @@ def plot_ambiguity_surface(
 ):
 
     # Load bathy
-    bathy_path = (
-        r"data/bathy/mmdpm/PVA_RR48/GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
-    )
-    ds_bathy = xr.open_dataset(bathy_path)
+    # bathy_path = (
+    #     r"data/bathy/mmdpm/PVA_RR48/GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+    # )
+    # ds_bathy = xr.open_dataset(BATHY_FILEPATH)
 
-    blevels = [
-        -6000,
-        -5000,
-        -4000,
-        -3000,
-        -2000,
-        -1500,
-    ]
+    # blevels = [
+    #     -6000,
+    #     -5000,
+    #     -4000,
+    #     -3000,
+    #     -2000,
+    #     -1500,
+    # ]
 
     """Plot ambiguity surface for each source position."""
     # Init folders
@@ -466,9 +467,9 @@ def plot_ambiguity_surface(
             pair_id = ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values
 
             plt.figure()
-            ds_bathy.elevation.plot.contour(
-                levels=blevels, colors="k", linewidths=3, zorder=1
-            )
+            # ds_bathy.elevation.plot.contour(
+            #     levels=blevels, colors="k", linewidths=3, zorder=1
+            # )
             target_amb_surf = amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             ).load()
@@ -638,9 +639,9 @@ def plot_ambiguity_surface(
     """Combined ambiguity surface """
     for i_src_time in range(nb_instant_to_plot):
         plt.figure()
-        ds_bathy.elevation.plot.contour(
-            levels=blevels, colors="k", linewidths=3, zorder=1
-        )
+        # ds_bathy.elevation.plot.contour(
+        #     levels=blevels, colors="k", linewidths=3, zorder=1
+        # )
 
         target_amb_surf_combined = amb_surf_combined.isel(
             src_trajectory_time=i_src_time

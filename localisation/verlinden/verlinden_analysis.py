@@ -28,8 +28,8 @@ from localisation.verlinden.verlinden_analysis_report import (
     plot_localisation_performance,
 )
 
-from localisation.verlinden.plot_utils import plot_localisation_moviepy
-from localisation.verlinden.params import (
+from localisation.verlinden.misc.plot_utils import plot_localisation_moviepy
+from localisation.verlinden.misc.params import (
     VERLINDEN_OUTPUT_FOLDER,
     VERLINDEN_ANALYSIS_FOLDER,
 )

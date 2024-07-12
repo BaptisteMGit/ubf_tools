@@ -5,7 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from publication.PublicationFigure import PubFigure
-from localisation.verlinden.params import TC_WORKING_DIR
+from localisation.verlinden.misc.params import TC_WORKING_DIR
 from get_data.bathymetry.bathy_profile_extraction import extract_bathy_profile
 from propa.kraken_toolbox.run_kraken import get_subprocess_working_dir
 
@@ -19,24 +19,34 @@ def bathy_flat_seabed(
     max_range=50,
     plot=False,
     bathy_path="",
+    called_by_subprocess=False,
 ):
     # Define bathymetry
-    r = [0, max_range]
-    h = [waveguide_depth, waveguide_depth]
+    r_km = [0, max_range]
+    h_m = [waveguide_depth, waveguide_depth]
 
     # Save bathymetry
-    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
-    pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
+    env_root = os.path.join(TC_WORKING_DIR, testcase_name)
+    if called_by_subprocess:
+        env_dir = get_subprocess_working_dir(env_root=env_root, worker_pid=os.getpid())
+    else:
+        env_dir = env_root
+    pd.DataFrame({"r": np.round(r_km, 3), "h": np.round(h_m, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
+
+    # env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
+    # pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
+    #     os.path.join(env_dir, "bathy.csv"), index=False, header=False
+    # )
 
     # Plot bathy
     if plot:
         max_depth = waveguide_depth + 10
         plt.figure(figsize=(16, 8))
-        plt.plot(r, h, color="k", linewidth=2, marker="o", markersize=2)
+        plt.plot(r_km, h_m, color="k", linewidth=2, marker="o", markersize=2)
         plt.ylim([0, max_depth])
-        plt.fill_between(r, h, max_depth, color="lightgrey")
+        plt.fill_between(r_km, h_m, max_depth, color="lightgrey")
         plt.gca().invert_yaxis()
         plt.xlabel("Range (km)", fontsize=pfig.label_fontsize)
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
@@ -56,6 +66,7 @@ def bathy_sin_slope(
     dr=None,
     plot=False,
     bathy_path="",
+    called_by_subprocess=False,
 ):
     # Define bathymetry
     fr = 1 / range_periodicity
@@ -72,6 +83,15 @@ def bathy_sin_slope(
     )
 
     # Save bathymetry
+    env_root = os.path.join(TC_WORKING_DIR, testcase_name)
+    if called_by_subprocess:
+        env_dir = get_subprocess_working_dir(env_root=env_root, worker_pid=os.getpid())
+    else:
+        env_dir = env_root
+    pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
+        os.path.join(env_dir, "bathy.csv"), index=False, header=False
+    )
+
     env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
     pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
@@ -100,6 +120,7 @@ def bathy_seamount(
     seamount_width=6,
     plot=False,
     bathy_path="",
+    called_by_subprocess=False,
 ):
     # Define bathymetry
     max_depth = min_depth + seamount_height
@@ -124,7 +145,11 @@ def bathy_seamount(
     h[idx_r_after] = downslope[idx_r_after]
 
     # Save bathymetry
-    env_dir = os.path.join(TC_WORKING_DIR, testcase_name)
+    env_root = os.path.join(TC_WORKING_DIR, testcase_name)
+    if called_by_subprocess:
+        env_dir = get_subprocess_working_dir(env_root=env_root, worker_pid=os.getpid())
+    else:
+        env_dir = env_root
     pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
@@ -140,7 +165,7 @@ def bathy_seamount(
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
         plt.grid()
         plt.tight_layout()
-        pfig.set_all_fontsize()
+        # pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()
 
@@ -152,6 +177,7 @@ def mmdpm_profile(
     max_range_km=50,
     plot=False,
     bathy_path="",
+    called_by_subprocess=False,
 ):
     data_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm"
     fpath = os.path.join(
@@ -179,7 +205,7 @@ def mmdpm_profile(
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
         plt.grid()
         plt.tight_layout()
-        pfig.set_all_fontsize()
+        # pfig.set_all_fontsize()
         plt.savefig(bathy_path)
         plt.close()
 
@@ -187,6 +213,11 @@ def mmdpm_profile(
     r = r[::10]
     h = h[::10]
 
+    env_root = os.path.join(TC_WORKING_DIR, testcase_name)
+    if called_by_subprocess:
+        env_dir = get_subprocess_working_dir(env_root=env_root, worker_pid=os.getpid())
+    else:
+        env_dir = env_root
     pd.DataFrame({"r": np.round(r, 3), "h": np.round(h, 3)}).to_csv(
         os.path.join(env_dir, "bathy.csv"), index=False, header=False
     )
@@ -201,7 +232,7 @@ def mmdpm_profile(
         plt.ylabel("Depth (m)", fontsize=pfig.label_fontsize)
         plt.grid()
         plt.tight_layout()
-        pfig.set_all_fontsize()
+        # pfig.set_all_fontsize()
         plt.savefig(bathy_path.replace(".png", "_subsampled.png"))
         plt.close()
 

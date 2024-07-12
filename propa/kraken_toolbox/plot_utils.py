@@ -6,7 +6,7 @@
 @Author  :   Menetrier Baptiste 
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   None
+@Desc    :   Utility functions to plot kraken outputs
 """
 
 # ======================================================================================================================
@@ -343,7 +343,7 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
 
 
-def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
+def plot_attenuation(ap, ash, z, z_bottom=None, ax=None):
     if ax is None:
         plt.figure(figsize=(10, 8))
         ax = plt.gca()
@@ -354,13 +354,13 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
     else:
         pass
 
-    if np.array(as_).size == 1:
-        as_ = np.ones(z.size) * as_
+    if np.array(ash).size == 1:
+        ash = np.ones(z.size) * ash
     else:
         pass
 
     # No need to plot the C-wave attenuation if it is 0 and as is not 0
-    if np.all(ap == 0) and not np.all(as_ == 0):
+    if np.all(ap == 0) and not np.all(ash == 0):
         ap = np.ones(z.size) * np.nan
         min_ap = np.nan
         max_ap = np.nan
@@ -371,14 +371,14 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
         plot_ap = True
 
     # No need to plot the S-wave attenuation if it is 0 and ap is not 0
-    if np.all(as_ == 0) and not np.all(ap == 0):
-        as_ = np.ones(z.size) * np.nan
+    if np.all(ash == 0) and not np.all(ap == 0):
+        ash = np.ones(z.size) * np.nan
         min_as = np.nan
         max_as = np.nan
         plot_as = False
     else:
-        min_as = np.min(as_)
-        max_as = np.max(as_)
+        min_as = np.min(ash)
+        max_as = np.max(ash)
         plot_as = True
 
     if plot_ap:
@@ -388,7 +388,7 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
 
     if plot_as:
         col2 = "blue"
-        ax.plot(as_, z, color=col2, label="S-wave")
+        ax.plot(ash, z, color=col2, label="S-wave")
 
     # Color domains with water and sediment
     min_x = np.nanmin([min_ap, min_as])

@@ -25,7 +25,11 @@ from localisation.verlinden.testcases.testcase_bathy import (
     mmdpm_profile,
     extract_2D_bathy_profile,
 )
-from localisation.verlinden.params import TC_WORKING_DIR, PROJECT_ROOT, BATHY_FILENAME
+from localisation.verlinden.misc.params import (
+    TC_WORKING_DIR,
+    PROJECT_ROOT,
+    BATHY_FILENAME,
+)
 
 ##########################################################################################
 # Useful constants
@@ -133,7 +137,7 @@ class TestCase:
         # Flag for range-dependence and isotropic/anisotropic
         self.range_dependence = False
         self.isotropic = True
-
+        self.run_parallel = True
         self.called_by_subprocess = False
 
         # Default values
@@ -205,6 +209,11 @@ class TestCase:
             plot_bool = True
         for key_plot in ["bathy", "medium", "bottom", "env"]:
             setattr(self, f"plot_{key_plot}", plot_bool)
+
+        if self.isotropic and not self.range_dependence:
+            self.run_parallel = True
+        else:
+            self.run_parallel = False
 
     def plot_testcase_env(self):
         plot_env_properties(
@@ -284,6 +293,7 @@ class TestCase:
             max_range=self.max_range_m * 1e-3,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
     def get_bathy_path(self):
@@ -413,7 +423,7 @@ class TestCase1_1(TestCase1):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
         }
@@ -437,6 +447,7 @@ class TestCase1_1(TestCase1):
             range_periodicity=6,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
 
@@ -455,7 +466,7 @@ class TestCase1_2(TestCase1):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
         }
@@ -478,6 +489,7 @@ class TestCase1_2(TestCase1):
             seamount_width=6,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
 
@@ -496,7 +508,7 @@ class TestCase1_3(TestCase1):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
         }
@@ -517,6 +529,7 @@ class TestCase1_3(TestCase1):
             max_range_km=self.max_range_m * 1e-3,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
 
@@ -534,7 +547,7 @@ class TestCase1_4(TestCase1):
         tc_default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
         }
@@ -555,6 +568,7 @@ class TestCase1_4(TestCase1):
             max_range_km=self.max_range_m * 1e-3,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
     def load_ssp(self):
@@ -598,7 +612,7 @@ class TestCase2_0(TestCase2):
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
         }
@@ -627,7 +641,7 @@ class TestCase2_1(TestCase2):
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "azimuth": 0,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
         }
@@ -650,6 +664,7 @@ class TestCase2_1(TestCase2):
             dr=self.dr_bathy,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
 
@@ -670,7 +685,7 @@ class TestCase2_2(TestCase2):
             "azimuth": 0,
             "rcv_lon": -4.87,
             "rcv_lat": 52.22,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
         }
@@ -683,10 +698,10 @@ class TestCase2_2(TestCase2):
         self.process()
 
     def write_bathy(self):
-        fname = "GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
         bathy_nc_path = os.path.join(
-            PROJECT_ROOT, "data", "bathy", "shallow_water", fname
+            PROJECT_ROOT, "data", "bathy", "mmdpm", "PVA_RR48", BATHY_FILENAME
         )
+
         # Load real profile around OBS RR48
         extract_2D_bathy_profile(
             bathy_nc_path=bathy_nc_path,
@@ -698,6 +713,7 @@ class TestCase2_2(TestCase2):
             range_resolution=self.dr_bathy,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
     def load_ssp(self):
@@ -798,114 +814,23 @@ if __name__ == "__main__":
 
     # Test class
     # tc1_0 = TestCase1_0(mode="show")
-    # # tc1_1 = TestCase1_1(mode="show")
-    # # tc1_2 = TestCase1_2(mode="show")
-    # # tc1_3 = TestCase1_3(mode="show")
-    # # tc1_4 = TestCase1_4(mode="show")
-    # # tc2_0 = TestCase2_0(mode="show")
+    # tc1_1 = TestCase1_1(mode="show")
+    # tc1_2 = TestCase1_2(mode="show")
+    # tc1_3 = TestCase1_3(mode="show")
+    tc1_4 = TestCase1_4(mode="show")
+    # tc2_0 = TestCase2_0(mode="show")
 
     # tc_varin = {
-    #     "freq": [20, 30, 40],
+    #     "freq": [20],
     #     "max_range_m": 15 * 1e3,
     #     "azimuth": 0,
+    #     "rcv_lon": 65.943,
+    #     "rcv_lat": -27.5792,
+    #     "mode_theory": "coupled",
     # }
     # tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
-
-    # for az in range(0, 360, 30):
-    #     tc_varin["azimuth"] = az
-    #     tc2_1.update(tc_varin)
-
-    # tc_varin = {
-    #     "freq": [20],
-    #     "max_range_m": 15 * 1e3,
-    #     "azimuth": 0,
-    # }
     # tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
-
-    # for az in range(0, 360, 30):
-    #     tc_varin["azimuth"] = az
-    #     tc2_2.update(tc_varin)
-
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-        "rcv_lon": 65.943,
-        "rcv_lat": -27.5792,
-        "mode_theory": "coupled",
-    }
-    tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
-
-    # for az in range(0, 360, 30):
-    #     tc_varin["azimuth"] = az
-    #     tc3_1.update(tc_varin)
-
-    # # Test case 1.0
-    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    # env, flp = testcase1_0(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 1.1
-    # tc_varin = {"freq": [20], "min_depth": 150}
-    # env, flp = testcase1_1(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 1.2
-    # tc_varin = {"freq": [20], "min_depth": 100}
-    # env, flp = testcase1_2(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 1.3
-    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    # env, flp = testcase1_3(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 1.4
-    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    # env, flp = testcase1_4(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 2.0
-    # tc_varin = {
-    #     "freq": [20],
-    #     "max_range_m": 15 * 1e3,
-    # }
-    # for az in range(0, 360, 30):
-    #     tc_varin["azimuth"] = az
-    #     env, flp = testcase2_0(
-    #         tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    #     )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 2.1
-    # tc_varin = {
-    #     "freq": [20],
-    #     "max_range_m": 15 * 1e3,
-    #     "azimuth": 0,
-    # }
-    # for az in range(0, 360, 30):
-    #     tc_varin["azimuth"] = az
-    #     env, flp = testcase2_1(
-    #         tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    #     )
-    # env.write_env()
-    # flp.write_flp()
+    # tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
 
     # # Test case 2.2
     # tc_varin = {

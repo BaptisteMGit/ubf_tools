@@ -21,7 +21,7 @@ from misc import mult_along_axis
 from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1, TestCase1_0
-from localisation.verlinden.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 
 
 def build_pressure_field(nf):

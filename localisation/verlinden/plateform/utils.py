@@ -693,9 +693,9 @@ def add_correlation_library_subset(xr_dataset):
 
     """
 
-    # Faster FFT approach
+    # FFT approach
     ax = 2
-    nlag = xr_dataset.sizes["library_corr_lags"]
+    # nlag = xr_dataset.sizes["library_corr_lags"]
 
     for i_pair in xr_dataset.idx_rcv_pairs.values:
         rcv_pair = xr_dataset.rcv_pairs.sel(idx_rcv_pairs=i_pair)
@@ -706,16 +706,54 @@ def add_correlation_library_subset(xr_dataset):
             np.float64
         )
 
-        # new implementatin
-        r_12 = signal.fftconvolve(in1, in2[..., ::-1], mode="full", axes=-1)
-        r_11 = signal.fftconvolve(in1, in1[..., ::-1], mode="full", axes=-1)
-        r_22 = signal.fftconvolve(in2, in2[..., ::-1], mode="full", axes=-1)
+        # Normalized cross-correlation
+        c_12 = signal.fftconvolve(in1, in2[..., ::-1], mode="full", axes=-1)
+        # c_11 = signal.fftconvolve(in1, in1[..., ::-1], mode="full", axes=-1)
+        # c_22 = signal.fftconvolve(in2, in2[..., ::-1], mode="full", axes=-1)
 
-        n0 = r_12.shape[-1] // 2
-        norm = np.sqrt(r_11[..., n0] * r_22[..., n0])
-        norm = np.repeat(np.expand_dims(norm, axis=-1), nlag, axis=-1)
-        c_12 = r_12 / norm
-        xr_dataset.library_corr[dict(idx_rcv_pairs=i_pair)] = c_12.astype(np.float32)
+        # n0 = c_12.shape[-1] // 2
+        # norm = np.sqrt(c_11[..., n0] * c_22[..., n0])
+        # norm = np.repeat(np.expand_dims(norm, axis=-1), nlag, axis=-1)
+
+        e1 = np.sum(np.abs(in1) ** 2, axis=ax)
+        e2 = np.sum(np.abs(in2) ** 2, axis=ax)
+        norm = np.repeat(
+            np.expand_dims(np.sqrt(e1 * e2), axis=ax), c_12.shape[ax], axis=ax
+        )
+
+        c_12_norm = c_12 / norm
+        xr_dataset.library_corr[dict(idx_rcv_pairs=i_pair)] = c_12_norm.astype(
+            np.float32
+        )
+
+        # Coherence -> useless because for paralell linear systems -> coherence = 1
+        # nfft = sp_fft.next_fast_len(nlag, True)
+        # S_12 = sp_fft.rfft(in1, axis=ax, n=nfft) * np.conj(
+        #     sp_fft.rfft(in2, axis=ax, n=nfft)
+        # )
+
+        # S_11 = sp_fft.rfft(in1, axis=ax, n=nfft) * np.conj(
+        #     sp_fft.rfft(in1, axis=ax, n=nfft)
+        # )
+        # S_22 = sp_fft.rfft(in2, axis=ax, n=nfft) * np.conj(
+        #     sp_fft.rfft(in2, axis=ax, n=nfft)
+        # )
+        # E1 = np.sum(np.abs(in1) ** 2, axis=ax)
+        # E2 = np.sum(np.abs(in2) ** 2, axis=ax)
+        # norm = np.repeat(
+        #     np.expand_dims(np.sqrt(E1 * E2), axis=-1), nfft // 2 + 1, axis=-1
+        # )
+        # c_12_f = np.abs(S_12) / norm
+        # c_12_p = sp_fft.irfft(c_12_f, axis=ax, n=nlag)
+
+        ## Take real part because of numerical errors leading to complex values
+        # S_11 = np.real(S_11)
+        # S_22 = np.real(S_22)
+        # gamma_12 = np.abs(S_12) ** 2 / (S_11 * S_22) # -> = 1
+
+        # c_12_p = sp_fft.irfft(S_12, axis=ax)
+        # nmid = c_12_p.shape[-1] // 2 + 1
+        # c_12_p = np.concatenate((c_12_p[..., nmid:], c_12_p[..., :nmid]), axis=ax)
 
         # Compute cross-correlation
         # nfft = sp_fft.next_fast_len(nlag, True)

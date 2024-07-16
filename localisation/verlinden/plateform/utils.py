@@ -718,35 +718,6 @@ def add_correlation_library_subset(xr_dataset):
             np.float32
         )
 
-        # Coherence -> useless because for paralell linear systems -> coherence = 1
-        # nfft = sp_fft.next_fast_len(nlag, True)
-        # S_12 = sp_fft.rfft(in1, axis=ax, n=nfft) * np.conj(
-        #     sp_fft.rfft(in2, axis=ax, n=nfft)
-        # )
-
-        # S_11 = sp_fft.rfft(in1, axis=ax, n=nfft) * np.conj(
-        #     sp_fft.rfft(in1, axis=ax, n=nfft)
-        # )
-        # S_22 = sp_fft.rfft(in2, axis=ax, n=nfft) * np.conj(
-        #     sp_fft.rfft(in2, axis=ax, n=nfft)
-        # )
-        # E1 = np.sum(np.abs(in1) ** 2, axis=ax)
-        # E2 = np.sum(np.abs(in2) ** 2, axis=ax)
-        # norm = np.repeat(
-        #     np.expand_dims(np.sqrt(E1 * E2), axis=-1), nfft // 2 + 1, axis=-1
-        # )
-        # c_12_f = np.abs(S_12) / norm
-        # c_12_p = sp_fft.irfft(c_12_f, axis=ax, n=nlag)
-
-        ## Take real part because of numerical errors leading to complex values
-        # S_11 = np.real(S_11)
-        # S_22 = np.real(S_22)
-        # gamma_12 = np.abs(S_12) ** 2 / (S_11 * S_22) # -> = 1
-
-        # c_12_p = sp_fft.irfft(S_12, axis=ax)
-        # nmid = c_12_p.shape[-1] // 2 + 1
-        # c_12_p = np.concatenate((c_12_p[..., nmid:], c_12_p[..., :nmid]), axis=ax)
-
     return xr_dataset
 
 

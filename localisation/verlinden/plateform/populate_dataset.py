@@ -123,7 +123,6 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     nregion_lat = get_region_number(
         ds.sizes["lat"], ds.tf_gridded, max_size_bytes=1 * 1e9
     )
-<<<<<<< HEAD
 
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
 
@@ -132,13 +131,6 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     # lat_chunksize = int(ds.sizes["lat"] // nregion)
     # lon_chunksize = int(ds.sizes["lon"] / nregion)
-=======
-    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
-
-    lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
-    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
-
->>>>>>> eda668f688f44e47a4af5a1c100dd94790eb5120
     # lon_chunksize = ds.sizes['lon']
     idx_rcv_chunksize, freq_chunksize = ds.sizes["idx_rcv"], ds.sizes["kraken_freq"]
 

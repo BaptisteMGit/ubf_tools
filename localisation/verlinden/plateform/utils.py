@@ -747,6 +747,8 @@ def add_correlation_library_subset(xr_dataset):
         # nmid = c_12_p.shape[-1] // 2 + 1
         # c_12_p = np.concatenate((c_12_p[..., nmid:], c_12_p[..., :nmid]), axis=ax)
 
+    return xr_dataset
+
 
 def add_correlation_event(xr_dataset, idx_snr, verbose=True):
     """

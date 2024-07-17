@@ -191,15 +191,10 @@ def grid_synthesis(
     src,
     apply_delay=True,
 ):
-    # with Client(n_workers=N_WORKERS, threads_per_worker=1) as client:
-    #     print(client.dashboard_link)
 
     # Set path to save the dataset and save existing vars
     ds.attrs["src_label"] = build_src_label(src_name=src.name)
     set_propa_grid_src_path(ds)
-    # ds.attrs["fullpath_dataset_propa_grid_src"] = (
-    #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\testzarr"
-    # )
     ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
 
     propagating_freq = src.positive_freq
@@ -237,7 +232,7 @@ def grid_synthesis(
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
 
     lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
-    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
+    lon_chunksize = int(ds.sizes["lon"] // nregion_lon)
     idx_rcv_chunksize, time_chunksize = (
         ds.sizes["idx_rcv"],
         ds.sizes["library_signal_time"],

@@ -147,17 +147,21 @@ def load_subset(fpath, pos_src_info, grid_info, dt, rcv_id, verbose=True):
         lat=slice(grid_info["min_lat"], grid_info["max_lat"]),
     )
 
-    # Keep desired receivers 
-    desired_idx = [idx for idx in ds_subset.idx_rcv.values if ds_subset.rcv_id.isel(idx_rcv=idx) in rcv_id]
+    # Keep desired receivers
+    desired_idx = [
+        idx
+        for idx in ds_subset.idx_rcv.values
+        if ds_subset.rcv_id.isel(idx_rcv=idx) in rcv_id
+    ]
     ds_subset = ds_subset.sel(idx_rcv=desired_idx)
 
-    # RGet rid of useless pairs 
+    # Get rid of useless pairs
     idx_rcv_pairs_to_keep = []
     for id_p in ds_subset.idx_rcv_pairs:
         p = ds_subset.rcv_pairs.isel(idx_rcv_pairs=id_p)
         id_in_p_0 = p.isel(idx_rcv_in_pair=0).values
         id_in_p_1 = p.isel(idx_rcv_in_pair=1).values
-        if id_in_p_0 in ds_subset.idx_rcv and id_in_p_1 in ds_subset.idx_rcv: 
+        if id_in_p_0 in ds_subset.idx_rcv and id_in_p_1 in ds_subset.idx_rcv:
             idx_rcv_pairs_to_keep.append(id_p.values)
 
     ds_subset = ds_subset.isel(idx_rcv_pairs=idx_rcv_pairs_to_keep)
@@ -178,7 +182,11 @@ def init_dataset(
 ):
     # Load subset of the main dataset
     ds = load_subset(
-        main_ds_path, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt, rcv_id=rcv_info["id"]
+        main_ds_path,
+        pos_src_info=src_info["pos"],
+        grid_info=grid_info,
+        dt=dt,
+        rcv_id=rcv_info["id"],
     )
 
     if verbose:
@@ -211,7 +219,7 @@ def init_dataset(
     )
 
     # Chunk rcv_signal_library according to lon/lat regions
-    max_size = 1 * 1e9
+    max_size = 0.4 * 1e9
     var = ds.rcv_signal_library
     nregion_lon = get_region_number(
         nregion_max=ds.sizes["lon"],
@@ -229,7 +237,7 @@ def init_dataset(
 
     chunksize = dict(ds.rcv_signal_library.chunksizes)
     lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
-    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
+    lon_chunksize = int(ds.sizes["lon"] // nregion_lon)
     chunksize = {
         "snr": ds.sizes["snr"],
         "idx_rcv": ds.sizes["idx_rcv"],
@@ -293,12 +301,6 @@ def process(
             np.nan
         )
 
-    # from time import time
-    # t0 = time()
-    # n_workers = 8
-    # with Client(n_workers=n_workers, threads_per_worker=1) as client:
-    #     print(client.dashboard_link)
-
     # Add event to the dataset
     ds = add_event(ds, src_info, rcv_info, apply_delay=True, verbose=verbose)
 
@@ -308,8 +310,6 @@ def process(
 
     # Save to zarr without computing
     ds_no_noise.to_zarr(ds_no_noise.output_path, mode="a", compute=False)
-    # no_noise_lib = np.copy(ds_no_noise.rcv_signal_library.isel(snr=0).values)
-    # no_noise_event = np.copy(ds_no_noise.rcv_signal_event.isel(snr=0).values)
 
     no_noise_lib = ds_no_noise.rcv_signal_library.isel(snr=0).data
     no_noise_event = ds_no_noise.rcv_signal_event.isel(snr=0).data
@@ -356,8 +356,6 @@ def process(
 
     # Reload full dataset
     ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
-
-    # print(f"Process duration: {time()-t0} s")
 
     return ds
 

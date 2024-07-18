@@ -64,9 +64,10 @@ def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
     k0 = 2 * np.pi * propagating_freq / C0
     norm_factor = np.exp(1j * k0) / (4 * np.pi)
 
-    nfft_inv = (
-        4 * src.nfft
-    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    # nfft_inv = (
+    #     4 * src.nfft
+    # )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    nfft_inv = src.nfft
     T_tot = 1 / src.df
     dt = T_tot / nfft_inv
     time_vector = np.arange(0, T_tot, dt, dtype=np.float32)

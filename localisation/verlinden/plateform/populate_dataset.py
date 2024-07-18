@@ -34,6 +34,7 @@ from localisation.verlinden.plateform.params import N_WORKERS
 
 def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
+    print("Grid transfer functions.....")
     # Check if we need to update the grid
     update_grid = not ((ds.dx == dx) & (ds.dy == dy))
     if update_grid:
@@ -127,11 +128,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
 
     lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
-    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
-
-    # lat_chunksize = int(ds.sizes["lat"] // nregion)
-    # lon_chunksize = int(ds.sizes["lon"] / nregion)
-    # lon_chunksize = ds.sizes['lon']
+    lon_chunksize = int(ds.sizes["lon"] // nregion_lon)
     idx_rcv_chunksize, freq_chunksize = ds.sizes["idx_rcv"], ds.sizes["kraken_freq"]
 
     chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, freq_chunksize)
@@ -183,6 +180,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     ds = ds.drop_vars("tf")
 
+    print("..................Done")
     return ds
 
 
@@ -191,6 +189,8 @@ def grid_synthesis(
     src,
     apply_delay=True,
 ):
+
+    print("Grid synthesis.....")
 
     # Set path to save the dataset and save existing vars
     ds.attrs["src_label"] = build_src_label(src_name=src.name)
@@ -203,9 +203,10 @@ def grid_synthesis(
     k0 = 2 * np.pi * propagating_freq / C0
     norm_factor = np.exp(1j * k0) / (4 * np.pi)
 
-    nfft_inv = (
-        4 * src.nfft
-    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    # nfft_inv = (
+    #     4 * src.nfft
+    # )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    nfft_inv = src.nfft
     T_tot = 1 / src.df
     dt = T_tot / nfft_inv
     time_vector = np.arange(0, T_tot, dt)
@@ -286,6 +287,8 @@ def grid_synthesis(
     zarr_store = zarr.open(ds.fullpath_dataset_propa_grid_src)
     zarr_store.attrs.update({"propa_grid_src_done": True})
     zarr.consolidate_metadata(ds.fullpath_dataset_propa_grid_src)
+
+    print("..................Done")
 
     return ds
 

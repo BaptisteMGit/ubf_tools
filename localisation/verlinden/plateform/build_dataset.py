@@ -45,6 +45,7 @@ def build_dataset(
     -------
     xr.Dataset
     """
+    print("Building dataset.....")
 
     # Create zarr
     ds = init_dataset(
@@ -196,8 +197,7 @@ def build_dataset(
     zarr_store.attrs.update({"propa_done": True})
     zarr.consolidate_metadata(ds.fullpath_dataset_propa)
 
-    # Update info in dataset
-    # update_info_status(ds, part_done="propa")
+    print("..................Done")
 
     return ds.fullpath_dataset_propa
 

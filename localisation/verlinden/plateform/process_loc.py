@@ -24,12 +24,12 @@ from dask.distributed import Client
 from localisation.verlinden.plateform.utils import (
     init_event_dataset,
     init_ambiguity_surface,
-    init_corr_library,
-    init_corr_event,
+    init_feature_library,
+    init_feature_event,
     add_noise_to_library,
-    add_correlation_library,
+    add_feature_library,
     add_noise_to_event,
-    add_correlation_event,
+    add_feature_event,
     build_process_output_path,
     add_ambiguity_surf,
     get_region_number,
@@ -50,7 +50,7 @@ from localisation.verlinden.plateform.analysis_loc import analysis
 # ======================================================================================================================
 
 
-def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
+def add_event(ds, src_info, rcv_info, apply_delay, feature, verbose=True):
 
     if verbose:
         print(f"Add event received signal to dataset: \n\t{src_info}")
@@ -64,9 +64,10 @@ def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
     k0 = 2 * np.pi * propagating_freq / C0
     norm_factor = np.exp(1j * k0) / (4 * np.pi)
 
-    nfft_inv = (
-        4 * src.nfft
-    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    # nfft_inv = (
+    #     4 * src.nfft
+    # )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    nfft_inv = src.nfft
     T_tot = 1 / src.df
     dt = T_tot / nfft_inv
     time_vector = np.arange(0, T_tot, dt, dtype=np.float32)
@@ -111,15 +112,17 @@ def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
         transmitted_sig_t = np.fft.irfft(transmitted_sig_f, n=nfft_inv, axis=-1)
         ds.rcv_signal_event[dict(src_trajectory_time=i_pos)] = transmitted_sig_t
 
-    # Init corr for event signal
-    ds = init_corr_event(ds)
+    # Init feature for event signal
+    ds = init_feature_event(ds, feature)
 
     # Expand rcv_signal_library to snr dims
     ds["rcv_signal_event"] = ds["rcv_signal_event"].expand_dims(
         {"snr": ds.sizes["snr"]}, axis=0
     )
 
-    ds["event_corr"] = ds["event_corr"].expand_dims({"snr": ds.sizes["snr"]}, axis=0)
+    ds["event_feature"] = ds["event_feature"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
 
     return ds
 
@@ -147,17 +150,21 @@ def load_subset(fpath, pos_src_info, grid_info, dt, rcv_id, verbose=True):
         lat=slice(grid_info["min_lat"], grid_info["max_lat"]),
     )
 
-    # Keep desired receivers 
-    desired_idx = [idx for idx in ds_subset.idx_rcv.values if ds_subset.rcv_id.isel(idx_rcv=idx) in rcv_id]
+    # Keep desired receivers
+    desired_idx = [
+        idx
+        for idx in ds_subset.idx_rcv.values
+        if ds_subset.rcv_id.isel(idx_rcv=idx) in rcv_id
+    ]
     ds_subset = ds_subset.sel(idx_rcv=desired_idx)
 
-    # RGet rid of useless pairs 
+    # Get rid of useless pairs
     idx_rcv_pairs_to_keep = []
     for id_p in ds_subset.idx_rcv_pairs:
         p = ds_subset.rcv_pairs.isel(idx_rcv_pairs=id_p)
         id_in_p_0 = p.isel(idx_rcv_in_pair=0).values
         id_in_p_1 = p.isel(idx_rcv_in_pair=1).values
-        if id_in_p_0 in ds_subset.idx_rcv and id_in_p_1 in ds_subset.idx_rcv: 
+        if id_in_p_0 in ds_subset.idx_rcv and id_in_p_1 in ds_subset.idx_rcv:
             idx_rcv_pairs_to_keep.append(id_p.values)
 
     ds_subset = ds_subset.isel(idx_rcv_pairs=idx_rcv_pairs_to_keep)
@@ -174,11 +181,16 @@ def init_dataset(
     similarity_metrics,
     snrs_dB,
     n_noise_realisations=100,
+    feature="corr",
     verbose=True,
 ):
     # Load subset of the main dataset
     ds = load_subset(
-        main_ds_path, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt, rcv_id=rcv_info["id"]
+        main_ds_path,
+        pos_src_info=src_info["pos"],
+        grid_info=grid_info,
+        dt=dt,
+        rcv_id=rcv_info["id"],
     )
 
     if verbose:
@@ -211,7 +223,7 @@ def init_dataset(
     )
 
     # Chunk rcv_signal_library according to lon/lat regions
-    max_size = 1 * 1e9
+    max_size = 0.4 * 1e9
     var = ds.rcv_signal_library
     nregion_lon = get_region_number(
         nregion_max=ds.sizes["lon"],
@@ -229,7 +241,7 @@ def init_dataset(
 
     chunksize = dict(ds.rcv_signal_library.chunksizes)
     lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
-    lon_chunksize = int(ds.sizes["lon"] / nregion_lon)
+    lon_chunksize = int(ds.sizes["lon"] // nregion_lon)
     chunksize = {
         "snr": ds.sizes["snr"],
         "idx_rcv": ds.sizes["idx_rcv"],
@@ -250,9 +262,9 @@ def init_dataset(
     ds.to_zarr(ds.output_path, mode="w", compute=True)
 
     # Init corr for library signal
-    ds = init_corr_library(ds)
-    # Expand library_corr to snr dims
-    ds["library_corr"] = ds["library_corr"].expand_dims(
+    ds = init_feature_library(ds, feature=feature)
+    # Expand library_feature to snr dims
+    ds["library_feature"] = ds["library_feature"].expand_dims(
         {"snr": ds.sizes["snr"]}, axis=0
     )
 
@@ -272,6 +284,7 @@ def process(
 ):
 
     # Load subset and init usefull vars
+    feature = "rtf"
     ds = init_dataset(
         main_ds_path=main_ds_path,
         src_info=src_info,
@@ -281,6 +294,7 @@ def process(
         similarity_metrics=similarity_metrics,
         snrs_dB=snrs_dB,
         n_noise_realisations=n_noise_realisations,
+        feature=feature,
         verbose=True,
     )
 
@@ -293,14 +307,10 @@ def process(
             np.nan
         )
 
-    # from time import time
-    # t0 = time()
-    # n_workers = 8
-    # with Client(n_workers=n_workers, threads_per_worker=1) as client:
-    #     print(client.dashboard_link)
-
     # Add event to the dataset
-    ds = add_event(ds, src_info, rcv_info, apply_delay=True, verbose=verbose)
+    ds = add_event(
+        ds, src_info, rcv_info, apply_delay=True, feature=feature, verbose=verbose
+    )
 
     # Init ambiguity surface
     ds = init_ambiguity_surface(ds)
@@ -308,8 +318,6 @@ def process(
 
     # Save to zarr without computing
     ds_no_noise.to_zarr(ds_no_noise.output_path, mode="a", compute=False)
-    # no_noise_lib = np.copy(ds_no_noise.rcv_signal_library.isel(snr=0).values)
-    # no_noise_event = np.copy(ds_no_noise.rcv_signal_event.isel(snr=0).values)
 
     no_noise_lib = ds_no_noise.rcv_signal_library.isel(snr=0).data
     no_noise_event = ds_no_noise.rcv_signal_event.isel(snr=0).data
@@ -328,8 +336,8 @@ def process(
             no_noise_lib.copy()
         )  # Reset to the original signal
         ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose)
-        # Derive correlation vector for the entire grid
-        ds = add_correlation_library(ds, idx_snr=idx_snr, verbose=verbose)
+        # Derive feature vector for the entire grid
+        ds = add_feature_library(ds, idx_snr=idx_snr, feature=feature, verbose=verbose)
 
         # Loop over different realisation of noise for a given SNR
         for i in range(n_noise_realisations):
@@ -341,8 +349,10 @@ def process(
             ds = add_noise_to_event(
                 ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose
             )
-            # Derive cross-correlation vector for each source position
-            ds = add_correlation_event(ds, idx_snr=idx_snr, verbose=verbose)
+            # Derive feature vector for each source position
+            ds = add_feature_event(
+                ds, idx_snr=idx_snr, feature=feature, verbose=verbose
+            )
 
             for i_sim_metric in range(len(similarity_metrics)):
                 # Compute ambiguity surface
@@ -356,8 +366,6 @@ def process(
 
     # Reload full dataset
     ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
-
-    # print(f"Process duration: {time()-t0} s")
 
     return ds
 

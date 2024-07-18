@@ -280,15 +280,23 @@ def plot_received_signal(xr_dataset, img_root, n_instant_to_plot=None):
 def get_ambiguity_surface(ds):
     # Avoid singularity for S = 0
     amb_surf_not_0 = ds.ambiguity_surface.values[ds.ambiguity_surface > 0]
-    ds.ambiguity_surface.values[ds.ambiguity_surface == 0] = amb_surf_not_0.min()
+    min_val = min(amb_surf_not_0.min(), 1e-6)
+    ds["ambiguity_surface"] = xr.where(
+        ds["ambiguity_surface"] == 0, min_val, ds["ambiguity_surface"]
+    )
+
     amb_surf = 10 * np.log10(ds.ambiguity_surface)  # dB scale
 
     amb_surf_combined_not_0 = ds.ambiguity_surface_combined.values[
         ds.ambiguity_surface_combined > 0
     ]
-    ds.ambiguity_surface_combined.values[ds.ambiguity_surface_combined == 0] = (
-        amb_surf_combined_not_0.min()
+    min_val = min(amb_surf_combined_not_0.min(), 1e-6)
+    ds["ambiguity_surface_combined"] = xr.where(
+        ds["ambiguity_surface_combined"] == 0,
+        min_val,
+        ds["ambiguity_surface_combined"],
     )
+
     amb_surf_combined = 10 * np.log10(ds.ambiguity_surface_combined)  # dB scale
 
     return amb_surf, amb_surf_combined
@@ -305,7 +313,7 @@ def init_plot_folders(img_root, var_to_plot, similarity_metric):
 def plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot=1):
     """Plot ambiguity surface distribution."""
     # Init folers
-    img_folder = init_plot_folders(img_root, "amb_s_dist", ds.similarity_metric.values)
+    img_folder = init_plot_folders(img_root, "amb_s_dist", ds.similarity_metrics.values)
 
     amb_surf, __ = get_ambiguity_surface(ds)
 
@@ -798,7 +806,9 @@ def plot_ship_trajectory(
     img_folder = init_plot_folders(img_root, "s_traj", ds.similarity_metrics.values)
 
     # List of colors for each rcv pairs
-    rcv_pair_colors = ["blue", "magenta", "green", "red", "cyan", "purle", "orange", "lime"], 
+    rcv_pair_colors = (
+        ["blue", "magenta", "green", "red", "cyan", "purle", "orange", "lime"],
+    )
 
     """ Plot single detection for a single noise realisation """
     for i_noise in range(noise_realisation_to_plot):
@@ -937,7 +947,7 @@ def plot_ship_trajectory(
                 ds.rcv_id.sel(idx_rcv=i_rcv).values,
                 fontsize=30,
                 color=RCV_COLORS[ic],
-            )   
+            )
             ic += 1
 
         det_pos_lon = ds.detected_pos_lon.isel(
@@ -1002,7 +1012,7 @@ def plot_ship_trajectory(
                 ]
             )
             zoom_label = ""
-        
+
         ic_p += 1
 
         plt.xlabel("Longitude [°]")
@@ -1057,11 +1067,11 @@ def plot_ship_trajectory(
     for i_rcv_pair in ds.idx_rcv_pairs.values:
         pair_id = str(ds.rcv_pair_id.sel(idx_rcv_pairs=i_rcv_pair).values)
 
-        det_pos_lon = ds.detected_pos_lon.sel(
-            idx_rcv_pairs=i_rcv_pair).isel(src_trajectory_time=0
+        det_pos_lon = ds.detected_pos_lon.sel(idx_rcv_pairs=i_rcv_pair).isel(
+            src_trajectory_time=0
         )
-        det_pos_lat = ds.detected_pos_lat.sel(
-            idx_rcv_pairs=i_rcv_pair).isel(src_trajectory_time=0
+        det_pos_lat = ds.detected_pos_lat.sel(idx_rcv_pairs=i_rcv_pair).isel(
+            src_trajectory_time=0
         )
         if mode == "analysis":
             plt.scatter(
@@ -1322,7 +1332,7 @@ def plot_pos_error(ds, img_root):
     plt.close()
 
 
-def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1):
+def plot_feature(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1):
     """Plot correlation for receiver couple."""
     # Init folders
     img_folder = init_plot_folders(img_root, "corr", ds.similarity_metrics.values)
@@ -1347,10 +1357,10 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
             )  # Ensure 2D axes array in case of single obs pair
 
         for i_rcv_pair in range(ds.sizes["idx_rcv_pairs"]):
-            event_vect = ds.event_corr.isel(
+            event_vect = ds.event_feature.isel(
                 src_trajectory_time=i_ship, idx_rcv_pairs=i_rcv_pair
             )
-            lib_vect = ds.library_corr.sel(
+            lib_vect = ds.library_feature.sel(
                 lon=ds.lon_src.isel(src_trajectory_time=i_ship),
                 lat=ds.lat_src.isel(src_trajectory_time=i_ship),
                 method="nearest",
@@ -1370,6 +1380,11 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
             else:
                 event_zorder = 1
                 lib_zorder = 2
+
+            if event_vect.dtype == np.complex128:
+                event_vect = np.abs(event_vect)
+            if lib_vect.dtype == np.complex128:
+                lib_vect = np.abs(lib_vect)
 
             event_vect.plot(
                 ax=axes[i_rcv_pair],
@@ -1391,11 +1406,13 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
         for ax, lab in zip(axes, ds.rcv_pair_id.values):
             ax.set_title(lab, loc="right")
 
-        fig.supxlabel(r"$\tau$ [s]")
+        # fig.supxlabel(r"$\tau$ [s]")
+        x_label = rf"{ds['library_feature_idx'].attrs['long_name']} [{ds['library_feature_idx'].attrs['units']}]"
+        fig.supxlabel(x_label)
         fig.supylabel(ylabel)
 
         # plt.tight_layout()
-        img_fpath = os.path.join(img_folder, f"signal_corr_pos{i_ship}.png")
+        img_fpath = os.path.join(img_folder, f"signal_feature_pos{i_ship}.png")
         plt.savefig(img_fpath)
         plt.close()
 
@@ -1409,7 +1426,7 @@ def check_folder_creation(plot_info):
         or plot_info["plot_video"]
         or plot_info["plot_ship_trajectory"]
         or plot_info["plot_pos_error"]
-        or plot_info["plot_correlation"]
+        or plot_info["plot_feature"]
     )
 
 
@@ -1673,9 +1690,9 @@ def analysis(
             if plot_info["plot_pos_error"]:
                 plot_pos_error(ds_snr_sim, img_root=img_root)
 
-            # Plot correlation
-            if plot_info["plot_correlation"]:
-                plot_correlation(
+            # Plot feature
+            if plot_info["plot_feature"]:
+                plot_feature(
                     ds_snr_sim,
                     img_root,
                     similarity_metric,
@@ -1861,7 +1878,7 @@ if __name__ == "__main__":
         "plot_ambiguity_surface": True,
         "plot_ship_trajectory": True,
         "plot_pos_error": False,
-        "plot_correlation": True,
+        "plot_feature": True,
         "tl_freq_to_plot": [20],
         "lon_offset": 0.001,
         "lat_offset": 0.001,

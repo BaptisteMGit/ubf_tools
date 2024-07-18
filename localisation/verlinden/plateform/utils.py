@@ -539,47 +539,60 @@ def init_ambiguity_surface(xr_dataset):
     return xr_dataset
 
 
-def init_corr(xr_dataset):
-    xr_dataset = init_corr_library(xr_dataset)
-    xr_dataset = init_corr_event(xr_dataset)
+def init_feature(xr_dataset, feature="corr"):
+    xr_dataset = init_feature_library(xr_dataset, feature)
+    xr_dataset = init_feature_event(xr_dataset, feature)
     return xr_dataset
 
 
-def init_corr_library(xr_dataset):
-    xr_dataset = init_target_corr(xr_dataset, target="library")
+def init_feature_library(xr_dataset, feature="corr"):
+    xr_dataset = init_target_feature(xr_dataset, target="library", feature=feature)
     return xr_dataset
 
 
-def init_corr_event(xr_dataset):
-    xr_dataset = init_target_corr(xr_dataset, target="event")
+def init_feature_event(xr_dataset, feature="corr"):
+    xr_dataset = init_target_feature(xr_dataset, target="event", feature=feature)
     return xr_dataset
 
 
-def init_target_corr(xr_dataset, target):
+def init_target_feature(xr_dataset, target, feature="corr"):
     if target == "library":
         target_time = "library_signal_time"
-        corr_lags = "library_corr_lags"
-        corr_dim = ["idx_rcv_pairs", "lat", "lon", "library_corr_lags"]
-        corr_label = "library_corr"
-        corr_long_name = r"$R_{ij}^{l}(\tau)$"
+        feature_idx = "library_feature_idx"
+        feature_dim = ["idx_rcv_pairs", "lat", "lon", "library_feature_idx"]
+        feature_label = "library_feature"
+        feature_long_name = r"$R_{ij}^{l}(\tau)$"
 
     elif target == "event":
         target_time = "event_signal_time"
-        corr_lags = "event_corr_lags"
-        corr_dim = ["idx_rcv_pairs", "src_trajectory_time", "event_corr_lags"]
-        corr_label = "event_corr"
-        corr_long_name = r"$R_{ij}^{e}(\tau)$"
+        feature_idx = "event_feature_idx"
+        feature_dim = ["idx_rcv_pairs", "src_trajectory_time", "event_feature_idx"]
+        feature_label = "event_feature"
+        feature_long_name = r"$R_{ij}^{e}(\tau)$"
     else:
         raise ValueError("Invalid target")
 
-    lags_idx = signal.correlation_lags(
-        xr_dataset.sizes[target_time], xr_dataset.sizes[target_time]
-    )
-    lags = lags_idx * xr_dataset[target_time].diff(target_time).values[0]
+    if feature == "corr":
+        lags_idx = signal.correlation_lags(
+            xr_dataset.sizes[target_time], xr_dataset.sizes[target_time]
+        )
+        lags = lags_idx * xr_dataset[target_time].diff(target_time).values[0]
 
-    xr_dataset.coords[corr_lags] = lags
-    xr_dataset[corr_lags].attrs["units"] = "s"
-    xr_dataset[corr_lags].attrs["long_name"] = "Correlation lags"
+        xr_dataset.coords[feature_idx] = lags
+        xr_dataset[feature_idx].attrs["units"] = "s"
+        xr_dataset[feature_idx].attrs["long_name"] = "Correlation lags"
+        dtype = np.float32
+
+    elif feature == "rtf":
+        n = xr_dataset.sizes["library_signal_time"]
+        ts = xr_dataset.library_signal_time.diff("library_signal_time").values[0]
+        # fs = 1 / ts
+        # f_, __ = signal.welch(xr_dataset.rcv_signal_library, fs=fs)
+        f_ = sp_fft.rfftfreq(n=n, d=ts)
+        xr_dataset.coords[feature_idx] = f_
+        xr_dataset[feature_idx].attrs["units"] = "Hz"
+        xr_dataset[feature_idx].attrs["long_name"] = "Frequency"
+        dtype = np.complex128
 
     if target == "library":
         chunksize = dict(xr_dataset.rcv_signal_library.chunksizes)
@@ -587,31 +600,31 @@ def init_target_corr(xr_dataset, target):
             xr_dataset.sizes["idx_rcv_pairs"],
             chunksize["lat"],
             chunksize["lon"],
-            xr_dataset.sizes["library_corr_lags"],
+            xr_dataset.sizes["library_feature_idx"],
         )
     elif target == "event":
         chunk_shape = (
             xr_dataset.sizes["idx_rcv_pairs"],
             xr_dataset.sizes["src_trajectory_time"],
-            xr_dataset.sizes["event_corr_lags"],
+            xr_dataset.sizes["event_feature_idx"],
         )
     else:
         raise ValueError("Invalid target")
 
     dummy_array = da.empty(
-        tuple(xr_dataset.sizes[d] for d in corr_dim),
-        dtype=np.float32,
+        tuple(xr_dataset.sizes[d] for d in feature_dim),
+        dtype=dtype,
         chunks=chunk_shape,
     )
-    xr_dataset[corr_label] = (corr_dim, dummy_array)
-    xr_dataset[corr_label].attrs["long_name"] = corr_long_name
+    xr_dataset[feature_label] = (feature_dim, dummy_array)
+    xr_dataset[feature_label].attrs["long_name"] = feature_long_name
 
     return xr_dataset
 
 
-def add_correlation_library(xr_dataset, idx_snr, verbose=True):
+def add_feature_library(xr_dataset, idx_snr, feature="corr", verbose=True):
     """
-    Derive library signals cross-correlation for each grid pixel.
+    Derive library signals feature for each grid pixel.
 
     Parameters
     ----------
@@ -626,30 +639,6 @@ def add_correlation_library(xr_dataset, idx_snr, verbose=True):
     if verbose:
         print(f"Add library correlation to dataset")
 
-    # nregion_lon = get_region_number(
-    #     nregion_max=xr_dataset.sizes["lon"],
-    #     var=xr_dataset.library_corr,
-    #     max_size_bytes=1 * 1e9,
-    # )
-    # nregion_lat = get_region_number(
-    #     nregion_max=xr_dataset.sizes["lat"],
-    #     var=xr_dataset.library_corr,
-    #     max_size_bytes=1 * 1e9,
-    # )
-
-    # lon_slices, lat_slices = get_lonlat_sub_regions(
-    #     xr_dataset, nregion_lon=nregion_lon, nregion_lat=nregion_lat
-    # )
-
-    # lat_chunksize = int(xr_dataset.sizes["lat"] // nregion_lat)
-    # lon_chunksize = int(xr_dataset.sizes["lon"] / nregion_lon)
-    # idx_rcv_chunksize, corr_chunksize = (
-    #     xr_dataset.sizes["idx_rcv"],
-    #     xr_dataset.sizes["library_corr_lags"],
-    # )
-    # chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, corr_chunksize)
-    # xr_dataset["library_corr"] = xr_dataset.library_corr.chunk(chunksize)
-
     lon_slices, lat_slices = get_lonlat_sub_regions(
         xr_dataset, xr_dataset.nregion_lon, xr_dataset.nregion_lat
     )
@@ -657,10 +646,12 @@ def add_correlation_library(xr_dataset, idx_snr, verbose=True):
     for lon_s in lon_slices:
         for lat_s in lat_slices:
             ds_sub = xr_dataset.isel(lat=lat_s, lon=lon_s)
-            ds_sub = add_correlation_library_subset(ds_sub)
+            ds_sub = add_feature_library_subset(ds_sub, feature)
 
-            xr_dataset.library_corr[dict(lat=lat_s, lon=lon_s)] = ds_sub.library_corr
-            sub_region_to_save = xr_dataset.library_corr[dict(lat=lat_s, lon=lon_s)]
+            xr_dataset.library_feature[dict(lat=lat_s, lon=lon_s)] = (
+                ds_sub.library_feature
+            )
+            sub_region_to_save = xr_dataset.library_feature[dict(lat=lat_s, lon=lon_s)]
             sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
 
             sub_region_to_save.to_zarr(
@@ -671,16 +662,16 @@ def add_correlation_library(xr_dataset, idx_snr, verbose=True):
                     "idx_rcv_pairs": slice(None),
                     "lat": lat_s,
                     "lon": lon_s,
-                    "library_corr_lags": slice(None),
+                    "library_feature_idx": slice(None),
                 },
             )
 
     return xr_dataset
 
 
-def add_correlation_library_subset(xr_dataset):
+def add_feature_library_subset(xr_dataset, feature="corr"):
     """
-    Derive library signals cross-correlation for each grid pixel.
+    Derive library signals feature for each grid pixel.
 
     Parameters
     ----------
@@ -693,55 +684,64 @@ def add_correlation_library_subset(xr_dataset):
 
     """
 
-    # Faster FFT approach
+    # FFT approach
     ax = 2
-    nlag = xr_dataset.sizes["library_corr_lags"]
 
     for i_pair in xr_dataset.idx_rcv_pairs.values:
         rcv_pair = xr_dataset.rcv_pairs.sel(idx_rcv_pairs=i_pair)
-        in1 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0]).values.astype(
+        s1 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[0]).values.astype(
             np.float64
         )
-        in2 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1]).values.astype(
+        s2 = xr_dataset.rcv_signal_library.sel(idx_rcv=rcv_pair[1]).values.astype(
             np.float64
         )
 
-        nfft = sp_fft.next_fast_len(nlag, True)
+        if feature == "corr":
+            # Normalized cross-correlation
+            e1 = np.sum(np.abs(s1) ** 2, axis=ax)
+            e2 = np.sum(np.abs(s2) ** 2, axis=ax)
+            c_12 = signal.fftconvolve(s1, s2[..., ::-1], mode="full", axes=-1)
+            norm = np.repeat(
+                np.expand_dims(np.sqrt(e1 * e2), axis=ax), c_12.shape[ax], axis=ax
+            )
 
-        sig_0 = sp_fft.rfft(
-            in1,
-            n=nfft,
-            axis=-1,
-        )
-        sig_1 = sp_fft.rfft(
-            in2,
-            n=nfft,
-            axis=-1,
-        )
+            c_12_norm = c_12 / norm
+            xr_dataset.library_feature[dict(idx_rcv_pairs=i_pair)] = c_12_norm.astype(
+                xr_dataset.library_feature.dtype
+            )
 
-        corr_01_fft = fft_convolve_f(sig_0, sig_1, axis=ax, workers=-1)
-        corr_01_fft = corr_01_fft[:, :, slice(nlag)]
+        if feature == "rtf":
+            # Relative transfert function
+            # From PSD and cross PSD
+            fs = (
+                1 / xr_dataset.library_signal_time.diff("library_signal_time").values[0]
+            )
+            # f_, s_11 = signal.welch(s1, fs=fs)
+            # f_, s_22 = signal.welch(s2, fs=fs)
+            # f_, s_12 = signal.csd(s1, s2, fs=fs)
+            # s_22 = sp_fft.rfft(s2) * np.conj(sp_fft.rfft(s2))
+            # s_12 = sp_fft.rfft(s1) * np.conj(sp_fft.rfft(s2))
+            # s_22 = np.fft.rfft(s2) * np.conj(np.fft.rfft(s2))
+            # s_12 = np.fft.rfft(s1) * np.conj(np.fft.rfft(s2))
 
-        autocorr0 = fft_convolve_f(sig_0, sig_0, axis=ax, workers=-1)
-        autocorr0 = autocorr0[:, :, slice(nlag)]
+            # rtf_12 = s_12 / s_22
 
-        autocorr1 = fft_convolve_f(sig_1, sig_1, axis=ax, workers=-1)
-        autocorr1 = autocorr1[:, :, slice(nlag)]
+            # TODO :remove this -> only for the proof of concept (rtf needs to be estimated from received signal)
+            h0 = xr_dataset.tf_gridded.sel(idx_rcv=rcv_pair[0]).values
+            h1 = xr_dataset.tf_gridded.sel(idx_rcv=rcv_pair[1]).values
+            h1 = np.where(np.abs(h1) == 0, np.nan, h1)
+            rtf_12 = h0 / h1
 
-        n0 = corr_01_fft.shape[-1] // 2
-        corr_norm = np.sqrt(autocorr0[..., n0] * autocorr1[..., n0])
-        corr_norm = np.repeat(np.expand_dims(corr_norm, axis=ax), nlag, axis=ax)
-        corr_01_fft /= corr_norm
-        xr_dataset.library_corr[dict(idx_rcv_pairs=i_pair)] = corr_01_fft.astype(
-            np.float32
-        )
+            xr_dataset.library_feature[dict(idx_rcv_pairs=i_pair)] = rtf_12.astype(
+                xr_dataset.library_feature.dtype
+            )
 
     return xr_dataset
 
 
-def add_correlation_event(xr_dataset, idx_snr, verbose=True):
+def add_feature_event(xr_dataset, idx_snr, feature="corr", verbose=True):
     """
-    Derive cross-correlation for each source position.
+    Derive feature for each source position.
 
     Parameters
     ----------
@@ -756,32 +756,72 @@ def add_correlation_event(xr_dataset, idx_snr, verbose=True):
     if verbose:
         print(f"Add event correlation to dataset")
 
-    # Derive cross_correlation vector for each src position
+    # Derive feature vector for each src position
     for i_ship in range(xr_dataset.sizes["src_trajectory_time"]):
         for i_pair, rcv_pair in enumerate(xr_dataset.rcv_pairs):
             # Cast to float 64 to avoid 0 values in the cross correlation vector
-            s0 = (
+            s1 = (
                 xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[0])
                 .isel(src_trajectory_time=i_ship)
                 .data
             ).astype(np.float64)
-            s1 = (
+            s2 = (
                 xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[1])
                 .isel(src_trajectory_time=i_ship)
                 .data
             ).astype(np.float64)
 
-            corr_01 = signal.correlate(s0, s1)
-            autocorr0 = signal.correlate(s0, s0)
-            autocorr1 = signal.correlate(s1, s1)
-            n0 = corr_01.shape[0] // 2
-            corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
+            if feature == "corr":
+                # Normalized cross-correlation
+                e1 = np.sum(np.abs(s1) ** 2)
+                e2 = np.sum(np.abs(s2) ** 2)
+                c_12 = signal.fftconvolve(s1, s2[::-1], mode="full")
+                norm = np.sqrt(e1 * e2)
+                c_12_norm = c_12 / norm
 
-            xr_dataset.event_corr[
-                dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
-            ] = corr_01.astype(np.float32)
+                xr_dataset.event_feature[
+                    dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
+                ] = c_12_norm.astype(xr_dataset.event_feature.dtype)
 
-    sub_region_to_save = xr_dataset.event_corr
+            if feature == "rtf":
+                # Relative transfert function
+                # s_22 = sp_fft.rfft(s2) * np.conj(sp_fft.rfft(s2))
+                # s_12 = sp_fft.rfft(s1) * np.conj(sp_fft.rfft(s2))
+                # fs = (
+                #     1 / xr_dataset.event_signal_time.diff("event_signal_time").values[0]
+                # )
+                # f_, s_22 = signal.welch(s2, fs=fs)
+                # f_, s_12 = signal.csd(s1, s2, fs=fs)
+                # s_22 = np.fft.rfft(s2) * np.conj(np.fft.rfft(s2))
+                # s_12 = np.fft.rfft(s1) * np.conj(np.fft.rfft(s2))
+
+                # rtf_12 = s_12 / s_22
+
+                # TODO :remove this -> only for the proof of concept (rtf needs to be estimated from received signal)
+                lon_s, lat_s = (
+                    xr_dataset.lon_src.isel(src_trajectory_time=i_ship).values,
+                    xr_dataset.lat_src.isel(src_trajectory_time=i_ship).values,
+                )
+                tf = xr_dataset.tf_gridded.sel(lon=lon_s, lat=lat_s, method="nearest")
+                h0 = tf.sel(idx_rcv=rcv_pair[0]).values
+                h1 = tf.sel(idx_rcv=rcv_pair[1]).values
+                h1 = np.where(np.abs(h1) == 0, np.nan, h1)
+                rtf_12 = h0 / h1
+                # rtf_12 = (
+                #     tf.sel(idx_rcv=rcv_pair[0]).values
+                #     / tf.sel(idx_rcv=rcv_pair[1]).values
+                # )
+
+                xr_dataset.event_feature[
+                    dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
+                ] = rtf_12.astype(xr_dataset.event_feature)
+
+            # if feature == "tf":
+            # xr_dataset.event_feature[
+            #     dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
+            # ] = tf.astype(xr_dataset.event_feature)
+
+    sub_region_to_save = xr_dataset.event_feature
     sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
     sub_region_to_save.to_zarr(
         xr_dataset.output_path,
@@ -789,7 +829,7 @@ def add_correlation_event(xr_dataset, idx_snr, verbose=True):
         region={
             "snr": slice(idx_snr, idx_snr + 1),
             "idx_rcv_pairs": slice(None),
-            "event_corr_lags": slice(None),
+            "event_feature_idx": slice(None),
             "src_trajectory_time": slice(None),
         },
     )
@@ -1114,8 +1154,8 @@ def add_ambiguity_surf_subset(xr_subset, verbose=True):
 
     ambiguity_surfaces = []
     for i_pair in xr_subset.idx_rcv_pairs:
-        lib_data = xr_subset.library_corr.sel(idx_rcv_pairs=i_pair)
-        event_data = xr_subset.event_corr.sel(idx_rcv_pairs=i_pair)
+        lib_data = xr_subset.library_feature.sel(idx_rcv_pairs=i_pair)
+        event_data = xr_subset.event_feature.sel(idx_rcv_pairs=i_pair)
         amb_surf_da = derive_ambiguity(
             lib_data, event_data, xr_subset.src_trajectory_time, similarity_metric
         )
@@ -1177,14 +1217,15 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
         name="ambiguity_surface",
     )
 
+    dtype = np.float64 if lib_data.values.dtype == np.float32 else np.complex64
     lib_data_array = lib_data.values.astype(
-        np.float64
+        dtype
     )  # Cast to float64 to avoid devision by 0
 
     for i_src_time, src_time in enumerate(src_traj_times):
 
         event_vector = event_data.sel(src_trajectory_time=src_time)
-        event_vector_array = event_vector.values.astype(np.float64)
+        event_vector_array = event_vector.values.astype(dtype)
 
         if similarity_metric == "intercorr0":
             amb_surf = mult_along_axis(
@@ -1192,8 +1233,14 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
                 event_vector_array,
                 axis=2,
             )
-            autocorr_lib_0 = np.sum(lib_data_array**2, axis=2)
-            autocorr_event_0 = np.sum(event_vector_array**2)
+
+            # amb_surf = mult_along_axis(
+            #     np.abs(lib_data_array),
+            #     np.abs(event_vector_array),
+            #     axis=2,
+            # )
+            autocorr_lib_0 = np.sum(np.abs(lib_data_array) ** 2, axis=2)
+            autocorr_event_0 = np.sum(np.abs(event_vector_array) ** 2)
 
             norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
             amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
@@ -1201,9 +1248,10 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
             da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
         elif similarity_metric == "lstsquares":
-            diff = lib_data_array - event_vector_array
-            amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
-            amb_surf = amb_surf / np.max(amb_surf)  # Values in [0, 1]
+            # diff = lib_data_array - event_vector_array
+            diff = np.abs(lib_data_array) - np.abs(event_vector_array)
+            amb_surf = np.nansum(diff**2, axis=2)  # Values in [0, max_diff**2]
+            amb_surf = amb_surf / np.nanmax(amb_surf)  # Values in [0, 1]
             amb_surf = (
                 1 - amb_surf
             )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface

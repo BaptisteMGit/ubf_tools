@@ -152,7 +152,7 @@ class TestCase:
             "dr_bathy": 500,
             "nb_modes": 100,
             "called_by_subprocess": False,
-            "mode_theory": "adiabatic",
+            "mode_theory": "coupled",
             "mode_addition": "coherent",
             "z_src": 5,
             "src_depth": None,
@@ -397,6 +397,7 @@ class TestCase1_0(TestCase1):
             "min_depth": 100,
             "dr_flp": 50,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value
@@ -426,6 +427,7 @@ class TestCase1_1(TestCase1):
             "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value
@@ -469,6 +471,7 @@ class TestCase1_2(TestCase1):
             "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value
@@ -511,6 +514,7 @@ class TestCase1_3(TestCase1):
             "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value
@@ -550,6 +554,7 @@ class TestCase1_4(TestCase1):
             "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value
@@ -615,6 +620,7 @@ class TestCase2_0(TestCase2):
             "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value
@@ -644,6 +650,7 @@ class TestCase2_1(TestCase2):
             "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value
@@ -688,6 +695,7 @@ class TestCase2_2(TestCase2):
             "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value

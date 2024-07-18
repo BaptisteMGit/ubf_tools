@@ -173,8 +173,8 @@ def common_process_loc(ds, rcv_id):
     initial_ship_pos = {
         # "lon": rcv_info["lons"][0],
         # "lat": rcv_info["lats"][0] + 0.001,
-        "lon": rcv_info["lons"][0] + 0.1,
-        "lat": rcv_info["lats"][0] - 0.03,
+        "lon": rcv_info["lons"][0] + 0.05,
+        "lat": rcv_info["lats"][0] + 0.03,
         "crs": "WGS84",
     }
 
@@ -208,7 +208,7 @@ def common_process_loc(ds, rcv_id):
 
 def set_event_sig_info(f0):
     # Event
-    dt = 7
+    dt = 10.24
     fs = 100
     # f0 = 1.5  # Fundamental frequency of the ship signal
     event_sig_info = {
@@ -236,7 +236,7 @@ def set_event_sig_info(f0):
         time=t_src_sig,
         name="ship",
         waveguide_depth=min_waveguide_depth,
-        nfft=2**10,
+        nfft=len(src_sig),
     )
     event_sig_info["src"] = src
 
@@ -256,7 +256,7 @@ def process_analysis(ds, grid_info):
         "plot_ambiguity_surface": True,
         "plot_ship_trajectory": True,
         "plot_pos_error": False,
-        "plot_correlation": True,
+        "plot_feature": True,
         "tl_freq_to_plot": [20],
         "lon_offset": 0.005,
         "lat_offset": 0.005,
@@ -275,8 +275,6 @@ def process_analysis(ds, grid_info):
 
 
 def run_process_loc(ds, rcv_id):
-
-
 
     # """ Single test to ensure everything is ok """
     # n_noise = 1
@@ -350,13 +348,13 @@ def run_process_loc(ds, rcv_id):
         grid_info=grid_info,
         dt=dt,
         similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+        # similarity_metrics=["lstsquares"],
         snrs_dB=snr,
         n_noise_realisations=n_noise,
         verbose=True,
     )
 
     process_analysis(ds, grid_info)
-
 
     # n_noise = 10
     # f0_library = 1
@@ -413,10 +411,13 @@ def run_process_loc(ds, rcv_id):
 
 def run_all_testcases():
     rcv_id = ["R1", "R2", "R3"]
+    # rcv_id = ["RRdebug0", "RRdebug1", "RRdebug2"]
 
-    dt = 10
-    fs = 100  # Sampling frequency
     f0_lib = 5  # Fundamental frequency of the ship signal
+    dt, fs, event_sig_info = set_event_sig_info(f0=f0_lib)
+
+    # fs = 100  # Sampling frequency
+
     src_info = {
         "sig_type": "ship",
         "f0": f0_lib,
@@ -434,9 +435,8 @@ def run_all_testcases():
     src_sig *= np.hanning(len(src_sig))
 
     # snr = np.arange(-10, 0, 1)  # [10]
-    snr = [15]
+    snr = [30]
     n_noise = 1
-    dt, fs, event_sig_info = set_event_sig_info(f0=2)
 
     for tc in [
         # TestCase1_0,
@@ -467,7 +467,7 @@ def run_all_testcases():
             time=t_src_sig,
             name="ship",
             waveguide_depth=tc.min_depth,
-            # nfft=5,
+            nfft=len(src_sig),
         )
 
         print(f"nfft = {src.nfft}")
@@ -493,7 +493,8 @@ def run_all_testcases():
             rcv_info=rcv_info,
             grid_info=grid_info,
             dt=dt,
-            similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+            # similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+            similarity_metrics=["lstsquares"],
             snrs_dB=snr,
             n_noise_realisations=n_noise,
             verbose=True,
@@ -506,12 +507,12 @@ def run_all_testcases():
 
 
 if __name__ == "__main__":
-    # import xarray as xr
+    import xarray as xr
 
     # rcv_id = ["R1", "R2", "R3"]
 
-    # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
-    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_4_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240630_125938.zarr"
+    # # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase3_1_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240718_155452.zarr"
     # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
     # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
     # process_analysis(ds, grid_info)
@@ -522,16 +523,22 @@ if __name__ == "__main__":
     # rcv_id = ["R1", "R2", "R3", "R4"]
     # rcv_id = ["RR41", "RR44", "RR45", "RR47"]
 
-    # rcv_id = ["RRdebug0", "RRdebug1"]
+    # # rcv_id = ["RRdebug0", "RRdebug1"]
     # ds = run_swir(rcv_id)
 
     # # Exploit dataset for localisation
     # rcv_id = ["RR41", "RR44", "RR45"]
     # run_process_loc(ds, rcv_id)
 
-    # Process
-    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_dataset\testcase3_1_AC198EBFF716\propa_grid_src\propa_grid_src_65.4903_65.6797_-27.7342_-27.5758_100_100_ship.zarr"
+    # # # Process
+    # import xarray as xr
+
+    # # fpath = "/home/data/localisation_process/testcase3_1_6ba2059d7d31/65.2399_65.6436_-27.9360_-27.5769_ship/20240627_121330.zarr"
+    # fpath = "/home/data/localisation_process/testcase3_1_6ba2059d7d31/65.2399_65.6436_-27.9360_-27.5769_ship/20240627_121623.zarr"
     # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
+    # process_analysis(ds, grid_info)
+
     # run_process_loc(ds, rcv_id)
 
     # # Reanalyse

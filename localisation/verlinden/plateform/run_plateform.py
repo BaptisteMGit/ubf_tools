@@ -130,7 +130,6 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
             steps = [0, 1]
 
     if 0 in steps:
-        print("Step 0")
         build_dataset(
             rcv_info=rcv_info,
             testcase=testcase,
@@ -141,7 +140,6 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
             fs=src.fs,
         )
     if 1 in steps:
-        print("Step 1")
         ds = xr.open_dataset(fullpath_dataset_propa, engine="zarr", chunks={})
         ds = populate_dataset(
             ds,
@@ -153,7 +151,6 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
         fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src
 
     if 2 in steps:
-        print("Step 2")
         ds = xr.open_dataset(fullpath_dataset_propa_grid, engine="zarr", chunks={})
         ds = grid_synthesis(ds, src)
         fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src

@@ -67,10 +67,12 @@ class AcousticSource:
         if self.nfft is None:
             self.nfft = 2 ** int(np.log2(self.ns) + 1)  # Next power of 2
             # self.nfft = 2**12
-        else:
-            self.nfft = 2 ** int(np.log2(self.nfft) + 1)
+        # else:
+        #     # self.nfft = 2 ** int(np.log2(self.nfft) + 1)
+        #     self.nfft = len(self.signal)
 
-        max_nfreq_kraken = 1000  # Maximum number of frequencies allowed for kraken run
+        # max_nfreq_kraken = 1000  # Maximum number of frequencies allowed for kraken run
+        max_nfreq_kraken = 10000
         self.positive_freq = np.fft.rfftfreq(self.nfft, 1 / self.fs)
         self.kraken_freq = self.positive_freq[
             self.positive_freq

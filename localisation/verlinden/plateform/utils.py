@@ -718,6 +718,15 @@ def add_correlation_library_subset(xr_dataset):
             np.float32
         )
 
+        # Relative transfert function
+
+        # Easy way : from PSD and cross PSD
+        # f_, s_11 = signal.welch(in1, fs=fs)
+        # f_, s_22 = signal.welch(in2, fs=fs)
+        # f_, s_12 = signal.csd(in1, in2, fs=fs)
+
+        # rtf_12 = s_12 / s_22
+
     return xr_dataset
 
 
@@ -742,26 +751,27 @@ def add_correlation_event(xr_dataset, idx_snr, verbose=True):
     for i_ship in range(xr_dataset.sizes["src_trajectory_time"]):
         for i_pair, rcv_pair in enumerate(xr_dataset.rcv_pairs):
             # Cast to float 64 to avoid 0 values in the cross correlation vector
-            s0 = (
+            s1 = (
                 xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[0])
                 .isel(src_trajectory_time=i_ship)
                 .data
             ).astype(np.float64)
-            s1 = (
+            s2 = (
                 xr_dataset.rcv_signal_event.sel(idx_rcv=rcv_pair[1])
                 .isel(src_trajectory_time=i_ship)
                 .data
             ).astype(np.float64)
 
-            corr_01 = signal.correlate(s0, s1)
-            autocorr0 = signal.correlate(s0, s0)
-            autocorr1 = signal.correlate(s1, s1)
-            n0 = corr_01.shape[0] // 2
-            corr_01 /= np.sqrt(autocorr0[n0] * autocorr1[n0])
+            # Normalized cross-correlation
+            e1 = np.sum(np.abs(s1) ** 2)
+            e2 = np.sum(np.abs(s2) ** 2)
+            c_12 = signal.fftconvolve(s1, s2[::-1], mode="full")
+            norm = np.sqrt(e1 * e2)
+            c_12_norm = c_12 / norm
 
             xr_dataset.event_corr[
                 dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
-            ] = corr_01.astype(np.float32)
+            ] = c_12_norm.astype(np.float32)
 
     sub_region_to_save = xr_dataset.event_corr
     sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)

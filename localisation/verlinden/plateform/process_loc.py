@@ -24,12 +24,12 @@ from dask.distributed import Client
 from localisation.verlinden.plateform.utils import (
     init_event_dataset,
     init_ambiguity_surface,
-    init_corr_library,
-    init_corr_event,
+    init_feature_library,
+    init_feature_event,
     add_noise_to_library,
-    add_correlation_library,
+    add_feature_library,
     add_noise_to_event,
-    add_correlation_event,
+    add_feature_event,
     build_process_output_path,
     add_ambiguity_surf,
     get_region_number,
@@ -50,7 +50,7 @@ from localisation.verlinden.plateform.analysis_loc import analysis
 # ======================================================================================================================
 
 
-def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
+def add_event(ds, src_info, rcv_info, apply_delay, feature, verbose=True):
 
     if verbose:
         print(f"Add event received signal to dataset: \n\t{src_info}")
@@ -112,15 +112,17 @@ def add_event(ds, src_info, rcv_info, apply_delay, verbose=True):
         transmitted_sig_t = np.fft.irfft(transmitted_sig_f, n=nfft_inv, axis=-1)
         ds.rcv_signal_event[dict(src_trajectory_time=i_pos)] = transmitted_sig_t
 
-    # Init corr for event signal
-    ds = init_corr_event(ds)
+    # Init feature for event signal
+    ds = init_feature_event(ds, feature)
 
     # Expand rcv_signal_library to snr dims
     ds["rcv_signal_event"] = ds["rcv_signal_event"].expand_dims(
         {"snr": ds.sizes["snr"]}, axis=0
     )
 
-    ds["event_corr"] = ds["event_corr"].expand_dims({"snr": ds.sizes["snr"]}, axis=0)
+    ds["event_feature"] = ds["event_feature"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
 
     return ds
 
@@ -179,6 +181,7 @@ def init_dataset(
     similarity_metrics,
     snrs_dB,
     n_noise_realisations=100,
+    feature="corr",
     verbose=True,
 ):
     # Load subset of the main dataset
@@ -259,9 +262,9 @@ def init_dataset(
     ds.to_zarr(ds.output_path, mode="w", compute=True)
 
     # Init corr for library signal
-    ds = init_corr_library(ds)
-    # Expand library_corr to snr dims
-    ds["library_corr"] = ds["library_corr"].expand_dims(
+    ds = init_feature_library(ds, feature=feature)
+    # Expand library_feature to snr dims
+    ds["library_feature"] = ds["library_feature"].expand_dims(
         {"snr": ds.sizes["snr"]}, axis=0
     )
 
@@ -281,6 +284,7 @@ def process(
 ):
 
     # Load subset and init usefull vars
+    feature = "rtf"
     ds = init_dataset(
         main_ds_path=main_ds_path,
         src_info=src_info,
@@ -290,6 +294,7 @@ def process(
         similarity_metrics=similarity_metrics,
         snrs_dB=snrs_dB,
         n_noise_realisations=n_noise_realisations,
+        feature=feature,
         verbose=True,
     )
 
@@ -303,7 +308,9 @@ def process(
         )
 
     # Add event to the dataset
-    ds = add_event(ds, src_info, rcv_info, apply_delay=True, verbose=verbose)
+    ds = add_event(
+        ds, src_info, rcv_info, apply_delay=True, feature=feature, verbose=verbose
+    )
 
     # Init ambiguity surface
     ds = init_ambiguity_surface(ds)
@@ -329,8 +336,8 @@ def process(
             no_noise_lib.copy()
         )  # Reset to the original signal
         ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose)
-        # Derive correlation vector for the entire grid
-        ds = add_correlation_library(ds, idx_snr=idx_snr, verbose=verbose)
+        # Derive feature vector for the entire grid
+        ds = add_feature_library(ds, idx_snr=idx_snr, feature=feature, verbose=verbose)
 
         # Loop over different realisation of noise for a given SNR
         for i in range(n_noise_realisations):
@@ -342,8 +349,10 @@ def process(
             ds = add_noise_to_event(
                 ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose
             )
-            # Derive cross-correlation vector for each source position
-            ds = add_correlation_event(ds, idx_snr=idx_snr, verbose=verbose)
+            # Derive feature vector for each source position
+            ds = add_feature_event(
+                ds, idx_snr=idx_snr, feature=feature, verbose=verbose
+            )
 
             for i_sim_metric in range(len(similarity_metrics)):
                 # Compute ambiguity surface

@@ -28,7 +28,7 @@ root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_pro
 # dir_path = r"testcase1_4_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240711_161507.zarr"
 # dir_path = r"testcase1_4_AC198EBFF716\65.6544_66.0574_-27.7358_-27.3766_ship\20240717_164140.zarr"
 # dir_path = r"testcase1_4_AC198EBFF716\65.6544_66.0574_-27.7358_-27.3766_ship\20240718_101313.zarr"
-dir_path = r"testcase1_4_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240718_145313.zarr"
+dir_path = r"testcase3_1_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240718_155452.zarr"
 
 fpath = os.path.join(root, dir_path)
 ds = xr.open_dataset(fpath, engine="zarr", chunks={})

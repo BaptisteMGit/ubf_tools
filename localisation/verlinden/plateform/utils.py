@@ -639,30 +639,6 @@ def add_feature_library(xr_dataset, idx_snr, feature="corr", verbose=True):
     if verbose:
         print(f"Add library correlation to dataset")
 
-    # nregion_lon = get_region_number(
-    #     nregion_max=xr_dataset.sizes["lon"],
-    #     var=xr_dataset.library_corr,
-    #     max_size_bytes=1 * 1e9,
-    # )
-    # nregion_lat = get_region_number(
-    #     nregion_max=xr_dataset.sizes["lat"],
-    #     var=xr_dataset.library_corr,
-    #     max_size_bytes=1 * 1e9,
-    # )
-
-    # lon_slices, lat_slices = get_lonlat_sub_regions(
-    #     xr_dataset, nregion_lon=nregion_lon, nregion_lat=nregion_lat
-    # )
-
-    # lat_chunksize = int(xr_dataset.sizes["lat"] // nregion_lat)
-    # lon_chunksize = int(xr_dataset.sizes["lon"] / nregion_lon)
-    # idx_rcv_chunksize, feature_chunksize = (
-    #     xr_dataset.sizes["idx_rcv"],
-    #     xr_dataset.sizes["library_feature_idx"],
-    # )
-    # chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, feature_chunksize)
-    # xr_dataset["library_corr"] = xr_dataset.library_corr.chunk(chunksize)
-
     lon_slices, lat_slices = get_lonlat_sub_regions(
         xr_dataset, xr_dataset.nregion_lon, xr_dataset.nregion_lat
     )
@@ -736,7 +712,7 @@ def add_feature_library_subset(xr_dataset, feature="corr"):
 
         if feature == "rtf":
             # Relative transfert function
-            # Easy way : from PSD and cross PSD
+            # From PSD and cross PSD
             fs = (
                 1 / xr_dataset.library_signal_time.diff("library_signal_time").values[0]
             )
@@ -745,10 +721,17 @@ def add_feature_library_subset(xr_dataset, feature="corr"):
             # f_, s_12 = signal.csd(s1, s2, fs=fs)
             # s_22 = sp_fft.rfft(s2) * np.conj(sp_fft.rfft(s2))
             # s_12 = sp_fft.rfft(s1) * np.conj(sp_fft.rfft(s2))
-            s_22 = np.fft.rfft(s2) * np.conj(np.fft.rfft(s2))
-            s_12 = np.fft.rfft(s1) * np.conj(np.fft.rfft(s2))
+            # s_22 = np.fft.rfft(s2) * np.conj(np.fft.rfft(s2))
+            # s_12 = np.fft.rfft(s1) * np.conj(np.fft.rfft(s2))
 
-            rtf_12 = s_12 / s_22
+            # rtf_12 = s_12 / s_22
+
+            # TODO :remove this -> only for the proof of concept (rtf needs to be estimated from received signal)
+            h0 = xr_dataset.tf_gridded.sel(idx_rcv=rcv_pair[0]).values
+            h1 = xr_dataset.tf_gridded.sel(idx_rcv=rcv_pair[1]).values
+            h1 = np.where(np.abs(h1) == 0, np.nan, h1)
+            rtf_12 = h0 / h1
+
             xr_dataset.library_feature[dict(idx_rcv_pairs=i_pair)] = rtf_12.astype(
                 xr_dataset.library_feature.dtype
             )
@@ -809,13 +792,34 @@ def add_feature_event(xr_dataset, idx_snr, feature="corr", verbose=True):
                 # )
                 # f_, s_22 = signal.welch(s2, fs=fs)
                 # f_, s_12 = signal.csd(s1, s2, fs=fs)
-                s_22 = np.fft.rfft(s2) * np.conj(np.fft.rfft(s2))
-                s_12 = np.fft.rfft(s1) * np.conj(np.fft.rfft(s2))
+                # s_22 = np.fft.rfft(s2) * np.conj(np.fft.rfft(s2))
+                # s_12 = np.fft.rfft(s1) * np.conj(np.fft.rfft(s2))
 
-                rtf_12 = s_12 / s_22
+                # rtf_12 = s_12 / s_22
+
+                # TODO :remove this -> only for the proof of concept (rtf needs to be estimated from received signal)
+                lon_s, lat_s = (
+                    xr_dataset.lon_src.isel(src_trajectory_time=i_ship).values,
+                    xr_dataset.lat_src.isel(src_trajectory_time=i_ship).values,
+                )
+                tf = xr_dataset.tf_gridded.sel(lon=lon_s, lat=lat_s, method="nearest")
+                h0 = tf.sel(idx_rcv=rcv_pair[0]).values
+                h1 = tf.sel(idx_rcv=rcv_pair[1]).values
+                h1 = np.where(np.abs(h1) == 0, np.nan, h1)
+                rtf_12 = h0 / h1
+                # rtf_12 = (
+                #     tf.sel(idx_rcv=rcv_pair[0]).values
+                #     / tf.sel(idx_rcv=rcv_pair[1]).values
+                # )
+
                 xr_dataset.event_feature[
                     dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
                 ] = rtf_12.astype(xr_dataset.event_feature)
+
+            # if feature == "tf":
+            # xr_dataset.event_feature[
+            #     dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
+            # ] = tf.astype(xr_dataset.event_feature)
 
     sub_region_to_save = xr_dataset.event_feature
     sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
@@ -1244,9 +1248,9 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
             da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
         elif similarity_metric == "lstsquares":
-            diff = lib_data_array - event_vector_array
+            # diff = lib_data_array - event_vector_array
             diff = np.abs(lib_data_array) - np.abs(event_vector_array)
-            amb_surf = np.sum(diff**2, axis=2)  # Values in [0, max_diff**2]
+            amb_surf = np.nansum(diff**2, axis=2)  # Values in [0, max_diff**2]
             amb_surf = amb_surf / np.nanmax(amb_surf)  # Values in [0, 1]
             amb_surf = (
                 1 - amb_surf

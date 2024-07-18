@@ -442,10 +442,10 @@ def run_all_testcases():
         # TestCase1_0,
         # TestCase1_1,
         # TestCase1_3,
-        TestCase1_4,
+        # TestCase1_4,
         # TestCase2_1,
         # TestCase2_2,
-        # TestCase3_1,
+        TestCase3_1,
     ]:
 
         rcv_info_dw = {
@@ -458,7 +458,7 @@ def run_all_testcases():
         tc = tc()
         tc.update(tc_var_in)
 
-        min_dist = 2 * 1e3
+        min_dist = 5 * 1e3
         dx, dy = 100, 100
 
         # Define source signal
@@ -507,12 +507,12 @@ def run_all_testcases():
 
 
 if __name__ == "__main__":
-    # import xarray as xr
+    import xarray as xr
 
     # rcv_id = ["R1", "R2", "R3"]
 
-    # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
-    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_4_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240630_125938.zarr"
+    # # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase3_1_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240718_155452.zarr"
     # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
     # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
     # process_analysis(ds, grid_info)

@@ -280,15 +280,23 @@ def plot_received_signal(xr_dataset, img_root, n_instant_to_plot=None):
 def get_ambiguity_surface(ds):
     # Avoid singularity for S = 0
     amb_surf_not_0 = ds.ambiguity_surface.values[ds.ambiguity_surface > 0]
-    ds.ambiguity_surface.values[ds.ambiguity_surface == 0] = amb_surf_not_0.min()
+    min_val = min(amb_surf_not_0.min(), 1e-6)
+    ds["ambiguity_surface"] = xr.where(
+        ds["ambiguity_surface"] == 0, min_val, ds["ambiguity_surface"]
+    )
+
     amb_surf = 10 * np.log10(ds.ambiguity_surface)  # dB scale
 
     amb_surf_combined_not_0 = ds.ambiguity_surface_combined.values[
         ds.ambiguity_surface_combined > 0
     ]
-    ds.ambiguity_surface_combined.values[ds.ambiguity_surface_combined == 0] = (
-        amb_surf_combined_not_0.min()
+    min_val = min(amb_surf_combined_not_0.min(), 1e-6)
+    ds["ambiguity_surface_combined"] = xr.where(
+        ds["ambiguity_surface_combined"] == 0,
+        min_val,
+        ds["ambiguity_surface_combined"],
     )
+
     amb_surf_combined = 10 * np.log10(ds.ambiguity_surface_combined)  # dB scale
 
     return amb_surf, amb_surf_combined
@@ -305,7 +313,7 @@ def init_plot_folders(img_root, var_to_plot, similarity_metric):
 def plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot=1):
     """Plot ambiguity surface distribution."""
     # Init folers
-    img_folder = init_plot_folders(img_root, "amb_s_dist", ds.similarity_metric.values)
+    img_folder = init_plot_folders(img_root, "amb_s_dist", ds.similarity_metrics.values)
 
     amb_surf, __ = get_ambiguity_surface(ds)
 

@@ -306,8 +306,7 @@ def populate_dataset(ds, src, **kwargs):
 
 
 if __name__ == "__main__":
-    # fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3528.zarr"
-    # fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3528_10000m.zarr"
+
     fname = "propa_dataset_65.5928_65.9521_-27.6662_-27.5711_backup.zarr"
     root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1"
     fpath = os.path.join(root, fname)

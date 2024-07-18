@@ -28,23 +28,23 @@ root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_pro
 # dir_path = r"testcase1_4_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240711_161507.zarr"
 # dir_path = r"testcase1_4_AC198EBFF716\65.6544_66.0574_-27.7358_-27.3766_ship\20240717_164140.zarr"
 # dir_path = r"testcase1_4_AC198EBFF716\65.6544_66.0574_-27.7358_-27.3766_ship\20240718_101313.zarr"
-dir_path = r"testcase1_4_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240718_104939.zarr"
+dir_path = r"testcase1_4_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240718_145313.zarr"
 
 fpath = os.path.join(root, dir_path)
 ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 ds = ds.isel(snr=0)
 
 # Extract source position
-# lon_s, lat_s = ds.lon_src.values[0], ds.lat_src.values[0]
-lon_s = 65.775
-lat_s = -27.56
+lon_s, lat_s = ds.lon_src.values[0], ds.lat_src.values[0]
+# lon_s = 65.775
+# lat_s = -27.56
 
 # Extract transfert function at ship position
 tf_at_ship_pos = ds.tf_gridded.sel(lon=lon_s, lat=lat_s, method="nearest")
 
 # Extract corr
-lib_corr_s = ds.library_corr.sel(lon=lon_s, lat=lat_s, method="nearest")
-event_corr_s = ds.event_corr.isel(src_trajectory_time=0)
+lib_feature = ds.library_feature.sel(lon=lon_s, lat=lat_s, method="nearest")
+event_feature = ds.event_feature.isel(src_trajectory_time=0)
 
 # Extract signals
 lib_sig = ds.rcv_signal_library.sel(lon=lon_s, lat=lat_s, method="nearest")
@@ -102,6 +102,11 @@ norm_factor = np.exp(1j * k0) / (4 * np.pi)
 # Relative transfert function
 rtf = []
 rtf_th = []
+rtf_other = []
+
+lib_feature_other = ds.library_feature.sel(
+    lon=lon_s + 0.02, lat=lat_s + 0.02, method="nearest"
+)
 
 alpha = 1
 nfft *= alpha
@@ -113,6 +118,10 @@ tau = tau.min(dim="idx_rcv").values
 for i_rcv_p in ds.idx_rcv_pairs.values:
 
     pair = ds.rcv_pairs[i_rcv_p].values
+
+    # Features
+    lib_feat = lib_feature.sel(idx_rcv_pairs=i_rcv_p).values
+    # event_feat = event_feature.sel(idx_rcv_pairs=i_rcv_p).values
 
     # Signals
     in1 = lib_sig.sel(idx_rcv=pair[0]).values
@@ -137,30 +146,32 @@ for i_rcv_p in ds.idx_rcv_pairs.values:
     sp1 = sp1[z_idx]
     sinv = sp_fft.irfft(sp1 / h_dec[z_idx], n=nfft)
 
-    # s1 = in1_p
-    # s2 = in2_p
-    s1, s2 = in1, in2
+    s1 = in1_p
+    s2 = in2_p
+    # s1, s2 = in1, in2
     # Easy way : from PSD and cross PSD
     # f_, s_11 = signal.welch(in1, fs=fs)
     nperseg = 256 * alpha
     noverlap = nperseg // 100 * 50
-    f_, s_22 = signal.welch(s2, fs=fs, nperseg=nperseg, noverlap=noverlap)
-    f_, s_12 = signal.csd(s1, s2, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    # f_, s_22 = signal.welch(s2, fs=fs)
+    # f_, s_12 = signal.csd(s1, s2, fs=fs)
 
-    # s_22 = sp_fft.rfft(s2) * np.conj(sp_fft.rfft(s2))
-    # s_12 = sp_fft.rfft(s1) * np.conj(sp_fft.rfft(s1))
-    # f_ = sp_fft.rfftfreq(n=in1.size, d=1 / fs)
+    s_22 = sp_fft.rfft(s2) * np.conj(sp_fft.rfft(s2))
+    s_12 = sp_fft.rfft(s1) * np.conj(sp_fft.rfft(s2))
+    f_ = sp_fft.rfftfreq(n=in1.size, d=1 / fs)
 
     # RTF
-    t_12 = s_12 / s_22
-    rtf.append(t_12)
+    # t_12 = s_12 / s_22
+    # t_12.append(d)
+    rtf.append(lib_feat)
+    rtf_other.append(lib_feature_other.sel(idx_rcv_pairs=i_rcv_p).values)
 
     # Theoretical RTF
     t_12_th = h_p1 / h_p2
+    # t_12_th = s_12 / s_22
     rtf_th.append(t_12_th)
 
 t = ds.library_signal_time.values
-
 # plt.figure()
 # plt.plot(np.abs(h_p1))
 
@@ -197,6 +208,7 @@ plt.legend()
 # Plot rtfs
 rtf = np.array(rtf)
 rtf_th = np.array(rtf_th)
+rtf_other = np.array(rtf_other)
 for i_rcv_p in ds.idx_rcv_pairs.values:
     pair = ds.rcv_pairs[i_rcv_p].values
     plt.figure()
@@ -207,6 +219,13 @@ for i_rcv_p in ds.idx_rcv_pairs.values:
         label=rf"$T_{{{pair[0]} {pair[1]}}} th$",
         linestyle="--",
     )
+    plt.plot(
+        f_,
+        np.abs(rtf_other[i_rcv_p, :]),
+        label=rf"$T_{{{pair[0]} {pair[1]}}} other$",
+        linestyle="--",
+    )
+
     plt.ylim([0, 6])
     plt.legend()
 

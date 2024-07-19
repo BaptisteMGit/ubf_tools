@@ -285,6 +285,7 @@ def get_ambiguity_surface(ds):
         ds["ambiguity_surface"] == 0, min_val, ds["ambiguity_surface"]
     )
 
+    # Convert to dB
     amb_surf = 10 * np.log10(ds.ambiguity_surface)  # dB scale
 
     amb_surf_combined_not_0 = ds.ambiguity_surface_combined.values[
@@ -328,7 +329,9 @@ def plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot=1):
             amb_surf_i = amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             )
-            bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+            amb_surf_i = xr.where(amb_surf_i < -10, np.nan, amb_surf_i)
+            # bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+            bins = 50
             plt.figure(figsize=(16, 10))
             amb_surf_i.plot.hist(bins=bins)
             plt.axvline(
@@ -352,7 +355,9 @@ def plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot=1):
             amb_surf_i = amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             )
-            bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+            # bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+            bins = None
+
             plt.figure(figsize=(16, 10))
             amb_surf_i.plot.hist(bins=bins, cumulative=True, density=True)
             plt.ylabel("Number of points")
@@ -481,7 +486,8 @@ def plot_ambiguity_surface(
             target_amb_surf = amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             ).load()
-            vmin = target_amb_surf.quantile(0.50).values
+            vmin = target_amb_surf.quantile(0.75).values
+            # vmin= target_amb_surf.min()
             vmax = target_amb_surf.max()
             target_amb_surf.plot(
                 x="lon", y="lat", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
@@ -654,7 +660,8 @@ def plot_ambiguity_surface(
         target_amb_surf_combined = amb_surf_combined.isel(
             src_trajectory_time=i_src_time
         ).load()
-        vmin = target_amb_surf_combined.quantile(0.35).values
+        vmin = target_amb_surf_combined.quantile(0.95).values
+        # vmin= target_amb_surf.min()
         vmax = target_amb_surf_combined.max()
         target_amb_surf_combined.plot(
             x="lon", y="lat", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"

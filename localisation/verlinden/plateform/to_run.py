@@ -414,7 +414,7 @@ def run_all_testcases():
     # rcv_id = ["RRdebug0", "RRdebug1", "RRdebug2"]
 
     f0_lib = 5  # Fundamental frequency of the ship signal
-    dt, fs, event_sig_info = set_event_sig_info(f0=f0_lib)
+    dt, fs, event_sig_info = set_event_sig_info(f0=2)
 
     # fs = 100  # Sampling frequency
 
@@ -509,10 +509,10 @@ def run_all_testcases():
 if __name__ == "__main__":
     import xarray as xr
 
-    # rcv_id = ["R1", "R2", "R3"]
+    rcv_id = ["R1", "R2", "R3"]
 
     # # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
-    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase3_1_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240718_155452.zarr"
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase3_1_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240719_115513.zarr"
     # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
     # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
     # process_analysis(ds, grid_info)

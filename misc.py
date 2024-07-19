@@ -15,6 +15,8 @@
 import io
 import os
 import re
+
+# import cv2
 import shutil
 import psutil
 import numpy as np
@@ -340,6 +342,52 @@ def gather_bibliographies(manuscript_folder, output_file):
         for ref_key in sorted(bib_entries):
             f.write(bib_entries[ref_key])
             f.write("\n")
+
+
+def robust_normalization(ambiguity_surface):
+    median = np.median(ambiguity_surface)
+    iqr = np.percentile(ambiguity_surface, 75) - np.percentile(ambiguity_surface, 25)
+    robust_surface = (ambiguity_surface - median) / iqr
+    robust_surface = np.clip(robust_surface, 0, None)  # Ensure non-negative values
+    normalized_surface = robust_surface / np.max(robust_surface)
+    return normalized_surface
+
+
+def ambiguity_enhencement(ambiguity_surface):
+
+    # Get rid of extreme values
+    alpha_quantile = 0.75
+    th = np.quantile(ambiguity_surface, q=1 - alpha_quantile)
+    da_amb_surf = np.where(da_amb_surf < th, th, da_amb_surf)
+
+    # Stretch values in [0, 1]
+    da_amb_surf = (da_amb_surf - da_amb_surf.min()) / (
+        da_amb_surf.max() - da_amb_surf.min()
+    )
+
+    # Replace 0 values by minimum value to avoid log(0)
+    min_val = 1e-10  # -100 dB
+    da_amb_surf = np.where(da_amb_surf == 0, min_val, da_amb_surf)
+
+
+def plot_amb(ambiguity_surface):
+    import time
+
+    plt.figure()
+    plt.hist(ambiguity_surface.flatten(), bins=1000)
+    a = np.random.randint(0, int(1e6))
+    plt.savefig(f"test_{a}")
+
+
+def histogram_equalization(ambiguity_surface):
+    # Convert to 8-bit image for histogram equalization
+    surface_8bit = cv2.normalize(
+        ambiguity_surface, None, 0, 255, cv2.NORM_MINMAX
+    ).astype("uint8")
+    equalized_surface = cv2.equalizeHist(surface_8bit)
+    # Convert back to float and normalize to [0, 1]
+    normalized_surface = equalized_surface.astype("float") / 255
+    return normalized_surface
 
 
 if __name__ == "__main__":

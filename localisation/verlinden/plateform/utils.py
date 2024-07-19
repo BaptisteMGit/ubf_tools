@@ -21,7 +21,7 @@ import scipy.fft as sp_fft
 import scipy.signal as signal
 
 from cst import C0
-from misc import mult_along_axis, fft_convolve_f
+from misc import mult_along_axis, fft_convolve_f, robust_normalization, plot_amb
 from localisation.verlinden.plateform.params import N_WORKERS
 from localisation.verlinden.misc.params import ROOT_DATASET, ROOT_PROCESS
 from localisation.verlinden.misc.verlinden_utils import (
@@ -816,11 +816,6 @@ def add_feature_event(xr_dataset, idx_snr, feature="corr", verbose=True):
                     dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
                 ] = rtf_12.astype(xr_dataset.event_feature)
 
-            # if feature == "tf":
-            # xr_dataset.event_feature[
-            #     dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
-            # ] = tf.astype(xr_dataset.event_feature)
-
     sub_region_to_save = xr_dataset.event_feature
     sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
     sub_region_to_save.to_zarr(
@@ -1245,17 +1240,37 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
             norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
             amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
             amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
-            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
+            # da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
         elif similarity_metric == "lstsquares":
             # diff = lib_data_array - event_vector_array
-            diff = np.abs(lib_data_array) - np.abs(event_vector_array)
+            diff = np.abs(lib_data_array - event_vector_array)
             amb_surf = np.nansum(diff**2, axis=2)  # Values in [0, max_diff**2]
+
+            # # PB : gamme trop large -> égalisation d'histogramme ?
+            # npix = amb_surf.size
+            # max_amb = np.nanmax(amb_surf)
+            # n_val = 10 ** int(np.log10(npix) - 1)
+            # amb_surf_quant = (amb_surf / max_amb * n_val).astype(int)
+            # hist, bin_edges = np.histogram(amb_surf_quant, bins=n_val)
+            # Hc = np.cumsum(hist)
+
+            # # Ugly loop
+            # Hc_mat = np.empty(amb_surf.shape)
+            # for i in range(amb_surf.shape[0]):
+            #     for j in range(amb_surf.shape[1]):
+            #         if amb_surf_quant[i, j] == n_val:
+            #             Hc_mat[i, j] = Hc[-1]
+            #         else:
+            #             # pix_idx = np.argmin(np.abs(bin_edges - amb_surf[i, j]))
+            #             Hc_mat[i, j] = Hc[amb_surf_quant[i, j]]
+            # amb_surf_ega = n_val * Hc_mat / npix
+
+            # amb_surf_ = amb_surf_ega / max_amb  # Values in [0, 1]
             amb_surf = amb_surf / np.nanmax(amb_surf)  # Values in [0, 1]
             amb_surf = (
                 1 - amb_surf
             )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface
-            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
         elif similarity_metric == "hilbert_env_intercorr0":
             lib_env = np.abs(signal.hilbert(lib_data_array))
@@ -1273,14 +1288,11 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
             norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
             amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
             amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
-            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
-        # TODO: remove this part
-        # if np.any(np.isnan(amb_surf)):
-        #     print(amb_surf)
-        #     print(autocorr_lib_0)
-        #     print(autocorr_event_0)
-        #     print(norm)
+        # plot_amb(amb_surf)
+        amb_surf = robust_normalization(amb_surf)
+        # plot_amb(amb_surf)
+        da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
     return da_amb_surf
 

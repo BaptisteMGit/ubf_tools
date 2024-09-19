@@ -89,7 +89,7 @@ def ship_noise(T):
     return s, t
 
 
-def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100):
+def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100, Nh=None):
 
     if std_fi is None:
         std_fi = f0 * 1 / 100
@@ -97,7 +97,8 @@ def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100):
         tau_corr_fi = 1 / f0
 
     # source signal parameters
-    Nh = int(np.floor(fs / 2 / f0) - 1)
+    if Nh is None:
+        Nh = int(np.floor(fs / 2 / f0) - 1)
     A_harmonics = np.ones(Nh)
 
     # signal variables
@@ -118,7 +119,10 @@ def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100):
         Gaussian[1 : int(np.ceil(Nt / 2))]
     )
     delta_fi = np.random.randn(len(t))
-    delta_fi = np.fft.ifft(np.fft.fft(delta_fi) * np.sqrt(Gaussian * Nt / Ttot))
+    # delta_fi = np.fft.ifft(np.fft.fft(delta_fi) * np.sqrt(Gaussian * Nt / Ttot))
+    delta_fi = np.fft.ifft(
+        np.fft.fft(delta_fi) * np.sqrt(Gaussian * fs)
+    )  # 19/09/2024 for clarity
     delta_ph = np.cumsum(delta_fi) / fs  # random instant phase perturbation
 
     # Derive ship signal from harmonics
@@ -141,6 +145,7 @@ def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100):
 def ship_spectrum(f):
     f = np.array(f)
     fc = 15
+    # fc = 20
     Q = 2
     Aship = 1 / (1 - f**2 / fc**2 + 1j * f / fc / Q)
     return Aship

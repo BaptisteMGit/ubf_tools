@@ -89,7 +89,9 @@ def ship_noise(T):
     return s, t
 
 
-def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100, Nh=None):
+def generate_ship_signal(
+    Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100, Nh=None, A_harmonics=None
+):
 
     if std_fi is None:
         std_fi = f0 * 1 / 100
@@ -99,7 +101,8 @@ def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100, Nh=Non
     # source signal parameters
     if Nh is None:
         Nh = int(np.floor(fs / 2 / f0) - 1)
-    A_harmonics = np.ones(Nh)
+    if A_harmonics is None:
+        A_harmonics = np.ones(Nh)
 
     # signal variables
     t = np.arange(0, Ttot, 1 / fs)
@@ -107,23 +110,22 @@ def generate_ship_signal(Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100, Nh=Non
     Nt = len(t)
 
     # random instant frequency perturbation delta_fi with Gaussian power spectrum
-    Gaussian = np.zeros_like(f)
-
-    Gaussian[0 : int(np.floor(Nt / 2))] = (
+    freq = np.fft.fftfreq(len(t), 1 / fs)
+    G = np.zeros_like(freq)
+    G = (
         np.sqrt(2 * np.pi)
         * tau_corr_fi
         * std_fi**2
-        * np.exp(-2 * (np.pi * f[0 : int(np.floor(Nt / 2))] * tau_corr_fi) ** 2)
+        * np.exp(-2 * (np.pi * freq * tau_corr_fi) ** 2)
     )
-    Gaussian[-1 : int(np.floor(Nt / 2)) : -1] = np.conj(
-        Gaussian[1 : int(np.ceil(Nt / 2))]
-    )
+
     delta_fi = np.random.randn(len(t))
-    # delta_fi = np.fft.ifft(np.fft.fft(delta_fi) * np.sqrt(Gaussian * Nt / Ttot))
     delta_fi = np.fft.ifft(
-        np.fft.fft(delta_fi) * np.sqrt(Gaussian * fs)
+        np.fft.fft(delta_fi) * np.sqrt(G * fs)
     )  # 19/09/2024 for clarity
+    # delta_fi = np.random.normal(0, 1 / (tau_corr_fi * np.pi * 2), len(freq))
     delta_ph = np.cumsum(delta_fi) / fs  # random instant phase perturbation
+    # fs check comment la FFT est écrite pour avoir la bonne amplitude
 
     # Derive ship signal from harmonics
     s = np.zeros_like(t, dtype=complex)

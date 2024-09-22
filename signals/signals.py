@@ -111,21 +111,22 @@ def generate_ship_signal(
 
     # random instant frequency perturbation delta_fi with Gaussian power spectrum
     freq = np.fft.fftfreq(len(t), 1 / fs)
-    G = np.zeros_like(freq)
-    G = (
+    fi_perturbation_psd = np.zeros_like(freq)
+    fi_perturbation_psd = (
         np.sqrt(2 * np.pi)
         * tau_corr_fi
         * std_fi**2
         * np.exp(-2 * (np.pi * freq * tau_corr_fi) ** 2)
     )
 
-    delta_fi = np.random.randn(len(t))
+    noise_phase = np.random.randn(len(t))
+    random_phase = np.fft.fft(noise_phase)
     delta_fi = np.fft.ifft(
-        np.fft.fft(delta_fi) * np.sqrt(G * fs)
+        random_phase * np.sqrt(fi_perturbation_psd * fs)
     )  # 19/09/2024 for clarity
-    # delta_fi = np.random.normal(0, 1 / (tau_corr_fi * np.pi * 2), len(freq))
-    delta_ph = np.cumsum(delta_fi) / fs  # random instant phase perturbation
-    # fs check comment la FFT est écrite pour avoir la bonne amplitude
+    delta_ph = (
+        np.cumsum(delta_fi) / fs
+    )  # random instant phase perturbation (for the fs coef check comment la FFT est écrite pour avoir la bonne amplitude)
 
     # Derive ship signal from harmonics
     s = np.zeros_like(t, dtype=complex)

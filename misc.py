@@ -20,7 +20,7 @@ import re
 import shutil
 import psutil
 import numpy as np
-import numpy as np
+import pandas as pd
 import multiprocessing
 import scipy.fft as sp_fft
 import moviepy.editor as mpy
@@ -390,17 +390,96 @@ def histogram_equalization(ambiguity_surface):
     return normalized_surface
 
 
+def count_publications_per_year(
+    file_path, output_filename="nombre_publications_par_annee", output_root=None
+):
+    """
+    Compte le nombre de publications par année à partir d'un fichier Excel (extrait de l'outil lens.org) et exporte les résultats dans un nouveau fichier Excel.
+
+    Args:
+        file_path (str): Le chemin du fichier csv/Excel contenant les données d'entrée.
+        output_file (str): Le nom du fichier Excel de sortie avec les résultats (par défaut: 'nombre_publications_par_annee').
+
+    Returns:
+        pd.DataFrame: Un tableau contenant les années et le nombre de publications correspondantes.
+    """
+    # Lecture de l'extension du fichier 
+    ext = os.path.splitext(file_path)[1]
+
+    if ext == ".csv":
+        # Charger le fichier CSV
+        df = pd.read_csv(file_path)
+    elif ext in [".xls", ".xlsx"]:
+        # Charger le fichier Excel
+        df = pd.read_excel(file_path)
+
+    if output_root is None:
+        output_root = os.path.dirname(file_path)
+
+    # Extraire la colonne "Publication Year"
+    publication_years = df["Publication Year"]
+
+    # Filtrer pour les années après 1950
+    publication_years = publication_years[publication_years >= 1950]
+
+    # Compter le nombre de publications par année
+    year_counts = publication_years.value_counts().sort_index()
+
+    # Créer le tableau avec deux colonnes : Année et Nombre de publications
+    result_df = pd.DataFrame(
+        {"Year": year_counts.index, "Number of Publications": year_counts.values}
+    )
+
+    # Exporter le tableau dans un nouveau fichier Excel
+    output_filename = f"{output_filename}.xlsx"
+    output_filepath = os.path.join(output_root, output_filename)
+    result_df.to_excel(output_filepath, index=False)
+
+    # Retourner le DataFrame pour un éventuel traitement ultérieur
+    return result_df, output_filepath
+
+
+def export_to_dat(df, file_path):
+    """ 
+    Exporte le DataFrame sous forme de fichier .dat compatible avec LaTeX.
+    
+    Args:
+        df (pd.DataFrame): Le DataFrame contenant les données à exporter.
+        dat_file (str): Le nom du fichier .dat à générer (par défaut: 'publications_data.dat').
+    """
+
+    # Add .dat to input filename
+    dat_file_path = os.path.splitext(file_path)[0] + ".dat"
+    # dat_file_path = os.path.join(os.path.dirname(file_path), dat_file)
+    with open(dat_file_path, "w") as f:
+        f.write("Year Number_of_Publications\n")
+        for _, row in df.iterrows():
+            f.write(f"{int(row['Year'])} {int(row['Number of Publications'])}\n")
+
+
 if __name__ == "__main__":
-    # Usage
-    manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
-    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\glossary_acoustics.tex"
 
-    # gather_acronyms(manuscript_folder, output_file)
+    """ Gather acronyms and bibliographies from a manuscript folder """
+    # # Usage
+    # manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
+    # output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\glossary_acoustics.tex"
 
-    # Usage
-    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
+    # # gather_acronyms(manuscript_folder, output_file)
 
-    gather_bibliographies(manuscript_folder, output_file)
+    # # Usage
+    # output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
+
+    # gather_bibliographies(manuscript_folder, output_file)
+
+    """ Count publications per year """
+    # Exemple d'utilisation de la fonction
+    file_path = r"C:\Users\baptiste.menetrier\Desktop\doc\biblio\Localisation\lens_mfp_publi_1970_2023_4journals.csv"
+    output_filename = "lens_mfp_publi_1970_2023_4journals_per_year"
+    result_df, result_filepath = count_publications_per_year(file_path, output_filename)
+    print(result_df)
+
+    # Utilisation
+    export_to_dat(result_df, result_filepath)
 
 
 # # Test plot_animation_moviepy

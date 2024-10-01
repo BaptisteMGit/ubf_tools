@@ -77,7 +77,6 @@ def add_event(ds, src_info, rcv_info, apply_delay, feature, verbose=True):
     ds["event_signal_time"] = time_vector
     signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
 
-    # TODO change into dask array
     chunks = (1, 1, len(time_vector))
     rcv_signal_event = da.empty(
         tuple(ds.sizes[d] for d in signal_event_dim), chunks=chunks, dtype=np.float32
@@ -284,7 +283,7 @@ def process(
 ):
 
     # Load subset and init usefull vars
-    feature = "rtf"
+    feature = "corr"
     ds = init_dataset(
         main_ds_path=main_ds_path,
         src_info=src_info,
@@ -298,14 +297,14 @@ def process(
         verbose=True,
     )
 
-    # Quick fix for received signal at rcv position : for r = 0 -> sig = 0
-    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
-    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
+    # # Quick fix for received signal at rcv position : for r = 0 -> sig = 0
+    # rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    # rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
 
-    for i in range(len(rcv_grid_lon)):
-        ds["rcv_signal_library"].loc[dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])] = (
-            np.nan
-        )
+    # for i in range(len(rcv_grid_lon)):
+    #     ds["rcv_signal_library"].loc[dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])] = (
+    #         np.nan
+    #     )
 
     # Add event to the dataset
     ds = add_event(

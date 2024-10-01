@@ -24,6 +24,8 @@ distributed = "*"
 zarr = "*"
 scikit-image = "*"
 copernicusmarine = "*"
+openpyxl = "*"
+ipympl = "*"
 
 [dev-packages]
 ipykernel = "*"

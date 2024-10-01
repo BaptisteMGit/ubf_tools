@@ -287,9 +287,80 @@ def get_lonlat_sub_regions(ds, nregion_lon, nregion_lat):
     return lon_slices, lat_slices
 
 
+def compute_received_signal_random_source(ds, apply_delay):
+
+    # Load random source database
+    fpath_rdsrc = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ship_sig\ship_sig_database\ship_sig_database.nc"
+    xr_rdsrc = xr.open_dataset(fpath_rdsrc)
+    nsig = xr_rdsrc.sizes["sig"]
+    idx_sig = np.random.randint(
+        0, nsig, size=ds.tf_gridded.isel(idx_rcv=0, kraken_freq=0).shape
+    )
+
+    propagating_freq = xr_rdsrc.freq.values
+
+    # Build the propagating spectrum matrix (idx_rcv, lat, lon, kraken_freq)
+    propagating_spectrum = np.empty(ds.tf_gridded.shape, dtype=complex)
+    for i_sig in range(nsig):
+        grid_isig = idx_sig == i_sig
+        mod_tf = xr_rdsrc.tf_mod.isel(sig=i_sig).values
+        arg_tf = xr_rdsrc.tf_arg.isel(sig=i_sig).values
+        for i_rcv in range(ds.sizes["idx_rcv"]):
+            propagating_spectrum[i_rcv, grid_isig] = mod_tf * np.exp(
+                1j * arg_tf
+            )  # The source is the same for all receivers
+
+    nfft_inv = xr_rdsrc.nfft
+    df = xr_rdsrc.df
+    T_tot = 1 / df
+
+    k0 = 2 * np.pi * propagating_freq / C0
+    norm_factor = np.exp(1j * k0) / (4 * np.pi)
+
+    # Received signal spectrum resulting from the convolution of the src signal and the impulse response
+    propagating_spectrum = mult_along_axis(propagating_spectrum, norm_factor, axis=-1)
+    transmitted_field_f = ds.tf_gridded * propagating_spectrum
+
+    # Apply corresponding delay to the signal
+    if apply_delay:
+        tau = ds.delay_rcv.min(
+            dim="idx_rcv"
+        )  # Delay to apply to the signal to take into account the propagation time
+
+        # Expand tau to the signal shape
+        tau = tau.expand_dims({"kraken_freq": ds.sizes["kraken_freq"]}, axis=-1)
+        # Derive delay factor
+        tau_vec = mult_along_axis(tau, propagating_freq, axis=-1)
+        delay_f = np.exp(1j * 2 * np.pi * tau_vec)
+        # Expand delay factor to the signal shape
+        delay_f = tau.copy(deep=True, data=delay_f).expand_dims(
+            {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
+        )
+        # Apply delay
+        transmitted_field_f = transmitted_field_f * delay_f
+
+    # Fourier synthesis of the received signal -> time domain
+    chunk_shape = ds.rcv_signal_library.data.chunksize
+    transmitted_field_f = da.from_array(transmitted_field_f, chunks=chunk_shape)
+    transmitted_field_t = np.fft.irfft(
+        transmitted_field_f, axis=-1, n=nfft_inv
+    ).compute()
+
+    return transmitted_field_t
+
+
 def compute_received_signal(
     ds, propagating_freq, propagating_spectrum, norm_factor, nfft_inv, apply_delay
 ):
+
+    # Quick fix for received signal at rcv position : for r = 0 -> sig = emmited signal
+    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
+
+    for i in range(len(rcv_grid_lon)):
+        ds["tf_gridded"].loc[
+            dict(idx_rcv=i, lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])
+        ] = 1
 
     # Received signal spectrum resulting from the convolution of the src signal and the impulse response
     transmitted_field_f = mult_along_axis(
@@ -700,6 +771,9 @@ def add_feature_library_subset(xr_dataset, feature="corr"):
             # Normalized cross-correlation
             e1 = np.sum(np.abs(s1) ** 2, axis=ax)
             e2 = np.sum(np.abs(s2) ** 2, axis=ax)
+            # e1 = np.var(s1, axis=ax)
+            # e2 = np.var(s2, axis=ax)
+
             c_12 = signal.fftconvolve(s1, s2[..., ::-1], mode="full", axes=-1)
             norm = np.repeat(
                 np.expand_dims(np.sqrt(e1 * e2), axis=ax), c_12.shape[ax], axis=ax
@@ -775,6 +849,9 @@ def add_feature_event(xr_dataset, idx_snr, feature="corr", verbose=True):
                 # Normalized cross-correlation
                 e1 = np.sum(np.abs(s1) ** 2)
                 e2 = np.sum(np.abs(s2) ** 2)
+                # e1 = np.var(s1)
+                # e2 = np.var(s2)
+
                 c_12 = signal.fftconvolve(s1, s2[::-1], mode="full")
                 norm = np.sqrt(e1 * e2)
                 c_12_norm = c_12 / norm

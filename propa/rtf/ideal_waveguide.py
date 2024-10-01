@@ -19,6 +19,9 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from time import time
+from publication.PublicationFigure import PubFigure
+
+PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=12, ticks_fontsize=20)
 
 
 # ======================================================================================================================
@@ -150,8 +153,8 @@ def g_mat(f, z_src, z_rcv_ref, z_rcv, D, r_rcv_ref, r):
     Derive the RTF g(f) for a range of frequencies f, z_src depths and ranges r."""
     # Ensure z_src is an array
     z_src = np.atleast_1d(z_src)
-    # Ensure r is an array
-    r = np.atleast_1d(r)
+    # Ensure r is a 2D array for compatibility issues
+    r = np.atleast_2d(r)
 
     rflat = r.flatten()  # Flatten the ranges corresponding to several receivers
     zz_src, rr = np.meshgrid(z_src, rflat)
@@ -282,5 +285,96 @@ def rtf_distance(ranges, z_src, z_rcv, D, n_rcv, d_rcv):
         f, g_f = g(f=f, z_src=z_src, z_rcv=z_rcv, D=D, r_rcv_ref=r, rl=rl)
 
 
+def field(f, z_src, r, z, D):
+    """
+    Derive the pressure field for the ideal waveguide at frequencies f, ranges r and depths z
+    """
+
+    # Ensure args are arrays
+    z = np.atleast_1d(z)
+    r = np.atleast_1d(r)
+    f = np.atleast_1d(f)
+    rr_2d, zz_2d = np.meshgrid(r, z)
+
+    f = f[f > cutoff_frequency(c0, D)]
+
+    # Define the field matrix
+    p_field = np.zeros((len(f),) + zz_2d.shape, dtype=np.complex64)
+
+    for i, fi in enumerate(f):
+        n = nb_propagating_modes(fi, c0, D)
+        m = np.arange(1, n + 1)
+
+        rr, zz, mm = np.meshgrid(r, z, m)
+
+        phi = u_m(mm, fi, z_src, z=zz, D=D) * np.exp(-1j * kr(mm, fi, D) * rr)
+        p_field_fi = alpha(D, rr_2d) * np.sum(phi, axis=-1)
+        p_field[i, ...] = p_field_fi
+
+    return f, rr, zz, p_field
+
+
+def plot_tl(f, r, z, p_field, f_plot, z_src=None, r_rcv=None, z_rcv=None, show=False):
+    # Slice to get the pressure field at the desired frequency
+    f = np.atleast_1d(f)
+    idx_freq = np.argmin(np.abs(f - f_plot))
+    f_plot = f[idx_freq]
+    p_field = p_field[idx_freq, ...]
+
+    # Derive TL from the pressure field
+    p_field[p_field == 0] = 1e-20
+    tl = -20 * np.log10(np.abs(p_field))
+    dr = r[1] - r[0]
+    dz = z[1] - z[0]
+
+    tlmax = np.percentile(tl, 95)
+    tlmin = np.percentile(tl, 1)
+    plt.figure()
+    plt.pcolormesh(r * 1e-3, z, tl, cmap="jet_r", vmin=tlmin, vmax=tlmax)
+    plt.colorbar(label=r"$\textrm{TL [dB]}$")
+    # Add source position
+    if z_src is not None:
+        plt.scatter(0, z_src, color="k", marker="o", s=200)
+    # Add receiver positions
+    if r_rcv is not None and z_rcv is not None:
+        plt.scatter(r_rcv * 1e-3, z_rcv, color="black", marker="x", s=200)
+
+    plt.gca().invert_yaxis()
+    plt.xlabel(r"$r \, \textrm{[km]}$")
+    plt.ylabel(r"$z \, \textrm{[m]}$")
+    plt.xlim(0, r[-1] * 1e-3)
+    plt.title(
+        r"$\textrm{TL} \,"
+        f"(f = {f_plot:.2f} "
+        + r"\textrm{Hz}, \,"
+        + f"\Delta_r = {dr:.1f} \,"
+        + r"\textrm{m}, \,"
+        + f"\Delta_z = {dz:.1f} \,"
+        + r"\textrm{m})$"
+    )
+    if show:
+        plt.show()
+
+
 if __name__ == "__main__":
-    pass
+
+    D = 1e3
+    f = 5
+    z_src = 5
+
+    dz = 1
+    dr = 1
+    R = 20 * 1e3
+    z = np.arange(0, D, dz)
+    r = np.arange(1, R, dr)
+
+    n_rcv = 5
+    delta_rcv = 100
+    r_rcv_0 = R - 5 * 1e3
+    z_rcv_0 = D - 5
+    r_rcv = np.array([r_rcv_0 + delta_rcv * i for i in range(n_rcv)])
+    z_rcv = np.array([z_rcv_0] * n_rcv)
+
+    f, rr, zz, p_field = field(f, z_src, r, z, D)
+    f0 = 10
+    plot_tl(f, r, z, p_field, f_plot=f0, z_src=z_src, r_rcv=r_rcv, z_rcv=z_rcv)

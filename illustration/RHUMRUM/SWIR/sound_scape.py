@@ -7,9 +7,9 @@ import scipy.io.wavfile as wavfile
 from publication.PublicationFigure import PubFigure
 
 PFIG = PubFigure(
-    # label_fontsize=25,
+    label_fontsize=20,
     # title_fontsize=25,
-    # ticks_fontsize=25,
+    ticks_fontsize=20,
     # legend_fontsize=20,
 )
 
@@ -64,8 +64,14 @@ im = plt.pcolormesh(
 # xticks = np.arange(0, data["tt"][-1], 3600)
 # plt.xticks(xticks, [f"{int(x/3600)}" for x in xticks])
 
-plt.xlabel("Time [h]")
-plt.ylabel("Frequency [Hz]")
+plt.xlabel("Temps [h]")
+plt.ylabel("Fréquence [Hz]")
 plt.tight_layout()
+
+root_img = (
+    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\RHUMRUM\SWIR"
+)
+img_path = os.path.join(root_img, "soundscape_BDH.png")
+plt.savefig(img_path, dpi=300)
 # plt.colorbar(im, label="Magnitude [dB]")
-plt.show()
+# plt.show()

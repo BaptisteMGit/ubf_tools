@@ -153,7 +153,8 @@ def g_mat(f, z_src, z_rcv_ref, z_rcv, D, r_rcv_ref, r):
     # Ensure r is an array
     r = np.atleast_1d(r)
 
-    zz_src, rr = np.meshgrid(z_src, r)
+    rflat = r.flatten()  # Flatten the ranges corresponding to several receivers
+    zz_src, rr = np.meshgrid(z_src, rflat)
     f = f[f > cutoff_frequency(c0, D)]
 
     # Define the g matrix
@@ -177,6 +178,11 @@ def g_mat(f, z_src, z_rcv_ref, z_rcv, D, r_rcv_ref, r):
             / np.sum(phi_0, axis=-1)
         )
         g_matrix[i, ...] = g_fi
+
+    # Reshape to differentiate receivers
+    g_matrix = g_matrix.reshape(
+        (len(f),) + r.shape + z_src.shape
+    )  # Final shape = (nf, nr, nrcv, nz)
 
     return f, g_matrix
 

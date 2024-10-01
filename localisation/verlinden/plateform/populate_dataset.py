@@ -188,6 +188,7 @@ def grid_synthesis(
     ds,
     src,
     apply_delay=True,
+    random_source=False,
 ):
 
     print("Grid synthesis.....")
@@ -200,14 +201,16 @@ def grid_synthesis(
     propagating_freq = src.positive_freq
     propagating_spectrum = src.positive_spectrum
 
+    nfft_inv = src.nfft
+    T_tot = 1 / src.df
+
     k0 = 2 * np.pi * propagating_freq / C0
     norm_factor = np.exp(1j * k0) / (4 * np.pi)
 
     # nfft_inv = (
     #     4 * src.nfft
     # )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
-    nfft_inv = src.nfft
-    T_tot = 1 / src.df
+
     dt = T_tot / nfft_inv
     time_vector = np.arange(0, T_tot, dt)
 
@@ -259,14 +262,20 @@ def grid_synthesis(
             ds_sub = ds.isel(lat=lat_s, lon=lon_s)
 
             # Compute received signal in sub_region
-            transmited_field_t = compute_received_signal(
-                ds_sub,
-                propagating_freq,
-                propagating_spectrum,
-                norm_factor,
-                nfft_inv,
-                apply_delay,
-            )
+            if random_source:
+                transmitted_field_t = compute_received_signal_random_source(
+                    ds_sub,
+                    apply_delay,
+                )
+            else:
+                transmited_field_t = compute_received_signal(
+                    ds_sub,
+                    propagating_freq,
+                    propagating_spectrum,
+                    norm_factor,
+                    nfft_inv,
+                    apply_delay,
+                )
 
             ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)] = transmited_field_t
             sub_region_to_save = ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)]
@@ -299,7 +308,9 @@ def populate_dataset(ds, src, **kwargs):
     ds = grid_tf(ds, **grid_tf_kw)
 
     # Grid synthesis
-    grid_synthesis_kw = {key: kwargs[key] for key in kwargs if key in ["apply_delay"]}
+    grid_synthesis_kw = {
+        key: kwargs[key] for key in kwargs if key in ["apply_delay", "random_source"]
+    }
     ds = grid_synthesis(ds, src, **grid_synthesis_kw)
 
     return ds

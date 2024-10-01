@@ -24,6 +24,7 @@ class PubFigure:
         constrained_layout_w_pad=0.15,
         constrained_layout_hspace=0.1,
         constrained_layout_wspace=0.1,
+        use_tex=True,
     ):
         self.size = size
         self.label_fontsize = label_fontsize
@@ -47,6 +48,7 @@ class PubFigure:
 
         self.dpi = dpi
         self.fmt = fmt
+        self.use_tex = use_tex
         self.set_all_params()
 
     def set_full_screen(self):
@@ -74,5 +76,6 @@ class PubFigure:
             "ytick.labelsize": self.ticks_fontsize,
             "axes.titlepad": self.titlepad,
             "axes.labelpad": self.labelpad,
+            "text.usetex": self.use_tex,
         }
         plt.rcParams.update(params)

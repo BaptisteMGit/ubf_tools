@@ -13,6 +13,8 @@ def get_rhumrum_data(
     duration_sec,
     fmin=8.0,
     fmax=46.0,
+    filter_type="bandpass",
+    filter_corners=2,
     channels=["BDH", "BHZ", "BH1", "BH2"],
     save=True,
     plot=False,
@@ -32,7 +34,11 @@ def get_rhumrum_data(
         )
         # Filter signal
         filt_sig = raw_sig.filter(
-            "bandpass", freqmin=fmin, freqmax=fmax, corners=2, zerophase=True
+            filter_type,
+            freqmin=fmin,
+            freqmax=fmax,
+            corners=filter_corners,
+            zerophase=True,
         )
         # Load station metadata
         inv = client.get_stations(
@@ -55,14 +61,17 @@ def get_rhumrum_data(
             filt_sig.plot()
             corr_sig.plot()
 
-        root_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM"
-        fname = f"signal_{chnl}_{station_id}_{date[0:10]}.wav"  # on sauvegarde les signaux corriges dans un fichier .wav
-        fpath = os.path.join(root_data, fname)
-        wavfile.write(
-            fpath,
-            100,
-            corr_sig.data,
-        )
+        if save:
+            root_data = (
+                r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM"
+            )
+            fname = f"signal_{chnl}_{station_id}_{date[0:10]}.wav"  # on sauvegarde les signaux corriges dans un fichier .wav
+            fpath = os.path.join(root_data, fname)
+            wavfile.write(
+                fpath,
+                100,
+                corr_sig.data,
+            )
 
         raw_signal[chnl] = raw_sig
         filt_signal[chnl] = filt_sig
@@ -80,11 +89,11 @@ def get_rhumrum_data(
 
 
 if __name__ == "__main__":
-    date = "2013-05-10T00:00:00"  # Date and time of the beginning of the recording
+    date = "2013-05-31T16:30:00"  # Date and time of the beginning of the recording
 
     station_id = "RR44"
-    duration_sec = 60 * 60 * 48
+    duration_sec = 2 * 60 * 60
 
     raw_sig, filt_sig, corr_sig = get_rhumrum_data(
-        station_id=station_id, date=date, duration_sec=duration_sec, plot=False
+        station_id=station_id, date=date, duration_sec=duration_sec, plot=True
     )

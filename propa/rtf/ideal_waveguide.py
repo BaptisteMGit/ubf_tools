@@ -334,15 +334,21 @@ def plot_tl(f, r, z, p_field, f_plot, z_src=None, r_rcv=None, z_rcv=None, show=F
     plt.colorbar(label=r"$\textrm{TL [dB]}$")
     # Add source position
     if z_src is not None:
-        plt.scatter(0, z_src, color="k", marker="o", s=200)
+        plt.scatter(
+            0,
+            z_src,
+            color="fuchsia",
+            marker="o",
+            s=200,
+        )
     # Add receiver positions
     if r_rcv is not None and z_rcv is not None:
-        plt.scatter(r_rcv * 1e-3, z_rcv, color="black", marker="x", s=200)
+        plt.scatter(r_rcv * 1e-3, z_rcv, color="black", marker="x", s=300, linewidths=3)
 
     plt.gca().invert_yaxis()
     plt.xlabel(r"$r \, \textrm{[km]}$")
     plt.ylabel(r"$z \, \textrm{[m]}$")
-    plt.xlim(0, r[-1] * 1e-3)
+    plt.xlim((r[0] - 1) * 1e-3, r[-1] * 1e-3)
     plt.title(
         r"$\textrm{TL} \,"
         f"(f = {f_plot:.2f} "

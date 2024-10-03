@@ -31,10 +31,19 @@ def PI_var_r(
     r_src,
     z_src,
     x_rcv,
+    z_rcv,
     covered_range,
     dr,
     dist="both",
 ):
+
+    # Create folder to store the images
+    root, folder = get_folderpath(x_rcv, r_src, z_src)
+    subfolder = f"dr_{dr}"
+    root = os.path.join(root, folder, subfolder)
+    if not os.path.exists(root):
+        os.makedirs(root)
+
     n_rcv = len(x_rcv)
 
     # Define the ranges
@@ -89,13 +98,6 @@ def PI_var_r(
 
     range_displacement = r_src_list - r_src
 
-    # Create folder to store the images
-    root, folder = get_folderpath(x_rcv, r_src, z_src)
-    subfolder = f"dr_{dr}"
-    root = os.path.join(root, folder, subfolder)
-    if not os.path.exists(root):
-        os.makedirs(root)
-
     # Plot generalized distance map
     plt.figure()
     plt.plot(
@@ -104,7 +106,7 @@ def PI_var_r(
     )
     plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-    plt.title(r"$\mathcal{D}_F(r, z)$")
+    plt.title(r"$\mathcal{D}_F(r, z=z_s)$")
     plt.grid()
 
     # Save
@@ -165,11 +167,19 @@ def PI_var_z(
     r_src,
     z_src,
     x_rcv,
+    z_rcv,
     zmin,
     zmax,
     dz,
     dist="both",
 ):
+    # Create folder to store the images
+    root, folder = get_folderpath(x_rcv, r_src, z_src)
+    subfolder = f"dz_{dz}"
+    root = os.path.join(root, folder, subfolder)
+    if not os.path.exists(root):
+        os.makedirs(root)
+
     n_rcv = len(x_rcv)
 
     # Define detphs
@@ -212,13 +222,6 @@ def PI_var_z(
     # # Derive generalised distance combining all receivers
     Df = D_frobenius(g_ref, g_z)
 
-    # # First version = ugly iterative method
-    # D_frobenius = np.zeros((1, nb_pos_z))
-    # for i_z in range(g_z.shape[3]):
-    #     Gamma = g_ref_expanded[:, 0, :, i_z] - g_z[:, 0, :, i_z]
-    #     D_frobenius[0, i_z] = np.linalg.norm(Gamma, ord="fro")
-    # D_frobenius = D_frobenius.flatten()
-
     if dist == "D1" or dist == "both":
         d1 = np.sum(np.abs(g_ref_expanded - g_z), axis=0)
         d1 += 1
@@ -230,13 +233,6 @@ def PI_var_z(
 
     depth_displacement = z_src_list - z_src
 
-    # Create folder to store the images
-    root, folder = get_folderpath(x_rcv, r_src, z_src)
-    subfolder = f"dz_{dz}"
-    root = os.path.join(root, folder, subfolder)
-    if not os.path.exists(root):
-        os.makedirs(root)
-
     # Plot generalized distance map
     plt.figure()
     plt.plot(
@@ -245,7 +241,7 @@ def PI_var_z(
     )
     plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
     plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
-    plt.title(r"$D_{Frobenius}$")
+    plt.title(r"$\mathcal{D}_F(r=r_s, z)$")
     plt.grid()
 
     # Save
@@ -271,7 +267,7 @@ def PI_var_z(
             plt.plot(
                 depth_displacement,
                 d2[0, i_rcv, :],
-                label=r"$D_2$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
+                label=r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
             )
             d2max = np.max(d2)
 
@@ -304,6 +300,7 @@ def Pi_var_rz(
     r_src,
     z_src,
     x_rcv,
+    z_rcv,
     covered_range,
     dr,
     zmin,
@@ -311,6 +308,13 @@ def Pi_var_rz(
     dz,
     dist="both",
 ):
+
+    # Create folder to store the images
+    root, folder = get_folderpath(x_rcv, r_src, z_src)
+    subfolder = f"dr_{dr}_dz_{dz}"
+    root = os.path.join(root, folder, subfolder)
+    if not os.path.exists(root):
+        os.makedirs(root)
 
     n_rcv = len(x_rcv)
 
@@ -362,13 +366,6 @@ def Pi_var_rz(
     # # Derive generalised distance combining all receivers
     Df = D_frobenius(g_ref, g_rz)
 
-    # # First version = ugly iterative method
-    # D_frobenius = np.zeros((nb_pos_r, nb_pos_z))
-    # for i_r in range(g_rz.shape[1]):
-    #     for i_z in range(g_rz.shape[3]):
-    #         Gamma = g_ref_expanded[:, i_r, :, i_z] - g_rz[:, i_r, :, i_z]
-    #         D_frobenius[i_r, i_z] = np.linalg.norm(Gamma, ord="fro")
-
     if dist == "D1" or dist == "both":
         d1 = np.sum(np.abs(g_ref_expanded - g_rz), axis=0)
     if dist == "D2" or dist == "both":
@@ -376,13 +373,6 @@ def Pi_var_rz(
 
     range_displacement = r_src_list - r_src
     depth_displacement = z_src_list - z_src
-
-    # Create folder to store the images
-    root, folder = get_folderpath(x_rcv, r_src, z_src)
-    subfolder = f"dr_{dr}_dz_{dz}"
-    root = os.path.join(root, folder, subfolder)
-    if not os.path.exists(root):
-        os.makedirs(root)
 
     # Plot generalized distance map
     plt.figure()
@@ -398,7 +388,7 @@ def Pi_var_rz(
     plt.colorbar()
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
     plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
-    plt.title(r"$D_{Frobenius}$")
+    plt.title(r"$\mathcal{D}_F(r, z)$")
 
     # Save
     fpath = os.path.join(
@@ -450,7 +440,7 @@ def Pi_var_rz(
             plt.colorbar()
             plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
             plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
-            plt.title(r"$D_2$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
+            plt.title(r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
 
             # Save
             fpath = os.path.join(
@@ -465,6 +455,7 @@ def Pi_var_rz(
 
 def get_folderpath(x_rcv, r_src, z_src):
     delta_rcv = x_rcv[1] - x_rcv[0]
+    n_rcv = len(x_rcv)
     root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\ideal_waveguide"
     folder = f"nrcv_{n_rcv}_deltarcv_{delta_rcv:.0f}m_rsrc_{r_src*1e-3:.0f}km_zsrc_{z_src:.0f}m"
     return root, folder
@@ -485,6 +476,7 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
         r_src,
         z_src,
         x_rcv,
+        z_rcv,
         covered_range=covered_range,
         dr=dr,
         dist=dist,
@@ -497,6 +489,7 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
         r_src,
         z_src,
         x_rcv,
+        z_rcv,
         zmin=zmin,
         zmax=zmax,
         dz=dz,
@@ -510,6 +503,7 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
         r_src,
         z_src,
         x_rcv,
+        z_rcv,
         covered_range=covered_range,
         dr=dr,
         zmin=zmin,
@@ -535,12 +529,12 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
     z_rcv_plot = np.array([z_rcv_0] * n_rcv)
 
     rmax = np.max(r_rcv_plot) + 1e3
-    zmax = max(np.max(z_rcv), np.max(z_src), D)
+    zmax = max(np.max(z_rcv), np.max(z_src), depth)
     r = np.linspace(1, rmax, int(1e3))
     z = np.linspace(0, zmax, 100)
 
     freq_to_plot = [1, 5, 10, 20, 50]
-    f, _, _, p_field = field(freq_to_plot, z_src, r, z, D)
+    f, _, _, p_field = field(freq_to_plot, z_src, r, z, depth)
     for fp in freq_to_plot:
         plot_tl(
             f,
@@ -563,7 +557,7 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
     z = np.linspace(zmax - 20, zmax, 100)
 
     freq_to_plot = [1, 5, 10, 20, 50]
-    f, _, _, p_field = field(freq_to_plot, z_src, r, z, D)
+    f, _, _, p_field = field(freq_to_plot, z_src, r, z, depth)
     for fp in freq_to_plot:
         plot_tl(
             f,
@@ -1185,168 +1179,25 @@ def default_params():
     return depth, r_src, z_src, z_rcv, n_rcv, delta_rcv, f
 
 
-params = ["r_src", "z_src", "n_rcv", "delta_rcv"]
-for param in ["r_src", "z_src"]:
-    sensibility_ideal_waveguide(param=param, axis="both")
+if __name__ == "__main__":
 
-# # 3) Compute RTF for the reference source position
-# idx_rcv_ref = 0
+    # params = ["r_src", "z_src", "n_rcv", "delta_rcv"]
+    params = ["delta_rcv"]
 
-# f, g_ref = g(
-#     f, z_src, z_rcv_ref=z_rcv, z_rcv=z_rcv, D=D, r_rcv_ref=r_src_rcv[0], r=r_src_rcv[1]
-# )
+    for param in params:
+        sensibility_ideal_waveguide(param=param, axis="both")
 
-# # 4) Derive RTF for another source position
-# r_src_bis = r_src + 50
-# r_src_rcv = x_rcv - r_src_bis
+    covered_range = 50
+    dr = 0.1
+    zmin = 1
+    zmax = 20
+    dz = 0.1
+    full_test(covered_range, dr, zmin, zmax, dz, dist="D2")
 
-# f, g_1_bis = g(
-#     f, z_src, z_rcv_ref=z_rcv, z_rcv=z_rcv, D=D, r_rcv_ref=r_src_rcv[0], r=r_src_rcv[1]
-# )
+    # covered_range = 15 * 1e3
+    # dr = 10
+    # zmin = z_src - 10
+    # zmax = D
+    # dz = 1
 
-# plt.figure()
-# plt.plot(f, np.abs(g_ref))
-# plt.plot(f, np.abs(g_1_bis))
-# plt.xlabel("Frequency (Hz)")
-# plt.ylabel(f"$g_ref(f)$")
-# plt.title("RTF")
-# plt.grid()
-
-# # 5) Compute the difference between the two RTFs
-# diff = np.abs(g_ref - g_1_bis)
-
-# plt.figure()
-# plt.plot(f, diff)
-# plt.xlabel("Frequency (Hz)")
-# plt.ylabel(r"$|g_ref - g_1^{bis}|$")
-# plt.title("Difference between RTFs")
-# plt.grid()
-
-# plt.close("all")
-
-# # 6) Compute the relative difference between the two RTFs
-# d1 = np.sum(diff)
-# d2 = np.sum(diff**2)
-# # print(f"d1 = {d1:.2e}")
-# # print(f"d2 = {d2:.2e}")
-
-
-# 7) Loop over potential source positions to compute d1 and d2 as a function of source range displacement
-covered_range = 50
-dr = 0.1
-zmin = z_src - 10
-zmax = z_src + 10
-dz = 0.1
-
-full_test(covered_range, dr, zmin, zmax, dz, dist="D2")
-
-# covered_range = 15 * 1e3
-# dr = 10
-# zmin = z_src - 10
-# zmax = D
-# dz = 1
-
-# full_test(f, D, r_src, z_src, x_rcv, covered_range, dr, zmin, zmax, dz, dist="D2")
-
-
-# Test config
-# PI_var_r(
-#     D,
-#     f,
-#     r_src,
-#     z_src,
-#     x_rcv,
-#     covered_range=1e2,
-#     dr=10,
-#     dist="D2",
-# )
-
-# PI_var_r(
-#     D,
-#     f,
-#     r_src,
-#     z_src,
-#     x_rcv,
-#     covered_range=1e4,
-#     dr=10,
-#     dist="D2",
-# )
-
-# PI_var_r(
-#     D,
-#     f,
-#     r_src,
-#     z_src,
-#     x_rcv,
-#     covered_range=0.5 * 1e2,
-#     dr=0.1,
-#     dist="D2",
-# )
-
-# PI_var_z(
-#     D,
-#     f,
-#     r_src,
-#     z_src,
-#     x_rcv,
-#     zmin=z_src - 30,
-#     zmax=z_src + 30,
-#     dz=0.1,
-#     dist="D2",
-# )
-
-# PI_var_z(
-#     D,
-#     f,
-#     r_src,
-#     z_src,
-#     x_rcv,
-#     zmin=1,
-#     zmax=D - 1,
-#     dz=0.1,
-#     dist="D2",
-# )
-
-# 8) Loop over potential source positions to compute d1 and d2 as a function of source range displacement and source depth
-# Pi_var_rz(
-#     D,
-#     f,
-#     r_src,
-#     z_src,
-#     x_rcv,
-#     covered_range=20,
-#     dr=1,
-#     zmin=z_src - 10,
-#     zmax=z_src + 10,
-#     dz=1,
-#     dist="both",
-# )
-
-
-# Pi_var_rz(
-#     D,
-#     f,
-#     r_src,
-#     z_src,
-#     x_rcv,
-#     covered_range=10,
-#     dr=0.1,
-#     zmin=z_src - 10,
-#     zmax=z_src + 10,
-#     dz=0.1,
-#     dist="both",
-# )
-
-# Pi_var_rz(
-#     D,
-#     f,
-#     r_src,
-#     z_src,
-#     x_rcv,
-#     covered_range=1e4,
-#     dr=10,
-#     zmin=1,
-#     zmax=D,
-#     dz=10,
-#     dist="both",
-# )
+    # full_test(f, D, r_src, z_src, x_rcv, covered_range, dr, zmin, zmax, dz, dist="D2")

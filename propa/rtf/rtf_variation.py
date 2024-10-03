@@ -18,7 +18,7 @@ from propa.rtf.ideal_waveguide import *
 
 from publication.PublicationFigure import PubFigure
 
-PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=12, ticks_fontsize=20)
+PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
 
 # ======================================================================================================================
 # Functions
@@ -78,13 +78,6 @@ def PI_var_r(
     # # Derive generalised distance combining all receivers
     Df = D_frobenius(g_ref, g_r)
 
-    # # First version = ugly iterative method
-    # D_frobenius = np.zeros((nb_pos_r, 1))
-    # for i_r in range(g_r.shape[1]):
-    #     Gamma = g_ref_expanded[:, i_r, :, 0] - g_r[:, i_r, :, 0]
-    #     D_frobenius[i_r, 0] = np.linalg.norm(Gamma, ord="fro")
-    # D_frobenius = D_frobenius.flatten()
-
     if dist == "D1" or dist == "both":
         d1 = np.sum(np.abs(g_ref_expanded - g_r), axis=0)
         d1 += 1
@@ -111,7 +104,7 @@ def PI_var_r(
     )
     plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-    plt.title(r"$D_{Frobenius}$")
+    plt.title(r"$\mathcal{D}_F(r, z)$")
     plt.grid()
 
     # Save
@@ -138,11 +131,11 @@ def PI_var_r(
             plt.plot(
                 range_displacement,
                 d2[:, i_rcv, 0],
-                label=r"$D_2$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
+                label=r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
             )
             d2max = np.max(d2)
 
-    plt.plot(range_displacement, Df, label=r"$D_{F}$", color="k")
+    plt.plot(range_displacement, Df, label=r"$\mathcal{D}_F$", color="k")
 
     if dist == "both" or n_rcv > 2:
         plt.legend()
@@ -477,11 +470,17 @@ def get_folderpath(x_rcv, r_src, z_src):
     return root, folder
 
 
-def full_test(f, D, r_src, z_src, x_rcv, covered_range, dr, zmin, zmax, dz, dist="D2"):
+def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
+
+    # Load default parameters
+    depth, r_src, z_src, z_rcv, n_rcv, delta_rcv, f = default_params()
+
+    # Define the receivers position
+    x_rcv = np.array([i * delta_rcv for i in range(n_rcv)])
 
     # # Variations along the range axis
     PI_var_r(
-        D,
+        depth,
         f,
         r_src,
         z_src,
@@ -493,7 +492,7 @@ def full_test(f, D, r_src, z_src, x_rcv, covered_range, dr, zmin, zmax, dz, dist
 
     # Variations along the depth axis
     PI_var_z(
-        D,
+        depth,
         f,
         r_src,
         z_src,
@@ -506,7 +505,7 @@ def full_test(f, D, r_src, z_src, x_rcv, covered_range, dr, zmin, zmax, dz, dist
 
     # Variations along the range and depth axes
     Pi_var_rz(
-        D,
+        depth,
         f,
         r_src,
         z_src,
@@ -581,7 +580,7 @@ def full_test(f, D, r_src, z_src, x_rcv, covered_range, dr, zmin, zmax, dz, dist
         plt.savefig(os.path.join(root, f"tl_f{fp}Hz_zoomrcv.png"))
 
 
-def sensibility_ideal_waveguide(param="delta_rcv"):
+def sensibility_ideal_waveguide(param="delta_rcv", axis="both"):
     """Study the sensibility of the proposed distance metric (D_frobenius) to the source position.
     The source position is varied along the range axis and the depth axis. The distance metric is computed for each source position.
     The sensibility along each axis is evaluated separately by computing the main lobe aperture of D_frobenius.
@@ -594,29 +593,23 @@ def sensibility_ideal_waveguide(param="delta_rcv"):
 
     # Sensibility to the distance between receivers
     if param == "delta_rcv":
-        sensibility_ideal_waveguide_delta_rcv()
+        sensibility_ideal_waveguide_delta_rcv(axis=axis)
 
     # Sensibility to the reference source range
     if param == "r_src":
-        sensibility_ideal_waveguide_r_src()
+        sensibility_ideal_waveguide_r_src(axis=axis)
 
     # Sensibility to the reference source depth
     if param == "z_src":
-        sensibility_ideal_waveguide_z_src()
+        sensibility_ideal_waveguide_z_src(axis=axis)
 
     if param == "n_rcv":
-        sensibility_ideal_waveguide_n_rcv()
+        sensibility_ideal_waveguide_n_rcv(axis=axis)
 
 
 def derive_Pi_ref(r_src, z_src, x_rcv, axis="r"):
-    # Params
-    D = 1000
 
-    # Define the frequency range
-    fmin = 1
-    fmax = 50
-    nb_freq = 500
-    f = np.linspace(fmin, fmax, nb_freq)
+    depth, _, _, z_rcv, _, _, f = default_params()
 
     if axis == "r":
         # Define the ranges
@@ -640,12 +633,12 @@ def derive_Pi_ref(r_src, z_src, x_rcv, axis="r"):
             z_src,
             z_rcv_ref=z_rcv,
             z_rcv=z_rcv,
-            D=D,
+            D=depth,
             r_rcv_ref=r_ref[0],
             r=r_ref[1:],
         )
 
-        return r_src_list, r_src_rcv_ref, r_src_rcv, D, f, g_ref
+        return r_src_list, r_src_rcv_ref, r_src_rcv, depth, f, g_ref
 
     if axis == "z":
 
@@ -670,12 +663,12 @@ def derive_Pi_ref(r_src, z_src, x_rcv, axis="r"):
             z_src,
             z_rcv_ref=z_rcv,
             z_rcv=z_rcv,
-            D=D,
+            D=depth,
             r_rcv_ref=r_ref[0],
             r=r_ref[1:],
         )
 
-        return z_src_list, r_src_rcv_ref, r_src_rcv, D, f, g_ref
+        return z_src_list, r_src_rcv_ref, r_src_rcv, depth, f, g_ref
 
 
 def sensibility_ideal_waveguide_delta_rcv(axis="r"):
@@ -753,11 +746,7 @@ def sensibility_ideal_waveguide_delta_rcv(axis="r"):
         ]
     )
 
-    # Define the source position
-    r_src = 30 * 1e3
-    z_src = 5
-    # Receivers
-    n_rcv = 5
+    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
 
     root_img = init_sensibility_path("delta_rcv")
 
@@ -774,6 +763,8 @@ def sensibility_ideal_waveguide_delta_rcv(axis="r"):
     param_var["root_img"] = root_img
     param_var["th_r"] = 3
     param_var["th_z"] = 3
+    param_var["values"] = delta_rcv
+    param_var["xlabel"] = r"$\delta_{r_{rcv}} \, \textrm{[m]}$"
 
     apertures_r = []
     apertures_z = []
@@ -789,64 +780,131 @@ def sensibility_ideal_waveguide_delta_rcv(axis="r"):
         )
 
     # Plot the main lobe aperture as a function of delta_rcv
-    if axis == "r" or axis == "both":
-        plt.figure()
-        plt.plot(delta_rcv, apertures_r, marker=".", color="k")
-        plt.xlabel(r"$\Delta_{rcv} \, \textrm{[m]}$")
-        plt.ylabel(
-            r"$2 r_{" + f"para{param_var['th_r']}" + r"\textrm{dB} }\, \textrm{[m]}$"
+    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+
+
+def sensibility_ideal_waveguide_r_src(axis="both"):
+    src_range = np.arange(10, 101, 10) * 1e3
+
+    # Define the source depth
+    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
+
+    root_img = init_sensibility_path("r_src")
+
+    # Define input vars
+    input_var = {}
+    input_var["z_src"] = z_src
+    input_var["n_rcv"] = n_rcv
+    input_var["delta_rcv"] = delta_rcv
+
+    # Define param vars
+    param_var = {}
+    param_var["name"] = "r_src"
+    param_var["unit"] = "m"
+    param_var["root_img"] = root_img
+    param_var["th_r"] = 3
+    param_var["th_z"] = 3
+    param_var["values"] = src_range
+    param_var["xlabel"] = r"$r_{s} \, \textrm{[m]}$"
+
+    apertures_r = []
+    apertures_z = []
+
+    # Compute the distance metric for each delta_rcv
+    for i_d, r_src in enumerate(src_range):
+
+        param_var["idx"] = i_d
+        param_var["value"] = r_src
+        input_var["r_src"] = r_src
+
+        study_param_sensibility(
+            input_var, param_var, apertures_r, apertures_z, axis=axis
         )
-        plt.grid()
-        plt.savefig(os.path.join(root_img, f"aperture_z.png"))
-        plt.close("all")
 
-    if axis == "z" or axis == "both":
-        plt.figure()
-        plt.plot(delta_rcv, apertures_z, marker=".", color="r")
-        plt.xlabel(r"$\Delta_{rcv} \, \textrm{[m]}$")
-        plt.ylabel(
-            r"$2 z_{" + f"{param_var['th_z']}" + r"\textrm{dB} }\, \textrm{[m]}$"
+    # Plot the main lobe aperture as a function of delta_rcv
+    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+
+
+def sensibility_ideal_waveguide_z_src(axis):
+    src_depth = np.arange(1, 991, 1)
+
+    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
+
+    root_img = init_sensibility_path("z_src")
+
+    # Define input vars
+    input_var = {}
+    input_var["r_src"] = r_src
+    input_var["n_rcv"] = n_rcv
+    input_var["delta_rcv"] = delta_rcv
+
+    # Define param vars
+    param_var = {}
+    param_var["name"] = "z_src"
+    param_var["unit"] = "m"
+    param_var["root_img"] = root_img
+    param_var["th_r"] = 3
+    param_var["th_z"] = 3
+    param_var["values"] = src_depth
+    param_var["xlabel"] = r"$z_{s} \, \textrm{[m]}$"
+
+    apertures_r = []
+    apertures_z = []
+
+    # Compute the distance metric for each delta_rcv
+    for i_d, z_src in enumerate(src_depth):
+
+        param_var["idx"] = i_d
+        param_var["value"] = z_src
+        input_var["z_src"] = z_src
+
+        study_param_sensibility(
+            input_var, param_var, apertures_r, apertures_z, axis=axis
         )
-        plt.grid()
-        plt.savefig(os.path.join(root_img, f"aperture_z.png"))
-        plt.close("all")
 
-    if axis == "both":
-        plt.figure()
-        plt.plot(
-            delta_rcv,
-            apertures_r,
-            marker=".",
-            color="k",
-            label=r"$2 r_{" + f"para{param_var['th_r']}" + r"\textrm{dB} }$",
+    # Plot the main lobe aperture as a function of delta_rcv
+    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+
+
+def sensibility_ideal_waveguide_n_rcv(axis):
+    nb_rcv = np.arange(2, 11, 1)
+
+    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
+
+    root_img = init_sensibility_path("n_rcv")
+
+    # Define input vars
+    input_var = {}
+    input_var["r_src"] = r_src
+    input_var["z_src"] = z_src
+    input_var["delta_rcv"] = delta_rcv
+
+    # Define param vars
+    param_var = {}
+    param_var["name"] = "n_rcv"
+    param_var["unit"] = ""
+    param_var["root_img"] = root_img
+    param_var["th_r"] = 3
+    param_var["th_z"] = 3
+    param_var["values"] = nb_rcv
+    param_var["xlabel"] = r"$n_{rcv}$"
+
+    apertures_r = []
+    apertures_z = []
+
+    # Compute the distance metric for each delta_rcv
+    for i_d, n_rcv in enumerate(nb_rcv):
+
+        param_var["idx"] = i_d
+        param_var["value"] = n_rcv
+        input_var["n_rcv"] = n_rcv
+
+        study_param_sensibility(
+            input_var, param_var, apertures_r, apertures_z, axis=axis
         )
-        plt.plot(
-            delta_rcv,
-            apertures_z,
-            marker=".",
-            color="r",
-            label=r"$2 z_{" + f"para{param_var['th_r']}" + r"\textrm{dB} }$",
-        )
-        plt.xlabel(r"$\Delta_{rcv} \, \textrm{[m]}$")
-        plt.ylabel(
-            r"$2 x_{" + f"para{param_var['th_r']}" + r"\textrm{dB} }\, \textrm{[m]}$"
-        )
-        plt.grid()
-        plt.legend()
-        plt.savefig(os.path.join(root_img, f"aperture_r_z.png"))
-        plt.close("all")
 
-
-def sensibility_ideal_waveguide_r_src():
-    pass
-
-
-def sensibility_ideal_waveguide_z_src():
-    pass
-
-
-def sensibility_ideal_waveguide_n_rcv():
-    pass
+    # Plot the main lobe aperture as a function of delta_rcv
+    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
 def D_frobenius(g_ref, g):
@@ -900,6 +958,8 @@ def Df_aperture(Df, x, th_dB=10):
 
 
 def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="both"):
+    # Load default params
+    depth, _, _, z_rcv, _, _, f = default_params()
 
     # Load input vars
     delta_rcv = input_var["delta_rcv"]
@@ -922,7 +982,7 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
     ### Range axis ###
     if axis == "r" or axis == "both":
         # Derive ref RTF
-        r_src_list, r_src_rcv_ref, r_src_rcv, D, f, g_ref = derive_Pi_ref(
+        r_src_list, r_src_rcv_ref, r_src_rcv, _, f, g_ref = derive_Pi_ref(
             r_src, z_src, x_rcv, axis="r"
         )
 
@@ -932,7 +992,7 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
             z_src,
             z_rcv_ref=z_rcv,
             z_rcv=z_rcv,
-            D=D,
+            D=depth,
             r_rcv_ref=r_src_rcv_ref,
             r=r_src_rcv,
         )
@@ -949,7 +1009,7 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
     ### Depth axis ###
     if axis == "z" or axis == "both":
         # Derive ref RTF
-        z_src_list, r_src_rcv_ref, r_src_rcv, D, f, g_ref = derive_Pi_ref(
+        z_src_list, r_src_rcv_ref, r_src_rcv, _, f, g_ref = derive_Pi_ref(
             r_src, z_src, x_rcv, axis="z"
         )
 
@@ -959,7 +1019,7 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
             z_src_list,
             z_rcv_ref=z_rcv,
             z_rcv=z_rcv,
-            D=D,
+            D=depth,
             r_rcv_ref=r_src_rcv_ref,
             r=r_src_rcv,
         )
@@ -1020,10 +1080,11 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
             # Add the main lobe aperture
             plt.axvline(x=depth_displacement[i1_z], color="r", linestyle="--")
             plt.axvline(x=depth_displacement[i2_z], color="r", linestyle="--")
+
             plt.text(
-                range_displacement[i2_z] + 0.15,
+                depth_displacement[i2_z] + 0.15,
                 30,
-                r"$2 r_{"
+                r"$2 z_{"
                 + f"{th_z}"
                 + r"\textrm{dB} } = "
                 + f"{ap_z}"
@@ -1034,7 +1095,7 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
             )
 
             plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
-            plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
+            plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
             plt.title(r"$D_{Frobenius}$")
             plt.ylim(0, 50)
             plt.grid()
@@ -1048,28 +1109,85 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
             plt.close("all")
 
 
-# 1) Define receivers and source positions
-D = 1000
-# Source
-z_src = 5
-r_src = 30 * 1e3
-# Receivers
-n_rcv = 5
-delta_rcv = 1e3
-# x_rcv = np.linspace(0, 10, n_rcv)
-x_rcv = np.array([i * delta_rcv for i in range(n_rcv)])
-# r_src_rcv = x_rcv - r_src
-r_src_rcv = r_src - x_rcv
-z_rcv = D - 1
+def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
+
+    # Unpack param vars
+    root_img = param_var["root_img"]
+    values = param_var["values"]
+    xlabel = param_var["xlabel"]
+
+    if axis == "r" or axis == "both":
+        plt.figure()
+        plt.plot(values, apertures_r, marker=".", color="k")
+        plt.xlabel(xlabel)
+        plt.ylabel(
+            r"$2 r_{" + f"{param_var['th_r']}" + r"\textrm{dB} }\, \textrm{[m]}$"
+        )
+        plt.grid()
+        plt.savefig(os.path.join(root_img, f"aperture_r.png"))
+        plt.close("all")
+
+    if axis == "z" or axis == "both":
+        plt.figure()
+        plt.plot(values, apertures_z, marker=".", color="r")
+        plt.xlabel(xlabel)
+        plt.ylabel(
+            r"$2 z_{" + f"{param_var['th_z']}" + r"\textrm{dB} }\, \textrm{[m]}$"
+        )
+        plt.grid()
+        plt.savefig(os.path.join(root_img, f"aperture_z.png"))
+        plt.close("all")
+
+    if axis == "both":
+        plt.figure()
+        plt.plot(
+            values,
+            apertures_r,
+            marker=".",
+            color="k",
+            label=r"$2 r_{" + f"{param_var['th_r']}" + r"\textrm{dB} }$",
+        )
+        plt.plot(
+            values,
+            apertures_z,
+            marker=".",
+            color="r",
+            label=r"$2 z_{" + f"{param_var['th_r']}" + r"\textrm{dB} }$",
+        )
+
+        plt.xlabel(xlabel)
+        plt.ylabel(
+            r"$2 x_{" + f"{param_var['th_r']}" + r"\textrm{dB} }\, \textrm{[m]}$"
+        )
+        plt.grid()
+        plt.legend()
+        plt.savefig(os.path.join(root_img, f"aperture_r_z.png"))
+        plt.close("all")
 
 
-# 2) Define frequency range
-fmin = 1
-fmax = 50
-nb_freq = 500
-f = np.linspace(fmin, fmax, nb_freq)
+def default_params():
+    # Define receivers and source positions
+    depth = 1000
+    # Source
+    z_src = 5
+    r_src = 30 * 1e3
+    # Receivers
+    z_rcv = depth - 1
+    n_rcv = 5
+    delta_rcv = 10
 
-sensibility_ideal_waveguide_delta_rcv(axis="both")
+    # Frequency range
+    fmin = 1
+    fmax = 50
+    nb_freq = 500
+    f = np.linspace(fmin, fmax, nb_freq)
+
+    return depth, r_src, z_src, z_rcv, n_rcv, delta_rcv, f
+
+
+params = ["r_src", "z_src", "n_rcv", "delta_rcv"]
+for param in ["r_src", "z_src"]:
+    sensibility_ideal_waveguide(param=param, axis="both")
 
 # # 3) Compute RTF for the reference source position
 # idx_rcv_ref = 0
@@ -1114,13 +1232,13 @@ sensibility_ideal_waveguide_delta_rcv(axis="both")
 
 
 # 7) Loop over potential source positions to compute d1 and d2 as a function of source range displacement
-# covered_range = 15
-# dr = 1
-# zmin = z_src - 10
-# zmax = z_src + 10
-# dz = 1
+covered_range = 50
+dr = 0.1
+zmin = z_src - 10
+zmax = z_src + 10
+dz = 0.1
 
-# full_test(f, D, r_src, z_src, x_rcv, covered_range, dr, zmin, zmax, dz, dist="D2")
+full_test(covered_range, dr, zmin, zmax, dz, dist="D2")
 
 # covered_range = 15 * 1e3
 # dr = 10

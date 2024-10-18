@@ -352,16 +352,64 @@ def plot_traj_over_bathy(
     for mmsi in df_ais["mmsi"].unique():
         df_tmp = df_ais[df_ais["mmsi"] == mmsi]
 
-        if intersection_data is not None:
-            plt.plot(
-                df_tmp["lon"],
-                df_tmp["lat"],
-                "-",
-                label=df_tmp["shipName"].values[0],
-                linewidth=3,
+        if len(df_ais["mmsi"].unique()) > 1:
+
+            if intersection_data is not None:
+                plt.plot(
+                    df_tmp["lon"],
+                    df_tmp["lat"],
+                    "-",
+                    label=df_tmp["shipName"].values[0],
+                    linewidth=3,
+                )
+                ncol_lgd = 3
+                lgd_fsize = 10
+            else:
+                plt.plot(
+                    df_tmp["lon"],
+                    df_tmp["lat"],
+                    color="k",
+                    linestyle="--",
+                    linewidth=3,
+                )
+
+                # Add a marker at a random position along the trajectory to identify the ship with its name
+                idx = np.random.randint(0, len(df_tmp))
+                plt.scatter(
+                    df_tmp["lon"].iloc[idx],
+                    df_tmp["lat"].iloc[idx],
+                    s=100,
+                    marker="^",
+                    # label=df_tmp["shipName"].values[0],
+                    label=df_tmp["mmsi"].values[0],
+                    zorder=2,
+                )
+                ncol_lgd = len(df_ais["mmsi"].unique()) // 4
+                lgd_fsize = 8
+
+            if intersection_data is not None:
+                # Add intersection point
+                if len(intersection_wgs84) > 0:
+                    lon_inter, lat_inter = zip(*intersection_wgs84)
+                    plt.scatter(
+                        lon_inter,
+                        lat_inter,
+                        s=150,
+                        marker="x",
+                        color="r",
+                        zorder=2,
+                        label=f"Intersection at {r'$t_{ship1}$'} = {intersection_time[mmsi].strftime('%Y-%m-%d %H:%M')}",
+                    )
+
+            plt.legend(
+                bbox_to_anchor=(0.0, 1.02, 1.0, 0.102),
+                loc="lower left",
+                ncols=ncol_lgd,
+                mode="expand",
+                borderaxespad=0.0,
+                fontsize=lgd_fsize,
             )
-            ncol_lgd = 3
-            lgd_fsize = 10
+
         else:
             plt.plot(
                 df_tmp["lon"],
@@ -369,44 +417,10 @@ def plot_traj_over_bathy(
                 color="k",
                 linestyle="--",
                 linewidth=3,
+                label=df_tmp["shipName"].values[0],
             )
 
-            # Add a marker at a random position along the trajectory to identify the ship with its name
-            idx = np.random.randint(0, len(df_tmp))
-            plt.scatter(
-                df_tmp["lon"].iloc[idx],
-                df_tmp["lat"].iloc[idx],
-                s=100,
-                marker="^",
-                # label=df_tmp["shipName"].values[0],
-                label=df_tmp["mmsi"].values[0],
-                zorder=2,
-            )
-            ncol_lgd = len(df_ais["mmsi"].unique()) // 4
-            lgd_fsize = 8
-
-    if intersection_data is not None:
-        # Add intersection point
-        if len(intersection_wgs84) > 0:
-            lon_inter, lat_inter = zip(*intersection_wgs84)
-            plt.scatter(
-                lon_inter,
-                lat_inter,
-                s=150,
-                marker="x",
-                color="r",
-                zorder=2,
-                label=f"Intersection at {r'$t_{ship1}$'} = {intersection_time[mmsi].strftime('%Y-%m-%d %H:%M')}",
-            )
-
-    plt.legend(
-        bbox_to_anchor=(0.0, 1.02, 1.0, 0.102),
-        loc="lower left",
-        ncols=ncol_lgd,
-        mode="expand",
-        borderaxespad=0.0,
-        fontsize=lgd_fsize,
-    )
+            plt.legend(loc="upper right", fontsize=14)
 
     plt.ylim(lat_min, lat_max)
     plt.xlim(lon_min, lon_max)
@@ -653,6 +667,47 @@ def get_maxmin_tdoa(ais_data, wav_data, tdoa, verbose=False):
             max_tdoa[rcv_couple][mmsi]["tt"] = delta_from_start_max_tdoa
 
     return min_tdoa, max_tdoa
+
+
+def find_mmsi_from_data(data):
+
+    # Extract start and end recording time
+    start_time = data["sig"].meta.starttime.datetime
+    end_time = data["sig"].meta.endtime.datetime
+
+    # Load MMSI data
+    ais_data = load_and_preprocess_ais_data()
+
+    # Find MMSI
+    potential_mmsi = ais_data[
+        (ais_data["time"] >= start_time) & (ais_data["time"] <= end_time)
+    ]["mmsi"].unique()
+
+    ais_data_mmsi = ais_data[ais_data["mmsi"].isin(potential_mmsi)]
+    # Reset index
+    ais_data_mmsi.reset_index(drop=True, inplace=True)
+
+    return potential_mmsi, ais_data_mmsi
+
+
+def find_mmsi_from_date(date, duration_s):
+    # Convert date to datetime
+    start_time = pd.to_datetime(date)
+    end_time = start_time + pd.Timedelta(seconds=duration_s)
+
+    # Load MMSI data
+    ais_data = load_and_preprocess_ais_data()
+
+    # Find MMSI
+    potential_mmsi = ais_data[
+        (ais_data["time"] >= start_time) & (ais_data["time"] <= end_time)
+    ]["mmsi"].unique()
+
+    ais_data_mmsi = ais_data[ais_data["mmsi"].isin(potential_mmsi)]
+    # Reset index
+    ais_data_mmsi.reset_index(drop=True, inplace=True)
+
+    return potential_mmsi, ais_data_mmsi
 
 
 if __name__ == "__main__":

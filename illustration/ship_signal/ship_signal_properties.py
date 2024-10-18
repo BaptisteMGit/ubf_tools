@@ -15,6 +15,7 @@
 import os
 import numpy as np
 import scipy.signal as sp
+import scipy.io.wavfile as wavfile
 import matplotlib.pyplot as plt
 
 from scipy.special import erf
@@ -376,7 +377,9 @@ def fi_build_process(fs, tau_corr_fi, std_fi):
     plt.show()
 
 
-def load_wav_data(fmin=2, fmax=48, filter_type="bandpass", filter_corners=4):
+def load_wav_data(
+    fmin=2, fmax=48, filter_type="bandpass", filter_corners=4, save_wav=False
+):
 
     date = "2013-05-09 13:30:00"
     ch = ["BDH"]
@@ -414,10 +417,19 @@ def load_wav_data(fmin=2, fmax=48, filter_type="bandpass", filter_corners=4):
     data["tt"] = tt
     data["stft"] = stft
 
+    if save_wav:
+        # Convert date to datetime
+        date = date.replace(" ", "_").replace(":", "-")
+        fpath = os.path.join(
+            r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ship_sig",
+            f"{date}.wav",
+        )
+        wavfile.write(fpath, sig.meta.sampling_rate, data["data"])
+
     return data
 
 
-def filter_real_data():
+def filter_real_data(dsp_args):
 
     # Load wav data
     data = load_wav_data()
@@ -475,15 +487,17 @@ def filter_real_data():
     plt.savefig(fpath)
 
     # Derive dsp
-    # fmin_band = 3
-    # fmax_band = 18
+    dsp_param_label = f"nperseg{int(dsp_args['nperseg'])}_overlap{dsp_args['overlap_coef']}_window{dsp_args['window']}"
     fmin_band = 3
-    fmax_band = 45
+    fmax_band = 18
+    # fmin_band = 3
+    # fmax_band = 45
     ff, Pxx = sp.welch(
         data["data"],
         fs=data["sig"].meta.sampling_rate,
-        nperseg=2**12,
-        noverlap=2**11,
+        nperseg=dsp_args["nperseg"],
+        noverlap=int(dsp_args["nperseg"] * dsp_args["overlap_coef"]),
+        window=dsp_args["window"],
     )
     Pxx_in_band = Pxx[(ff >= fmin_band) & (ff <= fmax_band)]
     ff_in_band = ff[(ff >= fmin_band) & (ff <= fmax_band)]
@@ -522,7 +536,7 @@ def filter_real_data():
     plt.xlabel("$f$" + " [Hz]")
     plt.ylabel("$S_{xx}(f)$" + " [dB $(Pa^2Hz^{-1})$]")
     plt.grid()
-    fpath = os.path.join(img_root_filter, f"psd.png")
+    fpath = os.path.join(img_root_filter, f"psd_{dsp_param_label}.png")
     plt.savefig(fpath)
 
     # Plot dsp with th harmonics and f0
@@ -569,7 +583,7 @@ def filter_real_data():
     plt.xlabel("$f$" + " [Hz]")
     plt.ylabel("$S_{xx}(f)$" + " [dB $(Pa^2Hz^{-1})$]")
     plt.grid()
-    fpath = os.path.join(img_root_filter, "psd_rays_th.png")
+    fpath = os.path.join(img_root_filter, f"psd_rays_th_{dsp_param_label}.png")
     plt.savefig(fpath)
 
     # Band pass around the one ray
@@ -916,7 +930,36 @@ if __name__ == "__main__":
 
     std_fi = 0.1 * f0
     # fi_build_process(fs, tau_corr_fi, std_fi)
-    data = filter_real_data()
+
+    data = load_wav_data(save_wav=True)
+
+    # dsp_args = {}
+
+    # for nperseg in [2**10, 2**11, 2**12, 2**13, 2**14]:
+    #     for overlap_coef in [1 / 2, 3 / 4, 9 / 10, 1 / 10]:
+    #         for window in ["hann", "hamming", "blackman"]:
+    #             dsp_args["nperseg"] = nperseg
+    #             dsp_args["overlap_coef"] = overlap_coef
+    #             dsp_args["window"] = window
+
+    #             data = filter_real_data(dsp_args=dsp_args)
+
+    # for nperseg in [2**13]:
+    #     for overlap_coef in [1 / 4, 1 / 2, 3 / 4, 9 / 10, 1 / 10]:
+    #         for window in [
+    #             "hann",
+    #             "hamming",
+    #             "blackman",
+    #             "bartlett",
+    #             "boxcar",
+    #             "triang",
+    #             "cosine",
+    #         ]:
+    #             dsp_args["nperseg"] = nperseg
+    #             dsp_args["overlap_coef"] = overlap_coef
+    #             dsp_args["window"] = window
+
+    #             data = filter_real_data(dsp_args=dsp_args)
 
     # fit_real_data()
 

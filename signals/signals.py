@@ -90,7 +90,14 @@ def ship_noise(T):
 
 
 def generate_ship_signal(
-    Ttot, f0, std_fi=None, tau_corr_fi=None, fs=100, Nh=None, A_harmonics=None
+    Ttot,
+    f0,
+    std_fi=None,
+    tau_corr_fi=None,
+    fs=100,
+    Nh=None,
+    A_harmonics=None,
+    normalize="max",
 ):
 
     if std_fi is None:
@@ -139,8 +146,12 @@ def generate_ship_signal(
 
     # Real
     s = s.real
-    # Normalize to 1
-    s /= np.max(np.abs(s))
+    if normalize == "max":
+        # Normalize to 1
+        s /= np.max(np.abs(s))
+    elif normalize == "var":
+        # Normalize to unit variance
+        s /= np.std(s)
 
     return s, t
 

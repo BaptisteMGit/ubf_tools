@@ -69,13 +69,13 @@ def plot_swir_bathy(contour=True):
     # bathy_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
     ds_bathy = xr.open_dataset(BATHY_PATH)
     ds_bathy["elevation"] = ds_bathy.elevation * 1e-3  # Convert to km
-    ds_bathy.elevation.attrs["long_name"] = "z"
-    ds_bathy.elevation.attrs["units"] = "km"
+    ds_bathy.elevation.attrs["long_name"] = r"$z$"
+    ds_bathy.elevation.attrs["units"] = r"$\mathrm{km}$"
 
-    ds_bathy.lon.attrs["long_name"] = "Longitude"
-    ds_bathy.lon.attrs["units"] = "°E"
-    ds_bathy.lat.attrs["long_name"] = "Latitude"
-    ds_bathy.lat.attrs["units"] = "°N"
+    ds_bathy.lon.attrs["long_name"] = r"$\mathrm{Longitude}$"
+    ds_bathy.lon.attrs["units"] = r"$^\circ \mathrm{E}$"
+    ds_bathy.lat.attrs["long_name"] = r"$\mathrm{Latitude}$"
+    ds_bathy.lat.attrs["units"] = r"$^\circ \mathrm{N}$"
 
     blevels = [
         -6000,

@@ -13,13 +13,16 @@
 # Import
 # ======================================================================================================================
 # ======================================================================================================================
+import scipy
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy as sp
+
 
 from misc import *
 from propa.rtf.ideal_waveguide import *
-from real_data_analysis.real_data_utils import *
+from signals.signals import generate_ship_signal
+from propa.rtf.rtf_estimation.rtf_estimation_const import *
+from real_data_analysis.real_data_utils import compute_csd_matrix_fast
 
 
 def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
@@ -148,6 +151,101 @@ def get_stft_list(y, fs, nperseg, noverlap):
         stft_list.append(stft)
 
     return ff, tt, stft_list
+
+
+def derive_received_signal(tau_ir):
+    """
+    Derive the received signal at the receivers.
+    The signal is modeled as a ship signal propagating in the ideal waveguide.
+    """
+
+    # Load params
+    # depth, r_src, z_src, z_rcv, _ = waveguide_params()
+    duration = 50 * tau_ir
+
+    # Load kraken data
+    kraken_data = load_data()
+
+    # Define useful params
+    n_rcv = kraken_data["n_rcv"]
+    ts = kraken_data["t"][1] - kraken_data["t"][0]
+    fs = 1 / ts
+
+    # Create source signal
+    f0 = 4.5
+    # std_fi = 1e-2 * f0
+    std_fi = 0.1 * f0
+    tau_corr_fi = 0.1 * 1 / f0
+
+    s, t = generate_ship_signal(
+        Ttot=duration,
+        f0=f0,
+        std_fi=std_fi,
+        tau_corr_fi=tau_corr_fi,
+        fs=fs,
+        normalize="max",
+    )
+    s *= np.hanning(len(s))
+    # s /= np.std(s)
+
+    src_spectrum = np.fft.rfft(s)
+
+    # Derive psd
+    psd = scipy.signal.welch(s, fs=fs, nperseg=2**12, noverlap=2**11)
+
+    received_signal = {
+        "t": t,
+        "src": s,
+        "f": kraken_data["f"],
+        "spect": src_spectrum,
+        "psd": psd,
+        "std_fi": std_fi,
+        "tau_corr_fi": tau_corr_fi,
+        "f0": f0,
+        "fs": fs,
+        "tau_ir": tau_ir,
+    }
+
+    for i in range(n_rcv):
+        # Get transfert function
+        h_kraken = kraken_data[f"rcv{i}"]["h_f"]
+
+        # Received signal spectrum resulting from the convolution of the source signal and the impulse response
+        transmited_sig_field_f = h_kraken * src_spectrum
+        rcv_sig = np.fft.irfft(transmited_sig_field_f)
+
+        # psd
+        psd_rcv = scipy.signal.welch(rcv_sig, fs=fs, nperseg=2**12, noverlap=2**11)
+
+        received_signal[f"rcv{i}"] = {
+            "sig": rcv_sig,
+            "spect": transmited_sig_field_f,
+            "psd": psd_rcv,
+        }
+
+    return received_signal
+
+
+def load_data():
+
+    kraken_data = {}
+    for i in range(N_RCV):
+        # Load tf
+        fpath = os.path.join(ROOT_DATA, f"kraken_tf_rcv{i}.csv")
+        f_kraken, h_kraken_real, h_kraken_imag = np.loadtxt(
+            fpath, delimiter=",", unpack=True
+        )
+        h_kraken = h_kraken_real + 1j * h_kraken_imag
+
+        # Load ir kraken
+        fpath = os.path.join(ROOT_DATA, f"kraken_ir_rcv{i}.csv")
+        t_kraken, ir_kraken = np.loadtxt(fpath, delimiter=",", unpack=True)
+
+        kraken_data[f"rcv{i}"] = {"ir": ir_kraken, "h_f": h_kraken}
+
+    kraken_data.update({"t": t_kraken, "f": f_kraken, "n_rcv": N_RCV})
+
+    return kraken_data
 
 
 if __name__ == "__main__":

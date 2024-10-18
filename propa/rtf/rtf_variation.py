@@ -26,7 +26,7 @@ PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsi
 
 
 def PI_var_r(
-    D,
+    depth,
     f,
     r_src,
     z_src,
@@ -35,10 +35,17 @@ def PI_var_r(
     covered_range,
     dr,
     dist="both",
+    smooth_tf=False,
+    bottom_bc="pressure_release",
 ):
 
     # Create folder to store the images
-    root, folder = get_folderpath(x_rcv, r_src, z_src)
+    root, folder = get_folderpath(
+        x_rcv,
+        r_src,
+        z_src,
+        bottom_bc=bottom_bc,
+    )
     subfolder = f"dr_{dr}"
     root = os.path.join(root, folder, subfolder)
     if not os.path.exists(root):
@@ -65,9 +72,10 @@ def PI_var_r(
         z_src,
         z_rcv_ref=z_rcv,
         z_rcv=z_rcv,
-        D=D,
+        depth=depth,
         r_rcv_ref=r_ref[0],
         r=r_ref[1:],
+        smooth_tf=smooth_tf,
     )
 
     f, g_r = g_mat(
@@ -75,9 +83,10 @@ def PI_var_r(
         z_src,
         z_rcv_ref=z_rcv,
         z_rcv=z_rcv,
-        D=D,
+        depth=depth,
         r_rcv_ref=r_src_rcv_ref,
         r=r_src_rcv,
+        smooth_tf=smooth_tf,
     )
 
     # Expand g_ref to the same shape as g_r
@@ -162,7 +171,7 @@ def PI_var_r(
 
 
 def PI_var_z(
-    D,
+    depth,
     f,
     r_src,
     z_src,
@@ -172,9 +181,10 @@ def PI_var_z(
     zmax,
     dz,
     dist="both",
+    bottom_bc="pressure_release",
 ):
     # Create folder to store the images
-    root, folder = get_folderpath(x_rcv, r_src, z_src)
+    root, folder = get_folderpath(x_rcv, r_src, z_src, bottom_bc=bottom_bc)
     subfolder = f"dz_{dz}"
     root = os.path.join(root, folder, subfolder)
     if not os.path.exists(root):
@@ -200,7 +210,7 @@ def PI_var_z(
         z_src,
         z_rcv_ref=z_rcv,
         z_rcv=z_rcv,
-        D=D,
+        depth=depth,
         r_rcv_ref=r_ref[0],
         r=r_ref[1:],
     )
@@ -210,7 +220,7 @@ def PI_var_z(
         z_src_list,
         z_rcv_ref=z_rcv,
         z_rcv=z_rcv,
-        D=D,
+        depth=depth,
         r_rcv_ref=r_src_rcv_ref,
         r=r_src_rcv,
     )
@@ -295,7 +305,7 @@ def PI_var_z(
 
 
 def Pi_var_rz(
-    D,
+    depth,
     f,
     r_src,
     z_src,
@@ -307,10 +317,11 @@ def Pi_var_rz(
     zmax,
     dz,
     dist="both",
+    bottom_bc="pressure_release",
 ):
 
     # Create folder to store the images
-    root, folder = get_folderpath(x_rcv, r_src, z_src)
+    root, folder = get_folderpath(x_rcv, r_src, z_src, bottom_bc=bottom_bc)
     subfolder = f"dr_{dr}_dz_{dz}"
     root = os.path.join(root, folder, subfolder)
     if not os.path.exists(root):
@@ -342,9 +353,10 @@ def Pi_var_rz(
         z_src,
         z_rcv_ref=z_rcv,
         z_rcv=z_rcv,
-        D=D,
+        depth=depth,
         r_rcv_ref=r_ref[0],
         r=r_ref[1:],
+        bottom_bc=bottom_bc,
     )
 
     t0 = time()
@@ -353,9 +365,10 @@ def Pi_var_rz(
         z_src_list,
         z_rcv_ref=z_rcv,
         z_rcv=z_rcv,
-        D=D,
+        depth=depth,
         r_rcv_ref=r_src_rcv_ref,
         r=r_src_rcv,
+        bottom_bc=bottom_bc,
     )
     print(time() - t0)
 
@@ -453,15 +466,18 @@ def Pi_var_rz(
         plt.close("all")
 
 
-def get_folderpath(x_rcv, r_src, z_src):
+def get_folderpath(x_rcv, r_src, z_src, bottom_bc="pressure_release"):
     delta_rcv = x_rcv[1] - x_rcv[0]
     n_rcv = len(x_rcv)
     root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\ideal_waveguide"
-    folder = f"nrcv_{n_rcv}_deltarcv_{delta_rcv:.0f}m_rsrc_{r_src*1e-3:.0f}km_zsrc_{z_src:.0f}m"
+    testname = f"nrcv_{n_rcv}_deltarcv_{delta_rcv:.0f}m_rsrc_{r_src*1e-3:.0f}km_zsrc_{z_src:.0f}m"
+    folder = os.path.join(bottom_bc, testname)
     return root, folder
 
 
-def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
+def full_test(
+    covered_range, dr, zmin, zmax, dz, dist="D2", bottom_bc="pressure_release"
+):
 
     # Load default parameters
     depth, r_src, z_src, z_rcv, n_rcv, delta_rcv, f = default_params()
@@ -480,6 +496,7 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
         covered_range=covered_range,
         dr=dr,
         dist=dist,
+        bottom_bc=bottom_bc,
     )
 
     # Variations along the depth axis
@@ -494,6 +511,7 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
         zmax=zmax,
         dz=dz,
         dist=dist,
+        bottom_bc=bottom_bc,
     )
 
     # Variations along the range and depth axes
@@ -510,12 +528,13 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
         zmax=zmax,
         dz=dz,
         dist=dist,
+        bottom_bc=bottom_bc,
     )
 
     # Transmission loss for a few frequencies
 
     # Create folder to store the images
-    root, folder = get_folderpath(x_rcv, r_src, z_src)
+    root, folder = get_folderpath(x_rcv, r_src, z_src, bottom_bc=bottom_bc)
     subfolder = f"tl_f"
     root = os.path.join(root, folder, subfolder)
     if not os.path.exists(root):
@@ -574,7 +593,9 @@ def full_test(covered_range, dr, zmin, zmax, dz, dist="D2"):
         plt.savefig(os.path.join(root, f"tl_f{fp}Hz_zoomrcv.png"))
 
 
-def sensibility_ideal_waveguide(param="delta_rcv", axis="both"):
+def sensibility_ideal_waveguide(
+    param="delta_rcv", axis="both", bottom_bc="pressure_release"
+):
     """Study the sensibility of the proposed distance metric (D_frobenius) to the source position.
     The source position is varied along the range axis and the depth axis. The distance metric is computed for each source position.
     The sensibility along each axis is evaluated separately by computing the main lobe aperture of D_frobenius.
@@ -587,28 +608,33 @@ def sensibility_ideal_waveguide(param="delta_rcv", axis="both"):
 
     # Sensibility to the distance between receivers
     if param == "delta_rcv":
-        sensibility_ideal_waveguide_delta_rcv(axis=axis)
+        sensibility_ideal_waveguide_delta_rcv(axis=axis, bottom_bc=bottom_bc)
 
     # Sensibility to the reference source range
     if param == "r_src":
-        sensibility_ideal_waveguide_r_src(axis=axis)
+        sensibility_ideal_waveguide_r_src(axis=axis, bottom_bc=bottom_bc)
 
     # Sensibility to the reference source depth
     if param == "z_src":
-        sensibility_ideal_waveguide_z_src(axis=axis)
+        sensibility_ideal_waveguide_z_src(axis=axis, bottom_bc=bottom_bc)
 
+    # Sensibility to the number of receivers
     if param == "n_rcv":
-        sensibility_ideal_waveguide_n_rcv(axis=axis)
+        sensibility_ideal_waveguide_n_rcv(axis=axis, bottom_bc=bottom_bc)
+
+    # Sensibility to the frequency resolution
+    if param == "df":
+        sensibility_ideal_waveguide_df(axis=axis, bottom_bc=bottom_bc)
 
 
-def derive_Pi_ref(r_src, z_src, x_rcv, axis="r"):
+def derive_Pi_ref(r_src, z_src, x_rcv, f, axis="r", bottom_bc="pressure_release"):
 
-    depth, _, _, z_rcv, _, _, f = default_params()
+    depth, _, _, z_rcv, _, _, _ = default_params()
 
     if axis == "r":
         # Define the ranges
         dr = 0.1
-        covered_range = 15  # Assume the range aperture is smaller than 15 m
+        covered_range = 30  # Assume the range aperture is smaller than 30 m
         r_src_list = np.arange(r_src - covered_range, r_src + covered_range, dr)
         # Ensure that the ref position is included in the list
         r_src_list = np.sort(np.append(r_src_list, r_src))
@@ -627,9 +653,10 @@ def derive_Pi_ref(r_src, z_src, x_rcv, axis="r"):
             z_src,
             z_rcv_ref=z_rcv,
             z_rcv=z_rcv,
-            D=depth,
+            depth=depth,
             r_rcv_ref=r_ref[0],
             r=r_ref[1:],
+            bottom_bc=bottom_bc,
         )
 
         return r_src_list, r_src_rcv_ref, r_src_rcv, depth, f, g_ref
@@ -640,7 +667,7 @@ def derive_Pi_ref(r_src, z_src, x_rcv, axis="r"):
         dz = 0.1
         zmin = z_src - 10
         zmin = np.max([1, zmin])  # Avoid negative depths
-        zmax = z_src + 10
+        zmax = z_src + 20
         z_src_list = np.arange(zmin, zmax, dz)
 
         # Ensure that the ref position is included in the list
@@ -657,15 +684,16 @@ def derive_Pi_ref(r_src, z_src, x_rcv, axis="r"):
             z_src,
             z_rcv_ref=z_rcv,
             z_rcv=z_rcv,
-            D=depth,
+            depth=depth,
             r_rcv_ref=r_ref[0],
             r=r_ref[1:],
+            bottom_bc=bottom_bc,
         )
 
         return z_src_list, r_src_rcv_ref, r_src_rcv, depth, f, g_ref
 
 
-def sensibility_ideal_waveguide_delta_rcv(axis="r"):
+def sensibility_ideal_waveguide_delta_rcv(axis="r", bottom_bc="pressure_release"):
     # Define the range of the study
     # delta_rcv = np.logspace(0, 4, 10)
     # delta_max = 3 * 1e3
@@ -740,15 +768,16 @@ def sensibility_ideal_waveguide_delta_rcv(axis="r"):
         ]
     )
 
-    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
+    _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
 
-    root_img = init_sensibility_path("delta_rcv")
+    root_img = init_sensibility_path("delta_rcv", bottom_bc=bottom_bc)
 
     # Define input vars
     input_var = {}
     input_var["r_src"] = r_src
     input_var["z_src"] = z_src
     input_var["n_rcv"] = n_rcv
+    input_var["df"] = f[1] - f[0]
 
     # Define param vars
     param_var = {}
@@ -777,19 +806,20 @@ def sensibility_ideal_waveguide_delta_rcv(axis="r"):
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
-def sensibility_ideal_waveguide_r_src(axis="both"):
+def sensibility_ideal_waveguide_r_src(axis="both", bottom_bc="pressure_release"):
     src_range = np.arange(10, 101, 10) * 1e3
 
     # Define the source depth
-    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
+    _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
 
-    root_img = init_sensibility_path("r_src")
+    root_img = init_sensibility_path("r_src", bottom_bc=bottom_bc)
 
     # Define input vars
     input_var = {}
     input_var["z_src"] = z_src
     input_var["n_rcv"] = n_rcv
     input_var["delta_rcv"] = delta_rcv
+    input_var["df"] = f[1] - f[0]
 
     # Define param vars
     param_var = {}
@@ -819,18 +849,19 @@ def sensibility_ideal_waveguide_r_src(axis="both"):
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
-def sensibility_ideal_waveguide_z_src(axis):
+def sensibility_ideal_waveguide_z_src(axis, bottom_bc="pressure_release"):
     src_depth = np.arange(1, 991, 1)
 
-    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
+    _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
 
-    root_img = init_sensibility_path("z_src")
+    root_img = init_sensibility_path("z_src", bottom_bc=bottom_bc)
 
     # Define input vars
     input_var = {}
     input_var["r_src"] = r_src
     input_var["n_rcv"] = n_rcv
     input_var["delta_rcv"] = delta_rcv
+    input_var["df"] = f[1] - f[0]
 
     # Define param vars
     param_var = {}
@@ -860,18 +891,19 @@ def sensibility_ideal_waveguide_z_src(axis):
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
-def sensibility_ideal_waveguide_n_rcv(axis):
+def sensibility_ideal_waveguide_n_rcv(axis, bottom_bc="pressure_release"):
     nb_rcv = np.arange(2, 11, 1)
 
-    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
+    _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
 
-    root_img = init_sensibility_path("n_rcv")
+    root_img = init_sensibility_path("n_rcv", bottom_bc=bottom_bc)
 
     # Define input vars
     input_var = {}
     input_var["r_src"] = r_src
     input_var["z_src"] = z_src
     input_var["delta_rcv"] = delta_rcv
+    input_var["df"] = f[1] - f[0]
 
     # Define param vars
     param_var = {}
@@ -892,6 +924,48 @@ def sensibility_ideal_waveguide_n_rcv(axis):
         param_var["idx"] = i_d
         param_var["value"] = n_rcv
         input_var["n_rcv"] = n_rcv
+
+        study_param_sensibility(
+            input_var, param_var, apertures_r, apertures_z, axis=axis
+        )
+
+    # Plot the main lobe aperture as a function of delta_rcv
+    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+
+
+def sensibility_ideal_waveguide_df(axis, bottom_bc="pressure_release"):
+    freq_res = np.arange(0.1, 15.1, 0.1)
+
+    _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
+
+    root_img = init_sensibility_path("df", bottom_bc=bottom_bc)
+
+    # Define input vars
+    input_var = {}
+    input_var["n_rcv"] = n_rcv
+    input_var["r_src"] = r_src
+    input_var["z_src"] = z_src
+    input_var["delta_rcv"] = delta_rcv
+
+    # Define param vars
+    param_var = {}
+    param_var["name"] = "df"
+    param_var["unit"] = "Hz"
+    param_var["root_img"] = root_img
+    param_var["th_r"] = 3
+    param_var["th_z"] = 3
+    param_var["values"] = freq_res
+    param_var["xlabel"] = r"$\Delta_f \, \textrm{Hz}$"
+
+    apertures_r = []
+    apertures_z = []
+
+    # Compute the distance metric for each delta_rcv
+    for i_d, df in enumerate(freq_res):
+
+        param_var["idx"] = i_d
+        param_var["value"] = df
+        input_var["df"] = df
 
         study_param_sensibility(
             input_var, param_var, apertures_r, apertures_z, axis=axis
@@ -924,12 +998,13 @@ def D_frobenius(g_ref, g):
     return D_frobenius
 
 
-def init_sensibility_path(param):
+def init_sensibility_path(param, bottom_bc="pressure_release"):
     # Create folder to store the images
     root = "C:\\Users\\baptiste.menetrier\\Desktop\\devPy\\phd\\img\\illustration\\rtf\\ideal_waveguide"
-    folder = f"sensibility"
-    subfolder = param
-    root = os.path.join(root, folder, subfolder)
+    folder = bottom_bc
+    subfolder = "sensibility"
+    subsubfolder = param
+    root = os.path.join(root, folder, subfolder, subsubfolder)
     if not os.path.exists(root):
         os.makedirs(root)
 
@@ -951,7 +1026,14 @@ def Df_aperture(Df, x, th_dB=10):
     return i1, i2, np.round(aperture, 3)
 
 
-def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="both"):
+def study_param_sensibility(
+    input_var,
+    param_var,
+    aperture_r,
+    aperture_z,
+    axis="both",
+    bottom_bc="pressure_release",
+):
     # Load default params
     depth, _, _, z_rcv, _, _, f = default_params()
 
@@ -960,6 +1042,9 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
     r_src = input_var["r_src"]
     z_src = input_var["z_src"]
     n_rcv = input_var["n_rcv"]
+    df = input_var["df"]
+
+    f = np.arange(f[0], f[-1], df)
 
     # Load param vars
     name = param_var["name"]
@@ -977,7 +1062,7 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
     if axis == "r" or axis == "both":
         # Derive ref RTF
         r_src_list, r_src_rcv_ref, r_src_rcv, _, f, g_ref = derive_Pi_ref(
-            r_src, z_src, x_rcv, axis="r"
+            r_src, z_src, x_rcv, f, axis="r", bottom_bc=bottom_bc
         )
 
         # Derive RTF for the set of potential source positions (r_src_rcv)
@@ -986,9 +1071,10 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
             z_src,
             z_rcv_ref=z_rcv,
             z_rcv=z_rcv,
-            D=depth,
+            depth=depth,
             r_rcv_ref=r_src_rcv_ref,
             r=r_src_rcv,
+            bottom_bc=bottom_bc,
         )
 
         # Derive the distance
@@ -1004,7 +1090,7 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
     if axis == "z" or axis == "both":
         # Derive ref RTF
         z_src_list, r_src_rcv_ref, r_src_rcv, _, f, g_ref = derive_Pi_ref(
-            r_src, z_src, x_rcv, axis="z"
+            r_src, z_src, x_rcv, f, axis="z", bottom_bc=bottom_bc
         )
 
         # Derive RTF for the set of potential source positions (r_src_rcv)
@@ -1013,9 +1099,10 @@ def study_param_sensibility(input_var, param_var, aperture_r, aperture_z, axis="
             z_src_list,
             z_rcv_ref=z_rcv,
             z_rcv=z_rcv,
-            D=depth,
+            depth=depth,
             r_rcv_ref=r_src_rcv_ref,
             r=r_src_rcv,
+            bottom_bc=bottom_bc,
         )
 
         # Derive the distance
@@ -1173,31 +1260,62 @@ def default_params():
     # Frequency range
     fmin = 1
     fmax = 50
-    nb_freq = 500
-    f = np.linspace(fmin, fmax, nb_freq)
+    df = 0.1
+    f = np.arange(fmin, fmax + df, df)
+    # nb_freq = 500
+    # f = np.linspace(fmin, fmax, nb_freq)
 
     return depth, r_src, z_src, z_rcv, n_rcv, delta_rcv, f
 
 
 if __name__ == "__main__":
 
-    # params = ["r_src", "z_src", "n_rcv", "delta_rcv"]
-    params = ["delta_rcv"]
+    # covered_range = 5
+    # dr = 0.1
+    # zmin = 3
+    # zmax = 7
+    # dz = 0.1
+    # dist = "D2"
 
-    for param in params:
-        sensibility_ideal_waveguide(param=param, axis="both")
+    # # Load default parameters
+    # depth, r_src, z_src, z_rcv, n_rcv, delta_rcv, f = default_params()
 
-    covered_range = 50
+    # # Define the receivers position
+    # x_rcv = np.array([i * delta_rcv for i in range(n_rcv)])
+
+    # # # Variations along the range axis
+    # PI_var_r(
+    #     depth,
+    #     f,
+    #     r_src,
+    #     z_src,
+    #     x_rcv,
+    #     z_rcv,
+    #     covered_range=covered_range,
+    #     dr=dr,
+    #     dist=dist,
+    #     smooth_tf=True,
+    # )
+
+    bottom_bc = "pressure_release"
+
+    # params = ["r_src", "z_src", "n_rcv", "delta_rcv", "df"]
+    # # params = ["z_src"]
+
+    # for param in params:
+    #     sensibility_ideal_waveguide(param=param, axis="both")
+
+    covered_range = 25
     dr = 0.1
     zmin = 1
-    zmax = 20
+    zmax = 25
     dz = 0.1
-    full_test(covered_range, dr, zmin, zmax, dz, dist="D2")
+    full_test(covered_range, dr, zmin, zmax, dz, dist="D2", bottom_bc=bottom_bc)
 
-    # covered_range = 15 * 1e3
+    # covered_range = 10 * 1e3
     # dr = 10
-    # zmin = z_src - 10
-    # zmax = D
+    # zmin = 1
+    # zmax = D - 1
     # dz = 1
 
-    # full_test(f, D, r_src, z_src, x_rcv, covered_range, dr, zmin, zmax, dz, dist="D2")
+    # full_test(covered_range, dr, zmin, zmax, dz, dist="D2")

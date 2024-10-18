@@ -105,8 +105,10 @@ class TestCase:
         self.plot_bottom = False
         self.plot_bathy = False
         self.plot_env = False
-        # Src
-        self.z_src = None
+        self.bottom_boundary_condition = None
+        self.nmedia = None
+        self.phase_speed_limits = None
+
         # Ssp
         self.z_ssp = None
         self.cp_ssp = None
@@ -143,6 +145,7 @@ class TestCase:
         # Default values
         self.default_varin = {
             "freq": [20],
+            "nmedia": 2,
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "azimuth": 0,
@@ -154,11 +157,13 @@ class TestCase:
             "called_by_subprocess": False,
             "mode_theory": "coupled",
             "mode_addition": "coherent",
-            "z_src": 5,
             "src_depth": None,
             "flp_n_rcv_z": None,
             "flp_rcv_z_min": None,
             "flp_rcv_z_max": None,
+            "phase_speed_limits": None,
+            "bottom_boundary_condition": "acousto_elastic",
+            "bott_hs_properties": None,
         }
 
         # Set env directory
@@ -251,7 +256,8 @@ class TestCase:
 
     def set_bott_hs(self):
         self.bott_hs = KrakenBottomHalfspace(
-            halfspace_properties=self.bott_hs_properties
+            boundary_condition=self.bottom_boundary_condition,
+            halfspace_properties=self.bott_hs_properties,
         )
         self.bott_hs.derive_sedim_layer_max_depth(z_max=self.max_depth)
 
@@ -264,20 +270,22 @@ class TestCase:
         z_max = np.ceil(self.bott_hs.sedim_layer_max_depth + 5)
         n_rcv_z = default_nb_rcv_z(max(self.freq), z_max, n_per_l=12)
 
-        c_offset = 200
-        c_low = min(
-            np.min(self.cp_ssp), np.min(self.bott_hs_properties["c_p"])
-        )  # Minimum p-wave speed in the problem as recommanded by Kraken manual to exclude interfacial waves
-        c_low = np.max(c_low - c_offset, 0)
-        c_high = (
-            np.max(self.bott_hs_properties["c_p"]) + c_offset
-        )  # Maximum p-wave speed in the bottom to limit the number of modes computed
+        if self.phase_speed_limits is None:
+            c_offset = 200
+            c_low = min(
+                np.min(self.cp_ssp), np.min(self.bott_hs_properties["c_p"])
+            )  # Minimum p-wave speed in the problem as recommanded by Kraken manual to exclude interfacial waves
+            c_low = np.max(c_low - c_offset, 0)
+            c_high = (
+                np.max(self.bott_hs_properties["c_p"]) + c_offset
+            )  # Maximum p-wave speed in the bottom to limit the number of modes computed
+            self.phase_speed_limits = [c_low, c_high]
 
         self.field = KrakenField(
             n_rcv_z=n_rcv_z,
             src_depth=self.src_depth,
             rcv_z_max=z_max,
-            phase_speed_limits=[c_low, c_high],
+            phase_speed_limits=self.phase_speed_limits,
         )
 
     def set_medium(self):
@@ -328,6 +336,7 @@ class TestCase:
             kraken_bottom_hs=self.bott_hs,
             kraken_field=self.field,
             kraken_bathy=self.bathy,
+            nmedia=self.nmedia,
         )
 
     def set_flp(self):

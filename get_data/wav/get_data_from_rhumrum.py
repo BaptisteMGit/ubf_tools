@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 import scipy.io.wavfile as wavfile
 
 from obspy import UTCDateTime
@@ -65,7 +66,12 @@ def get_rhumrum_data(
             root_data = (
                 r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM"
             )
-            fname = f"signal_{chnl}_{station_id}_{date[0:10]}.wav"  # on sauvegarde les signaux corriges dans un fichier .wav
+            fmt = "%Y-%m-%d_%H-%M-%S"
+            date_start = pd.to_datetime(date).strftime(fmt)
+            date_end = (
+                pd.to_datetime(date) + pd.Timedelta(seconds=duration_sec)
+            ).strftime(fmt)
+            fname = f"signal_{chnl}_{station_id}_{date_start}_{date_end}.wav"  # on sauvegarde les signaux corriges dans un fichier .wav
             fpath = os.path.join(root_data, fname)
             wavfile.write(
                 fpath,

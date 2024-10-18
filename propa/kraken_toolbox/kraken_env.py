@@ -157,19 +157,22 @@ class KrakenMedium:
                 ssp_bloc.append(f"{self.z_ssp[i]:.2f} {self.cp_ssp[i]:.2f} / \n")
 
         # Write ssp in sediment media layer bloc
-        sedim_medium_info = align_var_description(
-            f"{self.nmesh} {self.sigma} {bottom_hs.sedim_layer_max_depth:.2f}",
-            "Number of mesh points in sediment layer, RMS surface roughness, Max depth (units: m)",
-        )
-        sedim_layer_prop_1 = align_var_description(
-            f"{self.z_ssp.max():.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rhobot_halfspace:.2f} {bottom_hs.apbot_halfspace:.2f} {bottom_hs.ashbot_halfspace:.2f}",
-            ssp_desc,
-        )
-        sedim_layer_prop_2 = align_var_description(
-            f"{bottom_hs.sedim_layer_max_depth:.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rhobot_halfspace:.2f} {bottom_hs.apbot_halfspace:.2f} {bottom_hs.ashbot_halfspace:.2f}",
-            ssp_desc,
-        )
-        ssp_sedim_bloc = [sedim_medium_info, sedim_layer_prop_1, sedim_layer_prop_2]
+        if bottom_hs.write_sedim_layer_bloc:
+            sedim_medium_info = align_var_description(
+                f"{self.nmesh} {self.sigma} {bottom_hs.sedim_layer_max_depth:.2f}",
+                "Number of mesh points in sediment layer, RMS surface roughness, Max depth (units: m)",
+            )
+            sedim_layer_prop_1 = align_var_description(
+                f"{self.z_ssp.max():.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rhobot_halfspace:.2f} {bottom_hs.apbot_halfspace:.2f} {bottom_hs.ashbot_halfspace:.2f}",
+                ssp_desc,
+            )
+            sedim_layer_prop_2 = align_var_description(
+                f"{bottom_hs.sedim_layer_max_depth:.2f} {bottom_hs.cp_bot_halfspace:.2f} {bottom_hs.cs_bot_halfspace:.2f} {bottom_hs.rhobot_halfspace:.2f} {bottom_hs.apbot_halfspace:.2f} {bottom_hs.ashbot_halfspace:.2f}",
+                ssp_desc,
+            )
+            ssp_sedim_bloc = [sedim_medium_info, sedim_layer_prop_1, sedim_layer_prop_2]
+        else:
+            ssp_sedim_bloc = []
 
         self.lines = [medium_info] + ssp_bloc + ssp_sedim_bloc
 
@@ -223,9 +226,11 @@ class KrakenTopHalfspace:
     def set_boundary_code(self):
         if self.boundary_condition == "vacuum":
             self.boundary_code = "V"
+
         elif self.boundary_condition == "acousto_elastic":
             self.boundary_code = "A"
             self.set_halfspace_properties()
+
         elif self.boundary_condition == "perfectly_rigid":
             self.boundary_code = "R"
         elif self.boundary_condition == "reflection_coefficient":
@@ -331,8 +336,8 @@ class KrakenBottomHalfspace:
         fmin=10,
         alpha_wavelength=10,
     ):
-        self.boundary_condition = boundary_condition
         self.sigma = sigma
+        self.boundary_condition = boundary_condition
         self.halfspace_properties = halfspace_properties
 
         # Sedim layer depth
@@ -342,6 +347,10 @@ class KrakenBottomHalfspace:
         )  # Depth from bottom water/sediment interface (m)
         self.sedim_layer_max_z = 10000  # Maximum depth of the sediment layer
         self.sedim_layer_max_depth = None
+
+        # Halfspace properties
+        self.write_sedim_layer_bloc = False
+        self.use_halfspace_properties = False
 
         # Boundary code
         self.boundary_code = None
@@ -360,9 +369,16 @@ class KrakenBottomHalfspace:
     def set_boundary_code(self):
         if self.boundary_condition == "vacuum":
             self.boundary_code = "V"
+            self.sedim_layer_depth = 0
+            self.z_in_bottom = np.array(
+                [0, 0]
+            )  # Depth from bottom water/sediment interface (m)
+
         elif self.boundary_condition == "acousto_elastic":
             self.boundary_code = "A"
             self.set_halfspace_properties()
+            self.write_sedim_layer_bloc = True
+
         elif self.boundary_condition == "perfectly_rigid":
             self.boundary_code = "R"
         elif self.boundary_condition == "reflection_coefficient":
@@ -389,7 +405,7 @@ class KrakenBottomHalfspace:
     def set_halfspace_properties(self):
         if self.halfspace_properties is None:
             raise ValueError(
-                "You need to provide top halfspace properties when using 'acousto_elastic' boundary condition"
+                "You need to provide bottom halfspace properties when using 'acousto_elastic' boundary condition"
             )
         else:
             self.cp_bot_halfspace = self.halfspace_properties[
@@ -403,10 +419,10 @@ class KrakenBottomHalfspace:
             ]  # Density (units: g/cm3)
             self.apbot_halfspace = self.halfspace_properties[
                 "a_p"
-            ]  # Top compressional wave attenuation (units: self.units)
+            ]  # Bottom compressional wave attenuation (units: self.units)
             self.ashbot_halfspace = self.halfspace_properties[
                 "a_s"
-            ]  # Top shear wave attenuation (units: self.units)
+            ]  # Bottom shear wave attenuation (units: self.units)
 
             self.use_halfspace_properties = True
 
@@ -624,7 +640,7 @@ class KrakenEnv:
         kraken_bathy=Bathymetry(),
         rModes=None,
         rModes_units="km",
-        nmedia=2,
+        nmedia=1,
     ):
         self.simulation_title = title
 

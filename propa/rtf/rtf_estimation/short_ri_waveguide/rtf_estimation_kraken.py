@@ -480,23 +480,8 @@ def derive_received_noise(
                 + 1j * ds_tf.tf_imag[:, idx_r_min:idx_r_max]
             )
 
-            # if i == 0:
-            #     # Derive broadband loss to derive required snr level taking propagation into acount
-            #     s_unit_var = np.random.normal(loc=0, scale=1, size=ns)
-            #     s_unit_var_spectrum = np.fft.rfft(s_unit_var)
-            #     received_unit_var = np.fft.irfft(
-            #         mult_along_axis(tf_noise_rcv_i, s_unit_var_spectrum, axis=0), axis=0
-            #     )
-            #     received_unit_var = np.sum(received_unit_var, axis=1)
-            #     broadband_loss = 10 * np.log10(np.var(received_unit_var))
-            #     # print(f"NL_src = {10*np.log10(np.var(s_unit_var))} dB")
-            #     snr_dB += broadband_loss
-
             # Noise spectrum
             if noise_model == "gaussian":
-                # sigma_v2 = 10 ** (-snr_dB / 10)
-                # v = np.random.normal(loc=0, scale=np.sqrt(sigma_v2), size=ns)
-                # sigma_v2 = 10 ** (-snr_dB / 10)
                 v = np.random.normal(loc=0, scale=1, size=ns)
                 noise_spectrum = np.fft.rfft(v)
 

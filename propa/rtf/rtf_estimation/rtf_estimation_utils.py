@@ -49,22 +49,33 @@ def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**1
         Rv_f = Rv[i]
         # Rs_f = Rs[i]
         # Rx_f = Rx[i]
-        stft_x_f = stft_x[i, :]
+        stft_x_f = stft_x[:, i, :]
 
         # Cholesky decomposition of the noise csdm and its inverse : Equation (25a) and (25b)
-        Rv_half = sp.linalg.cholesky(Rv_f, lower=False)
-        Rv_inv = np.linalg.inv(Rv_f)
-        Rv_half_inv = sp.linalg.cholesky(Rv_inv, lower=False)
+        Rv_half = scipy.linalg.cholesky(Rv_f, lower=False)
+        Rv_inv_f = np.linalg.inv(Rv_f)
+        Rv_half_inv = scipy.linalg.cholesky(Rv_inv_f, lower=False)
 
         # Compute the whitened signal csdm : Equation (26)
-        y = Rv_half_inv @ stft_x_f
+        stft_y_f = Rv_half_inv @ stft_x_f
 
         # Compute the whitened signal csdm : Equation (31)
-        ff, Ry_f = get_csdm_from_signal(t, y)
+        # Reshape to the required shape for the computation
+        stft_y_f = [
+            stft_y_f[i, np.newaxis, :] for i in range(n_rcv)
+        ]  # List of stft at frequency f : n_rcv element of shape (n_freq=1, n_seg)
+        Ry_f = compute_csd_matrix_fast(
+            stft_y_f, n_seg_cov="all"
+        )  # Covariance matrix at frequency f
+        Ry_f = (
+            Ry_f.squeeze()
+        )  # Remove useless frequency dimension to get shape (n_rcv, n_rcv)
 
         # Eigenvalue decomposition of Ry_f to get q (major eingenvector) : Equation (32)
         eig_val, eig_vect = np.linalg.eig(Ry_f)
-        i_max_eig = np.argmax(eig_val)
+        # We can check that the Ry_f can be diagonalized np.round(np.abs(np.linalg.inv(eig_vect) @ Ry_f @ eig_vect), 5)
+
+        i_max_eig = np.argmax(np.abs(eig_val))
         q = eig_vect[:, i_max_eig]
 
         rtf_f = (Rv_half @ q) / (e1.T @ Rv_half @ q)  # Equation (32)

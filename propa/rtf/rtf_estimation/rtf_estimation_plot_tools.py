@@ -256,14 +256,16 @@ def csdm_info_line(fig_props):
 
 def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
     # Plot signal, noise and signal + noise in time domain for the first receiver (subplots)
+    rcv_sig_0 = rcv_sig[:, 0]
+    rcv_noise_0 = rcv_noise[:, 0]
     fig, axs = plt.subplots(3, 1, figsize=(18, 10), sharex=True)
     ax1, ax2, ax3 = axs
 
-    ax1.plot(t, rcv_sig[:, 0])
+    ax1.plot(t, rcv_sig_0)
     ax1.set_title(r"$s(t)$")
-    ax2.plot(t, rcv_noise[:, 0])
+    ax2.plot(t, rcv_noise_0)
     ax2.set_title(r"$n(t)$")
-    ax3.plot(t, rcv_sig[:, 0] + rcv_noise[:, 0])
+    ax3.plot(t, rcv_sig_0 + rcv_noise_0)
     ax3.set_title(r"$x(t) = s(t) + n(t)$")
     ax3.set_xlabel(r"$t \, \textrm{[s]}$")
 
@@ -274,7 +276,7 @@ def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
     fig, axs = plt.subplots(3, 1, figsize=(18, 10), sharex=True)
     ax1, ax2, ax3 = axs
 
-    ax1.plot(t, rcv_sig[:, 0])
+    ax1.plot(t, rcv_sig_0)
     ax1.set_title(r"$s(t)$")
     ax1.set_xlim(
         [
@@ -282,7 +284,7 @@ def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
             t[idx_window_center] + fig_props["tau_ir"] / 2,
         ]
     )
-    ax2.plot(t, rcv_noise[:, 0])
+    ax2.plot(t, rcv_noise_0)
     ax2.set_title(r"$n(t)$")
     ax2.set_xlim(
         [
@@ -290,7 +292,7 @@ def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
             t[idx_window_center] + fig_props["tau_ir"] / 2,
         ]
     )
-    ax3.plot(t, rcv_sig[:, 0] + rcv_noise[:, 0])
+    ax3.plot(t, rcv_sig_0 + rcv_noise_0)
     ax3.set_title(r"$x(t) = s(t) + n(t)$")
     ax3.set_xlabel(r"$t \, \textrm{[s]}$")
     ax3.set_xlim(
@@ -301,6 +303,90 @@ def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
     )
 
     plt.savefig(os.path.join(fig_props["folder_path"], "signal_noise_zoom.png"))
+
+    # Plot stft
+    nperseg = 2**12
+    noverlap = int(nperseg * 3 / 4)
+
+    fs = 1 / (t[1] - t[0])
+    stft_sig_0 = sp.stft(
+        rcv_sig_0,
+        fs=fs,
+        window="hann",
+        nperseg=nperseg,
+        noverlap=noverlap,
+    )
+    stft_noise_0 = sp.stft(
+        rcv_noise_0,
+        fs=fs,
+        window="hann",
+        nperseg=nperseg,
+        noverlap=noverlap,
+    )
+    stft_x_0 = sp.stft(
+        rcv_sig_0 + rcv_noise_0,
+        fs=fs,
+        window="hann",
+        nperseg=nperseg,
+        noverlap=noverlap,
+    )
+
+    fig, axs = plt.subplots(3, 1, figsize=(18, 10), sharex=True)
+    ax1, ax2, ax3 = axs
+
+    vmin = np.round(np.percentile(20 * np.log10(np.abs(stft_x_0[2])), 25) / 10) * 10
+    vmax = np.round(np.percentile(20 * np.log10(np.abs(stft_x_0[2])), 99) / 10) * 10
+    cmap = "jet"
+
+    im1 = ax1.pcolormesh(
+        stft_sig_0[1],
+        stft_sig_0[0],
+        20 * np.log10(np.abs(stft_sig_0[2])),
+        shading="gouraud",
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+    )
+    ax1.set_title(r"$S(f, t)$")
+
+    im2 = ax2.pcolormesh(
+        stft_noise_0[1],
+        stft_noise_0[0],
+        # np.abs(stft_noise_0[2]),
+        20 * np.log10(np.abs(stft_noise_0[2])),
+        shading="gouraud",
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+    )
+    ax2.set_title(r"$N(f, t)$")
+
+    im3 = ax3.pcolormesh(
+        stft_x_0[1],
+        stft_x_0[0],
+        # np.abs(stft_x_0[2]),
+        20 * np.log10(np.abs(stft_x_0[2])),
+        shading="gouraud",
+        vmin=vmin,
+        vmax=vmax,
+        cmap=cmap,
+    )
+    ax3.set_title(r"$X(f, t) = S(f, t) + N(f, t)$")
+
+    fig.supxlabel(r"$t \, \textrm{[s]}$")
+    fig.supylabel(r"$f \, \textrm{[Hz]}$")
+    fig.colorbar(
+        im3,
+        ax=axs.ravel().tolist(),
+        orientation="vertical",
+        pad=0.05,
+        shrink=0.95,
+        aspect=40,
+        label=r"$\textrm{Amplitude [dB]}$",
+    )
+    # plt.colorbar(im3)
+
+    plt.savefig(os.path.join(fig_props["folder_path"], "stft_signal_noise.png"))
 
 
 def plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
@@ -314,17 +400,32 @@ def plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
     ylim = np.nanpercentile(np.abs(rtf_true), 99.9)
     for i in range(kraken_data["n_rcv"]):
         plt.figure()
-        # Normalize RTFs for comparison
-        # rtf_cs[:, i] /= np.max(np.abs(rtf_cs[:, i]))
-        # rtf_true[:, i] /= np.nanmax(np.abs(rtf_true[:, i]))
+        plt.plot(
+            f_cs,
+            np.abs(rtf_cs[:, i]),
+            label=r"$\Pi_{" + str(i) + r"}^{(CS)}$",
+            linestyle="-",
+            color="b",
+            marker="o",
+            linewidth=0.2,
+            markersize=2,
+        )
+        plt.plot(
+            f_cw,
+            np.abs(rtf_cw[:, i]),
+            label=r"$\Pi_{" + str(i) + r"}^{(CW)}$",
+            linestyle="-",
+            color="r",
+            marker="o",
+            linewidth=0.2,
+            markersize=2,
+        )
+        plt.plot(
+            f_true, np.abs(rtf_true[:, i]), label=r"$\Pi_{" + str(i) + r"}$", color="k"
+        )
+        plt.yscale("log")
 
-        plt.plot(f_cs, np.abs(rtf_cs[:, i]), label=r"$\Pi_{" + str(i) + r"}^{(CS)}$")
-        # plt.plot(
-        #     f_cw, np.abs(rtf_cw[:, i]), "--", label=r"$\Pi_{" + str(i) + r"}^{(CW)}$"
-        # )
-        plt.plot(f_true, np.abs(rtf_true[:, i]), "--", label=r"$\Pi_{" + str(i) + r"}$")
-
-        plt.ylim([0, ylim])
+        # plt.ylim([0, ylim])
 
         plt.xlabel(r"$f \, \textrm{[Hz]}$")
         plt.ylabel(r"$|\Pi(f)|$")
@@ -344,22 +445,41 @@ def plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
 
     rtf_true = rtf_true[(f_true >= fmin_rtf) & (f_true <= fmax_rtf), :]
     rtf_cs = rtf_cs[(f_cs >= fmin_rtf) & (f_cs <= fmax_rtf), :]
-    # rtf_cw = rtf_cw[(f_cw >= fmin_rtf) & (f_cw <= fmax_rtf), :]
+    rtf_cw = rtf_cw[(f_cw >= fmin_rtf) & (f_cw <= fmax_rtf), :]
     f_true = f_true[(f_true >= fmin_rtf) & (f_true <= fmax_rtf)]
     f_cs = f_cs[(f_cs >= fmin_rtf) & (f_cs <= fmax_rtf)]
-    # f_cw = f_cw[(f_cw >= fmin_rtf) & (f_cw <= fmax_rtf)]
+    f_cw = f_cw[(f_cw >= fmin_rtf) & (f_cw <= fmax_rtf)]
 
-    ylim = np.nanpercentile(np.abs(rtf_true), 99.9)
+    # ylim = np.nanpercentile(np.abs(rtf_true), 99.5)
     for i in range(kraken_data["n_rcv"]):
         plt.figure()
 
-        plt.plot(f_cs, np.abs(rtf_cs[:, i]), label=r"$\Pi_{" + str(i) + r"}^{(CS)}$")
-        # plt.plot(
-        #     f_cw, np.abs(rtf_cw[:, i]), "--", label=r"$\Pi_{" + str(i) + r"}^{(CW)}$"
-        # )
-        plt.plot(f_true, np.abs(rtf_true[:, i]), "--", label=r"$\Pi_{" + str(i) + r"}$")
+        plt.plot(
+            f_cs,
+            np.abs(rtf_cs[:, i]),
+            label=r"$\Pi_{" + str(i) + r"}^{(CS)}$",
+            linestyle="-",
+            color="b",
+            marker="o",
+            linewidth=0.2,
+            markersize=2,
+        )
+        plt.plot(
+            f_cw,
+            np.abs(rtf_cw[:, i]),
+            label=r"$\Pi_{" + str(i) + r"}^{(CW)}$",
+            linestyle="-",
+            color="r",
+            marker="o",
+            linewidth=0.2,
+            markersize=2,
+        )
+        plt.plot(
+            f_true, np.abs(rtf_true[:, i]), label=r"$\Pi_{" + str(i) + r"}$", color="k"
+        )
+        plt.yscale("log")
 
-        plt.ylim([0, ylim])
+        # plt.ylim([0, ylim])
 
         plt.xlabel(r"$f \, \textrm{[Hz]}$")
         plt.ylabel(r"$|\Pi(f)|$")
@@ -372,6 +492,61 @@ def plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
             os.path.join(
                 fig_props["folder_path"], f"rtf_estimation_limited_bandwith_rcv{i}.png"
             )
+        )
+
+    # Rolling mean to smooth high freq variations
+    window = 5
+    rtf_cs_smooth = np.zeros_like(rtf_cs)
+    rtf_cw_smooth = np.zeros_like(rtf_cw)
+    for i in range(kraken_data["n_rcv"]):
+        rtf_cs_smooth[:, i] = np.convolve(
+            np.abs(rtf_cs[:, i]), np.ones(window) / window, mode="same"
+        )
+        rtf_cw_smooth[:, i] = np.convolve(
+            np.abs(rtf_cw[:, i]), np.ones(window) / window, mode="same"
+        )
+
+    # ylim = np.nanpercentile(np.abs(rtf_true), 99.5)
+
+    for i in range(kraken_data["n_rcv"]):
+        plt.figure()
+
+        plt.plot(
+            f_cs,
+            rtf_cs_smooth[:, i],
+            label=r"$\Pi_{" + str(i) + r"}^{(CS)}$",
+            linestyle="-",
+            color="b",
+            marker="o",
+            linewidth=0.2,
+            markersize=2,
+        )
+        plt.plot(
+            f_cw,
+            rtf_cw_smooth[:, i],
+            label=r"$\Pi_{" + str(i) + r"}^{(CW)}$",
+            linestyle="-",
+            color="r",
+            marker="o",
+            linewidth=0.2,
+            markersize=2,
+        )
+        plt.plot(
+            f_true, np.abs(rtf_true[:, i]), label=r"$\Pi_{" + str(i) + r"}$", color="k"
+        )
+
+        plt.yscale("log")
+        # plt.ylim([0, ylim])
+
+        plt.xlabel(r"$f \, \textrm{[Hz]}$")
+        plt.ylabel(r"$|\Pi(f)|$")
+        plt.legend()
+        plt.title(
+            r"$\textrm{RTF estimation with unpropagated white noise}$"
+            + f"\n({csdm_info_line(fig_props)})"
+        )
+        plt.savefig(
+            os.path.join(fig_props["folder_path"], f"rtf_estimation_smooth_rcv{i}.png")
         )
 
 

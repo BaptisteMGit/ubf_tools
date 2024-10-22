@@ -15,18 +15,19 @@
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
+import scipy.interpolate as sp_int
 
 from misc import *
 from propa.rtf.ideal_waveguide import *
 from propa.kraken_toolbox.run_kraken import runkraken
 from propa.rtf.ideal_waveguide import waveguide_params
 from localisation.verlinden.testcases.testcase_envs import TestCase1_0
-from propa.rtf.rtf_estimation.rtf_estimation_utils import *
-from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *
 from real_data_analysis.real_data_utils import get_csdm_snapshot_number
 
-
+from propa.rtf.rtf_utils import D_frobenius
 from propa.rtf.rtf_estimation.rtf_estimation_const import *
+from propa.rtf.rtf_estimation.rtf_estimation_utils import *
+from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *
 
 TAU_IR = 5  # Impulse response duration
 N_RCV = 5  # Number of receivers
@@ -290,7 +291,7 @@ def run_kraken_simulation_noise(r_src, z_src, z_rcv, depth):
 # ======================================================================================================================
 
 
-def testcase_1_unpropagated_whitenoise(snr_dB=10):
+def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
     """
     Test case 1
         - Waveguide: simple waveguide with short impulse response.
@@ -301,13 +302,6 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10):
     Args:
         snr_dB (int, optional): Signal-to-noise ratio in dB. Defaults to 10.
     """
-
-    # Create folder to save results
-    tc_folder = os.path.join(
-        ROOT_FOLDER, "testcase_1_unpropagated_whitenoise", f"snr_{snr_dB}dB"
-    )
-    if not os.path.exists(tc_folder):
-        os.makedirs(tc_folder)
 
     # Load propagated signal
     rcv_sig_data = derive_received_signal(tau_ir=TAU_IR)
@@ -328,7 +322,7 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10):
         rcv_sig[:, i] = rcv_sig_data[id_rcv]["sig"] / np.std(
             rcv_sig_data[f"rcv{0}"]["sig"]
         )  # Normalize signal to unit variance
-        rcv_noise[:, i] = rcv_noise_data[id_rcv]
+        rcv_noise[:, i] = rcv_noise_data[id_rcv]["sig"]
 
     alpha_tau_ir = 3
     seg_length = alpha_tau_ir * TAU_IR
@@ -345,7 +339,14 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10):
         t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
 
-    f_cw, rtf_cw, _, _, _ = rtf_covariance_whitening(t, rcv_sig, rcv_noise)
+    f_cw, rtf_cw, _, _, _ = rtf_covariance_whitening(
+        t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
+    )
+
+    # Create folder to save results
+    tc_folder = os.path.join(
+        ROOT_FOLDER, "testcase_1_unpropagated_whitenoise", f"snr_{snr_dB}dB"
+    )
 
     # Set properties to pass to the plotting functions
     fig_props = {
@@ -359,14 +360,37 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10):
     }
 
     # Plot estimation results
-    plot_signal_components(fig_props, t, rcv_sig, rcv_noise)
-    mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
-    plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw, rtf_cw)
+    if plot:
+        if not os.path.exists(tc_folder):
+            os.makedirs(tc_folder)
 
-    plt.close("all")
+        plot_signal_components(fig_props, t, rcv_sig, rcv_noise)
+        mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
+        plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw, rtf_cw)
+
+        plt.close("all")
+
+    testcase_results = {
+        "cs": {
+            "f": f_cs,
+            "rtf": rtf_cs,
+        },
+        "cw": {
+            "f": f_cw,
+            "rtf": rtf_cw,
+        },
+        "Rx": Rx,
+        "Rs": Rs,
+        "Rv": Rv,
+        "props": fig_props,
+        "tc_name": "Testcase 1",
+        "tc_label": "testcase_1_unpropagated_whitenoise",
+    }
+
+    return testcase_results
 
 
-def testcase_2_propagated_whitenoise(snr_dB=10):
+def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
     """
     Test case 2
         - Waveguide: simple waveguide with short impulse response.
@@ -374,13 +398,6 @@ def testcase_2_propagated_whitenoise(snr_dB=10):
         - Noise: gaussian noise from a set of multiple sources propagated through the waveguide.
         - RTF estimation: covariance substraction and covariance whitening methods.
     """
-
-    # Create folder to save results
-    tc_folder = os.path.join(
-        ROOT_FOLDER, "testcase_2_propagated_whitenoise", f"snr_{snr_dB}dB"
-    )
-    if not os.path.exists(tc_folder):
-        os.makedirs(tc_folder)
 
     # Load propagated signal
     rcv_sig_data = derive_received_signal(tau_ir=TAU_IR)
@@ -403,12 +420,12 @@ def testcase_2_propagated_whitenoise(snr_dB=10):
         )  # Normalize signal to unit variance
         rcv_noise[:, i] = rcv_noise_data[f"rcv{i}"]["sig"]
 
-        nl = 10 * np.log10(np.var(rcv_noise[:, i]))
-        sl = 10 * np.log10(np.var(rcv_sig[:, i]))
-        snr = 10 * np.log10(np.var(rcv_sig[:, i]) / np.var(rcv_noise[:, i]))
-        print(f"NL = {nl} dB")
-        print(f"SL = {sl} dB")
-        print(f"SNR = {snr} dB")
+        # nl = 10 * np.log10(np.var(rcv_noise[:, i]))
+        # sl = 10 * np.log10(np.var(rcv_sig[:, i]))
+        # snr = 10 * np.log10(np.var(rcv_sig[:, i]) / np.var(rcv_noise[:, i]))
+        # print(f"NL = {nl} dB")
+        # print(f"SL = {sl} dB")
+        # print(f"SNR = {snr} dB")
 
     alpha_tau_ir = 3
     seg_length = alpha_tau_ir * TAU_IR
@@ -418,16 +435,22 @@ def testcase_2_propagated_whitenoise(snr_dB=10):
     alpha_overlap = 1 / 2
     noverlap = int(nperseg * alpha_overlap)
 
-    print(f"nperseg = {nperseg}, noverlap = {noverlap}")
+    # print(f"nperseg = {nperseg}, noverlap = {noverlap}")
 
     # Estimate RTF using covariance substraction method
     f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
         t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
-
-    f_cw, rtf_cw, _, _, _ = rtf_covariance_whitening(t, rcv_sig, rcv_noise)
+    f_cw, rtf_cw, _, _, _ = rtf_covariance_whitening(
+        t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
+    )
 
     # Set properties to pass to the plotting functions
+    # Create folder to save results
+    tc_folder = os.path.join(
+        ROOT_FOLDER, "testcase_2_propagated_whitenoise", f"snr_{snr_dB}dB"
+    )
+
     fig_props = {
         "folder_path": tc_folder,
         "L": get_csdm_snapshot_number(
@@ -437,98 +460,237 @@ def testcase_2_propagated_whitenoise(snr_dB=10):
         "alpha_overlap": alpha_overlap,
         "tau_ir": TAU_IR,
     }
-
     # Plot estimation results
-    plot_signal_components(fig_props, t, rcv_sig, rcv_noise)
-    mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
-    plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw, rtf_cw)
+    if plot:
+        if not os.path.exists(tc_folder):
+            os.makedirs(tc_folder)
 
-    plt.close("all")
+        plot_signal_components(fig_props, t, rcv_sig, rcv_noise)
+        mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
+        plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw, rtf_cw)
+
+        plt.close("all")
+
+    testcase_results = {
+        "cs": {
+            "f": f_cs,
+            "rtf": rtf_cs,
+        },
+        "cw": {
+            "f": f_cw,
+            "rtf": rtf_cw,
+        },
+        "Rx": Rx,
+        "Rs": Rs,
+        "Rv": Rv,
+        "props": fig_props,
+        "tc_name": "Testcase 2",
+        "tc_label": "testcase_2_propagated_whitenoise",
+    }
+
+    return testcase_results
 
 
-def derive_received_noise(
-    ns, fs, propagated=False, noise_model="gaussian", snr_dB=10, propagated_args={}
-):
+def dist_versus_snr(snrs, testcase=1):
 
-    received_noise = {}
+    # Derive results for each snr
+    rtf_cs = []
+    rtf_cw = []
+    for i_snr, snr_dB in enumerate(snrs):
+        plot = i_snr % 10 == 0
+        print(f"i = {i_snr}, snr = {snr_dB}, plot = {plot}")
+        if testcase == 1:
+            # plot = False
+            res_snr = testcase_1_unpropagated_whitenoise(snr_dB=snr_dB, plot=plot)
+        elif testcase == 2:
+            res_snr = testcase_2_propagated_whitenoise(snr_dB=snr_dB, plot=plot)
 
-    # Compute the received noise signal
-    if propagated:
+        # Save rtfs into dedicated list
+        rtf_cs.append(res_snr["cs"]["rtf"])
+        rtf_cw.append(res_snr["cw"]["rtf"])
 
-        # Load noise dataset
-        ds_tf = xr.open_dataset(os.path.join(ROOT_DATA, "kraken_tf_noise.nc"))
+    f_cs = res_snr["cs"]["f"]
+    f_cw = res_snr["cw"]["f"]
+    f = f_cs
 
-        delta_rcv = 500
-        if "rmin" in propagated_args.keys() and propagated_args["rmin"] is not None:
-            rmin_noise = propagated_args["rmin"]
-        else:
-            rmin_noise = 5 * 1e3  # Default minimal range for noise source
+    # Load true RTF
+    kraken_data = load_data()
+    f_true, rtf_true = true_rtf(kraken_data)
+    rtf_true = np.nan_to_num(rtf_true)
+    rtf_true_interp = np.empty_like(rtf_cs[0])
+    # Interpolate rtf_true to f_cs / f_cw
+    for i_rcv in range(rtf_true_interp.shape[1]):
+        interp_real = sp_int.interp1d(f_true, np.real(rtf_true[:, i_rcv]))
+        interp_imag = sp_int.interp1d(f_true, np.imag(rtf_true[:, i_rcv]))
+        rtf_true_interp[:, i_rcv] = interp_real(f) + 1j * interp_imag(f)
 
-        if "rmax" in propagated_args.keys() and propagated_args["rmax"] is not None:
-            rmax_noise = propagated_args["rmin"]
-        else:
-            rmax_noise = ds_tf.r.max().values  # Default maximal range for noise source
+    dist_cs = []
+    dist_cw = []
+    dist_cs_band = []
+    dist_cw_band = []
+    dist_cs_band_smooth = []
+    dist_cw_band_smooth = []
+    for i in range(len(snrs)):
+        rtf_cs_i = rtf_cs[i]
+        rtf_cw_i = rtf_cw[i]
+        # Derive distance between estimated rtf and true rtf
+        d_cs = D_frobenius(rtf_true_interp, rtf_cs_i)
+        d_cw = D_frobenius(rtf_true_interp, rtf_cw_i)
 
-        for i in range(N_RCV):
-            r_src_noise_start = rmin_noise - i * delta_rcv
-            r_src_noise_end = rmax_noise - i * delta_rcv
-            idx_r_min = np.argmin(np.abs(ds_tf.r.values - r_src_noise_start))
-            idx_r_max = np.argmin(np.abs(ds_tf.r.values - r_src_noise_end))
+        # Append to list
+        dist_cs.append(d_cs)
+        dist_cw.append(d_cw)
 
-            tf_noise_rcv_i = (
-                ds_tf.tf_real[:, idx_r_min:idx_r_max]
-                + 1j * ds_tf.tf_imag[:, idx_r_min:idx_r_max]
+        # Same distance derivation for a restricted frequency band
+        fmin_rtf = 5
+        fmax_rtf = 20
+
+        rtf_cs_i_band = rtf_cs_i[(f_cs >= fmin_rtf) & (f_cs <= fmax_rtf)]
+        rtf_cw_i_band = rtf_cw_i[(f_cw >= fmin_rtf) & (f_cw <= fmax_rtf)]
+        rtf_true_interp_band = rtf_true_interp[(f >= fmin_rtf) & (f <= fmax_rtf)]
+
+        d_cs_band = D_frobenius(rtf_true_interp_band, rtf_cs_i_band)
+        d_cw_band = D_frobenius(rtf_true_interp_band, rtf_cw_i_band)
+
+        # Append to list
+        dist_cs_band.append(d_cs_band)
+        dist_cw_band.append(d_cw_band)
+
+        # Distance for smoothed rtf
+        window = 5
+        rtf_cs_i_band_smooth = np.zeros_like(rtf_cs_i_band)
+        rtf_cw_i_band_smooth = np.zeros_like(rtf_cw_i_band)
+        for i in range(kraken_data["n_rcv"]):
+            rtf_cs_i_band_smooth[:, i] = np.convolve(
+                np.abs(rtf_cs_i_band[:, i]), np.ones(window) / window, mode="same"
+            )
+            rtf_cw_i_band_smooth[:, i] = np.convolve(
+                np.abs(rtf_cw_i_band[:, i]), np.ones(window) / window, mode="same"
             )
 
-            # Noise spectrum
-            if noise_model == "gaussian":
-                v = np.random.normal(loc=0, scale=1, size=ns)
-                noise_spectrum = np.fft.rfft(v)
+        d_cs_band_smooth = D_frobenius(rtf_true_interp_band, rtf_cs_i_band_smooth)
+        d_cw_band_smooth = D_frobenius(rtf_true_interp_band, rtf_cw_i_band_smooth)
 
-            # Multiply the transfert function by the noise source spectrum
-            noise_field_f = mult_along_axis(tf_noise_rcv_i, noise_spectrum, axis=0)
-            noise_field = np.fft.irfft(noise_field_f, axis=0)
-            noise_sig = np.sum(noise_field, axis=1)  # Sum over all noise sources
+        # Append to list
+        dist_cs_band_smooth.append(d_cs_band_smooth)
+        dist_cw_band_smooth.append(d_cw_band_smooth)
 
-            # Normalise to required lvl at receiver 0
-            if i == 0:
-                sigma_v2 = 10 ** (-snr_dB / 10)
-                sigma_noise = np.std(noise_sig)
-                alpha = np.sqrt(sigma_v2) / sigma_noise
+    # Plot distance versus snr
+    props = res_snr["props"]
+    title = (
+        r"$\textrm{"
+        + res_snr["tc_name"]
+        + r"}\,"
+        + " - "
+        + " ["
+        + f"{0}, {50}"
+        + r"] \, \textrm{Hz}$"
+        + f"\n({csdm_info_line(props)})"
+    )
+    plt.figure()
+    plt.plot(snrs, 10 * np.log10(dist_cs), marker=".", label=r"$\mathcal{D}_F^{(CS)}$")
+    plt.plot(snrs, 10 * np.log10(dist_cw), marker=".", label=r"$\mathcal{D}_F^{(CW)}$")
+    plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")  # TODO check unity  \textrm{[dB]}
+    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
+    plt.title(title)
+    plt.legend()
+    plt.grid()
 
-            noise_sig *= alpha
+    # Save
+    fpath = os.path.join(ROOT_FOLDER, res_snr["tc_label"], "Df.png")
+    plt.savefig(fpath)
 
-            # Psd
-            psd_noise = scipy.signal.welch(
-                noise_sig, fs=fs, nperseg=2**12, noverlap=2**11
-            )
+    title = (
+        r"$\textrm{"
+        + res_snr["tc_name"]
+        + r"}\,"
+        + " - "
+        + " ["
+        + f"{fmin_rtf}, {fmax_rtf}"
+        + r"] \, \textrm{Hz}$"
+        + f"\n({csdm_info_line(props)})"
+    )
+    plt.figure()
+    plt.plot(
+        snrs, 10 * np.log10(dist_cs_band), marker=".", label=r"$\mathcal{D}_F^{(CS)}$"
+    )
+    plt.plot(
+        snrs, 10 * np.log10(dist_cw_band), marker=".", label=r"$\mathcal{D}_F^{(CW)}$"
+    )
+    plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")  # TODO check unity  \textrm{[dB]}
+    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
+    plt.title(title)
+    plt.legend()
+    plt.grid()
 
-            # Save noise signal
-            received_noise[f"rcv{i}"] = {
-                "psd": psd_noise,
-                "sig": noise_sig,
-                "spect": noise_field_f,
-            }
+    # Save
+    fpath = os.path.join(
+        ROOT_FOLDER, res_snr["tc_label"], f"Df_band_{fmin_rtf}_{fmax_rtf}.png"
+    )
+    plt.savefig(fpath)
 
-    else:
-        if noise_model == "gaussian":
-            sigma_v2 = 10 ** (-snr_dB / 10)
-            v = np.random.normal(loc=0, scale=np.sqrt(sigma_v2), size=ns)
-            noise_sig = v
-            noise_spectrum = np.fft.rfft(noise_sig)
+    title = (
+        r"$\textrm{"
+        + res_snr["tc_name"]
+        + r"}\,"
+        + " - "
+        + " ["
+        + f"{fmin_rtf}, {fmax_rtf}"
+        + r"] \, \textrm{Hz}"
+        + " - "
+        + r"\textrm{smooth} \,"
+        + f"(n = {window})$"
+        + f"\n({csdm_info_line(props)})"
+    )
+    plt.figure()
+    plt.plot(
+        snrs,
+        10 * np.log10(dist_cs_band_smooth),
+        marker=".",
+        label=r"$\mathcal{D}_F^{(CS)}$",
+    )
+    plt.plot(
+        snrs,
+        10 * np.log10(dist_cw_band_smooth),
+        marker=".",
+        label=r"$\mathcal{D}_F^{(CW)}$",
+    )
+    plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")  # TODO check unity  \textrm{[dB]}
+    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
+    plt.title(title)
+    plt.legend()
+    plt.grid()
 
-        # Psd
-        psd_noise = scipy.signal.welch(noise_sig, fs=fs, nperseg=2**12, noverlap=2**11)
+    # Save
+    fpath = os.path.join(
+        ROOT_FOLDER, res_snr["tc_label"], f"Df_band_{fmin_rtf}_{fmax_rtf}_smooth.png"
+    )
+    plt.savefig(fpath)
 
-        for i in range(N_RCV):
-            # Save noise signal
-            received_noise[f"rcv{i}"] = {
-                "psd": psd_noise,
-                "sig": noise_sig,
-                "spect": noise_spectrum,
-            }
 
-    return received_noise
+def check_interp():
+
+    res_snr = testcase_2_propagated_whitenoise(snr_dB=0, plot=False)
+    f_cs = res_snr["cs"]["f"]
+    rtf_cs = res_snr["cs"]["rtf"]
+
+    # Load true RTF
+    kraken_data = load_data()
+    f_true, rtf_true = true_rtf(kraken_data)
+    rtf_true = rtf_true[:, -1]
+    # Interpolate rtf_true to f_cs / f_cw
+    interp_real = sp_int.interp1d(f_true, np.real(rtf_true))
+    interp_imag = sp_int.interp1d(f_true, np.imag(rtf_true))
+    rtf_true_interp = interp_real(f_cs) + 1j * interp_imag(f_cs)
+
+    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(16, 10))
+    axs[0].plot(f_true, np.abs(rtf_true))
+    axs[0].scatter(f_cs, np.abs(rtf_true_interp), color="r", s=3)
+
+    axs[1].plot(f_true, np.angle(rtf_true))
+    axs[1].scatter(f_cs, np.angle(rtf_true_interp), color="r", s=3)
+
+    plt.xlabel("f")
 
 
 if __name__ == "__main__":
@@ -536,7 +698,7 @@ if __name__ == "__main__":
     # derive_kraken_tf_noise()
     # kraken_data = load_data()
 
-    # plot_ir(kraken_data)
+    # plot_ir(kraken_data, shift_ir=False)
     # plot_tf(kraken_data)
 
     # rcv_sig = derive_received_signal()
@@ -546,6 +708,14 @@ if __name__ == "__main__":
     #     testcase_1_unpropagated_whitenoise(snr_dB=snr_dB)
 
     # testcase_1_unpropagated_whitenoise(snr_dB=0)
-    testcase_2_propagated_whitenoise(snr_dB=10)
+    # testcase_2_propagated_whitenoise(snr_dB=-20)
+
+    # check_interp()
+    # snrs = [0, 10]
+    # snrs = np.arange(-30, 30, 0.5)
+    # # snrs = np.arange(7.5, 12.5, 0.5)
+
+    # dist_versus_snr(snrs, testcase=1)
+    # dist_versus_snr(snrs, testcase=2)
 
     plt.show()

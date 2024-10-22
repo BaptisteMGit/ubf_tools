@@ -490,7 +490,7 @@ def plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
         )
         plt.savefig(
             os.path.join(
-                fig_props["folder_path"], f"rtf_estimation_limited_bandwith_rcv{i}.png"
+                fig_props["folder_path"], f"rtf_estimation_limited_bandwidth_rcv{i}.png"
             )
         )
 

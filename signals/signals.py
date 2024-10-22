@@ -14,6 +14,7 @@
 # ======================================================================================================================
 import numpy as np
 import scipy.io as sio
+import scipy.signal as sp
 
 
 def pulse(T, f, fs, t0=0):
@@ -179,6 +180,117 @@ def ricker_pulse(fc, fs, T, t0=0, center=True):
     return s, t
 
 
+def z_call(signal_args={}, model_args={}):
+    """
+    Z-call signal according to
+    Socheleau, F.-X., Leroy, E., Carvallo Pecci, A., Samaran, F., Bonnel, J., & Royer, J.-Y. (2015). Automated detection of Antarctic blue whale calls. The Journal of the Acoustical Society of America, 138(5), 3105–3117. https://doi.org/10.1121/1.4934271
+    The default parameters are the one proposed for z-calls recorded by the RHUM RUM array by :
+    Bouffaut, L., Dréo, R., Labat, V., Boudraa, A.-O., & Barruol, G. (2018). Passive stochastic matched filter for Antarctic blue whale call detection. The Journal of the Acoustical Society of America, 144(2), 955–965. https://doi.org/10.1121/1.5050520
+
+    Adapted from the original Matlab code provided by L. Bouffaut.
+
+    About SL, depth and ICI :
+    Bouffaut, L., Landrø, M., & Potter, J. R. (2021).
+    Source level and vocalizing depth estimation of two blue whale subspecies in the western Indian Ocean from single sensor observations.
+    The Journal of the Acoustical Society of America, 149(6), 4422–4436. https://doi.org/10.1121/10.0005281
+
+    The SL and depth were estimated for the ABW at 188.5 +/- 2.1 dB and 25.0 +/- 3.7m
+    ICI = 66.5 s
+
+    Parameters
+    ----------
+    Tz : float
+        Duration of the z-call signal in seconds.
+    L : float
+        Lower asymptote in Hz.
+    U : float
+        Upper asymptote in Hz.
+    M : float
+        Time at which the frequency is at the middle of the slope.
+    alpha : float
+        Slope of the Z-call.
+    fc : float
+        Central frequency of the Z-call.
+    fs : int
+        Sampling frequency.
+
+    """
+
+    # Unpack parametric model params
+    fc = model_args.get("fc", 22.6)  # Central frequency of the Z-call.
+    Tz = model_args.get("Tz", 20)  # Duration of a single z-call signal in seconds.
+    L = model_args.get("L", -4.5)  # Lower asymptote in Hz.
+    U = model_args.get("U", 3.2)  # Upper asymptote in Hz.
+    M = model_args.get(
+        "M", Tz / 2
+    )  # Time at which the frequency is at the middle of the slope.
+    alpha = model_args.get("alpha", 1.8)  # Slope of the Z-call.
+    ici = model_args.get("ici", 66.5)  # Inter-Call Interval.
+
+    # Unpack signal params
+    fs = signal_args.get("fs", 100)  # Sampling frequency.
+    nz = signal_args.get("nz", 1)  # Number of z-calls.
+    start_offset_seconds = signal_args.get(
+        "start_offset_seconds", 10
+    )  # Delay before the first z-call.
+    stop_offset_seconds = signal_args.get(
+        "stop_offset_seconds", 10
+    )  # Delay after the last z-call.
+
+    # 1) Generate a single Z-call signal
+    tz = np.arange(0, Tz, 1 / fs)  # axe du temps
+    ns = len(tz)  # nombre d'échantillons
+
+    fc = 22.6  # (Hz) fréquence centrale du Z-call
+    alpha = 1.8  # pente
+
+    L = -4.5  # (Hz) asymptote inférieure
+    U = 3.2  # (Hz) asymptote supérieure
+    M = Tz / 2  # (s) temps à la moitié de la pente
+
+    # Estimation de la phase variable dans le temps
+    adj = fc - 8.5  # Ajustement de la fréquence du Z-call
+    L = L - adj  # Asymptote inférieure ajustée (Hz)
+    U = U - adj  # Asymptote supérieure ajustée (Hz)
+
+    # Calcul de la phase
+    n = np.arange(ns)  # Axe des échantillons
+    phase_whale = (
+        2
+        * np.pi
+        * (
+            L * n / fs
+            + ((U - L) / alpha)
+            * np.log((1 + np.exp(-alpha * M)) / (1 + np.exp(alpha * (n / fs - M))))
+        )
+    )
+    phase_whale = phase_whale[::-1]  # Inverser dans le temps
+
+    # Signal temporel
+    single_z_call = np.exp(1j * phase_whale)
+    single_z_call = np.real(single_z_call / np.max(np.abs(single_z_call)))
+
+    # Variation d'amplitude dans le temps
+    # amplitude = np.concatenate([np.ones(round(ns / 2)), np.ones(round(ns / 2)) * 0.95])
+    amplitude = sp.windows.tukey(ns, alpha=0.2)
+    single_z_call = amplitude * single_z_call
+    single_z_call = single_z_call / np.max(np.abs(single_z_call))
+
+    # 2) Generate desired signals containing nz z-calls separated by ICI = 66.5 s
+    t_max = (
+        start_offset_seconds + Tz * nz + ici * nz + stop_offset_seconds
+    )  # Signal total duration
+    t = np.arange(0, t_max, 1 / fs)
+    s_whale = np.zeros(len(t))
+
+    for i in range(nz):
+        idx_start = int((start_offset_seconds + i * (Tz + ici)) * fs)
+        idx_stop = int((start_offset_seconds + i * (Tz + ici) + Tz) * fs)
+        s_whale[idx_start:idx_stop] = single_z_call
+
+    return s_whale, t
+
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
@@ -189,26 +301,52 @@ if __name__ == "__main__":
     # plt.ylabel("Amplitude")
     # plt.show()
 
-    # Exemple d'utilisation de la fonction
-    Ttot = 50  # Durée totale du signal en secondes
-    f0 = 0.5  # Fréquence fondamentale
-    std_fi = f0 * 1 / 100  # Écart-type de la fluctuation de fréquence
-    tau_corr_fi = 1 / f0  # frequency fluctuation correlation time
+    # # Exemple d'utilisation de la fonction
+    # Ttot = 50  # Durée totale du signal en secondes
+    # f0 = 0.5  # Fréquence fondamentale
+    # std_fi = f0 * 1 / 100  # Écart-type de la fluctuation de fréquence
+    # tau_corr_fi = 1 / f0  # frequency fluctuation correlation time
 
-    std_fi_1 = f0 * 10 / 100  # Écart-type de la fluctuation de fréquence
+    # std_fi_1 = f0 * 10 / 100  # Écart-type de la fluctuation de fréquence
 
-    std_fi_2 = f0 * 1 / 100  # Écart-type de la fluctuation de fréquence
-    tau_corr_fi_2 = 0.0001 / f0  # frequency fluctuation correlation time
+    # std_fi_2 = f0 * 1 / 100  # Écart-type de la fluctuation de fréquence
+    # tau_corr_fi_2 = 0.0001 / f0  # frequency fluctuation correlation time
 
-    signal, time = generate_ship_signal(Ttot, f0, std_fi)
-    signal_1, time = generate_ship_signal(Ttot, f0, std_fi_1)
-    signal_2, time = generate_ship_signal(Ttot, f0, std_fi_2, tau_corr_fi_2)
+    # signal, time = generate_ship_signal(Ttot, f0, std_fi)
+    # signal_1, time = generate_ship_signal(Ttot, f0, std_fi_1)
+    # signal_2, time = generate_ship_signal(Ttot, f0, std_fi_2, tau_corr_fi_2)
 
+    # plt.figure()
+    # plt.plot(time, signal, label=f"std_fi={std_fi}")
+    # plt.plot(time, signal_1, label=f"std_fi={std_fi_1}")
+    # plt.plot(time, signal_2, label=f"std_fi={std_fi_2}, tau_corr_fi={tau_corr_fi_2}")
+    # plt.xlabel("Time (s)")
+    # plt.ylabel("Amplitude")
+    # plt.legend()
+
+    signal_args = {
+        "fs": 100,
+        "nz": 10,
+        "start_offset_seconds": 5,
+        "stop_offset_seconds": 15,
+    }
+    s, t = z_call(signal_args)
     plt.figure()
-    plt.plot(time, signal, label=f"std_fi={std_fi}")
-    plt.plot(time, signal_1, label=f"std_fi={std_fi_1}")
-    plt.plot(time, signal_2, label=f"std_fi={std_fi_2}, tau_corr_fi={tau_corr_fi_2}")
+    plt.plot(t, s)
     plt.xlabel("Time (s)")
     plt.ylabel("Amplitude")
-    plt.legend()
+
+    # Derive stft
+    import scipy.signal as sp
+
+    nperseg = 2**9
+    noverlap = int(0.8 * nperseg)
+    print(f"nperseg = {nperseg}, noverlap = {noverlap}")
+    f, t, stft = sp.stft(s, fs=100, nperseg=nperseg, noverlap=noverlap)
+    plt.figure()
+    plt.pcolormesh(t, f, np.abs(stft))
+    plt.xlabel("Time (s)")
+    plt.ylabel("Frequency (Hz)")
+    plt.colorbar(label="Amplitude")
+
     plt.show()

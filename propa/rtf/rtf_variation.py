@@ -15,7 +15,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from propa.rtf.ideal_waveguide import *
-
+from propa.rtf.rtf_utils import D_frobenius
 from publication.PublicationFigure import PubFigure
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
@@ -95,13 +95,18 @@ def PI_var_r(
 
     # # Derive generalised distance combining all receivers
     Df = D_frobenius(g_ref, g_r)
+    # Convert to dB
+    Df += 1
+    Df = 10 * np.log10(Df)
 
     if dist == "D1" or dist == "both":
         d1 = np.sum(np.abs(g_ref_expanded - g_r), axis=0)
+        # Convert to dB
         d1 += 1
         d1 = 10 * np.log10(d1)
     if dist == "D2" or dist == "both":
         d2 = np.sum(np.abs(g_ref_expanded - g_r) ** 2, axis=0)
+        # Convert to dB
         d2 += 1
         d2 = 10 * np.log10(d2)
 
@@ -231,13 +236,18 @@ def PI_var_z(
 
     # # Derive generalised distance combining all receivers
     Df = D_frobenius(g_ref, g_z)
+    # Convert to dB
+    Df += 1
+    Df = 10 * np.log10(Df)
 
     if dist == "D1" or dist == "both":
         d1 = np.sum(np.abs(g_ref_expanded - g_z), axis=0)
+        # Convert to dB
         d1 += 1
         d1 = 10 * np.log10(d1)
     if dist == "D2" or dist == "both":
         d2 = np.sum(np.abs(g_ref_expanded - g_z) ** 2, axis=0)
+        # Convert to dB
         d2 += 1
         d2 = 10 * np.log10(d2)
 
@@ -381,13 +391,24 @@ def Pi_var_rz(
 
     if dist == "D1" or dist == "both":
         d1 = np.sum(np.abs(g_ref_expanded - g_rz), axis=0)
+        # Convert to dB
+        d1 += 1
+        d1 = 10 * np.log10(d1)
     if dist == "D2" or dist == "both":
         d2 = np.sum(np.abs(g_ref_expanded - g_rz) ** 2, axis=0)
+        # Convert to dB
+        d2 += 1
+        d2 = 10 * np.log10(d2)
+
+    # Convert to dB
+    Df += 1
+    Df = 10 * np.log10(Df)
 
     range_displacement = r_src_list - r_src
     depth_displacement = z_src_list - z_src
 
     # Plot generalized distance map
+    colobar_title = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
     plt.figure()
     plt.pcolormesh(
         range_displacement,
@@ -398,7 +419,7 @@ def Pi_var_rz(
         vmin=0,
         vmax=np.percentile(Df, 45),
     )
-    plt.colorbar()
+    plt.colorbar(label=colobar_title)
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
     plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
     plt.title(r"$\mathcal{D}_F(r, z)$")
@@ -425,7 +446,7 @@ def Pi_var_rz(
                 # vmax=np.median(d1),
                 vmax=np.percentile(d1, 45),
             )
-            plt.colorbar()
+            plt.colorbar(label=colobar_title)
             plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
             plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
             plt.title(r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
@@ -450,7 +471,7 @@ def Pi_var_rz(
                 vmin=0,
                 vmax=np.percentile(d2, 45),
             )
-            plt.colorbar()
+            plt.colorbar(label=colobar_title)
             plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
             plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
             plt.title(r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
@@ -975,29 +996,6 @@ def sensibility_ideal_waveguide_df(axis, bottom_bc="pressure_release"):
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
-def D_frobenius(g_ref, g):
-    """Derive the generalised distance combining all receivers."""
-    # Expand g_ref to the same shape as g_r
-    tile_shape = tuple([g.shape[i] - g_ref.shape[i] + 1 for i in range(g.ndim)])
-    g_ref_expanded = np.tile(g_ref, tile_shape)
-
-    nb_pos_r = g.shape[1]
-    nb_pos_z = g.shape[3]
-
-    Df_shape = (nb_pos_r, nb_pos_z)
-
-    D_frobenius = np.zeros(Df_shape)
-    for i_r in range(nb_pos_r):
-        for i_z in range(nb_pos_z):
-            Gamma = g_ref_expanded[:, i_r, :, i_z] - g[:, i_r, :, i_z]
-            D_frobenius[i_r, i_z] = np.linalg.norm(Gamma, ord="fro")
-
-    if nb_pos_z == 1 or nb_pos_r == 1:
-        D_frobenius = D_frobenius.flatten()
-
-    return D_frobenius
-
-
 def init_sensibility_path(param, bottom_bc="pressure_release"):
     # Create folder to store the images
     root = "C:\\Users\\baptiste.menetrier\\Desktop\\devPy\\phd\\img\\illustration\\rtf\\ideal_waveguide"
@@ -1299,18 +1297,18 @@ if __name__ == "__main__":
 
     bottom_bc = "pressure_release"
 
-    # params = ["r_src", "z_src", "n_rcv", "delta_rcv", "df"]
-    # # params = ["z_src"]
-
-    # for param in params:
-    #     sensibility_ideal_waveguide(param=param, axis="both")
-
-    covered_range = 25
+    covered_range = 10
     dr = 0.1
     zmin = 1
-    zmax = 25
+    zmax = 21
     dz = 0.1
     full_test(covered_range, dr, zmin, zmax, dz, dist="D2", bottom_bc=bottom_bc)
+
+    # params = ["r_src", "z_src", "n_rcv", "delta_rcv", "df"]
+    # # # params = ["z_src"]
+
+    # for param in params:
+    #     sensibility_ideal_waveguide(param=param, axis="both", bottom_bc=bottom_bc)
 
     # covered_range = 10 * 1e3
     # dr = 10

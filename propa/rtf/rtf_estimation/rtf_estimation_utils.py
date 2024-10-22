@@ -15,6 +15,7 @@
 # ======================================================================================================================
 import scipy
 import numpy as np
+import xarray as xr
 import matplotlib.pyplot as plt
 
 
@@ -235,6 +236,93 @@ def derive_received_signal(tau_ir):
         }
 
     return received_signal
+
+
+def derive_received_noise(
+    ns, fs, propagated=False, noise_model="gaussian", snr_dB=10, propagated_args={}
+):
+
+    received_noise = {}
+
+    # Compute the received noise signal
+    if propagated:
+
+        # Load noise dataset
+        ds_tf = xr.open_dataset(os.path.join(ROOT_DATA, "kraken_tf_noise.nc"))
+
+        delta_rcv = 500
+        if "rmin" in propagated_args.keys() and propagated_args["rmin"] is not None:
+            rmin_noise = propagated_args["rmin"]
+        else:
+            rmin_noise = 5 * 1e3  # Default minimal range for noise source
+
+        if "rmax" in propagated_args.keys() and propagated_args["rmax"] is not None:
+            rmax_noise = propagated_args["rmin"]
+        else:
+            rmax_noise = ds_tf.r.max().values  # Default maximal range for noise source
+
+        for i in range(N_RCV):
+            r_src_noise_start = rmin_noise - i * delta_rcv
+            r_src_noise_end = rmax_noise - i * delta_rcv
+            idx_r_min = np.argmin(np.abs(ds_tf.r.values - r_src_noise_start))
+            idx_r_max = np.argmin(np.abs(ds_tf.r.values - r_src_noise_end))
+
+            tf_noise_rcv_i = (
+                ds_tf.tf_real[:, idx_r_min:idx_r_max]
+                + 1j * ds_tf.tf_imag[:, idx_r_min:idx_r_max]
+            )
+
+            # Noise spectrum
+            if noise_model == "gaussian":
+                v = np.random.normal(loc=0, scale=1, size=ns)
+                noise_spectrum = np.fft.rfft(v)
+
+            # Multiply the transfert function by the noise source spectrum
+            noise_field_f = mult_along_axis(tf_noise_rcv_i, noise_spectrum, axis=0)
+            noise_field = np.fft.irfft(noise_field_f, axis=0)
+            noise_sig = np.sum(noise_field, axis=1)  # Sum over all noise sources
+
+            # Normalise to required lvl at receiver 0
+            if i == 0:
+                sigma_v2 = 10 ** (-snr_dB / 10)
+                sigma_noise = np.std(noise_sig)
+                alpha = np.sqrt(sigma_v2) / sigma_noise
+
+            noise_sig *= alpha
+
+            # Psd
+            psd_noise = scipy.signal.welch(
+                noise_sig, fs=fs, nperseg=2**12, noverlap=2**11
+            )
+
+            # Save noise signal
+            received_noise[f"rcv{i}"] = {
+                "psd": psd_noise,
+                "sig": noise_sig,
+                "spect": noise_field_f,
+            }
+
+    else:
+        if noise_model == "gaussian":
+            for i in range(N_RCV):
+                sigma_v2 = 10 ** (-snr_dB / 10)
+                v = np.random.normal(loc=0, scale=np.sqrt(sigma_v2), size=ns)
+                noise_sig = v
+                noise_spectrum = np.fft.rfft(noise_sig)
+
+                # Psd
+                psd_noise = scipy.signal.welch(
+                    noise_sig, fs=fs, nperseg=2**12, noverlap=2**11
+                )
+
+                # Save noise signal
+                received_noise[f"rcv{i}"] = {
+                    "psd": psd_noise,
+                    "sig": noise_sig,
+                    "spect": noise_spectrum,
+                }
+
+    return received_noise
 
 
 def load_data():

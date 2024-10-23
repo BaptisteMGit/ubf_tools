@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 
 from misc import *
 from propa.rtf.ideal_waveguide import *
-from signals.signals import generate_ship_signal
+from signals.signals import generate_ship_signal, z_call, ricker_pulse, dirac
 from propa.rtf.rtf_estimation.rtf_estimation_const import *
 from real_data_analysis.real_data_utils import compute_csd_matrix_fast
 
@@ -165,10 +165,24 @@ def get_stft_list(y, fs, nperseg, noverlap):
     return ff, tt, stft_list
 
 
-def derive_received_signal(tau_ir):
+def derive_received_signal(tau_ir, delay_correction=0, sl=200):
     """
     Derive the received signal at the receivers.
     The signal is modeled as a ship signal propagating in the ideal waveguide.
+
+    sl : 200 dB re 1 uPa at 1 m (default value) according to Gassmann, M., Wiggins, S. M., & Hildebrand, J. A. (2017).
+    Deep-water measurements of container ship radiated noise signatures and directionality.
+    The Journal of the Acoustical Society of America, 142(3), 1563–1574. https://doi.org/10.1121/1.5001063
+
+    Parameters
+    ----------
+    tau_ir : float
+        Impulse response duration.
+    delay_correction : float
+        Delay correction to apply to the signal.
+    sl : float
+        Source level in dB re 1 uPa at 1 m.
+
     """
 
     # Load params
@@ -182,6 +196,7 @@ def derive_received_signal(tau_ir):
     n_rcv = kraken_data["n_rcv"]
     ts = kraken_data["t"][1] - kraken_data["t"][0]
     fs = 1 / ts
+    f = kraken_data["f"]
 
     # Create source signal
     f0 = 4.5
@@ -195,12 +210,20 @@ def derive_received_signal(tau_ir):
         std_fi=std_fi,
         tau_corr_fi=tau_corr_fi,
         fs=fs,
-        normalize="max",
+        normalize="sl",
+        sl=sl,
     )
-    s *= np.hanning(len(s))
-    # s /= np.std(s)
 
+    p0 = 1e-6  # 1 uPa
+    print(
+        f"Effective source level before windowing : {20 * np.log10(np.std(s) / p0)} dB re 1 uPa at 1 m"
+    )
+    # Apply windowing to avoid side-effects
+    # s *= sp.windows.tukey(len(s), alpha=0.5)
+    s *= np.hanning(len(s))
     src_spectrum = np.fft.rfft(s)
+    # Apply delay correction so that the signal is centered within the time window (otherwise the signal is shifted with wrap around effect in the time domain)
+    src_spectrum *= np.exp(1j * 2 * np.pi * f * delay_correction)
 
     # Derive psd
     psd = scipy.signal.welch(s, fs=fs, nperseg=2**12, noverlap=2**11)
@@ -208,7 +231,7 @@ def derive_received_signal(tau_ir):
     received_signal = {
         "t": t,
         "src": s,
-        "f": kraken_data["f"],
+        "f": f,
         "spect": src_spectrum,
         "psd": psd,
         "std_fi": std_fi,
@@ -248,7 +271,7 @@ def derive_received_noise(
     if propagated:
 
         # Load noise dataset
-        ds_tf = xr.open_dataset(os.path.join(ROOT_DATA, "kraken_tf_noise.nc"))
+        ds_tf = xr.open_dataset(os.path.join(ROOT_DATA, "kraken_tf_surface_noise.nc"))
 
         delta_rcv = 500
         if "rmin" in propagated_args.keys() and propagated_args["rmin"] is not None:
@@ -257,7 +280,7 @@ def derive_received_noise(
             rmin_noise = 5 * 1e3  # Default minimal range for noise source
 
         if "rmax" in propagated_args.keys() and propagated_args["rmax"] is not None:
-            rmax_noise = propagated_args["rmin"]
+            rmax_noise = propagated_args["rmax"]
         else:
             rmax_noise = ds_tf.r.max().values  # Default maximal range for noise source
 
@@ -323,6 +346,96 @@ def derive_received_noise(
                 }
 
     return received_noise
+
+
+def derive_received_interference(ns, fs, interference_arg={}):
+
+    # Load values and set default values
+    if "signal_type" in interference_arg.keys():
+        signal_type = interference_arg["signal_type"]
+    else:
+        signal_type = "z_call"
+
+    if "src_position" in interference_arg.keys():
+        src_position = interference_arg["src_position"]
+        r_src = np.atleast_1d(src_position["r"])
+        z_src = np.atleast_1d(src_position["z"])
+        n_src = len(r_src)
+    else:
+        r_src = 20 * 1e3
+        z_src = 20
+        n_src = 1
+
+    received_interference = {}
+
+    # Load transfert function dataset
+    delta_rcv = 500
+    ds_tf = xr.open_dataset(os.path.join(ROOT_DATA, "kraken_tf_loose_grid.nc"))
+
+    for i in range(N_RCV):
+        r_src_rcv = r_src - i * delta_rcv
+        idx_r = [np.argmin(np.abs(ds_tf.r.values - r_src_rcv[k])) for k in range(n_src)]
+        idx_z = [np.argmin(np.abs(ds_tf.z.values - z_src[k])) for k in range(n_src)]
+
+        tf_interference_rcv_i = np.array(
+            [
+                ds_tf.tf_real[:, idx_z[k], idx_r[k]]
+                + 1j * ds_tf.tf_imag[:, idx_z[k], idx_r[k]]
+                for k in range(n_src)
+            ]
+        ).T
+        # tf_interference_rcv_i = (
+        #     ds_tf.tf_real[:, idx_z, idx_r] + 1j * ds_tf.tf_imag[:, idx_z, idx_r]
+        # )
+        # tf_interference_rcv_i = np.atleast_2d(tf_interference_rcv_i)
+
+        # Interference signal
+        if signal_type == "z_call":
+
+            signal_args = {
+                "fs": fs,
+                "nz": 1,  # Let the function derived the maximum number of z-calls in the signal duration
+                "signal_duration": ns / fs,
+                "sl": 188.5,
+                "start_offset_seconds": 100,
+            }
+            interference_sig, _ = z_call(signal_args)
+            interference_spectrum = np.fft.rfft(interference_sig)
+
+        if signal_type == "ricker_pulse":
+            interference_sig, _ = ricker_pulse(
+                fc=10, fs=fs, T=ns / fs, center=True, normalize="sl", sl=188.5
+            )
+            interference_spectrum = np.fft.rfft(interference_sig)
+
+        if signal_type == "dirac":
+            interference_sig, _ = dirac(
+                fs=fs, T=ns / fs, center=True, normalize="sl", sl=188.5
+            )
+            interference_spectrum = np.fft.rfft(interference_sig)
+
+        # Multiply the transfert function by the interference source spectrum
+        interference_field_f = mult_along_axis(
+            tf_interference_rcv_i, interference_spectrum, axis=0
+        )
+        interference_field = np.fft.irfft(interference_field_f, axis=0)
+        interference_sig = np.sum(
+            interference_field, axis=1
+        )  # Sum over all interference sources
+
+        # Psd
+        psd_interference = scipy.signal.welch(
+            interference_sig, fs=fs, nperseg=2**12, noverlap=2**11
+        )
+
+        # Save interference signal
+        received_interference[f"rcv{i}"] = {
+            "psd": psd_interference,
+            "sig": interference_sig,
+            "spect": interference_field_f,
+        }
+
+    return received_interference
 
 
 def load_data():

@@ -12,6 +12,7 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+from cst import P0
 import numpy as np
 import scipy.io as sio
 import scipy.signal as sp
@@ -99,6 +100,7 @@ def generate_ship_signal(
     Nh=None,
     A_harmonics=None,
     normalize="max",
+    sl=None,
 ):
 
     if std_fi is None:
@@ -153,6 +155,8 @@ def generate_ship_signal(
     elif normalize == "var":
         # Normalize to unit variance
         s /= np.std(s)
+    elif normalize == "sl" and sl is not None:
+        s = normalize_to_sl(s, sl)
 
     return s, t
 
@@ -166,7 +170,15 @@ def ship_spectrum(f):
     return Aship
 
 
-def ricker_pulse(fc, fs, T, t0=0, center=True):
+def ricker_pulse(
+    fc,
+    fs,
+    T,
+    t0=0,
+    center=True,
+    normalize="max",
+    sl=None,
+):
     """Ricker pulse"""
     t = np.arange(0, T, 1 / fs)
     if center:
@@ -174,8 +186,42 @@ def ricker_pulse(fc, fs, T, t0=0, center=True):
 
     s = (1 - 2 * (np.pi * fc * (t - t0)) ** 2) * np.exp(-((np.pi * fc * (t - t0)) ** 2))
 
-    # Normalize to 1
-    s /= np.max(np.abs(s))
+    if normalize == "max":
+        # Normalize to 1
+        s /= np.max(np.abs(s))
+    elif normalize == "var":
+        # Normalize to unit variance
+        s /= np.std(s)
+    elif normalize == "sl" and sl is not None:
+        s = normalize_to_sl(s, sl)
+
+    return s, t
+
+
+def dirac(
+    fs,
+    T,
+    t0=0,
+    center=True,
+    normalize="max",
+    sl=None,
+):
+
+    t = np.arange(0, T, 1 / fs)
+    if center:
+        t0 = t.max() / 2
+    idx_dirac = np.argmin(np.abs(t - t0))
+    s = np.zeros(len(t))
+    s[idx_dirac] = 1
+
+    if normalize == "max":
+        # Normalize to 1
+        s /= np.max(np.abs(s))
+    elif normalize == "var":
+        # Normalize to unit variance
+        s /= np.std(s)
+    elif normalize == "sl" and sl is not None:
+        s = normalize_to_sl(s, sl)
 
     return s, t
 
@@ -236,17 +282,14 @@ def z_call(signal_args={}, model_args={}):
     stop_offset_seconds = signal_args.get(
         "stop_offset_seconds", 10
     )  # Delay after the last z-call.
+    signal_duration = signal_args.get(
+        "signal_duration", None
+    )  # Duration of the signal.
+    sl = signal_args.get("sl", 188.5)  # Source level in dB re 1 µPa @ 1m.
 
     # 1) Generate a single Z-call signal
     tz = np.arange(0, Tz, 1 / fs)  # axe du temps
     ns = len(tz)  # nombre d'échantillons
-
-    fc = 22.6  # (Hz) fréquence centrale du Z-call
-    alpha = 1.8  # pente
-
-    L = -4.5  # (Hz) asymptote inférieure
-    U = 3.2  # (Hz) asymptote supérieure
-    M = Tz / 2  # (s) temps à la moitié de la pente
 
     # Estimation de la phase variable dans le temps
     adj = fc - 8.5  # Ajustement de la fréquence du Z-call
@@ -271,15 +314,37 @@ def z_call(signal_args={}, model_args={}):
     single_z_call = np.real(single_z_call / np.max(np.abs(single_z_call)))
 
     # Variation d'amplitude dans le temps
-    # amplitude = np.concatenate([np.ones(round(ns / 2)), np.ones(round(ns / 2)) * 0.95])
     amplitude = sp.windows.tukey(ns, alpha=0.2)
+    # amplitude = np.hanning(ns)
+    # amplitude = 1
     single_z_call = amplitude * single_z_call
     single_z_call = single_z_call / np.max(np.abs(single_z_call))
 
+    # Normalize z-call to the desired source level
+    single_z_call = normalize_to_sl(single_z_call, sl)
+    # sigma_single_z_call = (
+    #     10 ** (sl / 20) * P0
+    # )  # Target rms amplitude to reach the desired SL
+    # single_z_call = single_z_call * sigma_single_z_call / np.std(single_z_call)
+
+    # print(
+    #     f"Effective SL : {20 * np.log10(np.std(single_z_call) / p0)} dB re 1 µPa @ 1m"
+    # )
+
     # 2) Generate desired signals containing nz z-calls separated by ICI = 66.5 s
-    t_max = (
-        start_offset_seconds + Tz * nz + ici * nz + stop_offset_seconds
-    )  # Signal total duration
+    # nz = 0 to get maximum number of z-calls in the signal duration
+    if nz == 0 and signal_duration is not None:
+        nz = int(
+            (signal_duration - start_offset_seconds - stop_offset_seconds) / (Tz + ici)
+        )
+        t_max = signal_duration
+    elif nz != 0 and signal_duration is not None:
+        t_max = signal_duration
+    else:
+        t_max = (
+            start_offset_seconds + Tz * nz + ici * nz + stop_offset_seconds
+        )  # Signal total duration
+
     t = np.arange(0, t_max, 1 / fs)
     s_whale = np.zeros(len(t))
 
@@ -289,6 +354,12 @@ def z_call(signal_args={}, model_args={}):
         s_whale[idx_start:idx_stop] = single_z_call
 
     return s_whale, t
+
+
+def normalize_to_sl(sig, sl):
+    target_std = 10 ** (sl / 20) * P0  # Target rms amplitude to reach the desired SL
+    sig = sig * target_std / np.std(sig)
+    return sig
 
 
 if __name__ == "__main__":
@@ -326,9 +397,10 @@ if __name__ == "__main__":
 
     signal_args = {
         "fs": 100,
-        "nz": 10,
+        "nz": 0,
         "start_offset_seconds": 5,
         "stop_offset_seconds": 15,
+        "signal_duration": 200,
     }
     s, t = z_call(signal_args)
     plt.figure()

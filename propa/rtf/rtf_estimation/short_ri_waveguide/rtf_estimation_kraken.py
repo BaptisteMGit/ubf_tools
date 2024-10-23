@@ -59,37 +59,53 @@ def derive_kraken_tf():
         np.savetxt(fpath, np.array([t_kraken, ir_kraken]).T, delimiter=",")
 
 
-def derive_kraken_tf_noise():
+def derive_kraken_tf_surface_noise():
 
     # Load params
     depth, r_src, z_src, z_rcv, _ = waveguide_params()
 
     # Run kraken
-    f, ts, r, h_kraken_dict = run_kraken_simulation_noise(r_src, z_src, z_rcv, depth)
+    f, ts, r, h_kraken_surface_noise = run_kraken_simulation_surface_noise(
+        r_src, z_src, z_rcv, depth
+    )
 
-    for i in range(N_RCV):
-        h_kraken = h_kraken_dict[f"rcv{i}"]
+    # Define xarray dataset for the transfert function
+    h_kraken_surface_noise_xr = xr.Dataset(
+        data_vars=dict(
+            tf_real=(["f", "r"], np.real(h_kraken_surface_noise)),
+            tf_imag=(["f", "r"], np.imag(h_kraken_surface_noise)),
+        ),
+        coords={"f": f, "r": r},
+    )
+    # Save transfert function as a csv
+    fpath = os.path.join(ROOT_DATA, "kraken_tf_surface_noise.nc")
+    h_kraken_surface_noise_xr.to_netcdf(fpath)
 
-        # Define xarray dataset for the transfert function
-        h_kraken_xr_rcv_i = xr.Dataset(
-            data_vars=dict(
-                tf_real=(["f", "r"], np.real(h_kraken)),
-                tf_imag=(["f", "r"], np.imag(h_kraken)),
+
+def derive_kraken_tf_loose_grid():
+
+    # Load params
+    depth, r_src, z_src, z_rcv, _ = waveguide_params()
+
+    # Run kraken
+    f, ts, r, z, h_kraken_loose_grid = run_kraken_simulation_loose_grid(
+        r_src, z_src, z_rcv, depth
+    )
+
+    # Define xarray dataset for the transfert function
+    h_kraken_surface_noise_xr = xr.Dataset(
+        data_vars=dict(
+            tf_real=(
+                ["f", "z", "r"],
+                np.real(h_kraken_loose_grid),
             ),
-            coords={"f": f, "r": r},
-        )
-        # Save transfert function as a csv
-        fpath = os.path.join(ROOT_DATA, f"kraken_tf_noise_rcv{i}.nc")
-        h_kraken_xr_rcv_i.to_netcdf(fpath)
-
-        # np.savetxt(fpath, np.array([f, h_kraken.real, h_kraken.imag]).T, delimiter=",")
-
-        # ir_kraken = fft.irfft(h_kraken)
-        # t_kraken = np.arange(0, len(ir_kraken)) * ts
-
-        # # Save kraken ir
-        # fpath = os.path.join(ROOT_DATA, f"kraken_ir_noise_rcv{i}.csv")
-        # np.savetxt(fpath, np.array([t_kraken, ir_kraken]).T, delimiter=",")
+            tf_imag=(["f", "z", "r"], np.imag(h_kraken_loose_grid)),
+        ),
+        coords={"f": f, "r": r, "z": z},
+    )
+    # Save transfert function as a csv
+    fpath = os.path.join(ROOT_DATA, "kraken_tf_loose_grid.nc")
+    h_kraken_surface_noise_xr.to_netcdf(fpath)
 
 
 def run_kraken_simulation(r_src, z_src, z_rcv, depth):
@@ -105,21 +121,14 @@ def run_kraken_simulation(r_src, z_src, z_rcv, depth):
     f = fft.rfftfreq(nt, ts)
 
     # Init env
-    bott_hs_properties = {
-        "rho": 1.5 * RHO_W * 1e-3,  # Density (g/cm^3)
-        "c_p": 1500,  # P-wave celerity (m/s)
-        "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
-        "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
-        "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
-        "z": None,
-    }
+    bott_hs_properties = testcase_bottom_properties()
 
     tc_varin = {
         "freq": f,
         "src_depth": z_src,
         "max_range_m": r_src,
         "mode_theory": "adiabatic",
-        "flp_N_RCV_z": 1,
+        "flp_n_rcv_z": 1,
         "flp_rcv_z_min": z_rcv,
         "flp_rcv_z_max": z_rcv,
         "min_depth": depth,
@@ -185,19 +194,20 @@ def run_kraken_simulation(r_src, z_src, z_rcv, depth):
     return f, ts, h_kraken_dict
 
 
-def run_kraken_simulation_noise(r_src, z_src, z_rcv, depth):
+def run_kraken_simulation_surface_noise(r_src, z_src, z_rcv, depth):
 
     # Noise source spacing (m): the minimal wavelength is 30m for f = 50Hz and c = 1500m/s, dr = 1m ensure at least 30 points per wavelength
     dr_noise = 10
-    z_src = 0.5  # Noise source just below surface
+    # z_src = 0.5  # Noise source just below surface
     rmax_noise = r_src + 10 * 1e3  # Maximal range for noise source
 
-    # rmin_noise = 5 * 1e3  # Minimal range for noise source
-    # rmax_noise =   # Maximal range for noise source
+    # Reciprocity
+    z_src = z_rcv
+    z_rcv = 0.5  # Noise source just below surface
 
     delta_rcv = 500
     x_rcv = np.array([i * delta_rcv for i in range(N_RCV)])
-    r_src_rcv = r_src - x_rcv
+    # r_src_rcv = r_src - x_rcv
 
     # Create the frequency vector
     duration = 50 * TAU_IR
@@ -205,22 +215,14 @@ def run_kraken_simulation_noise(r_src, z_src, z_rcv, depth):
     nt = int(duration / ts)
     f = fft.rfftfreq(nt, ts)
 
-    # Init env
-    bott_hs_properties = {
-        "rho": 1.5 * RHO_W * 1e-3,  # Density (g/cm^3)
-        "c_p": 1500,  # P-wave celerity (m/s)
-        "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
-        "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
-        "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
-        "z": None,
-    }
+    bott_hs_properties = testcase_bottom_properties()
 
     tc_varin = {
         "freq": f,
         "src_depth": z_src,
         "max_range_m": rmax_noise,
         "mode_theory": "adiabatic",
-        "flp_N_RCV_z": 1,
+        "flp_n_rcv_z": 1,
         "flp_rcv_z_min": z_rcv,
         "flp_rcv_z_max": z_rcv,
         "min_depth": depth,
@@ -248,7 +250,8 @@ def run_kraken_simulation_noise(r_src, z_src, z_rcv, depth):
     # h_kraken = np.zeros_like(f, dtype=complex)
     nr = int(rmax_noise / dr_noise + 1)
     nf = len(f)
-    h_kraken_dict = {f"rcv{i}": np.zeros((nf, nr), dtype=complex) for i in range(N_RCV)}
+    # h_kraken_dict = {f"rcv{i}": np.zeros((nf, nr), dtype=complex) for i in range(N_RCV)}
+    h_kraken_surface_noise = np.zeros((nf, nr), dtype=complex)
 
     while f0 < fmax:
         # Frequency subband
@@ -271,24 +274,133 @@ def run_kraken_simulation_noise(r_src, z_src, z_rcv, depth):
 
         h_kraken_subband = np.squeeze(pressure_field, axis=(1, 2, 3))
         r = field_pos["r"]["r"]
-        # print(pad_before, pad_after)
-        for i in range(N_RCV):
-            # Zero padding of the transfert function to match the length of the global transfert function
-            h_kraken_dict[f"rcv{i}"] += np.pad(
-                h_kraken_subband, ((pad_before, pad_after), (0, 0))
-            )
+
+        h_kraken_surface_noise += np.pad(
+            h_kraken_subband, ((pad_before, pad_after), (0, 0))
+        )
 
         # Update frequency subband
         i_subband += 1
         f0 = f1
         f1 = f[min(n_subband * i_subband, len(f) - 1)]
 
-    return f, ts, r, h_kraken_dict
+    return f, ts, r, h_kraken_surface_noise
+
+
+def run_kraken_simulation_loose_grid(r_src, z_src, z_rcv, depth):
+
+    # Noise source spacing (m): the minimal wavelength is 30m for f = 50Hz and c = 1500m/s, dr = 1m ensure at least 30 points per wavelength
+    dr_loose_grid = 100
+    rmax = r_src + 20 * 1e3  # Maximal range
+
+    delta_rcv = 500
+    x_rcv = np.array([i * delta_rcv for i in range(N_RCV)])
+    r_src_rcv = r_src - x_rcv
+
+    # Reciprocity
+    z_src = z_rcv
+    # Potential interferers located near the surface
+    dz_loose_grid = 1
+    z_min = 1
+    z_max = 50
+    nz = int((z_max - z_min) / dz_loose_grid) + 1
+
+    # Create the frequency vector
+    duration = 50 * TAU_IR
+    ts = 1e-2
+    nt = int(duration / ts)
+    f = fft.rfftfreq(nt, ts)
+
+    # Init env
+    bott_hs_properties = testcase_bottom_properties()
+
+    tc_varin = {
+        "freq": f,
+        "src_depth": z_src,
+        "max_range_m": rmax,
+        "mode_theory": "adiabatic",
+        "flp_n_rcv_z": nz,
+        "flp_rcv_z_min": z_min,
+        "flp_rcv_z_max": z_max,
+        "min_depth": depth,
+        "max_depth": depth,
+        "dr_flp": dr_loose_grid,
+        "nb_modes": 200,
+        "bottom_boundary_condition": "acousto_elastic",
+        "nmedia": 2,
+        "phase_speed_limits": [200, 20000],
+        "bott_hs_properties": bott_hs_properties,
+    }
+    tc = TestCase1_0(mode="prod", testcase_varin=tc_varin)
+    title = "Simple waveguide with short impulse response"
+    tc.title = title
+    tc.env_dir = os.path.join(ROOT_FOLDER, "tmp")
+    tc.update(tc_varin)
+
+    # For too long frequencies vector field fails to compute -> we will iterate over frequency subband to compute the transfert function
+    fmax = 50
+    fmin = cutoff_frequency(C0, depth, bottom_bc="pressure_release")
+    n_subband = 500
+    i_subband = 1
+    f0 = fmin
+    f1 = f[n_subband]
+    # h_kraken = np.zeros_like(f, dtype=complex)
+    nr = int(rmax / dr_loose_grid + 1)
+    nf = len(f)
+    h_kraken_loose_grid = np.zeros((nf, nz, nr), dtype=complex)
+
+    while f0 < fmax:
+        # Frequency subband
+        f_kraken = f[(f < f1) & (f >= f0)]
+        # print(i_subband, f0, f1, len(f_kraken))
+        pad_before = np.sum(f < f0)
+        pad_after = np.sum(f >= f1)
+
+        # Update env
+        varin_update = {"freq": f_kraken}
+        tc.update(varin_update)
+
+        pressure_field, field_pos = runkraken(
+            env=tc.env,
+            flp=tc.flp,
+            frequencies=tc.env.freq,
+            parallel=True,
+            verbose=True,
+        )
+
+        h_kraken_subband = np.squeeze(pressure_field, axis=(1, 2))
+        r = field_pos["r"]["r"]
+        z = field_pos["r"]["z"]
+
+        h_kraken_loose_grid += np.pad(
+            h_kraken_subband, ((pad_before, pad_after), (0, 0), (0, 0))
+        )
+
+        # Update frequency subband
+        i_subband += 1
+        f0 = f1
+        f1 = f[min(n_subband * i_subband, len(f) - 1)]
+
+    return f, ts, r, z, h_kraken_loose_grid
 
 
 # ======================================================================================================================
 # Test cases
 # ======================================================================================================================
+
+
+def testcase_bottom_properties():
+    # Environment with properties to minimize the impulse response duration
+    bott_hs_properties = {
+        "rho": 1.5 * RHO_W * 1e-3,  # Density (g/cm^3)
+        "c_p": 1500,  # P-wave celerity (m/s)
+        "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+        "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
+        "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
+        "z": None,
+    }
+
+    return bott_hs_properties
 
 
 def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
@@ -304,7 +416,9 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
     """
 
     # Load propagated signal
-    rcv_sig_data = derive_received_signal(tau_ir=TAU_IR)
+    _, r_src, _, _, _ = waveguide_params()
+    direct_delay = r_src / C0
+    rcv_sig_data = derive_received_signal(tau_ir=TAU_IR, delay_correction=direct_delay)
     t = rcv_sig_data["t"]
 
     # Load noise
@@ -400,14 +514,22 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
     """
 
     # Load propagated signal
-    rcv_sig_data = derive_received_signal(tau_ir=TAU_IR)
+    _, r_src, _, _, _ = waveguide_params()
+    direct_delay = r_src / C0
+    rcv_sig_data = derive_received_signal(tau_ir=TAU_IR, delay_correction=direct_delay)
     t = rcv_sig_data["t"]
 
     # Load propagated noise from multiple sources
     ns = len(t)
     fs = 1 / (t[1] - t[0])
+    propagated_args = {"rmin": 0}
     rcv_noise_data = derive_received_noise(
-        ns, fs, propagated=True, noise_model="gaussian", snr_dB=snr_dB
+        ns,
+        fs,
+        propagated=True,
+        noise_model="gaussian",
+        snr_dB=snr_dB,
+        propagated_args=propagated_args,
     )
 
     # Convert to numpy array
@@ -415,17 +537,11 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
     rcv_sig = np.empty((len(t), N_RCV))
     # Generate independent gaussian white noise on each receiver
     for i in range(N_RCV):
+        # Normalize signal to unit variance
         rcv_sig[:, i] = rcv_sig_data[f"rcv{i}"]["sig"] / np.std(
             rcv_sig_data[f"rcv{0}"]["sig"]
-        )  # Normalize signal to unit variance
+        )
         rcv_noise[:, i] = rcv_noise_data[f"rcv{i}"]["sig"]
-
-        # nl = 10 * np.log10(np.var(rcv_noise[:, i]))
-        # sl = 10 * np.log10(np.var(rcv_sig[:, i]))
-        # snr = 10 * np.log10(np.var(rcv_sig[:, i]) / np.var(rcv_noise[:, i]))
-        # print(f"NL = {nl} dB")
-        # print(f"SL = {sl} dB")
-        # print(f"SNR = {snr} dB")
 
     alpha_tau_ir = 3
     seg_length = alpha_tau_ir * TAU_IR
@@ -486,6 +602,124 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
         "props": fig_props,
         "tc_name": "Testcase 2",
         "tc_label": "testcase_2_propagated_whitenoise",
+    }
+
+    return testcase_results
+
+
+def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
+    """
+    Test case 2
+        - Waveguide: simple waveguide with short impulse response.
+        - Signal: ship signal propagated through the waveguide using Kraken.
+        - Noise: interference signal propagated through the waveguide.
+        - RTF estimation: covariance substraction and covariance whitening methods.
+    """
+
+    # Load propagated signal
+    _, r_src, _, _, _ = waveguide_params()
+    direct_delay = r_src / C0
+    t0 = time()
+    rcv_sig_data = derive_received_signal(tau_ir=TAU_IR, delay_correction=direct_delay)
+    print(f"derive_received_signal: {time() - t0:.2f} s")
+    t = rcv_sig_data["t"]
+
+    # Load propagated noise from multiple sources
+    ns = len(t)
+    fs = 1 / (t[1] - t[0])
+
+    # interferer_r = [35 * 1e3, 5 * 1e3]
+    # interferer_z = [30, 25]
+    interferer_r = [30 * 1e3]
+    interferer_z = [5]
+
+    n_src = len(interferer_r)
+    interference_arg = {
+        "signal_type": interference_type,
+        "src_position": {
+            "r": interferer_r,
+            "z": interferer_z,
+        },
+    }
+    t0 = time()
+    rcv_interference_data = derive_received_interference(ns, fs, interference_arg)
+    print(f"derive_received_interference: {time() - t0:.2f} s")
+
+    # Convert to numpy array
+    rcv_noise = np.empty((len(t), N_RCV))
+    rcv_sig = np.empty((len(t), N_RCV))
+    # Generate independent gaussian white noise on each receiver
+    for i in range(N_RCV):
+        # / np.std(rcv_sig_data[f"rcv{0}"]["sig"])
+        # Normalize signal to unit variance
+        rcv_sig[:, i] = rcv_sig_data[f"rcv{i}"]["sig"]
+        rcv_noise[:, i] = rcv_interference_data[f"rcv{i}"]["sig"]
+
+    alpha_tau_ir = 3
+    seg_length = alpha_tau_ir * TAU_IR
+    nperseg = int(seg_length / (t[1] - t[0]))
+    # Find the nearest power of 2
+    nperseg = 2 ** int(np.log2(nperseg) + 1)
+    alpha_overlap = 1 / 2
+    noverlap = int(nperseg * alpha_overlap)
+
+    # print(f"nperseg = {nperseg}, noverlap = {noverlap}")
+
+    # Estimate RTF using covariance substraction method
+    t0 = time()
+    f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
+        t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
+    )
+    print(f"rtf_covariance_substraction: {time() - t0:.2f} s")
+    f_cw, rtf_cw, _, _, _ = rtf_covariance_whitening(
+        t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
+    )
+
+    # Set properties to pass to the plotting functions
+    # Create folder to save results
+    tc_folder = os.path.join(
+        ROOT_FOLDER,
+        "testcase_3_propagated_interference",
+        f"{interference_type}_{n_src}_src",
+    )
+
+    fig_props = {
+        "folder_path": tc_folder,
+        "L": get_csdm_snapshot_number(
+            rcv_sig[:, 0], rcv_sig_data["fs"], nperseg, noverlap
+        ),
+        "alpha_tau_ir": alpha_tau_ir,
+        "alpha_overlap": alpha_overlap,
+        "tau_ir": TAU_IR,
+    }
+    # Plot estimation results
+    if plot:
+        if not os.path.exists(tc_folder):
+            os.makedirs(tc_folder)
+
+        t0 = time()
+        plot_signal_components(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=0)
+        print(f"plot_signal_components: {time() - t0:.2f} s")
+        mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
+        plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw, rtf_cw)
+
+        # plt.close("all")
+
+    testcase_results = {
+        "cs": {
+            "f": f_cs,
+            "rtf": rtf_cs,
+        },
+        "cw": {
+            "f": f_cw,
+            "rtf": rtf_cw,
+        },
+        "Rx": Rx,
+        "Rs": Rs,
+        "Rv": Rv,
+        "props": fig_props,
+        "tc_name": "Testcase 3",
+        "tc_label": "testcase_3_propagated_interference",
     }
 
     return testcase_results
@@ -695,8 +929,16 @@ def check_interp():
 
 if __name__ == "__main__":
     # derive_kraken_tf()
-    # derive_kraken_tf_noise()
-    # kraken_data = load_data()
+    # derive_kraken_tf_surface_noise()
+    # derive_kraken_tf_loose_grid()
+    kraken_data = load_data()
+
+    # xr_surfnoise = xr.open_dataset(
+    #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_estimation\short_ri_waveguide\data\kraken_tf_surface_noise.nc"
+    # )
+    # xr_surfnoise_rcv = xr.open_dataset(
+    #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_estimation\short_ri_waveguide\data\kraken_tf_noise_rcv0.nc"
+    # )
 
     # plot_ir(kraken_data, shift_ir=False)
     # plot_tf(kraken_data)
@@ -708,7 +950,9 @@ if __name__ == "__main__":
     #     testcase_1_unpropagated_whitenoise(snr_dB=snr_dB)
 
     # testcase_1_unpropagated_whitenoise(snr_dB=0)
-    # testcase_2_propagated_whitenoise(snr_dB=-20)
+    # testcase_2_propagated_whitenoise(snr_dB=0)
+    testcase_3_propagated_interference(plot=True, interference_type="dirac")
+    # testcase_3_propagated_interference(plot=True, interference_type="z_call")
 
     # check_interp()
     # snrs = [0, 10]

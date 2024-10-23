@@ -254,10 +254,10 @@ def csdm_info_line(fig_props):
     return info
 
 
-def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
+def plot_rcv_signals(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=0):
     # Plot signal, noise and signal + noise in time domain for the first receiver (subplots)
-    rcv_sig_0 = rcv_sig[:, 0]
-    rcv_noise_0 = rcv_noise[:, 0]
+    rcv_sig_0 = rcv_sig[:, rcv_idx_to_plot]
+    rcv_noise_0 = rcv_noise[:, rcv_idx_to_plot]
     fig, axs = plt.subplots(3, 1, figsize=(18, 10), sharex=True)
     ax1, ax2, ax3 = axs
 
@@ -304,9 +304,17 @@ def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
 
     plt.savefig(os.path.join(fig_props["folder_path"], "signal_noise_zoom.png"))
 
+
+def plot_rcv_stfts(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=0):
+
+    rcv_sig_0 = rcv_sig[:, rcv_idx_to_plot]
+    rcv_noise_0 = rcv_noise[:, rcv_idx_to_plot]
+
     # Plot stft
-    nperseg = 2**12
-    noverlap = int(nperseg * 3 / 4)
+    # nperseg = 2**12
+    # noverlap = int(nperseg * 3 / 4)
+    nperseg = 2**8
+    noverlap = int(0.8 * nperseg)
 
     fs = 1 / (t[1] - t[0])
     stft_sig_0 = sp.stft(
@@ -336,6 +344,10 @@ def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
 
     vmin = np.round(np.percentile(20 * np.log10(np.abs(stft_x_0[2])), 25) / 10) * 10
     vmax = np.round(np.percentile(20 * np.log10(np.abs(stft_x_0[2])), 99) / 10) * 10
+    # vmin = np.round(np.percentile(20 * np.log10(np.abs(stft_noise_0[2])), 25) / 10) * 10
+    # vmax = (
+    #     np.round(np.percentile(20 * np.log10(np.abs(stft_noise_0[2])), 99.99) / 10) * 10
+    # )
     cmap = "jet"
 
     im1 = ax1.pcolormesh(
@@ -387,6 +399,49 @@ def plot_signal_components(fig_props, t, rcv_sig, rcv_noise):
     # plt.colorbar(im3)
 
     plt.savefig(os.path.join(fig_props["folder_path"], "stft_signal_noise.png"))
+
+
+def plot_rcv_autocorr(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=0):
+
+    fs = 1 / (t[1] - t[0])
+    rcv_sig_0 = rcv_sig[:, rcv_idx_to_plot]
+    rcv_noise_0 = rcv_noise[:, rcv_idx_to_plot]
+
+    # Autocorrelation of the three signals
+    acf_sig_0 = sp.correlate(rcv_sig_0, rcv_sig_0, mode="full")
+    acf_sig_0 /= acf_sig_0.max()
+    acf_noise_0 = sp.correlate(rcv_noise_0, rcv_noise_0, mode="full")
+    acf_noise_0 /= acf_noise_0.max()
+    acf_x_0 = sp.correlate(
+        rcv_sig_0 + rcv_noise_0, rcv_sig_0 + rcv_noise_0, mode="full"
+    )
+    acf_x_0 /= acf_x_0.max()
+
+    lag_acf = sp.correlation_lags(len(rcv_sig_0), len(rcv_sig_0), mode="full")
+    t_acf = lag_acf / fs
+
+    fig, axs = plt.subplots(3, 1, figsize=(18, 10), sharex=True)
+    ax1, ax2, ax3 = axs
+
+    ax1.plot(t_acf, acf_sig_0)
+    ax1.set_title(r"$R_{ss}(\tau)$")
+
+    ax2.plot(t_acf, acf_noise_0)
+    ax2.set_title(r"$R_{nn}(\tau)$")
+
+    ax3.plot(t_acf, acf_x_0)
+    ax3.set_title(r"$R_{xx}(\tau)$")
+
+    fig.supxlabel(r"$\tau \, \textrm{[s]}$")
+    fig.supylabel(r"$R(\tau)$")
+
+    plt.savefig(os.path.join(fig_props["folder_path"], "acf_signal_noise.png"))
+
+
+def plot_signal_components(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=0):
+    plot_rcv_signals(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=rcv_idx_to_plot)
+    plot_rcv_stfts(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=rcv_idx_to_plot)
+    plot_rcv_autocorr(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=rcv_idx_to_plot)
 
 
 def plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None):

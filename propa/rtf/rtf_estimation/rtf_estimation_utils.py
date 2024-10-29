@@ -54,6 +54,7 @@ def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**1
 
         # Cholesky decomposition of the noise csdm and its inverse : Equation (25a) and (25b)
         Rv_half = scipy.linalg.cholesky(Rv_f, lower=False)
+        # Rv_half_inv = np.linalg.inv(Rv_half).T        # Theoreticaly equivalent but leads to greater numerical errors
         Rv_inv_f = np.linalg.inv(Rv_f)
         Rv_half_inv = scipy.linalg.cholesky(Rv_inv_f, lower=False)
 
@@ -232,6 +233,7 @@ def derive_received_signal(tau_ir, delay_correction=0, sl=200):
         "t": t,
         "src": s,
         "f": f,
+        "n_rcv": n_rcv,
         "spect": src_spectrum,
         "psd": psd,
         "std_fi": std_fi,
@@ -254,18 +256,25 @@ def derive_received_signal(tau_ir, delay_correction=0, sl=200):
 
         received_signal[f"rcv{i}"] = {
             "sig": rcv_sig,
-            "spect": transmited_sig_field_f,
             "psd": psd_rcv,
+            "spect": transmited_sig_field_f,
         }
 
     return received_signal
 
 
 def derive_received_noise(
-    ns, fs, propagated=False, noise_model="gaussian", snr_dB=10, propagated_args={}
+    ns,
+    fs,
+    propagated=False,
+    noise_model="gaussian",
+    snr_dB=10,
+    sigma_ref=1,
+    propagated_args={},
 ):
 
     received_noise = {}
+    rcv_noise = np.empty((ns, N_RCV))
 
     # Compute the received noise signal
     if propagated:
@@ -313,6 +322,9 @@ def derive_received_noise(
 
             noise_sig *= alpha
 
+            # Normalize to account for the signal power to reach required snr at receiver 0
+            noise_sig *= sigma_ref
+
             # Psd
             psd_noise = scipy.signal.welch(
                 noise_sig, fs=fs, nperseg=2**12, noverlap=2**11
@@ -331,6 +343,9 @@ def derive_received_noise(
                 sigma_v2 = 10 ** (-snr_dB / 10)
                 v = np.random.normal(loc=0, scale=np.sqrt(sigma_v2), size=ns)
                 noise_sig = v
+                # Normalize to account for the signal power to reach required snr at receiver 0
+                noise_sig *= sigma_ref
+                # Derive noise spectrum
                 noise_spectrum = np.fft.rfft(noise_sig)
 
                 # Psd
@@ -384,20 +399,17 @@ def derive_received_interference(ns, fs, interference_arg={}):
                 for k in range(n_src)
             ]
         ).T
-        # tf_interference_rcv_i = (
-        #     ds_tf.tf_real[:, idx_z, idx_r] + 1j * ds_tf.tf_imag[:, idx_z, idx_r]
-        # )
-        # tf_interference_rcv_i = np.atleast_2d(tf_interference_rcv_i)
 
         # Interference signal
         if signal_type == "z_call":
 
             signal_args = {
                 "fs": fs,
-                "nz": 1,  # Let the function derived the maximum number of z-calls in the signal duration
+                "nz": 0,  # Let the function derived the maximum number of z-calls in the signal duration
                 "signal_duration": ns / fs,
                 "sl": 188.5,
-                "start_offset_seconds": 100,
+                # "start_offset_seconds": 0,
+                # "end_offset_seconds": 0,
             }
             interference_sig, _ = z_call(signal_args)
             interference_spectrum = np.fft.rfft(interference_sig)

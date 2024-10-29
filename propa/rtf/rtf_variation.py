@@ -15,7 +15,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from propa.rtf.ideal_waveguide import *
-from propa.rtf.rtf_utils import D_frobenius
+from propa.rtf.rtf_utils import D_frobenius, D_hermitian_angle, D1, D2
 from publication.PublicationFigure import PubFigure
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
@@ -93,83 +93,124 @@ def PI_var_r(
     tile_shape = tuple([g_r.shape[i] - g_ref.shape[i] + 1 for i in range(g_r.ndim)])
     g_ref_expanded = np.tile(g_ref, tile_shape)
 
-    # # Derive generalised distance combining all receivers
-    Df = D_frobenius(g_ref, g_r)
-    # Convert to dB
-    Df += 1
-    Df = 10 * np.log10(Df)
+    # Select dist function to apply
+    if dist == "frobenius":
+        dist_func = D_frobenius
+        dist_kwargs = {}
+        # Total dist params
+        apply_log = True
+        ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+        title = r"$\mathcal{D}_F(r, z=z_s)$"
+        label = r"$\mathcal{D}_F$"
+        # Receiver pair params
+        # single_rcv_dist_func = D2
 
-    if dist == "D1" or dist == "both":
-        d1 = np.sum(np.abs(g_ref_expanded - g_r), axis=0)
-        # Convert to dB
-        d1 += 1
-        d1 = 10 * np.log10(d1)
-    if dist == "D2" or dist == "both":
-        d2 = np.sum(np.abs(g_ref_expanded - g_r) ** 2, axis=0)
-        # Convert to dB
-        d2 += 1
-        d2 = 10 * np.log10(d2)
+    elif dist == "hermitian_angle":
+        dist_func = D_hermitian_angle
+        dist_kwargs = {
+            "unit": "deg",
+            "apply_mean": True,
+        }
+        apply_log = False
+        ylabel = r"$\theta \, \textrm{[°]}$"
+        title = r"$\theta(r, z=z_s)$"
+        label = r"$\theta$"
 
+        # single_rcv_dist_func = lambda g_ref, g_r: D_hermitian_angle(
+        #     g_ref, g_r, unit="deg", apply_mean=True)
+
+    total_dist = dist_func(g_ref, g_r, **dist_kwargs)
     range_displacement = r_src_list - r_src
+
+    # Convert to dB
+    if apply_log:
+        total_dist += 1
+        total_dist = 10 * np.log10(total_dist)
 
     # Plot generalized distance map
     plt.figure()
     plt.plot(
         range_displacement,
-        Df,
+        total_dist,
     )
-    plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
+    plt.ylabel(ylabel)
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-    plt.title(r"$\mathcal{D}_F(r, z=z_s)$")
+    plt.title(title)
     plt.grid()
 
     # Save
     fpath = os.path.join(
         root,
-        f"D_frobenius_r_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}.png",
+        f"{dist}_r_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}.png",
     )
     plt.savefig(fpath)
 
+    # if dist == "D1" or dist == "both":
+    #     d1 = np.sum(np.abs(g_ref_expanded - g_r), axis=0)
+    #     # Convert to dB
+    #     d1 += 1
+    #     d1 = 10 * np.log10(d1)
+    # if dist == "D2" or dist == "both":
+    #     d2 = np.sum(np.abs(g_ref_expanded - g_r) ** 2, axis=0)
+    #     # Convert to dB
+    #     d2 += 1
+    #     d2 = 10 * np.log10(d2)
+
+    # single_rcv_pair_dist = single_rcv_dist_func(g_ref_expanded, g_r)
+
     # Iterate over receivers
-    d1max = 0
-    d2max = 0
+    # d1max = 0
+    # d2max = 0
+    # dmax_single_rcv_pair = 0
     plt.figure()
 
     for i_rcv in range(n_rcv - 1):
-        if dist == "D1" or dist == "both":
-            plt.plot(
-                range_displacement,
-                d1[:, i_rcv, 0],
-                label=r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
-            )
-            d1max = np.max(d1)
-        if dist == "D2" or dist == "both":
-            plt.plot(
-                range_displacement,
-                d2[:, i_rcv, 0],
-                label=r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
-            )
-            d2max = np.max(d2)
 
-    plt.plot(range_displacement, Df, label=r"$\mathcal{D}_F$", color="k")
+        g_ref_expanded_single_rcv = g_ref_expanded[:, :, i_rcv : i_rcv + 1, :]
+        g_r_single_rcv = g_r[:, :, i_rcv : i_rcv + 1, :]
+        # Append a ones array to get shape corresponding to a two receiver case : (nf, nr, 2, nz)
+        g_ref_expanded_single_rcv = np.concatenate(
+            [np.ones_like(g_ref_expanded_single_rcv), g_ref_expanded_single_rcv], axis=2
+        )
+        g_r_single_rcv = np.concatenate(
+            [np.ones_like(g_r_single_rcv), g_r_single_rcv], axis=2
+        )
 
-    if dist == "both" or n_rcv > 2:
-        plt.legend()
+        single_rcv_pair_dist = dist_func(
+            g_ref_expanded_single_rcv, g_r_single_rcv, **dist_kwargs
+        )
+        # if dist == "D1" or dist == "both":
+        #     plt.plot(
+        #         range_displacement,
+        #         d1[:, i_rcv, 0],
+        #         label=r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
+        #     )
+        # d1max = np.max(d1)
+        # if dist == "D2" or dist == "both":
+        #     plt.plot(
+        #         range_displacement,
+        #         d2[:, i_rcv, 0],
+        #         label=r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
+        #     )
+        # d2max = np.max(d2)
+        plt.plot(
+            range_displacement,
+            single_rcv_pair_dist,
+            label=label + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
+        )
+        # dmax_single_rcv_pair = np.max(single_rcv_pair_dist)
 
-    if dist == "both":
-        dist_lab = "D1D2"
-    else:
-        dist_lab = dist
-
-    plt.ylim(0, max(d1max, d2max) + 5)
+    plt.plot(range_displacement, total_dist, label=label, color="k")
+    # plt.ylim(0, max(d1max, d2max) + 5)
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-    plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
+    plt.ylabel(ylabel)
+    plt.legend()
     plt.grid()
 
     # Save
     fpath = os.path.join(
         root,
-        f"{dist_lab}_r_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}.png",
+        f"{dist}_r_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_rcvs.png",
     )
     plt.savefig(fpath)
     plt.close("all")
@@ -234,11 +275,48 @@ def PI_var_z(
     tile_shape = tuple([g_z.shape[i] - g_ref.shape[i] + 1 for i in range(g_z.ndim)])
     g_ref_expanded = np.tile(g_ref, tile_shape)
 
-    # # Derive generalised distance combining all receivers
-    Df = D_frobenius(g_ref, g_z)
+    # Select dist function to apply
+    if dist == "frobenius":
+        dist_func = D_frobenius
+        dist_kwargs = {}
+        apply_log = True
+        ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+        title = r"$\mathcal{D}_F(r=r_s, z)$"
+    elif dist == "hermitian_angle":
+        dist_func = D_hermitian_angle
+        dist_kwargs = {
+            "unit": "deg",
+            "apply_mean": True,
+        }
+        apply_log = False
+        ylabel = r"$\theta \, \textrm{[°]}$"
+        title = r"$\theta(r=r_s, z)$"
+
+    total_dist = dist_func(g_ref, g_z, **dist_kwargs)
+    depth_displacement = z_src_list - z_src
+
     # Convert to dB
-    Df += 1
-    Df = 10 * np.log10(Df)
+    if apply_log:
+        total_dist += 1
+        total_dist = 10 * np.log10(total_dist)
+
+    # Plot generalized distance map
+    plt.figure()
+    plt.plot(
+        depth_displacement,
+        total_dist,
+    )
+    plt.ylabel(ylabel)
+    plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
+    plt.title(title)
+    plt.grid()
+
+    # Save
+    fpath = os.path.join(
+        root,
+        f"{dist}_z_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
+    )
+    plt.savefig(fpath)
 
     if dist == "D1" or dist == "both":
         d1 = np.sum(np.abs(g_ref_expanded - g_z), axis=0)
@@ -251,66 +329,46 @@ def PI_var_z(
         d2 += 1
         d2 = 10 * np.log10(d2)
 
-    depth_displacement = z_src_list - z_src
+    # d1max = 0
+    # d2max = 0
+    # plt.figure()
+    # # Iterate over receivers
+    # for i_rcv in range(n_rcv - 1):
+    #     if dist == "D1" or dist == "both":
+    #         plt.plot(
+    #             depth_displacement,
+    #             d1[0, i_rcv, :],
+    #             label=r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
+    #         )
+    #         d1max = np.max(d1)
+    #     if dist == "D2" or dist == "both":
+    #         plt.plot(
+    #             depth_displacement,
+    #             d2[0, i_rcv, :],
+    #             label=r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
+    #         )
+    #         d2max = np.max(d2)
 
-    # Plot generalized distance map
-    plt.figure()
-    plt.plot(
-        depth_displacement,
-        Df,
-    )
-    plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
-    plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
-    plt.title(r"$\mathcal{D}_F(r=r_s, z)$")
-    plt.grid()
+    # plt.plot(depth_displacement, total_dist, label=r"$D_{F}$", color="k")
+    # plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
+    # plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
+    # plt.ylim(0, max(d1max, d2max) + 5)
+    # plt.grid()
 
-    # Save
-    fpath = os.path.join(
-        root,
-        f"D_frobenius_z_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
-    )
-    plt.savefig(fpath)
+    # if dist == "both" or n_rcv > 2:
+    #     plt.legend()
 
-    d1max = 0
-    d2max = 0
-    plt.figure()
-    # Iterate over receivers
-    for i_rcv in range(n_rcv - 1):
-        if dist == "D1" or dist == "both":
-            plt.plot(
-                depth_displacement,
-                d1[0, i_rcv, :],
-                label=r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
-            )
-            d1max = np.max(d1)
-        if dist == "D2" or dist == "both":
-            plt.plot(
-                depth_displacement,
-                d2[0, i_rcv, :],
-                label=r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
-            )
-            d2max = np.max(d2)
+    # if dist == "both":
+    #     dist_lab = "D1D2"
+    # else:
+    #     dist_lab = dist
 
-    plt.plot(depth_displacement, Df, label=r"$D_{F}$", color="k")
-    plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
-    plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
-    plt.ylim(0, max(d1max, d2max) + 5)
-    plt.grid()
-
-    if dist == "both" or n_rcv > 2:
-        plt.legend()
-
-    if dist == "both":
-        dist_lab = "D1D2"
-    else:
-        dist_lab = dist
-
-    # Save
-    fpath = os.path.join(
-        root,
-        f"{dist_lab}_z_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
-    )
-    plt.savefig(fpath)
+    # # Save
+    # fpath = os.path.join(
+    #     root,
+    #     f"{dist_lab}_z_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
+    # )
+    # plt.savefig(fpath)
     plt.close("all")
 
 
@@ -386,103 +444,119 @@ def Pi_var_rz(
     tile_shape = tuple([g_rz.shape[i] - g_ref.shape[i] + 1 for i in range(g_rz.ndim)])
     g_ref_expanded = np.tile(g_ref, tile_shape)
 
-    # # Derive generalised distance combining all receivers
-    Df = D_frobenius(g_ref, g_rz)
+    # Select dist function to apply
+    if dist == "frobenius":
+        dist_func = D_frobenius
+        dist_kwargs = {}
+        apply_log = True
+        colobar_title = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+        title = r"$\mathcal{D}_F(r, z)$"
+    elif dist == "hermitian_angle":
+        dist_func = D_hermitian_angle
+        dist_kwargs = {
+            "unit": "deg",
+            "apply_mean": True,
+        }
+        apply_log = False
+        colobar_title = r"$\theta \, \textrm{[°]}$"
+        title = r"$\theta(r, z)$"
 
-    if dist == "D1" or dist == "both":
-        d1 = np.sum(np.abs(g_ref_expanded - g_rz), axis=0)
-        # Convert to dB
-        d1 += 1
-        d1 = 10 * np.log10(d1)
-    if dist == "D2" or dist == "both":
-        d2 = np.sum(np.abs(g_ref_expanded - g_rz) ** 2, axis=0)
-        # Convert to dB
-        d2 += 1
-        d2 = 10 * np.log10(d2)
-
-    # Convert to dB
-    Df += 1
-    Df = 10 * np.log10(Df)
+    total_dist = dist_func(g_ref, g_rz, **dist_kwargs)
 
     range_displacement = r_src_list - r_src
     depth_displacement = z_src_list - z_src
 
+    # Convert to dB
+    if apply_log:
+        total_dist += 1
+        total_dist = 10 * np.log10(total_dist)
+
     # Plot generalized distance map
-    colobar_title = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
     plt.figure()
     plt.pcolormesh(
         range_displacement,
         depth_displacement,
-        Df.T,
+        total_dist.T,
         shading="auto",
         cmap="jet_r",
         vmin=0,
-        vmax=np.percentile(Df, 45),
+        vmax=np.percentile(total_dist, 45),
     )
     plt.colorbar(label=colobar_title)
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
     plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
-    plt.title(r"$\mathcal{D}_F(r, z)$")
+    plt.title(title)
 
     # Save
     fpath = os.path.join(
         root,
-        f"D_frobenius_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
+        f"{dist}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
     )
     plt.savefig(fpath)
 
-    for i_rcv in range(n_rcv - 1):
+    if dist == "D1" or dist == "both":
+        d1 = D1(g_ref_expanded, g_rz)
+        # Convert to dB
+        d1 += 1
+        d1 = 10 * np.log10(d1)
+    if dist == "D2" or dist == "both":
+        d2 = D2(g_ref_expanded, g_rz)
+        # Convert to dB
+        d2 += 1
+        d2 = 10 * np.log10(d2)
 
-        # plot d1 map
-        if dist == "D1" or dist == "both":
-            plt.figure()
-            plt.pcolormesh(
-                range_displacement,
-                depth_displacement,
-                d1[:, i_rcv, :].T,
-                shading="auto",
-                cmap="jet_r",
-                vmin=0,
-                # vmax=np.median(d1),
-                vmax=np.percentile(d1, 45),
-            )
-            plt.colorbar(label=colobar_title)
-            plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-            plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
-            plt.title(r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
+        # for i_rcv in range(n_rcv - 1):
 
-            # Save
-            fpath = os.path.join(
-                root,
-                f"D1_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
-                # f"D1_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_dr_{dr}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_dz_{dz}.png",
-            )
-            plt.savefig(fpath)
+        #     # plot d1 map
+        #     if dist == "D1" or dist == "both":
+        #         plt.figure()
+        #         plt.pcolormesh(
+        #             range_displacement,
+        #             depth_displacement,
+        #             d1[:, i_rcv, :].T,
+        #             shading="auto",
+        #             cmap="jet_r",
+        #             vmin=0,
+        #             # vmax=np.median(d1),
+        #             vmax=np.percentile(d1, 45),
+        #         )
+        #         plt.colorbar(label=colobar_title)
+        #         plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
+        #         plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
+        #         plt.title(r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
 
-        # plot d2 map
-        if dist == "D2" or dist == "both":
-            plt.figure()
-            plt.pcolormesh(
-                range_displacement,
-                depth_displacement,
-                d2[:, i_rcv, :].T,
-                shading="auto",
-                cmap="jet_r",
-                vmin=0,
-                vmax=np.percentile(d2, 45),
-            )
-            plt.colorbar(label=colobar_title)
-            plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-            plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
-            plt.title(r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
+        #         # Save
+        #         fpath = os.path.join(
+        #             root,
+        #             f"D1_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
+        #             # f"D1_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_dr_{dr}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_dz_{dz}.png",
+        #         )
+        #         plt.savefig(fpath)
 
-            # Save
-            fpath = os.path.join(
-                root,
-                f"D2_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
-                # f"D2_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_dr_{dr}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_dr_{dz}.png",
-            )
-            plt.savefig(fpath)
+        #     # plot d2 map
+        #     if dist == "D2" or dist == "both":
+        #         plt.figure()
+        #         plt.pcolormesh(
+        #             range_displacement,
+        #             depth_displacement,
+        #             d2[:, i_rcv, :].T,
+        #             shading="auto",
+        #             cmap="jet_r",
+        #             vmin=0,
+        #             vmax=np.percentile(d2, 45),
+        #         )
+        #         plt.colorbar(label=colobar_title)
+        #         plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
+        #         plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
+        #         plt.title(r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
+
+        #         # Save
+        #         fpath = os.path.join(
+        #             root,
+        #             f"D2_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
+        #             # f"D2_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_dr_{dr}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_dr_{dz}.png",
+        #         )
+        #         plt.savefig(fpath)
 
         plt.close("all")
 
@@ -497,7 +571,13 @@ def get_folderpath(x_rcv, r_src, z_src, bottom_bc="pressure_release"):
 
 
 def full_test(
-    covered_range, dr, zmin, zmax, dz, dist="D2", bottom_bc="pressure_release"
+    covered_range,
+    dr,
+    zmin,
+    zmax,
+    dz,
+    dist="D2",
+    bottom_bc="pressure_release",
 ):
 
     # Load default parameters
@@ -1009,14 +1089,14 @@ def init_sensibility_path(param, bottom_bc="pressure_release"):
     return root
 
 
-def Df_aperture(Df, x, th_dB=10):
+def total_dist_aperture(total_dist, x, th_dB=10):
     """Derive main lobe aperture along the x axis.
 
     Aperture is defined as the width of the 3dB main lobe.
     """
 
     # Find the main lobe
-    idx_main_lobe = np.where(Df <= th_dB)[0]
+    idx_main_lobe = np.where(total_dist <= th_dB)[0]
     i1 = idx_main_lobe[0]
     i2 = idx_main_lobe[-1]
     aperture = np.abs(x[i1] - x[i2])
@@ -1076,12 +1156,12 @@ def study_param_sensibility(
         )
 
         # Derive the distance
-        Df_r = D_frobenius(g_ref, g)
+        total_dist_r = D_frobenius(g_ref, g)
         range_displacement = r_src_list - r_src
 
         # Derive aperure of the main lobe
         th_r = 3  # threshold
-        i1_r, i2_r, ap_r = Df_aperture(Df_r, range_displacement, th_r)
+        i1_r, i2_r, ap_r = total_dist_aperture(total_dist_r, range_displacement, th_r)
         aperture_r.append(ap_r)
 
     ### Depth axis ###
@@ -1104,12 +1184,12 @@ def study_param_sensibility(
         )
 
         # Derive the distance
-        Df_z = D_frobenius(g_ref, g)
+        total_dist_z = D_frobenius(g_ref, g)
         depth_displacement = z_src_list - z_src
 
         # Derive aperure of the main lobe
         th_z = 3  # threshold
-        i1_z, i2_z, ap_z = Df_aperture(Df_z, range_displacement, th_z)
+        i1_z, i2_z, ap_z = total_dist_aperture(total_dist_z, range_displacement, th_z)
         aperture_z.append(ap_z)
 
     # Plot generalized distance map
@@ -1118,7 +1198,7 @@ def study_param_sensibility(
             plt.figure()
             plt.plot(
                 range_displacement,
-                Df_r,
+                total_dist_r,
             )
             # Add the main lobe aperture
             plt.axvline(x=range_displacement[i1_r], color="r", linestyle="--")
@@ -1154,7 +1234,7 @@ def study_param_sensibility(
             plt.figure()
             plt.plot(
                 depth_displacement,
-                Df_z,
+                total_dist_z,
             )
             # Add the main lobe aperture
             plt.axvline(x=depth_displacement[i1_z], color="r", linestyle="--")
@@ -1297,12 +1377,14 @@ if __name__ == "__main__":
 
     bottom_bc = "pressure_release"
 
-    covered_range = 10
+    covered_range = 2.5
     dr = 0.1
-    zmin = 1
-    zmax = 21
+    zmin = 2.5
+    zmax = 7.5
     dz = 0.1
-    full_test(covered_range, dr, zmin, zmax, dz, dist="D2", bottom_bc=bottom_bc)
+    full_test(
+        covered_range, dr, zmin, zmax, dz, dist="hermitian_angle", bottom_bc=bottom_bc
+    )
 
     # params = ["r_src", "z_src", "n_rcv", "delta_rcv", "df"]
     # # # params = ["z_src"]

@@ -24,7 +24,12 @@ from propa.rtf.ideal_waveguide import waveguide_params
 from localisation.verlinden.testcases.testcase_envs import TestCase1_0
 from real_data_analysis.real_data_utils import get_csdm_snapshot_number
 
-from propa.rtf.rtf_utils import D_frobenius
+from propa.rtf.rtf_utils import (
+    D_frobenius,
+    D_hermitian_angle,
+    true_rtf,
+    interp_true_rtf,
+)
 from propa.rtf.rtf_estimation.rtf_estimation_const import *
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *
@@ -39,7 +44,9 @@ def derive_kraken_tf():
     depth, r_src, z_src, z_rcv, _ = waveguide_params()
 
     # Run kraken
+    t0 = time()
     f, ts, h_kraken_dict = run_kraken_simulation(r_src, z_src, z_rcv, depth)
+    print("Broadband kraken: ", time() - t0)
 
     # Some nan values can appear in the transfert function
     # h_kraken = np.nan_to_num(h_kraken)
@@ -65,9 +72,11 @@ def derive_kraken_tf_surface_noise():
     depth, r_src, z_src, z_rcv, _ = waveguide_params()
 
     # Run kraken
+    t0 = time()
     f, ts, r, h_kraken_surface_noise = run_kraken_simulation_surface_noise(
         r_src, z_src, z_rcv, depth
     )
+    print("Broadband kraken: ", time() - t0)
 
     # Define xarray dataset for the transfert function
     h_kraken_surface_noise_xr = xr.Dataset(
@@ -172,7 +181,7 @@ def run_kraken_simulation(r_src, z_src, z_rcv, depth):
             flp=tc.flp,
             frequencies=tc.env.freq,
             parallel=True,
-            verbose=True,
+            verbose=False,
         )
 
         idx_r = [
@@ -393,7 +402,8 @@ def testcase_bottom_properties():
     # Environment with properties to minimize the impulse response duration
     bott_hs_properties = {
         "rho": 1.5 * RHO_W * 1e-3,  # Density (g/cm^3)
-        "c_p": 1500,  # P-wave celerity (m/s)
+        # "c_p": 1500,  # P-wave celerity (m/s)
+        "c_p": 1550,  # P-wave celerity (m/s)
         "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
         "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
         "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
@@ -425,17 +435,20 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
     ns = len(t)
     fs = 1 / (t[1] - t[0])
     rcv_noise_data = derive_received_noise(
-        ns, fs, propagated=False, noise_model="gaussian", snr_dB=snr_dB
+        ns,
+        fs,
+        propagated=False,
+        noise_model="gaussian",
+        snr_dB=snr_dB,
+        sigma_ref=np.std(rcv_sig_data[f"rcv{0}"]["sig"]),
     )
 
-    rcv_noise = np.empty((len(t), N_RCV))
-    rcv_sig = np.empty((len(t), N_RCV))
-    # Generate independent gaussian white noise on each receiver
+    # Convert to array
+    rcv_sig = np.empty((ns, N_RCV))
+    rcv_noise = np.empty((ns, N_RCV))
     for i in range(N_RCV):
         id_rcv = f"rcv{i}"
-        rcv_sig[:, i] = rcv_sig_data[id_rcv]["sig"] / np.std(
-            rcv_sig_data[f"rcv{0}"]["sig"]
-        )  # Normalize signal to unit variance
+        rcv_sig[:, i] = rcv_sig_data[id_rcv]["sig"]
         rcv_noise[:, i] = rcv_noise_data[id_rcv]["sig"]
 
     alpha_tau_ir = 3
@@ -481,6 +494,9 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
         plot_signal_components(fig_props, t, rcv_sig, rcv_noise)
         mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
         plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw, rtf_cw)
+        compare_rtf_vs_received_spectrum(
+            fig_props, f_cs, rtf_cs, f_cw, rtf_cw, rcv_signal=rcv_sig_data
+        )
 
         plt.close("all")
 
@@ -493,6 +509,8 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
             "f": f_cw,
             "rtf": rtf_cw,
         },
+        "signal": rcv_sig_data,
+        "noise": rcv_noise_data,
         "Rx": Rx,
         "Rs": Rs,
         "Rv": Rv,
@@ -530,18 +548,16 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
         noise_model="gaussian",
         snr_dB=snr_dB,
         propagated_args=propagated_args,
+        sigma_ref=np.std(rcv_sig_data[f"rcv{0}"]["sig"]),
     )
 
-    # Convert to numpy array
-    rcv_noise = np.empty((len(t), N_RCV))
-    rcv_sig = np.empty((len(t), N_RCV))
-    # Generate independent gaussian white noise on each receiver
+    # Convert to array
+    rcv_sig = np.empty((ns, N_RCV))
+    rcv_noise = np.empty((ns, N_RCV))
     for i in range(N_RCV):
-        # Normalize signal to unit variance
-        rcv_sig[:, i] = rcv_sig_data[f"rcv{i}"]["sig"] / np.std(
-            rcv_sig_data[f"rcv{0}"]["sig"]
-        )
-        rcv_noise[:, i] = rcv_noise_data[f"rcv{i}"]["sig"]
+        id_rcv = f"rcv{i}"
+        rcv_sig[:, i] = rcv_sig_data[id_rcv]["sig"]
+        rcv_noise[:, i] = rcv_noise_data[id_rcv]["sig"]
 
     alpha_tau_ir = 3
     seg_length = alpha_tau_ir * TAU_IR
@@ -584,7 +600,9 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
         plot_signal_components(fig_props, t, rcv_sig, rcv_noise)
         mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
         plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw, rtf_cw)
-
+        compare_rtf_vs_received_spectrum(
+            fig_props, f_cs, rtf_cs, f_cw, rtf_cw, rcv_signal=rcv_sig_data
+        )
         plt.close("all")
 
     testcase_results = {
@@ -596,6 +614,8 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
             "f": f_cw,
             "rtf": rtf_cw,
         },
+        "signal": rcv_sig,
+        "noise": rcv_noise,
         "Rx": Rx,
         "Rs": Rs,
         "Rv": Rv,
@@ -607,7 +627,7 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
     return testcase_results
 
 
-def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
+def testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z_call"):
     """
     Test case 2
         - Waveguide: simple waveguide with short impulse response.
@@ -628,10 +648,10 @@ def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
     ns = len(t)
     fs = 1 / (t[1] - t[0])
 
-    # interferer_r = [35 * 1e3, 5 * 1e3]
+    interferer_r = [5 * 1e3, 15 * 1e3, 50 * 1e3]
     # interferer_z = [30, 25]
-    interferer_r = [30 * 1e3]
-    interferer_z = [5]
+    # interferer_r = np.arange(5, 50, 5) * 1e3
+    interferer_z = [25, 35, 30]
 
     n_src = len(interferer_r)
     interference_arg = {
@@ -645,15 +665,24 @@ def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
     rcv_interference_data = derive_received_interference(ns, fs, interference_arg)
     print(f"derive_received_interference: {time() - t0:.2f} s")
 
-    # Convert to numpy array
-    rcv_noise = np.empty((len(t), N_RCV))
-    rcv_sig = np.empty((len(t), N_RCV))
-    # Generate independent gaussian white noise on each receiver
+    additive_noise = derive_received_noise(
+        ns,
+        fs,
+        propagated=False,
+        noise_model="gaussian",
+        snr_dB=snr_dB,
+        sigma_ref=np.std(rcv_sig_data[f"rcv{0}"]["sig"]),
+    )
+
+    # Convert to array
+    rcv_sig = np.empty((ns, N_RCV))
+    rcv_noise = np.empty((ns, N_RCV))
     for i in range(N_RCV):
-        # / np.std(rcv_sig_data[f"rcv{0}"]["sig"])
-        # Normalize signal to unit variance
-        rcv_sig[:, i] = rcv_sig_data[f"rcv{i}"]["sig"]
-        rcv_noise[:, i] = rcv_interference_data[f"rcv{i}"]["sig"]
+        id_rcv = f"rcv{i}"
+        rcv_sig[:, i] = rcv_sig_data[id_rcv]["sig"]
+        rcv_noise[:, i] = (
+            rcv_interference_data[id_rcv]["sig"] + additive_noise[id_rcv]["sig"]
+        )
 
     alpha_tau_ir = 3
     seg_length = alpha_tau_ir * TAU_IR
@@ -671,9 +700,11 @@ def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
         t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
     print(f"rtf_covariance_substraction: {time() - t0:.2f} s")
+    t0 = time()
     f_cw, rtf_cw, _, _, _ = rtf_covariance_whitening(
         t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
+    print(f"rtf_covariance_whitening: {time() - t0:.2f} s")
 
     # Set properties to pass to the plotting functions
     # Create folder to save results
@@ -681,6 +712,7 @@ def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
         ROOT_FOLDER,
         "testcase_3_propagated_interference",
         f"{interference_type}_{n_src}_src",
+        f"snr_{snr_dB}dB",
     )
 
     fig_props = {
@@ -702,8 +734,11 @@ def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
         print(f"plot_signal_components: {time() - t0:.2f} s")
         mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
         plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw, rtf_cw)
-
-        # plt.close("all")
+        compare_rtf_vs_received_spectrum(
+            fig_props, f_cs, rtf_cs, f_cw, rtf_cw, rcv_signal=rcv_sig_data
+        )
+        # plt.show()
+        plt.close("all")
 
     testcase_results = {
         "cs": {
@@ -714,6 +749,8 @@ def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
             "f": f_cw,
             "rtf": rtf_cw,
         },
+        "signal": rcv_sig,
+        "noise": rcv_noise,
         "Rx": Rx,
         "Rs": Rs,
         "Rv": Rv,
@@ -725,19 +762,35 @@ def testcase_3_propagated_interference(plot=True, interference_type="z_call"):
     return testcase_results
 
 
-def dist_versus_snr(snrs, testcase=1):
+def dist_versus_snr(snrs, testcase=1, dist="frobenius"):
+
+    # Select dist function to apply
+    if dist == "frobenius":
+        dist_func = D_frobenius
+        dist_kwargs = {}
+    elif dist == "hermitian_angle":
+        dist_func = D_hermitian_angle
+        dist_kwargs = {
+            "unit": "deg",
+            "apply_mean": True,
+        }
 
     # Derive results for each snr
     rtf_cs = []
     rtf_cw = []
     for i_snr, snr_dB in enumerate(snrs):
-        plot = i_snr % 10 == 0
+        plot = False
+        # plot = i_snr % 100 == 0
         print(f"i = {i_snr}, snr = {snr_dB}, plot = {plot}")
         if testcase == 1:
             # plot = False
             res_snr = testcase_1_unpropagated_whitenoise(snr_dB=snr_dB, plot=plot)
         elif testcase == 2:
             res_snr = testcase_2_propagated_whitenoise(snr_dB=snr_dB, plot=plot)
+        elif testcase == 3:
+            res_snr = testcase_3_propagated_interference(
+                snr_dB=snr_dB, plot=plot, interference_type="z_call"
+            )
 
         # Save rtfs into dedicated list
         rtf_cs.append(res_snr["cs"]["rtf"])
@@ -749,14 +802,7 @@ def dist_versus_snr(snrs, testcase=1):
 
     # Load true RTF
     kraken_data = load_data()
-    f_true, rtf_true = true_rtf(kraken_data)
-    rtf_true = np.nan_to_num(rtf_true)
-    rtf_true_interp = np.empty_like(rtf_cs[0])
-    # Interpolate rtf_true to f_cs / f_cw
-    for i_rcv in range(rtf_true_interp.shape[1]):
-        interp_real = sp_int.interp1d(f_true, np.real(rtf_true[:, i_rcv]))
-        interp_imag = sp_int.interp1d(f_true, np.imag(rtf_true[:, i_rcv]))
-        rtf_true_interp[:, i_rcv] = interp_real(f) + 1j * interp_imag(f)
+    _, rtf_true_interp = interp_true_rtf(kraken_data, f)
 
     dist_cs = []
     dist_cw = []
@@ -768,8 +814,8 @@ def dist_versus_snr(snrs, testcase=1):
         rtf_cs_i = rtf_cs[i]
         rtf_cw_i = rtf_cw[i]
         # Derive distance between estimated rtf and true rtf
-        d_cs = D_frobenius(rtf_true_interp, rtf_cs_i)
-        d_cw = D_frobenius(rtf_true_interp, rtf_cw_i)
+        d_cs = dist_func(rtf_true_interp, rtf_cs_i, **dist_kwargs)
+        d_cw = dist_func(rtf_true_interp, rtf_cw_i, **dist_kwargs)
 
         # Append to list
         dist_cs.append(d_cs)
@@ -777,14 +823,14 @@ def dist_versus_snr(snrs, testcase=1):
 
         # Same distance derivation for a restricted frequency band
         fmin_rtf = 5
-        fmax_rtf = 20
+        fmax_rtf = 50
 
         rtf_cs_i_band = rtf_cs_i[(f_cs >= fmin_rtf) & (f_cs <= fmax_rtf)]
         rtf_cw_i_band = rtf_cw_i[(f_cw >= fmin_rtf) & (f_cw <= fmax_rtf)]
         rtf_true_interp_band = rtf_true_interp[(f >= fmin_rtf) & (f <= fmax_rtf)]
 
-        d_cs_band = D_frobenius(rtf_true_interp_band, rtf_cs_i_band)
-        d_cw_band = D_frobenius(rtf_true_interp_band, rtf_cw_i_band)
+        d_cs_band = dist_func(rtf_true_interp_band, rtf_cs_i_band, **dist_kwargs)
+        d_cw_band = dist_func(rtf_true_interp_band, rtf_cw_i_band, **dist_kwargs)
 
         # Append to list
         dist_cs_band.append(d_cs_band)
@@ -802,8 +848,12 @@ def dist_versus_snr(snrs, testcase=1):
                 np.abs(rtf_cw_i_band[:, i]), np.ones(window) / window, mode="same"
             )
 
-        d_cs_band_smooth = D_frobenius(rtf_true_interp_band, rtf_cs_i_band_smooth)
-        d_cw_band_smooth = D_frobenius(rtf_true_interp_band, rtf_cw_i_band_smooth)
+        d_cs_band_smooth = dist_func(
+            rtf_true_interp_band, rtf_cs_i_band_smooth, **dist_kwargs
+        )
+        d_cw_band_smooth = dist_func(
+            rtf_true_interp_band, rtf_cw_i_band_smooth, **dist_kwargs
+        )
 
         # Append to list
         dist_cs_band_smooth.append(d_cs_band_smooth)
@@ -821,18 +871,21 @@ def dist_versus_snr(snrs, testcase=1):
         + r"] \, \textrm{Hz}$"
         + f"\n({csdm_info_line(props)})"
     )
-    plt.figure()
-    plt.plot(snrs, 10 * np.log10(dist_cs), marker=".", label=r"$\mathcal{D}_F^{(CS)}$")
-    plt.plot(snrs, 10 * np.log10(dist_cw), marker=".", label=r"$\mathcal{D}_F^{(CW)}$")
-    plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")  # TODO check unity  \textrm{[dB]}
-    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
-    plt.title(title)
-    plt.legend()
-    plt.grid()
-
-    # Save
     fpath = os.path.join(ROOT_FOLDER, res_snr["tc_label"], "Df.png")
-    plt.savefig(fpath)
+    plot_dist_vs_snr(
+        snrs, dist_cs, dist_cw, title=title, dist_type=dist, savepath=fpath
+    )
+    # plt.figure()
+    # plt.plot(snrs, 10 * np.log10(dist_cs), marker=".", label=r"$\mathcal{D}_F^{(CS)}$")
+    # plt.plot(snrs, 10 * np.log10(dist_cw), marker=".", label=r"$\mathcal{D}_F^{(CW)}$")
+    # plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")
+    # plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
+    # plt.legend()
+    # plt.grid()
+    # plt.title(title)
+
+    # # Save
+    # plt.savefig(fpath)
 
     title = (
         r"$\textrm{"
@@ -844,24 +897,27 @@ def dist_versus_snr(snrs, testcase=1):
         + r"] \, \textrm{Hz}$"
         + f"\n({csdm_info_line(props)})"
     )
-    plt.figure()
-    plt.plot(
-        snrs, 10 * np.log10(dist_cs_band), marker=".", label=r"$\mathcal{D}_F^{(CS)}$"
-    )
-    plt.plot(
-        snrs, 10 * np.log10(dist_cw_band), marker=".", label=r"$\mathcal{D}_F^{(CW)}$"
-    )
-    plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")  # TODO check unity  \textrm{[dB]}
-    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
-    plt.title(title)
-    plt.legend()
-    plt.grid()
-
-    # Save
     fpath = os.path.join(
         ROOT_FOLDER, res_snr["tc_label"], f"Df_band_{fmin_rtf}_{fmax_rtf}.png"
     )
-    plt.savefig(fpath)
+    plot_dist_vs_snr(
+        snrs, dist_cs_band, dist_cw_band, title=title, dist_type=dist, savepath=fpath
+    )
+    # plt.figure()
+    # plt.plot(
+    #     snrs, 10 * np.log10(dist_cs_band), marker=".", label=r"$\mathcal{D}_F^{(CS)}$"
+    # )
+    # plt.plot(
+    #     snrs, 10 * np.log10(dist_cw_band), marker=".", label=r"$\mathcal{D}_F^{(CW)}$"
+    # )
+    # plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")  # TODO check unity  \textrm{[dB]}
+    # plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
+    # plt.title(title)
+    # plt.legend()
+    # plt.grid()
+
+    # Save
+    # plt.savefig(fpath)
 
     title = (
         r"$\textrm{"
@@ -876,30 +932,39 @@ def dist_versus_snr(snrs, testcase=1):
         + f"(n = {window})$"
         + f"\n({csdm_info_line(props)})"
     )
-    plt.figure()
-    plt.plot(
-        snrs,
-        10 * np.log10(dist_cs_band_smooth),
-        marker=".",
-        label=r"$\mathcal{D}_F^{(CS)}$",
-    )
-    plt.plot(
-        snrs,
-        10 * np.log10(dist_cw_band_smooth),
-        marker=".",
-        label=r"$\mathcal{D}_F^{(CW)}$",
-    )
-    plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")  # TODO check unity  \textrm{[dB]}
-    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
-    plt.title(title)
-    plt.legend()
-    plt.grid()
-
-    # Save
     fpath = os.path.join(
         ROOT_FOLDER, res_snr["tc_label"], f"Df_band_{fmin_rtf}_{fmax_rtf}_smooth.png"
     )
-    plt.savefig(fpath)
+    plot_dist_vs_snr(
+        snrs,
+        dist_cs_band_smooth,
+        dist_cw_band_smooth,
+        title=title,
+        dist_type=dist,
+        savepath=fpath,
+    )
+    # plt.figure()
+    # plt.plot(
+    #     snrs,
+    #     10 * np.log10(dist_cs_band_smooth),
+    #     marker=".",
+    #     label=r"$\mathcal{D}_F^{(CS)}$",
+    # )
+    # plt.plot(
+    #     snrs,
+    #     10 * np.log10(dist_cw_band_smooth),
+    #     marker=".",
+    #     label=r"$\mathcal{D}_F^{(CW)}$",
+    # )
+    # plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")  # TODO check unity  \textrm{[dB]}
+    # plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
+    # plt.title(title)
+    # plt.legend()
+    # plt.grid()
+
+    # # Save
+
+    # plt.savefig(fpath)
 
 
 def check_interp():
@@ -931,7 +996,9 @@ if __name__ == "__main__":
     # derive_kraken_tf()
     # derive_kraken_tf_surface_noise()
     # derive_kraken_tf_loose_grid()
-    kraken_data = load_data()
+    # kraken_data = load_data()
+    # plot_ir(kraken_data, shift_ir=True)
+    # plot_tf(kraken_data)
 
     # xr_surfnoise = xr.open_dataset(
     #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_estimation\short_ri_waveguide\data\kraken_tf_surface_noise.nc"
@@ -940,26 +1007,37 @@ if __name__ == "__main__":
     #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_estimation\short_ri_waveguide\data\kraken_tf_noise_rcv0.nc"
     # )
 
-    # plot_ir(kraken_data, shift_ir=False)
-    # plot_tf(kraken_data)
-
     # rcv_sig = derive_received_signal()
-    # plot_signal()
-    # snrs = [-20, -10, 0, 10, 20, 30]
+    # plot_signal(tau_ir=TAU_IR)
+    # snrs = [-25, 25]
     # for snr_dB in snrs:
     #     testcase_1_unpropagated_whitenoise(snr_dB=snr_dB)
 
-    # testcase_1_unpropagated_whitenoise(snr_dB=0)
+    # res = testcase_1_unpropagated_whitenoise(snr_dB=0)
+    # compare_rtf_vs_received_spectrum(
+    #     res["props"],
+    #     res["cs"]["f"],
+    #     res["cs"]["rtf"],
+    #     res["cw"]["f"],
+    #     res["cw"]["rtf"],
+    #     rcv_signal=res["signal"],
+    # )
+
     # testcase_2_propagated_whitenoise(snr_dB=0)
-    testcase_3_propagated_interference(plot=True, interference_type="dirac")
-    # testcase_3_propagated_interference(plot=True, interference_type="z_call")
+    # testcase_3_propagated_interference(plot=True, interference_type="dirac")
+    # testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z_call")
+    # testcase_3_propagated_interference(snr_dB=10, plot=True, interference_type="z_call")
+    # testcase_3_propagated_interference(plot=True, interference_type="ricker_pulse")
 
     # check_interp()
-    # snrs = [0, 10]
-    # snrs = np.arange(-30, 30, 0.5)
-    # # snrs = np.arange(7.5, 12.5, 0.5)
+    snrs = [0, 10]
+    # snrs = np.round(np.arange(-50, 50, 0.1), 1)
+    # snrs = np.arange(-5, 5, 1)
 
-    # dist_versus_snr(snrs, testcase=1)
+    dist_versus_snr(snrs, testcase=1, dist="hermitian_angle")
+    dist_versus_snr(snrs, testcase=2, dist="hermitian_angle")
+    dist_versus_snr(snrs, testcase=3, dist="hermitian_angle")
+
     # dist_versus_snr(snrs, testcase=2)
 
     plt.show()

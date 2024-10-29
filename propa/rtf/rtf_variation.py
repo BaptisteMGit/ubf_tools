@@ -102,8 +102,6 @@ def PI_var_r(
         ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
         title = r"$\mathcal{D}_F(r, z=z_s)$"
         label = r"$\mathcal{D}_F$"
-        # Receiver pair params
-        # single_rcv_dist_func = D2
 
     elif dist == "hermitian_angle":
         dist_func = D_hermitian_angle
@@ -115,9 +113,6 @@ def PI_var_r(
         ylabel = r"$\theta \, \textrm{[°]}$"
         title = r"$\theta(r, z=z_s)$"
         label = r"$\theta$"
-
-        # single_rcv_dist_func = lambda g_ref, g_r: D_hermitian_angle(
-        #     g_ref, g_r, unit="deg", apply_mean=True)
 
     total_dist = dist_func(g_ref, g_r, **dist_kwargs)
     range_displacement = r_src_list - r_src
@@ -145,23 +140,6 @@ def PI_var_r(
     )
     plt.savefig(fpath)
 
-    # if dist == "D1" or dist == "both":
-    #     d1 = np.sum(np.abs(g_ref_expanded - g_r), axis=0)
-    #     # Convert to dB
-    #     d1 += 1
-    #     d1 = 10 * np.log10(d1)
-    # if dist == "D2" or dist == "both":
-    #     d2 = np.sum(np.abs(g_ref_expanded - g_r) ** 2, axis=0)
-    #     # Convert to dB
-    #     d2 += 1
-    #     d2 = 10 * np.log10(d2)
-
-    # single_rcv_pair_dist = single_rcv_dist_func(g_ref_expanded, g_r)
-
-    # Iterate over receivers
-    # d1max = 0
-    # d2max = 0
-    # dmax_single_rcv_pair = 0
     plt.figure()
 
     for i_rcv in range(n_rcv - 1):
@@ -179,30 +157,15 @@ def PI_var_r(
         single_rcv_pair_dist = dist_func(
             g_ref_expanded_single_rcv, g_r_single_rcv, **dist_kwargs
         )
-        # if dist == "D1" or dist == "both":
-        #     plt.plot(
-        #         range_displacement,
-        #         d1[:, i_rcv, 0],
-        #         label=r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
-        #     )
-        # d1max = np.max(d1)
-        # if dist == "D2" or dist == "both":
-        #     plt.plot(
-        #         range_displacement,
-        #         d2[:, i_rcv, 0],
-        #         label=r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
-        #     )
-        # d2max = np.max(d2)
         plt.plot(
             range_displacement,
             single_rcv_pair_dist,
             label=label + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
         )
-        # dmax_single_rcv_pair = np.max(single_rcv_pair_dist)
 
     plt.plot(range_displacement, total_dist, label=label, color="k")
-    # plt.ylim(0, max(d1max, d2max) + 5)
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
+    # plt.ylim(0, max(d1max, d2max) + 5)
     plt.ylabel(ylabel)
     plt.legend()
     plt.grid()

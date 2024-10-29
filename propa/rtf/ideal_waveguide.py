@@ -297,6 +297,41 @@ def h_mat(f, z_src, z_rcv, r_rcv, depth, bottom_bc="pressure_release"):
     return f, h_matrix
 
 
+def print_arrivals(z_src, z_rcv, r, depth, n):
+    # Number of terms to include in the sum
+    m = np.arange(1, n + 1)
+    # Image source - receiver distance follwoing definitions from Jensen p.104
+    zm1 = 2 * depth * m - z_src + z_rcv
+    zm2 = 2 * depth * (m + 1) - z_src - z_rcv
+    zm3 = 2 * depth * m + z_src + z_rcv
+    zm4 = 2 * depth * (m + 1) + z_src - z_rcv
+    Rm1 = np.sqrt(r**2 + zm1.astype(np.float64) ** 2)
+    Rm2 = np.sqrt(r**2 + zm2.astype(np.float64) ** 2)
+    Rm3 = np.sqrt(r**2 + zm3.astype(np.float64) ** 2)
+    Rm4 = np.sqrt(r**2 + zm4.astype(np.float64) ** 2)
+
+    arrivals = np.empty((len(m), 4))
+    for i_m in m:
+        t1 = Rm1[i_m - 1] / c0
+        t2 = Rm2[i_m - 1] / c0
+        t3 = Rm3[i_m - 1] / c0
+        t4 = Rm4[i_m - 1] / c0
+
+        print(
+            f"m = {m[i_m-1]} : \n"
+            + f"\t t1 = {t1}s \n"
+            + f"\t t2 = {t2}s \n"
+            + f"\t t3 = {t3}s \n"
+            + f"\t t4 = {t4}s \n"
+        )
+        arrivals[i_m - 1][0] = t1
+        arrivals[i_m - 1][1] = t2
+        arrivals[i_m - 1][2] = t3
+        arrivals[i_m - 1][3] = t4
+
+    return arrivals
+
+
 def image_source_ri(z_src, z_rcv, r, depth, n, t=None):
 
     # Number of terms to include in the sum
@@ -493,10 +528,11 @@ def waveguide_params():
 
 if __name__ == "__main__":
     # bottom_bc = "perfectly_rigid"
-    bottom_bc = "pressure_release"
+    # bottom_bc = "pressure_release"
 
-    test_g_mat_h_mat(bottom_bc=bottom_bc)
+    # test_g_mat_h_mat(bottom_bc=bottom_bc)
 
+    print_arrivals(z_src=5, z_rcv=999, r=30 * 1e3, depth=1000, n=4)
 
 #     D = 1e3
 #     f = 5

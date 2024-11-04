@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 from misc import *
 from propa.rtf.ideal_waveguide import *
 from signals.signals import generate_ship_signal, z_call, ricker_pulse, dirac
-from propa.rtf.rtf_estimation.rtf_estimation_const import *
+from propa.rtf.rtf_estimation_const import *
 from real_data_analysis.real_data_utils import compute_csd_matrix_fast
 
 

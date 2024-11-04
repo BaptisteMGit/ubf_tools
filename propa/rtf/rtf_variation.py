@@ -892,7 +892,7 @@ def sensibility_ideal_waveguide_r_src(
         input_var["r_src"] = r_src
 
         study_param_sensibility(
-            input_var, param_var, apertures_r, apertures_z, axis=axis
+            input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
     # Plot the main lobe aperture as a function of delta_rcv
@@ -941,7 +941,7 @@ def sensibility_ideal_waveguide_z_src(
         input_var["z_src"] = z_src
 
         study_param_sensibility(
-            input_var, param_var, apertures_r, apertures_z, axis=axis
+            input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
     # Plot the main lobe aperture as a function of delta_rcv
@@ -990,7 +990,7 @@ def sensibility_ideal_waveguide_n_rcv(
         input_var["n_rcv"] = n_rcv
 
         study_param_sensibility(
-            input_var, param_var, apertures_r, apertures_z, axis=axis
+            input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
     # Plot the main lobe aperture as a function of delta_rcv
@@ -1039,7 +1039,7 @@ def sensibility_ideal_waveguide_df(
         input_var["df"] = df
 
         study_param_sensibility(
-            input_var, param_var, apertures_r, apertures_z, axis=axis
+            input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
     # Plot the main lobe aperture as a function of delta_rcv

@@ -127,6 +127,62 @@ def D_hermitian_angle(rtf_ref, rtf, **kwargs):
     return dist
 
 
+def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
+    """Derive Hermitian angle distance between two RTFs."""
+
+    unit = kwargs.get("unit", "deg")
+    apply_mean = kwargs.get("apply_mean", True)
+
+    # Case: 4D input for variation studies
+    if rtf.ndim == 4:
+        # Expand rtf_ref along the necessary axes for broadcasting
+        # rtf_ref_expanded = np.expand_dims(rtf_ref, axis=(1, 3))
+        tile_shape = tuple(
+            [rtf.shape[i] - rtf_ref.shape[i] + 1 for i in range(rtf.ndim)]
+        )
+        rtf_ref_expanded = np.tile(rtf_ref, tile_shape)
+
+        # Calculate inner product and norms along the receiver axis (axis=2)
+        ax_rcv = 2
+        inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=ax_rcv))
+        norm_ref = np.linalg.norm(rtf_ref_expanded, axis=ax_rcv)
+        norm_rtf = np.linalg.norm(rtf, axis=ax_rcv)
+
+        # Calculate cosine of Hermitian angle, clipped to [-1, 1] for stability
+        cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
+        dist = np.arccos(cos_angle)
+
+        if unit == "deg":
+            dist = np.rad2deg(dist)
+
+        # Take mean along frequency axis if needed
+        if apply_mean:
+            dist = np.nanmean(dist, axis=0)
+
+        # Flatten if only one receiver or one depth
+        dist = np.squeeze(dist)
+
+    # Case: 2D input for simple distance evaluation
+    elif rtf.ndim == 2:
+        # Calculate inner product and norms along the receiver axis (axis=1)
+        ax_rcv = 1
+        inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=ax_rcv))
+        norm_ref = np.linalg.norm(rtf_ref_expanded, axis=ax_rcv)
+        norm_rtf = np.linalg.norm(rtf, axis=ax_rcv)
+
+        # Cosine of Hermitian angle, clipped for stability
+        cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
+        dist = np.arccos(cos_angle)
+
+        if unit == "deg":
+            dist = np.rad2deg(dist)
+
+        if apply_mean:
+            dist = np.nanmean(dist)
+
+    return dist
+
+
 def D1(rtf_ref, rtf):
     d = np.sum(np.abs(rtf_ref - rtf), axis=0)
     return d

@@ -17,6 +17,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
+from cst import C0
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from propa.rtf.ideal_waveguide import print_arrivals
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
@@ -34,7 +35,7 @@ from propa.rtf.rtf_utils import (
 # ======================================================================================================================
 
 
-def plot_ir(kraken_data, shift_ir=True, plot_arrivals=True):
+def plot_ir(kraken_data, root_img, shift_ir=True, plot_arrivals=True):
     plt.figure()
     t = kraken_data["t"]
     delta_rcv = 500
@@ -87,10 +88,10 @@ def plot_ir(kraken_data, shift_ir=True, plot_arrivals=True):
     plt.grid()
     plt.xlim(xlims)
     plt.legend()
-    plt.savefig(os.path.join(ROOT_DATA, f"{fname}.png"))
+    plt.savefig(os.path.join(root_img, f"{fname}.png"))
 
 
-def plot_tf(kraken_data):
+def plot_tf(kraken_data, root_img):
     plt.figure()
     for i in range(kraken_data["n_rcv"]):
         plt.plot(
@@ -104,11 +105,11 @@ def plot_tf(kraken_data):
     plt.grid()
     plt.xlim([0, 50])
     plt.legend()
-    plt.savefig(os.path.join(ROOT_DATA, "kraken_tf.png"))
+    plt.savefig(os.path.join(root_img, "kraken_tf.png"))
 
 
-def plot_signal(tau_ir):
-    rcv_sig = derive_received_signal(tau_ir=tau_ir)
+def plot_signal(rcv_sig, root_img):
+    # rcv_sig = derive_received_signal(tau_ir=tau_ir)
     t = rcv_sig["t"]
     idx_window_center = int(len(t) / 2)
 
@@ -127,7 +128,7 @@ def plot_signal(tau_ir):
         ]
     )
     plt.legend()
-    plt.savefig(os.path.join(ROOT_DATA, "received_signal.png"))
+    plt.savefig(os.path.join(root_img, "received_signal.png"))
 
     for i in range(rcv_sig["n_rcv"]):
         # Received time serie
@@ -143,7 +144,7 @@ def plot_signal(tau_ir):
             ]
         )
         plt.plot(t, rcv_sig[f"rcv{i}"]["sig"])
-        plt.savefig(os.path.join(ROOT_DATA, f"received_signal_rcv{i}.png"))
+        plt.savefig(os.path.join(root_img, f"received_signal_rcv{i}.png"))
 
         # Received spectrum
         plt.figure()
@@ -153,7 +154,7 @@ def plot_signal(tau_ir):
         plt.title(f"Received spectrum - rcv{i}")
         plt.grid()
         plt.xlim([0, 50])
-        plt.savefig(os.path.join(ROOT_DATA, f"received_spectrum_rcv{i}.png"))
+        plt.savefig(os.path.join(root_img, f"received_spectrum_rcv{i}.png"))
 
     # Source signal
     plt.figure()
@@ -168,7 +169,7 @@ def plot_signal(tau_ir):
             t[idx_window_center] + rcv_sig["tau_ir"] / 2,
         ]
     )
-    plt.savefig(os.path.join(ROOT_DATA, "source_signal.png"))
+    plt.savefig(os.path.join(root_img, "source_signal.png"))
 
     # Source spectrum
     plt.figure()
@@ -178,7 +179,7 @@ def plot_signal(tau_ir):
     plt.title("Source spectrum")
     plt.grid()
     plt.xlim([0, 50])
-    plt.savefig(os.path.join(ROOT_DATA, "source_spectrum.png"))
+    plt.savefig(os.path.join(root_img, "source_spectrum.png"))
 
     # Source psd
     plt.figure()
@@ -188,7 +189,7 @@ def plot_signal(tau_ir):
     plt.title("Source PSD")
     plt.grid()
     plt.xlim([0, 50])
-    plt.savefig(os.path.join(ROOT_DATA, "source_psd.png"))
+    plt.savefig(os.path.join(root_img, "source_psd.png"))
 
 
 def plot_mean_csdm(fig_props, Rx, Rs, Rv):
@@ -493,12 +494,66 @@ def plot_signal_components(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=0):
     plot_rcv_autocorr(fig_props, t, rcv_sig, rcv_noise, rcv_idx_to_plot=rcv_idx_to_plot)
 
 
+def plot_dist_vs_snr(
+    snrs, dist_cs, dist_cw, title="", dist_type="hermitian_angle", savepath=None
+):
+    if dist_type == "hermitian_angle":
+        plot_dist_vs_snr_hermitian_angle(snrs, dist_cs, dist_cw, title, savepath)
+    elif dist_type == "frobenius":
+        plot_dist_vs_snr_frobenius(snrs, dist_cs, dist_cw, title, savepath)
+
+
+def plot_dist_vs_snr_frobenius(snrs, dist_cs, dist_cw, title, savepath=None):
+    plt.figure()
+    plt.plot(snrs, 10 * np.log10(dist_cs), marker=".", label=r"$\mathcal{D}_F^{(CS)}$")
+    plt.plot(snrs, 10 * np.log10(dist_cw), marker=".", label=r"$\mathcal{D}_F^{(CW)}$")
+    plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")
+    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
+    plt.title(title)
+    plt.legend()
+    plt.grid()
+
+    if savepath is not None:
+        plt.savefig(savepath)
+
+
+def plot_dist_vs_snr_hermitian_angle(snrs, dist_cs, dist_cw, title, savepath=None):
+    plt.figure()
+    plt.plot(
+        snrs,
+        dist_cs,
+        label=r"$\theta_{\textrm{CS}}$",
+        linestyle="-",
+        color="b",
+        marker="o",
+        linewidth=0.5,
+        markersize=2,
+    )
+    plt.plot(
+        snrs,
+        dist_cw,
+        label=r"$\theta_{\textrm{CW}}$",
+        linestyle="-",
+        color="r",
+        marker="o",
+        linewidth=0.5,
+        markersize=2,
+    )
+    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
+    plt.ylabel(r"$\theta \, \textrm{[°]}$")
+    plt.title(title)
+    plt.legend()
+    plt.grid()
+
+    if savepath is not None:
+        plt.savefig(savepath)
+
+
 def compare_rtf_vs_received_spectrum(
-    fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None, rcv_signal=None
+    fig_props, kraken_data, f_cs, rtf_cs, f_cw=None, rtf_cw=None, rcv_signal=None
 ):
 
     # Load true RTF
-    kraken_data = load_data()
     f_true, rtf_true = interp_true_rtf(kraken_data, f_cs)
 
     # Derive Hermitian angle distance
@@ -559,10 +614,9 @@ def compare_rtf_vs_received_spectrum(
     print("Mean Hermitian angle distance CW: ", np.nanmean(dist_cw))
 
 
-def plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
+def plot_rtf_estimation(fig_props, kraken_data, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
 
     # Load true RTF
-    kraken_data = load_data()
     f_true, rtf_true = true_rtf(kraken_data)
 
     # Plot RTF
@@ -718,61 +772,6 @@ def plot_rtf_estimation(fig_props, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
         plt.savefig(
             os.path.join(fig_props["folder_path"], f"rtf_estimation_smooth_rcv{i}.png")
         )
-
-
-def plot_dist_vs_snr(
-    snrs, dist_cs, dist_cw, title="", dist_type="hermitian_angle", savepath=None
-):
-    if dist_type == "hermitian_angle":
-        plot_dist_vs_snr_hermitian_angle(snrs, dist_cs, dist_cw, title, savepath)
-    elif dist_type == "frobenius":
-        plot_dist_vs_snr_frobenius(snrs, dist_cs, dist_cw, title, savepath)
-
-
-def plot_dist_vs_snr_frobenius(snrs, dist_cs, dist_cw, title, savepath=None):
-    plt.figure()
-    plt.plot(snrs, 10 * np.log10(dist_cs), marker=".", label=r"$\mathcal{D}_F^{(CS)}$")
-    plt.plot(snrs, 10 * np.log10(dist_cw), marker=".", label=r"$\mathcal{D}_F^{(CW)}$")
-    plt.ylabel(r"$\mathcal{D}_F\, \textrm{[dB]}$")
-    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
-    plt.title(title)
-    plt.legend()
-    plt.grid()
-
-    if savepath is not None:
-        plt.savefig(savepath)
-
-
-def plot_dist_vs_snr_hermitian_angle(snrs, dist_cs, dist_cw, title, savepath=None):
-    plt.figure()
-    plt.plot(
-        snrs,
-        dist_cs,
-        label=r"$\theta_{\textrm{CS}}$",
-        linestyle="-",
-        color="b",
-        marker="o",
-        linewidth=0.5,
-        markersize=2,
-    )
-    plt.plot(
-        snrs,
-        dist_cw,
-        label=r"$\theta_{\textrm{CW}}$",
-        linestyle="-",
-        color="r",
-        marker="o",
-        linewidth=0.5,
-        markersize=2,
-    )
-    plt.xlabel(r"$\textrm{snr} \, \textrm{[dB]}$")
-    plt.ylabel(r"$\theta \, \textrm{[°]}$")
-    plt.title(title)
-    plt.legend()
-    plt.grid()
-
-    if savepath is not None:
-        plt.savefig(savepath)
 
 
 if __name__ == "__main__":

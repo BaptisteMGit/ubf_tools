@@ -20,7 +20,7 @@ import matplotlib.ticker as ticker
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from propa.rtf.ideal_waveguide import print_arrivals
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
-from propa.rtf.rtf_estimation.rtf_estimation_const import *
+from propa.rtf.rtf_estimation_const import *
 from propa.rtf.rtf_utils import (
     D_frobenius,
     D_hermitian_angle,

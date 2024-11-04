@@ -30,7 +30,7 @@ from propa.rtf.rtf_utils import (
     true_rtf,
     interp_true_rtf,
 )
-from propa.rtf.rtf_estimation.rtf_estimation_const import *
+from propa.rtf.rtf_estimation_const import *
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *
 

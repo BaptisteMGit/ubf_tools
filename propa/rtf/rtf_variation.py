@@ -13,9 +13,17 @@
 # Import
 # ======================================================================================================================
 import numpy as np
+import xarray as xr
 import matplotlib.pyplot as plt
 from propa.rtf.ideal_waveguide import *
-from propa.rtf.rtf_utils import D_frobenius, D_hermitian_angle, D1, D2
+from propa.rtf.rtf_estimation_const import ROOT_RTF_DATA
+from propa.rtf.rtf_utils import (
+    D_frobenius,
+    D_hermitian_angle,
+    D1,
+    D2,
+    D_hermitian_angle_fast,
+)
 from publication.PublicationFigure import PubFigure
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
@@ -25,19 +33,23 @@ PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsi
 # ======================================================================================================================
 
 
-def PI_var_r(
-    depth,
-    f,
-    r_src,
-    z_src,
-    x_rcv,
-    z_rcv,
-    covered_range,
-    dr,
-    dist="both",
-    smooth_tf=False,
-    bottom_bc="pressure_release",
-):
+def PI_var_r(varin):
+
+    # Read input vars
+    depth = varin.get("depth")
+    f = varin.get("f")
+    r_src = varin.get("r_src")
+    z_src = varin.get("z_src")
+    x_rcv = varin.get("x_rcv")
+    z_rcv = varin.get("z_rcv")
+    covered_range = varin.get("covered_range")
+    dr = varin.get("dr")
+    zmin = varin.get("zmin")
+    zmax = varin.get("zmax")
+    dz = varin.get("dz")
+    dist = varin.get("dist")
+    smooth_tf = varin.get("smooth_tf")
+    bottom_bc = varin.get("bottom_bc")
 
     # Create folder to store the images
     root, folder = get_folderpath(
@@ -53,72 +65,38 @@ def PI_var_r(
 
     n_rcv = len(x_rcv)
 
-    # Define the ranges
+    # Create the list of potential source positions
     r_src_list = np.arange(r_src - covered_range, r_src + covered_range, dr)
+    zmin = np.max([1, zmin])  # Avoid negative depths
+    z_src_list = np.arange(zmin, zmax, dz)
 
     # Ensure that the ref position is included in the list
-    r_src_list = np.sort(np.append(r_src_list, r_src))
-    # Cast to required shape depending on the number of receivers
-    r_src_list_2D = np.tile(r_src_list, (len(x_rcv) - 1, 1)).T
-    nb_pos_r = len(r_src_list)
-    r_src_rcv_ref = r_src_list_2D - x_rcv[0]
-    r_src_rcv = r_src_list_2D - x_rcv[1:]
+    r_src_list = np.unique(np.sort(np.append(r_src_list, r_src)))
+    z_src_list = np.unique(np.sort(np.append(z_src_list, z_src)))
 
-    # Derive the RTF vector for the reference source position
-    r_ref = r_src - x_rcv
-    # Derive the reference RTF vector g_ref is of shape (nf, nrcv, 1)
-    f, g_ref = g_mat(
-        f,
-        z_src,
-        z_rcv_ref=z_rcv,
-        z_rcv=z_rcv,
-        depth=depth,
-        r_rcv_ref=r_ref[0],
-        r=r_ref[1:],
-        smooth_tf=smooth_tf,
-    )
+    ds, loaded = load_rtf_data(r=r_src_list, z=z_src_list)
+    if loaded:
+        g_r = ds["PI_rz_real"] + 1j * ds["PI_rz_imag"]
+        g_r = g_r.sel(z=z_src).values
+        g_r = np.expand_dims(g_r, axis=-1)
+        g_ref = ds["PI_ref_real"] + 1j * ds["PI_ref_imag"]
+        g_ref = np.expand_dims(g_ref.values, axis=(1, 3))
 
-    f, g_r = g_mat(
-        f,
-        z_src,
-        z_rcv_ref=z_rcv,
-        z_rcv=z_rcv,
-        depth=depth,
-        r_rcv_ref=r_src_rcv_ref,
-        r=r_src_rcv,
-        smooth_tf=smooth_tf,
-    )
+    else:
+        raise ValueError("Data not found")
 
     # Expand g_ref to the same shape as g_r
     tile_shape = tuple([g_r.shape[i] - g_ref.shape[i] + 1 for i in range(g_r.ndim)])
     g_ref_expanded = np.tile(g_ref, tile_shape)
 
-    # Select dist function to apply
-    if dist == "frobenius":
-        dist_func = D_frobenius
-        dist_kwargs = {}
-        # Total dist params
-        apply_log = True
-        ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
-        title = r"$\mathcal{D}_F(r, z=z_s)$"
-        label = r"$\mathcal{D}_F$"
-
-    elif dist == "hermitian_angle":
-        dist_func = D_hermitian_angle
-        dist_kwargs = {
-            "unit": "deg",
-            "apply_mean": True,
-        }
-        apply_log = False
-        ylabel = r"$\theta \, \textrm{[°]}$"
-        title = r"$\theta(r, z=z_s)$"
-        label = r"$\theta$"
+    #  apply_log, _, title, label, ylabel, _
+    dist_func, dist_kwargs, dist_properties = pick_distance_to_apply(dist, axis="r")
 
     total_dist = dist_func(g_ref, g_r, **dist_kwargs)
     range_displacement = r_src_list - r_src
 
     # Convert to dB
-    if apply_log:
+    if dist_properties["apply_log"]:
         total_dist += 1
         total_dist = 10 * np.log10(total_dist)
 
@@ -128,9 +106,9 @@ def PI_var_r(
         range_displacement,
         total_dist,
     )
-    plt.ylabel(ylabel)
+    plt.ylabel(dist_properties["ylabel"])
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-    plt.title(title)
+    plt.title(dist_properties["title"])
     plt.grid()
 
     # Save
@@ -142,10 +120,12 @@ def PI_var_r(
 
     plt.figure()
 
-    for i_rcv in range(n_rcv - 1):
+    for i_rcv in range(n_rcv):
 
-        g_ref_expanded_single_rcv = g_ref_expanded[:, :, i_rcv : i_rcv + 1, :]
-        g_r_single_rcv = g_r[:, :, i_rcv : i_rcv + 1, :]
+        g_ref_expanded_single_rcv = np.expand_dims(
+            g_ref_expanded[:, :, i_rcv, :], axis=2
+        )
+        g_r_single_rcv = np.expand_dims(g_r[:, :, i_rcv, :], axis=2)
         # Append a ones array to get shape corresponding to a two receiver case : (nf, nr, 2, nz)
         g_ref_expanded_single_rcv = np.concatenate(
             [np.ones_like(g_ref_expanded_single_rcv), g_ref_expanded_single_rcv], axis=2
@@ -160,13 +140,14 @@ def PI_var_r(
         plt.plot(
             range_displacement,
             single_rcv_pair_dist,
-            label=label + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
+            label=dist_properties["label"] + r"$\,\, (\Pi_{" + f"{i_rcv},0" + "})$",
         )
 
-    plt.plot(range_displacement, total_dist, label=label, color="k")
+    plt.plot(range_displacement, total_dist, label=dist_properties["label"], color="k")
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
     # plt.ylim(0, max(d1max, d2max) + 5)
-    plt.ylabel(ylabel)
+    plt.ylabel(dist_properties["ylabel"])
+    plt.title(dist_properties["title"])
     plt.legend()
     plt.grid()
 
@@ -179,19 +160,24 @@ def PI_var_r(
     plt.close("all")
 
 
-def PI_var_z(
-    depth,
-    f,
-    r_src,
-    z_src,
-    x_rcv,
-    z_rcv,
-    zmin,
-    zmax,
-    dz,
-    dist="both",
-    bottom_bc="pressure_release",
-):
+def PI_var_z(varin):
+
+    # Read input vars
+    depth = varin.get("depth")
+    f = varin.get("f")
+    r_src = varin.get("r_src")
+    z_src = varin.get("z_src")
+    x_rcv = varin.get("x_rcv")
+    z_rcv = varin.get("z_rcv")
+    covered_range = varin.get("covered_range")
+    dr = varin.get("dr")
+    zmin = varin.get("zmin")
+    zmax = varin.get("zmax")
+    dz = varin.get("dz")
+    dist = varin.get("dist")
+    smooth_tf = varin.get("smooth_tf")
+    bottom_bc = varin.get("bottom_bc")
+
     # Create folder to store the images
     root, folder = get_folderpath(x_rcv, r_src, z_src, bottom_bc=bottom_bc)
     subfolder = f"dz_{dz}"
@@ -201,65 +187,36 @@ def PI_var_z(
 
     n_rcv = len(x_rcv)
 
-    # Define detphs
+    # Create the list of potential source positions
+    r_src_list = np.arange(r_src - covered_range, r_src + covered_range, dr)
     zmin = np.max([1, zmin])  # Avoid negative depths
     z_src_list = np.arange(zmin, zmax, dz)
 
     # Ensure that the ref position is included in the list
-    z_src_list = np.sort(np.append(z_src_list, z_src))
-    nb_pos_z = len(z_src_list)
-    r_src_rcv_ref = r_src - x_rcv[0]
-    r_src_rcv = r_src - x_rcv[1:]
+    r_src_list = np.unique(np.sort(np.append(r_src_list, r_src)))
+    z_src_list = np.unique(np.sort(np.append(z_src_list, z_src)))
 
-    # Derive the reference RTF vector, g_ref is of shape (nf, nrcv, 1)
-    r_ref = r_src - x_rcv
+    ds, loaded = load_rtf_data(r=r_src_list, z=z_src_list)
+    if loaded:
+        g_z = ds["PI_rz_real"] + 1j * ds["PI_rz_imag"]
+        g_z = g_z.sel(r=r_src).values
+        g_z = np.expand_dims(g_z, axis=1)
+        g_ref = ds["PI_ref_real"].values + 1j * ds["PI_ref_imag"].values
+        g_ref = np.expand_dims(g_ref, axis=(1, 3))
 
-    f, g_ref = g_mat(
-        f,
-        z_src,
-        z_rcv_ref=z_rcv,
-        z_rcv=z_rcv,
-        depth=depth,
-        r_rcv_ref=r_ref[0],
-        r=r_ref[1:],
-    )
-
-    f, g_z = g_mat(
-        f,
-        z_src_list,
-        z_rcv_ref=z_rcv,
-        z_rcv=z_rcv,
-        depth=depth,
-        r_rcv_ref=r_src_rcv_ref,
-        r=r_src_rcv,
-    )
+    else:
+        raise ValueError("Data not found")
 
     # Expand g_ref to the same shape as g_z
     tile_shape = tuple([g_z.shape[i] - g_ref.shape[i] + 1 for i in range(g_z.ndim)])
     g_ref_expanded = np.tile(g_ref, tile_shape)
 
-    # Select dist function to apply
-    if dist == "frobenius":
-        dist_func = D_frobenius
-        dist_kwargs = {}
-        apply_log = True
-        ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
-        title = r"$\mathcal{D}_F(r=r_s, z)$"
-    elif dist == "hermitian_angle":
-        dist_func = D_hermitian_angle
-        dist_kwargs = {
-            "unit": "deg",
-            "apply_mean": True,
-        }
-        apply_log = False
-        ylabel = r"$\theta \, \textrm{[°]}$"
-        title = r"$\theta(r=r_s, z)$"
-
+    dist_func, dist_kwargs, dist_properties = pick_distance_to_apply(dist, axis="z")
     total_dist = dist_func(g_ref, g_z, **dist_kwargs)
     depth_displacement = z_src_list - z_src
 
     # Convert to dB
-    if apply_log:
+    if dist_properties["apply_log"]:
         total_dist += 1
         total_dist = 10 * np.log10(total_dist)
 
@@ -269,9 +226,9 @@ def PI_var_z(
         depth_displacement,
         total_dist,
     )
-    plt.ylabel(ylabel)
+    plt.ylabel(dist_properties["ylabel"])
     plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
-    plt.title(title)
+    plt.title(dist_properties["title"])
     plt.grid()
 
     # Save
@@ -281,75 +238,62 @@ def PI_var_z(
     )
     plt.savefig(fpath)
 
-    if dist == "D1" or dist == "both":
-        d1 = np.sum(np.abs(g_ref_expanded - g_z), axis=0)
-        # Convert to dB
-        d1 += 1
-        d1 = 10 * np.log10(d1)
-    if dist == "D2" or dist == "both":
-        d2 = np.sum(np.abs(g_ref_expanded - g_z) ** 2, axis=0)
-        # Convert to dB
-        d2 += 1
-        d2 = 10 * np.log10(d2)
+    plt.figure()
+    # Iterate over receivers
+    for i_rcv in range(n_rcv):
+        g_ref_expanded_single_rcv = np.expand_dims(
+            g_ref_expanded[:, :, i_rcv, :], axis=2
+        )
+        g_z_single_rcv = np.expand_dims(g_z[:, :, i_rcv, :], axis=2)
+        # Append a ones array to get shape corresponding to a two receiver case : (nf, nr, 2, nz)
+        g_ref_expanded_single_rcv = np.concatenate(
+            [np.ones_like(g_ref_expanded_single_rcv), g_ref_expanded_single_rcv], axis=2
+        )
+        g_z_single_rcv = np.concatenate(
+            [np.ones_like(g_z_single_rcv), g_z_single_rcv], axis=2
+        )
 
-    # d1max = 0
-    # d2max = 0
-    # plt.figure()
-    # # Iterate over receivers
-    # for i_rcv in range(n_rcv - 1):
-    #     if dist == "D1" or dist == "both":
-    #         plt.plot(
-    #             depth_displacement,
-    #             d1[0, i_rcv, :],
-    #             label=r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
-    #         )
-    #         d1max = np.max(d1)
-    #     if dist == "D2" or dist == "both":
-    #         plt.plot(
-    #             depth_displacement,
-    #             d2[0, i_rcv, :],
-    #             label=r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$",
-    #         )
-    #         d2max = np.max(d2)
+        single_rcv_pair_dist = dist_func(
+            g_ref_expanded_single_rcv, g_z_single_rcv, **dist_kwargs
+        )
+        plt.plot(
+            depth_displacement,
+            single_rcv_pair_dist,
+            label=dist_properties["label"] + r"$\,\, (\Pi_{" + f"{i_rcv},0" + "})$",
+        )
 
-    # plt.plot(depth_displacement, total_dist, label=r"$D_{F}$", color="k")
-    # plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
-    # plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
+    plt.plot(depth_displacement, total_dist, label=dist_properties["label"], color="k")
+    plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
+    plt.ylabel(dist_properties["ylabel"])
+    plt.title(dist_properties["title"])
+    plt.legend()
     # plt.ylim(0, max(d1max, d2max) + 5)
-    # plt.grid()
+    plt.grid()
 
-    # if dist == "both" or n_rcv > 2:
-    #     plt.legend()
-
-    # if dist == "both":
-    #     dist_lab = "D1D2"
-    # else:
-    #     dist_lab = dist
-
-    # # Save
-    # fpath = os.path.join(
-    #     root,
-    #     f"{dist_lab}_z_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
-    # )
-    # plt.savefig(fpath)
+    # Save
+    fpath = os.path.join(
+        root,
+        f"{dist}_z_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_rcvs.png",
+    )
+    plt.savefig(fpath)
     plt.close("all")
 
 
-def Pi_var_rz(
-    depth,
-    f,
-    r_src,
-    z_src,
-    x_rcv,
-    z_rcv,
-    covered_range,
-    dr,
-    zmin,
-    zmax,
-    dz,
-    dist="both",
-    bottom_bc="pressure_release",
-):
+def Pi_var_rz(varin):
+    # Read input vars
+    depth = varin.get("depth")
+    f = varin.get("f")
+    r_src = varin.get("r_src")
+    z_src = varin.get("z_src")
+    x_rcv = varin.get("x_rcv")
+    z_rcv = varin.get("z_rcv")
+    covered_range = varin.get("covered_range")
+    dr = varin.get("dr")
+    zmin = varin.get("zmin")
+    zmax = varin.get("zmax")
+    dz = varin.get("dz")
+    dist = varin.get("dist")
+    bottom_bc = varin.get("bottom_bc")
 
     # Create folder to store the images
     root, folder = get_folderpath(x_rcv, r_src, z_src, bottom_bc=bottom_bc)
@@ -366,63 +310,67 @@ def Pi_var_rz(
     z_src_list = np.arange(zmin, zmax, dz)
 
     # Ensure that the ref position is included in the list
-    r_src_list = np.sort(np.append(r_src_list, r_src))
-    z_src_list = np.sort(np.append(z_src_list, z_src))
+    r_src_list = np.unique(np.sort(np.append(r_src_list, r_src)))
+    z_src_list = np.unique(np.sort(np.append(z_src_list, z_src)))
 
-    nb_pos_r = len(r_src_list)
-    nb_pos_z = len(z_src_list)
+    ds, loaded = load_rtf_data(r=r_src_list, z=z_src_list)
+    if loaded:
+        g_rz = ds["PI_rz_real"].values + 1j * ds["PI_rz_imag"].values
+        g_ref = ds["PI_ref_real"].values + 1j * ds["PI_ref_imag"].values
+        g_ref = np.expand_dims(g_ref, axis=(1, 3))
 
-    # Cast to required shape depending on the number of receivers
-    r_src_list_2D = np.tile(r_src_list, (len(x_rcv) - 1, 1)).T
-    r_src_rcv_ref = r_src_list_2D - x_rcv[0]
-    r_src_rcv = r_src_list_2D - x_rcv[1:]
+    else:
+        # Cast to required shape depending on the number of receivers
+        r_src_list_2D = np.tile(r_src_list, (len(x_rcv), 1)).T
+        r_src_rcv_ref = r_src_list_2D - x_rcv[0]
+        r_src_rcv = r_src_list_2D - x_rcv
 
-    # Derive the reference RTF vector, g_ref is of shape (nf, nr, nrcv, 1)
-    r_ref = r_src - x_rcv
-    f, g_ref = g_mat(
-        f,
-        z_src,
-        z_rcv_ref=z_rcv,
-        z_rcv=z_rcv,
-        depth=depth,
-        r_rcv_ref=r_ref[0],
-        r=r_ref[1:],
-        bottom_bc=bottom_bc,
-    )
+        # Derive the reference RTF vector, g_ref is of shape (nf, nr, nrcv, 1)
+        r_ref = r_src - x_rcv
+        f, g_ref = g_mat(
+            f,
+            z_src,
+            z_rcv_ref=z_rcv,
+            z_rcv=z_rcv,
+            depth=depth,
+            r_rcv_ref=r_ref[0],
+            r=r_ref,
+            bottom_bc=bottom_bc,
+        )
 
-    t0 = time()
-    f, g_rz = g_mat(
-        f,
-        z_src_list,
-        z_rcv_ref=z_rcv,
-        z_rcv=z_rcv,
-        depth=depth,
-        r_rcv_ref=r_src_rcv_ref,
-        r=r_src_rcv,
-        bottom_bc=bottom_bc,
-    )
-    print(time() - t0)
+        print(
+            "Computing the RTF for the source varying along the range and depth axes ..."
+        )
+        t0 = time()
+        f, g_rz = g_mat(
+            f,
+            z_src_list,
+            z_rcv_ref=z_rcv,
+            z_rcv=z_rcv,
+            depth=depth,
+            r_rcv_ref=r_src_rcv_ref,
+            r=r_src_rcv,
+            bottom_bc=bottom_bc,
+        )
+        print(f"Elapsed time : {time() - t0:.2f} s")
+
+        # Save as netcdf
+        save_rtf(
+            f=f,
+            r=r_src_list,
+            z=z_src_list,
+            x_rcv=x_rcv,
+            PI_rz=g_rz,
+            Pi_ref=g_ref,
+            r_src=r_src,
+            z_src=z_src,
+        )
 
     # Expand g_ref to the same shape as g_rz
     tile_shape = tuple([g_rz.shape[i] - g_ref.shape[i] + 1 for i in range(g_rz.ndim)])
     g_ref_expanded = np.tile(g_ref, tile_shape)
 
-    # Select dist function to apply
-    if dist == "frobenius":
-        dist_func = D_frobenius
-        dist_kwargs = {}
-        apply_log = True
-        colobar_title = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
-        title = r"$\mathcal{D}_F(r, z)$"
-    elif dist == "hermitian_angle":
-        dist_func = D_hermitian_angle
-        dist_kwargs = {
-            "unit": "deg",
-            "apply_mean": True,
-        }
-        apply_log = False
-        colobar_title = r"$\theta \, \textrm{[°]}$"
-        title = r"$\theta(r, z)$"
+    dist_func, dist_kwargs, dist_properties = pick_distance_to_apply(dist, axis="rz")
 
     total_dist = dist_func(g_ref, g_rz, **dist_kwargs)
 
@@ -430,9 +378,13 @@ def Pi_var_rz(
     depth_displacement = z_src_list - z_src
 
     # Convert to dB
-    if apply_log:
+    if dist_properties["apply_log"]:
         total_dist += 1
         total_dist = 10 * np.log10(total_dist)
+
+    # Define common vmin and vmax
+    vmin = 0
+    vmax = np.percentile(total_dist, 75)
 
     # Plot generalized distance map
     plt.figure()
@@ -441,14 +393,14 @@ def Pi_var_rz(
         depth_displacement,
         total_dist.T,
         shading="auto",
-        cmap="jet_r",
-        vmin=0,
-        vmax=np.percentile(total_dist, 45),
+        cmap="binary",
+        vmin=vmin,
+        vmax=vmax,
     )
-    plt.colorbar(label=colobar_title)
+    plt.colorbar(label=dist_properties["colorbar_title"])
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
     plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
-    plt.title(title)
+    plt.title(dist_properties["title"])
 
     # Save
     fpath = os.path.join(
@@ -457,71 +409,112 @@ def Pi_var_rz(
     )
     plt.savefig(fpath)
 
-    if dist == "D1" or dist == "both":
-        d1 = D1(g_ref_expanded, g_rz)
-        # Convert to dB
-        d1 += 1
-        d1 = 10 * np.log10(d1)
-    if dist == "D2" or dist == "both":
-        d2 = D2(g_ref_expanded, g_rz)
-        # Convert to dB
-        d2 += 1
-        d2 = 10 * np.log10(d2)
+    for i_rcv in range(n_rcv):
 
-        # for i_rcv in range(n_rcv - 1):
+        g_ref_expanded_single_rcv = np.expand_dims(
+            g_ref_expanded[:, :, i_rcv, :], axis=2
+        )
+        g_rz_single_rcv = np.expand_dims(g_rz[:, :, i_rcv, :], axis=2)
+        # Append a ones array to get shape corresponding to a two receiver case : (nf, nr, 2, nz)
+        g_ref_expanded_single_rcv = np.concatenate(
+            [np.ones_like(g_ref_expanded_single_rcv), g_ref_expanded_single_rcv], axis=2
+        )
+        g_rz_single_rcv = np.concatenate(
+            [np.ones_like(g_rz_single_rcv), g_rz_single_rcv], axis=2
+        )
 
-        #     # plot d1 map
-        #     if dist == "D1" or dist == "both":
-        #         plt.figure()
-        #         plt.pcolormesh(
-        #             range_displacement,
-        #             depth_displacement,
-        #             d1[:, i_rcv, :].T,
-        #             shading="auto",
-        #             cmap="jet_r",
-        #             vmin=0,
-        #             # vmax=np.median(d1),
-        #             vmax=np.percentile(d1, 45),
-        #         )
-        #         plt.colorbar(label=colobar_title)
-        #         plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-        #         plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
-        #         plt.title(r"$D_1$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
+        single_rcv_pair_dist = dist_func(
+            g_ref_expanded_single_rcv, g_rz_single_rcv, **dist_kwargs
+        )
 
-        #         # Save
-        #         fpath = os.path.join(
-        #             root,
-        #             f"D1_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
-        #             # f"D1_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_dr_{dr}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_dz_{dz}.png",
-        #         )
-        #         plt.savefig(fpath)
+        plt.figure()
+        plt.pcolormesh(
+            range_displacement,
+            depth_displacement,
+            single_rcv_pair_dist.T,
+            shading="auto",
+            cmap="binary",
+            vmin=vmin,
+            vmax=vmax,
+            # vmax=np.percentile(single_rcv_pair_dist, 45),
+        )
+        plt.colorbar(label=dist_properties["colorbar_title"])
+        plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
+        plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
+        plt.title(dist_properties["label"] + r"$\,\, (\Pi_{" + f"{i_rcv},0" + "})$")
 
-        #     # plot d2 map
-        #     if dist == "D2" or dist == "both":
-        #         plt.figure()
-        #         plt.pcolormesh(
-        #             range_displacement,
-        #             depth_displacement,
-        #             d2[:, i_rcv, :].T,
-        #             shading="auto",
-        #             cmap="jet_r",
-        #             vmin=0,
-        #             vmax=np.percentile(d2, 45),
-        #         )
-        #         plt.colorbar(label=colobar_title)
-        #         plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-        #         plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
-        #         plt.title(r"$D$" + r"$\,\, (\Pi_{" + f"{i_rcv+1},0" + "})$")
-
-        #         # Save
-        #         fpath = os.path.join(
-        #             root,
-        #             f"D2_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
-        #             # f"D2_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_dr_{dr}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_dr_{dz}.png",
-        #         )
-        #         plt.savefig(fpath)
+        # Save
+        fpath = os.path.join(
+            root,
+            f"{dist}_rcv_{i_rcv}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
+            # f"D2_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_dr_{dr}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_dr_{dz}.png",
+        )
+        plt.savefig(fpath)
 
         plt.close("all")
+
+
+def save_rtf(f, r, z, x_rcv, PI_rz, Pi_ref, r_src, z_src):
+    # PI_rz is of shape (nf, nr, nrcv, nz)
+    ds = xr.Dataset(
+        data_vars={
+            "PI_rz_real": (["f", "r", "idx_rcv", "z"], PI_rz.real),
+            "PI_rz_imag": (["f", "r", "idx_rcv", "z"], PI_rz.imag),
+            "PI_ref_real": (["f", "idx_rcv"], Pi_ref.squeeze().real),
+            "PI_ref_imag": (["f", "idx_rcv"], Pi_ref.squeeze().imag),
+            "x_rcv": (["idx_rcv"], x_rcv),
+        },
+        coords={
+            "f": f,
+            "r": r,
+            "idx_rcv": np.arange(len(x_rcv)),
+            "z": z,
+        },
+        attrs={
+            "description": f"Dataset containing the RTF for a source varying along the range and depth axes in ideal waveguide.",
+        },
+    )
+
+    ds["f"].attrs["units"] = "Hz"
+    ds["r"].attrs["units"] = "m"
+    ds["z"].attrs["units"] = "m"
+    ds["x_rcv"].attrs["units"] = "m"
+    ds["PI_rz_real"].attrs[
+        "description"
+    ] = "RTF for a source varying along the range and depth axes."
+    ds["PI_ref_real"].attrs[
+        "description"
+    ] = f"RTF for a reference source position at r={r_src}m, z={z_src}m."
+
+    dr = np.round(r[1] - r[0], 2)
+    dz = np.round(z[1] - z[0], 2)
+
+    fname = (
+        f"PI_rz_r_{r[0]:.0f}_{r[-1]:.0f}_z_{z[0]:.0f}_{z[-1]:.0f}_dr_{dr}_dz_{dz}.nc"
+    )
+    fpath = os.path.join(ROOT_RTF_DATA, fname)
+
+    ds.to_netcdf(fpath)
+
+
+def load_rtf_data(r, z):
+    dr = np.round(r[1] - r[0], 2)
+    dz = np.round(z[1] - z[0], 2)
+
+    fname = (
+        f"PI_rz_r_{r[0]:.0f}_{r[-1]:.0f}_z_{z[0]:.0f}_{z[-1]:.0f}_dr_{dr}_dz_{dz}.nc"
+    )
+    fpath = os.path.join(ROOT_RTF_DATA, fname)
+
+    # Check if file exists
+    if not os.path.exists(fpath):
+        loaded = False  # File does not exist
+        ds = None
+    else:
+        ds = xr.open_dataset(fpath)
+        loaded = True  # File exists
+
+    return ds, loaded
 
 
 def get_folderpath(x_rcv, r_src, z_src, bottom_bc="pressure_release"):
@@ -549,53 +542,31 @@ def full_test(
     # Define the receivers position
     x_rcv = np.array([i * delta_rcv for i in range(n_rcv)])
 
-    # # Variations along the range axis
-    PI_var_r(
-        depth,
-        f,
-        r_src,
-        z_src,
-        x_rcv,
-        z_rcv,
-        covered_range=covered_range,
-        dr=dr,
-        dist=dist,
-        bottom_bc=bottom_bc,
-    )
-
-    # Variations along the depth axis
-    PI_var_z(
-        depth,
-        f,
-        r_src,
-        z_src,
-        x_rcv,
-        z_rcv,
-        zmin=zmin,
-        zmax=zmax,
-        dz=dz,
-        dist=dist,
-        bottom_bc=bottom_bc,
-    )
+    # Input vars
+    varin = {
+        "depth": depth,
+        "f": f,
+        "r_src": r_src,
+        "z_src": z_src,
+        "x_rcv": x_rcv,
+        "z_rcv": z_rcv,
+        "covered_range": covered_range,
+        "dr": dr,
+        "zmin": zmin,
+        "zmax": zmax,
+        "dz": dz,
+        "dist": dist,
+        "bottom_bc": bottom_bc,
+    }
 
     # Variations along the range and depth axes
-    Pi_var_rz(
-        depth,
-        f,
-        r_src,
-        z_src,
-        x_rcv,
-        z_rcv,
-        covered_range=covered_range,
-        dr=dr,
-        zmin=zmin,
-        zmax=zmax,
-        dz=dz,
-        dist=dist,
-        bottom_bc=bottom_bc,
-    )
+    Pi_var_rz(varin)
 
-    # Transmission loss for a few frequencies
+    # # Variations along the range axis
+    PI_var_r(varin)
+
+    # Variations along the depth axis
+    PI_var_z(varin)
 
     # Create folder to store the images
     root, folder = get_folderpath(x_rcv, r_src, z_src, bottom_bc=bottom_bc)
@@ -658,11 +629,11 @@ def full_test(
 
 
 def sensibility_ideal_waveguide(
-    param="delta_rcv", axis="both", bottom_bc="pressure_release"
+    param="delta_rcv", axis="both", bottom_bc="pressure_release", dist="hermitian_angle"
 ):
-    """Study the sensibility of the proposed distance metric (D_frobenius) to the source position.
+    """Study the distance metric(D_frobenius or hermitian_angle) sensibility.
     The source position is varied along the range axis and the depth axis. The distance metric is computed for each source position.
-    The sensibility along each axis is evaluated separately by computing the main lobe aperture of D_frobenius.
+    The sensibility along each axis is evaluated separately by computing the main lobe aperture of the distance metric.
     Several parameters are studied :
        - The distance between receivers (delta_rcv)
        - The reference source range (r_src)
@@ -672,23 +643,23 @@ def sensibility_ideal_waveguide(
 
     # Sensibility to the distance between receivers
     if param == "delta_rcv":
-        sensibility_ideal_waveguide_delta_rcv(axis=axis, bottom_bc=bottom_bc)
+        sensibility_ideal_waveguide_delta_rcv(axis=axis, bottom_bc=bottom_bc, dist=dist)
 
     # Sensibility to the reference source range
     if param == "r_src":
-        sensibility_ideal_waveguide_r_src(axis=axis, bottom_bc=bottom_bc)
+        sensibility_ideal_waveguide_r_src(axis=axis, bottom_bc=bottom_bc, dist=dist)
 
     # Sensibility to the reference source depth
     if param == "z_src":
-        sensibility_ideal_waveguide_z_src(axis=axis, bottom_bc=bottom_bc)
+        sensibility_ideal_waveguide_z_src(axis=axis, bottom_bc=bottom_bc, dist=dist)
 
     # Sensibility to the number of receivers
     if param == "n_rcv":
-        sensibility_ideal_waveguide_n_rcv(axis=axis, bottom_bc=bottom_bc)
+        sensibility_ideal_waveguide_n_rcv(axis=axis, bottom_bc=bottom_bc, dist=dist)
 
     # Sensibility to the frequency resolution
     if param == "df":
-        sensibility_ideal_waveguide_df(axis=axis, bottom_bc=bottom_bc)
+        sensibility_ideal_waveguide_df(axis=axis, bottom_bc=bottom_bc, dist=dist)
 
 
 def derive_Pi_ref(r_src, z_src, x_rcv, f, axis="r", bottom_bc="pressure_release"):
@@ -757,7 +728,9 @@ def derive_Pi_ref(r_src, z_src, x_rcv, f, axis="r", bottom_bc="pressure_release"
         return z_src_list, r_src_rcv_ref, r_src_rcv, depth, f, g_ref
 
 
-def sensibility_ideal_waveguide_delta_rcv(axis="r", bottom_bc="pressure_release"):
+def sensibility_ideal_waveguide_delta_rcv(
+    axis="r", bottom_bc="pressure_release", dist="hermitian_angle"
+):
     # Define the range of the study
     # delta_rcv = np.logspace(0, 4, 10)
     # delta_max = 3 * 1e3
@@ -848,10 +821,15 @@ def sensibility_ideal_waveguide_delta_rcv(axis="r", bottom_bc="pressure_release"
     param_var["name"] = "delta_rcv"
     param_var["unit"] = "m"
     param_var["root_img"] = root_img
-    param_var["th_r"] = 3
-    param_var["th_z"] = 3
     param_var["values"] = delta_rcv
     param_var["xlabel"] = r"$\delta_{r_{rcv}} \, \textrm{[m]}$"
+
+    # Get distance properties for plots
+    _, _, dist_properties = pick_distance_to_apply(dist)
+    param_var["th_r"] = dist_properties["th_main_lobe"]
+    param_var["th_z"] = dist_properties["th_main_lobe"]
+    param_var["dist_unit"] = dist_properties["dist_unit"]
+    param_var["dist_name"] = dist
 
     apertures_r = []
     apertures_z = []
@@ -863,15 +841,18 @@ def sensibility_ideal_waveguide_delta_rcv(axis="r", bottom_bc="pressure_release"
         param_var["value"] = delta
         input_var["delta_rcv"] = delta
         study_param_sensibility(
-            input_var, param_var, apertures_r, apertures_z, axis=axis
+            input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
     # Plot the main lobe aperture as a function of delta_rcv
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
-def sensibility_ideal_waveguide_r_src(axis="both", bottom_bc="pressure_release"):
-    src_range = np.arange(10, 101, 10) * 1e3
+def sensibility_ideal_waveguide_r_src(
+    axis="both", bottom_bc="pressure_release", dist="hermitian_angle"
+):
+    src_range = np.arange(10, 101, 1) * 1e3
+    # src_range = np.arange(27, 33, 1) * 1e3
 
     # Define the source depth
     _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
@@ -890,10 +871,15 @@ def sensibility_ideal_waveguide_r_src(axis="both", bottom_bc="pressure_release")
     param_var["name"] = "r_src"
     param_var["unit"] = "m"
     param_var["root_img"] = root_img
-    param_var["th_r"] = 3
-    param_var["th_z"] = 3
     param_var["values"] = src_range
     param_var["xlabel"] = r"$r_{s} \, \textrm{[m]}$"
+
+    # Get distance properties for plots
+    _, _, dist_properties = pick_distance_to_apply(dist)
+    param_var["th_r"] = dist_properties["th_main_lobe"]
+    param_var["th_z"] = dist_properties["th_main_lobe"]
+    param_var["dist_unit"] = dist_properties["dist_unit"]
+    param_var["dist_name"] = dist
 
     apertures_r = []
     apertures_z = []
@@ -913,7 +899,9 @@ def sensibility_ideal_waveguide_r_src(axis="both", bottom_bc="pressure_release")
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
-def sensibility_ideal_waveguide_z_src(axis, bottom_bc="pressure_release"):
+def sensibility_ideal_waveguide_z_src(
+    axis, bottom_bc="pressure_release", dist="hermitian_angle"
+):
     src_depth = np.arange(1, 991, 1)
 
     _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
@@ -932,10 +920,15 @@ def sensibility_ideal_waveguide_z_src(axis, bottom_bc="pressure_release"):
     param_var["name"] = "z_src"
     param_var["unit"] = "m"
     param_var["root_img"] = root_img
-    param_var["th_r"] = 3
-    param_var["th_z"] = 3
     param_var["values"] = src_depth
     param_var["xlabel"] = r"$z_{s} \, \textrm{[m]}$"
+
+    # Get distance properties for plots
+    _, _, dist_properties = pick_distance_to_apply(dist)
+    param_var["th_r"] = dist_properties["th_main_lobe"]
+    param_var["th_z"] = dist_properties["th_main_lobe"]
+    param_var["dist_unit"] = dist_properties["dist_unit"]
+    param_var["dist_name"] = dist
 
     apertures_r = []
     apertures_z = []
@@ -955,7 +948,9 @@ def sensibility_ideal_waveguide_z_src(axis, bottom_bc="pressure_release"):
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
-def sensibility_ideal_waveguide_n_rcv(axis, bottom_bc="pressure_release"):
+def sensibility_ideal_waveguide_n_rcv(
+    axis, bottom_bc="pressure_release", dist="hermitian_angle"
+):
     nb_rcv = np.arange(2, 11, 1)
 
     _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
@@ -974,10 +969,15 @@ def sensibility_ideal_waveguide_n_rcv(axis, bottom_bc="pressure_release"):
     param_var["name"] = "n_rcv"
     param_var["unit"] = ""
     param_var["root_img"] = root_img
-    param_var["th_r"] = 3
-    param_var["th_z"] = 3
     param_var["values"] = nb_rcv
     param_var["xlabel"] = r"$n_{rcv}$"
+
+    # Get distance properties for plots
+    _, _, dist_properties = pick_distance_to_apply(dist)
+    param_var["th_r"] = dist_properties["th_main_lobe"]
+    param_var["th_z"] = dist_properties["th_main_lobe"]
+    param_var["dist_unit"] = dist_properties["dist_unit"]
+    param_var["dist_name"] = dist
 
     apertures_r = []
     apertures_z = []
@@ -997,7 +997,9 @@ def sensibility_ideal_waveguide_n_rcv(axis, bottom_bc="pressure_release"):
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
-def sensibility_ideal_waveguide_df(axis, bottom_bc="pressure_release"):
+def sensibility_ideal_waveguide_df(
+    axis, bottom_bc="pressure_release", dist="hermitian_angle"
+):
     freq_res = np.arange(0.1, 15.1, 0.1)
 
     _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
@@ -1016,10 +1018,15 @@ def sensibility_ideal_waveguide_df(axis, bottom_bc="pressure_release"):
     param_var["name"] = "df"
     param_var["unit"] = "Hz"
     param_var["root_img"] = root_img
-    param_var["th_r"] = 3
-    param_var["th_z"] = 3
     param_var["values"] = freq_res
     param_var["xlabel"] = r"$\Delta_f \, \textrm{Hz}$"
+
+    # Get distance properties for plots
+    _, _, dist_properties = pick_distance_to_apply(dist)
+    param_var["th_r"] = dist_properties["th_main_lobe"]
+    param_var["th_z"] = dist_properties["th_main_lobe"]
+    param_var["dist_unit"] = dist_properties["dist_unit"]
+    param_var["dist_name"] = dist
 
     apertures_r = []
     apertures_z = []
@@ -1052,14 +1059,14 @@ def init_sensibility_path(param, bottom_bc="pressure_release"):
     return root
 
 
-def total_dist_aperture(total_dist, x, th_dB=10):
+def total_dist_aperture(total_dist, x, th=10):
     """Derive main lobe aperture along the x axis.
 
     Aperture is defined as the width of the 3dB main lobe.
     """
 
     # Find the main lobe
-    idx_main_lobe = np.where(total_dist <= th_dB)[0]
+    idx_main_lobe = np.where(total_dist <= th)[0]
     i1 = idx_main_lobe[0]
     i2 = idx_main_lobe[-1]
     aperture = np.abs(x[i1] - x[i2])
@@ -1074,6 +1081,7 @@ def study_param_sensibility(
     aperture_z,
     axis="both",
     bottom_bc="pressure_release",
+    dist="hermitian_angle",
 ):
     # Load default params
     depth, _, _, z_rcv, _, _, f = default_params()
@@ -1099,6 +1107,9 @@ def study_param_sensibility(
     # Define the receivers position
     x_rcv = np.array([i * delta_rcv for i in range(n_rcv)])
 
+    # Get distance properties
+    dist_func, dist_kwargs, dist_properties = pick_distance_to_apply(dist)
+
     ### Range axis ###
     if axis == "r" or axis == "both":
         # Derive ref RTF
@@ -1119,12 +1130,19 @@ def study_param_sensibility(
         )
 
         # Derive the distance
-        total_dist_r = D_frobenius(g_ref, g)
+        total_dist_r = dist_func(g_ref, g, **dist_kwargs)
         range_displacement = r_src_list - r_src
 
+        # Apply log if required
+        if dist_properties["apply_log"]:
+            total_dist_r += 1
+            total_dist_r = 10 * np.log10(total_dist_r)
+
         # Derive aperure of the main lobe
-        th_r = 3  # threshold
-        i1_r, i2_r, ap_r = total_dist_aperture(total_dist_r, range_displacement, th_r)
+        # th_r = 3  # threshold
+        i1_r, i2_r, ap_r = total_dist_aperture(
+            total_dist_r, range_displacement, dist_properties["th_main_lobe"]
+        )
         aperture_r.append(ap_r)
 
     ### Depth axis ###
@@ -1147,17 +1165,28 @@ def study_param_sensibility(
         )
 
         # Derive the distance
-        total_dist_z = D_frobenius(g_ref, g)
+        total_dist_z = dist_func(g_ref, g, **dist_kwargs)
         depth_displacement = z_src_list - z_src
 
+        # Apply log if required
+        if dist_properties["apply_log"]:
+            total_dist_z += 1
+            total_dist_z = 10 * np.log10(total_dist_z)
+
         # Derive aperure of the main lobe
-        th_z = 3  # threshold
-        i1_z, i2_z, ap_z = total_dist_aperture(total_dist_z, range_displacement, th_z)
+        i1_z, i2_z, ap_z = total_dist_aperture(
+            total_dist_z, range_displacement, dist_properties["th_main_lobe"]
+        )
         aperture_z.append(ap_z)
 
     # Plot generalized distance map
+
     if idx % 5 == 0:
         if axis == "r" or axis == "both":
+
+            # Get distance properties for plots
+            _, _, dist_properties = pick_distance_to_apply(dist, axis="r")
+
             plt.figure()
             plt.plot(
                 range_displacement,
@@ -1168,10 +1197,12 @@ def study_param_sensibility(
             plt.axvline(x=range_displacement[i2_r], color="r", linestyle="--")
             plt.text(
                 range_displacement[i2_r] + 0.15,
-                80,
+                0.8 * np.max(total_dist_r),
                 r"$2 r_{"
                 + f"{th_r}"
-                + r"\textrm{dB} } = "
+                + r"\textrm{"
+                + dist_properties["dist_unit"]
+                + r"} } = "
                 + f"{ap_r}"
                 + r"\, \textrm{[m]}$",
                 rotation=90,
@@ -1179,10 +1210,10 @@ def study_param_sensibility(
                 fontsize=12,
             )
 
-            plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
+            plt.ylabel(dist_properties["ylabel"])
             plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
-            plt.title(r"$D_{Frobenius}$")
-            plt.ylim(0, 100)
+            plt.title(dist_properties["title"])
+            # plt.ylim(0, 100)
             plt.grid()
 
             param_lab = f"{value:.3f}{unit}"
@@ -1190,10 +1221,20 @@ def study_param_sensibility(
             if not os.path.exists(root_r):
                 os.makedirs(root_r)
 
-            plt.savefig(os.path.join(root_r, f"{name}_{param_lab}.png"))
+            plt.savefig(os.path.join(root_r, f"{dist}_{name}_{param_lab}.png"))
             plt.close("all")
 
         if axis == "z" or axis == "both":
+
+            # Get distance properties for plots
+            _, _, dist_properties = pick_distance_to_apply(dist, axis="z")
+
+            plt.figure()
+            plt.plot(
+                range_displacement,
+                total_dist_r,
+            )
+
             plt.figure()
             plt.plot(
                 depth_displacement,
@@ -1205,10 +1246,12 @@ def study_param_sensibility(
 
             plt.text(
                 depth_displacement[i2_z] + 0.15,
-                30,
+                0.8 * np.max(total_dist_z),
                 r"$2 z_{"
                 + f"{th_z}"
-                + r"\textrm{dB} } = "
+                + r"\textrm{"
+                + dist_properties["dist_unit"]
+                + r"} } = "
                 + f"{ap_z}"
                 + r"\, \textrm{[m]}$",
                 rotation=90,
@@ -1216,10 +1259,10 @@ def study_param_sensibility(
                 fontsize=12,
             )
 
-            plt.ylabel(r"$10log_{10}(1+D)\, \textrm{[dB]}$")
+            plt.ylabel(dist_properties["ylabel"])
             plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
-            plt.title(r"$D_{Frobenius}$")
-            plt.ylim(0, 50)
+            plt.title(dist_properties["title"])
+            # plt.ylim(0, 50)
             plt.grid()
 
             param_lab = f"{value:.3f}{unit}"
@@ -1227,7 +1270,7 @@ def study_param_sensibility(
             if not os.path.exists(root_z):
                 os.makedirs(root_z)
 
-            plt.savefig(os.path.join(root_z, f"{name}_{param_lab}.png"))
+            plt.savefig(os.path.join(root_z, f"{dist}_{name}_{param_lab}.png"))
             plt.close("all")
 
 
@@ -1243,10 +1286,14 @@ def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
         plt.plot(values, apertures_r, marker=".", color="k")
         plt.xlabel(xlabel)
         plt.ylabel(
-            r"$2 r_{" + f"{param_var['th_r']}" + r"\textrm{dB} }\, \textrm{[m]}$"
+            r"$2 r_{"
+            + f"{param_var['th_r']}"
+            + r"\textrm{"
+            + param_var["dist_unit"]
+            + r" } }\, \textrm{[m]}$"
         )
         plt.grid()
-        plt.savefig(os.path.join(root_img, f"aperture_r.png"))
+        plt.savefig(os.path.join(root_img, f"{param_var['dist_name']}_aperture_r.png"))
         plt.close("all")
 
     if axis == "z" or axis == "both":
@@ -1254,10 +1301,14 @@ def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
         plt.plot(values, apertures_z, marker=".", color="r")
         plt.xlabel(xlabel)
         plt.ylabel(
-            r"$2 z_{" + f"{param_var['th_z']}" + r"\textrm{dB} }\, \textrm{[m]}$"
+            r"$2 z_{"
+            + f"{param_var['th_z']}"
+            + r"\textrm{"
+            + param_var["dist_unit"]
+            + r" } }\, \textrm{[m]}$"
         )
         plt.grid()
-        plt.savefig(os.path.join(root_img, f"aperture_z.png"))
+        plt.savefig(os.path.join(root_img, f"{param_var['dist_name']}_aperture_z.png"))
         plt.close("all")
 
     if axis == "both":
@@ -1267,23 +1318,37 @@ def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
             apertures_r,
             marker=".",
             color="k",
-            label=r"$2 r_{" + f"{param_var['th_r']}" + r"\textrm{dB} }$",
+            label=r"$2 r_{"
+            + f"{param_var['th_r']}"
+            + r"\textrm{"
+            + param_var["dist_unit"]
+            + r" }}$",
         )
         plt.plot(
             values,
             apertures_z,
             marker=".",
             color="r",
-            label=r"$2 z_{" + f"{param_var['th_r']}" + r"\textrm{dB} }$",
+            label=r"$2 z_{"
+            + f"{param_var['th_r']}"
+            + r"\textrm{"
+            + param_var["dist_unit"]
+            + r" }}$",
         )
 
         plt.xlabel(xlabel)
         plt.ylabel(
-            r"$2 x_{" + f"{param_var['th_r']}" + r"\textrm{dB} }\, \textrm{[m]}$"
+            r"$2 x_{"
+            + f"{param_var['th_r']}"
+            + r"\textrm{"
+            + param_var["dist_unit"]
+            + r" }} \, \textrm{[m]}$"
         )
         plt.grid()
         plt.legend()
-        plt.savefig(os.path.join(root_img, f"aperture_r_z.png"))
+        plt.savefig(
+            os.path.join(root_img, f"{param_var['dist_name']}_aperture_r_z.png")
+        )
         plt.close("all")
 
 
@@ -1307,6 +1372,66 @@ def default_params():
     # f = np.linspace(fmin, fmax, nb_freq)
 
     return depth, r_src, z_src, z_rcv, n_rcv, delta_rcv, f
+
+
+def pick_distance_to_apply(dist, axis="rz"):
+    # Select dist function to apply
+    if dist == "frobenius":
+        dist_func = D_frobenius
+        dist_kwargs = {}
+        apply_log = True
+        colobar_title = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+        th_main_lobe = 3  # 3dB main lobe
+        label = r"$\mathcal{D}_F$"
+        dist_unit = "dB"
+
+        if axis == "rz":
+            title = r"$\mathcal{D}_F(r, z)$"
+            ylabel = None
+
+        elif axis == "r":
+            title = r"$\mathcal{D}_F(r, z=z_s)$"
+            ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+
+        elif axis == "z":
+            title = r"$\mathcal{D}_F(r=r_s, z)$"
+            ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+
+    elif dist == "hermitian_angle":
+        dist_func = D_hermitian_angle_fast
+        dist_kwargs = {
+            "unit": "deg",
+            "apply_mean": True,
+        }
+        apply_log = False
+        colobar_title = r"$\theta \, \textrm{[°]}$"
+        th_main_lobe = 0.5  # 1° main lobe
+        label = r"$\theta$"
+        dist_unit = "°"
+
+        if axis == "rz":
+            title = r"$\theta(r, z)$"
+            ylabel = None
+
+        elif axis == "r":
+            title = r"$\theta(r, z=z_s)$"
+            ylabel = r"$\theta \, \textrm{[°]}$"
+
+        elif axis == "z":
+            title = r"$\theta(r=r_s, z)$"
+            ylabel = r"$\theta \, \textrm{[°]}$"
+
+    dist_properties = {
+        "title": title,
+        "label": label,
+        "ylabel": ylabel,
+        "dist_unit": dist_unit,
+        "apply_log": apply_log,
+        "th_main_lobe": th_main_lobe,
+        "colorbar_title": colobar_title,
+    }
+
+    return (dist_func, dist_kwargs, dist_properties)
 
 
 if __name__ == "__main__":
@@ -1339,21 +1464,32 @@ if __name__ == "__main__":
     # )
 
     bottom_bc = "pressure_release"
+    dists = ["hermitian_angle", "frobenius"]
 
-    covered_range = 2.5
-    dr = 0.1
-    zmin = 2.5
-    zmax = 7.5
-    dz = 0.1
-    full_test(
-        covered_range, dr, zmin, zmax, dz, dist="hermitian_angle", bottom_bc=bottom_bc
-    )
+    # covered_range = 15 * 1e3
+    # dr = 100
+    # zmin = 1
+    # zmax = 999
+    # dz = 10
+    # for dist in dists:
+    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
-    # params = ["r_src", "z_src", "n_rcv", "delta_rcv", "df"]
-    # # # params = ["z_src"]
+    # covered_range = 5
+    # dr = 0.1
+    # zmin = 1
+    # zmax = 11
+    # dz = 0.1
+    # for dist in dists:
+    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
-    # for param in params:
-    #     sensibility_ideal_waveguide(param=param, axis="both", bottom_bc=bottom_bc)
+    params = ["r_src", "z_src", "n_rcv", "delta_rcv", "df"]
+    # params = ["r_src"]
+    # dist = "hermitian_angle"
+    for param in params:
+        for dist in dists:
+            sensibility_ideal_waveguide(
+                param=param, axis="both", bottom_bc=bottom_bc, dist=dist
+            )
 
     # covered_range = 10 * 1e3
     # dr = 10

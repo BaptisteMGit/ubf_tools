@@ -679,6 +679,23 @@ def sensibility_ideal_waveguide(
         sensibility_ideal_waveguide_df(axis=axis, bottom_bc=bottom_bc, dist=dist)
 
 
+def sensibility_ideal_waveguide_2d(
+    param_couple=["n_rcv", "delta_rcv"],
+    axis="both",
+    bottom_bc="pressure_release",
+    dist="hermitian_angle",
+):
+    """
+    Study the distance metric (D_frobenius or hermitian_angle) sensibility as a function of two params.
+    """
+
+    # Sensibility to couple of parameters n_rcv and delta_rcv
+    if "n_rcv" in param_couple and "delta_rcv" in param_couple:
+        sensibility_ideal_waveguide_2d_n_rcv_delta_rcv(
+            axis=axis, bottom_bc=bottom_bc, dist=dist
+        )
+
+
 def derive_Pi_ref(r_src, z_src, x_rcv, f, axis="r", bottom_bc="pressure_release"):
 
     depth, _, _, z_rcv, _, _, _ = default_params()
@@ -1014,6 +1031,69 @@ def sensibility_ideal_waveguide_n_rcv(
     plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
 
 
+def sensibility_ideal_waveguide_2d_n_rcv_delta_rcv(
+    axis, bottom_bc="pressure_release", dist="hermitian_angle"
+):
+    # nb_rcv = np.arange(2, 11, 1)
+    # delta_rcv = np.arange(0.2, 20.2, 0.2)
+
+    nb_rcv = [2, 3, 4, 5, 6]
+    delta_rcv = [1, 5, 10, 20]
+
+    _, r_src, z_src, _, n_rcv, _, f = default_params()
+
+    root_img = init_sensibility_path("n_rcv_delta_rcv", bottom_bc=bottom_bc)
+
+    # Define input vars
+    input_var = {}
+    input_var["r_src"] = r_src
+    input_var["z_src"] = z_src
+    input_var["df"] = f[1] - f[0]
+
+    # Define param vars
+    param_var = {}
+    param_var["name"] = "n_rcv_delta_rcv"
+    param_var["unit"] = ""
+    param_var["root_img"] = root_img
+    param_var["values_x"] = nb_rcv
+    param_var["values_y"] = delta_rcv
+    param_var["xlabel"] = r"$n_{rcv}$"
+    param_var["ylabel"] = r"$\delta_{rcv}$"
+
+    # Get distance properties for plots
+    _, _, dist_properties = pick_distance_to_apply(dist)
+    param_var["dist_name"] = dist
+    param_var["th_r"] = dist_properties["th_main_lobe"]
+    param_var["th_z"] = dist_properties["th_main_lobe"]
+    param_var["dist_unit"] = dist_properties["dist_unit"]
+    param_var["colorbar_title"] = dist_properties["colorbar_title"]
+
+    apertures_rr = []
+    apertures_zz = []
+
+    # Compute the distance metric for each delta_rcv
+    for i_d, n_rcv in enumerate(nb_rcv):
+        apertures_r = []
+        apertures_z = []
+        for i_d2, d_rcv in enumerate(delta_rcv):
+
+            input_var["n_rcv"] = n_rcv
+            input_var["delta_rcv"] = d_rcv
+
+            study_param_sensibility_2d(
+                input_var, apertures_r, apertures_z, axis=axis, dist=dist
+            )
+
+        apertures_rr.append(apertures_r)
+        apertures_zz.append(apertures_z)
+
+    apertures_rr = np.array(apertures_rr)
+    apertures_zz = np.array(apertures_zz)
+
+    # Plot the main lobe aperture as a function of delta_rcv
+    plot_sensibility_2d(apertures_rr, apertures_zz, param_var, axis=axis)
+
+
 def sensibility_ideal_waveguide_df(
     axis, bottom_bc="pressure_release", dist="hermitian_angle"
 ):
@@ -1291,6 +1371,101 @@ def study_param_sensibility(
             plt.close("all")
 
 
+def study_param_sensibility_2d(
+    input_var,
+    aperture_r,
+    aperture_z,
+    axis="both",
+    bottom_bc="pressure_release",
+    dist="hermitian_angle",
+):
+    # Load default params
+    depth, _, _, z_rcv, _, _, f = default_params()
+
+    # Load input vars
+    delta_rcv = input_var["delta_rcv"]
+    r_src = input_var["r_src"]
+    z_src = input_var["z_src"]
+    n_rcv = input_var["n_rcv"]
+    df = input_var["df"]
+    f = np.arange(f[0], f[-1], df)
+
+    # Define the receivers position
+    x_rcv = np.array([i * delta_rcv for i in range(n_rcv)])
+
+    # Get distance properties
+    dist_func, dist_kwargs, dist_properties = pick_distance_to_apply(dist)
+
+    ### Range axis ###
+    if axis == "r" or axis == "both":
+        # Derive ref RTF
+        r_src_list, r_src_rcv_ref, r_src_rcv, _, f, g_ref = derive_Pi_ref(
+            r_src, z_src, x_rcv, f, axis="r", bottom_bc=bottom_bc
+        )
+
+        # Derive RTF for the set of potential source positions (r_src_rcv)
+        f, g = g_mat(
+            f,
+            z_src,
+            z_rcv_ref=z_rcv,
+            z_rcv=z_rcv,
+            depth=depth,
+            r_rcv_ref=r_src_rcv_ref,
+            r=r_src_rcv,
+            bottom_bc=bottom_bc,
+        )
+
+        # Derive the distance
+        total_dist_r = dist_func(g_ref, g, **dist_kwargs)
+        range_displacement = r_src_list - r_src
+
+        # Apply log if required
+        if dist_properties["apply_log"]:
+            total_dist_r += 1
+            total_dist_r = 10 * np.log10(total_dist_r)
+
+        # Derive aperure of the main lobe
+        # th_r = 3  # threshold
+        i1_r, i2_r, ap_r = total_dist_aperture(
+            total_dist_r, range_displacement, dist_properties["th_main_lobe"]
+        )
+        aperture_r.append(ap_r)
+
+    ### Depth axis ###
+    if axis == "z" or axis == "both":
+        # Derive ref RTF
+        z_src_list, r_src_rcv_ref, r_src_rcv, _, f, g_ref = derive_Pi_ref(
+            r_src, z_src, x_rcv, f, axis="z", bottom_bc=bottom_bc
+        )
+
+        # Derive RTF for the set of potential source positions (r_src_rcv)
+        f, g = g_mat(
+            f,
+            z_src_list,
+            z_rcv_ref=z_rcv,
+            z_rcv=z_rcv,
+            depth=depth,
+            r_rcv_ref=r_src_rcv_ref,
+            r=r_src_rcv,
+            bottom_bc=bottom_bc,
+        )
+
+        # Derive the distance
+        total_dist_z = dist_func(g_ref, g, **dist_kwargs)
+        depth_displacement = z_src_list - z_src
+
+        # Apply log if required
+        if dist_properties["apply_log"]:
+            total_dist_z += 1
+            total_dist_z = 10 * np.log10(total_dist_z)
+
+        # Derive aperure of the main lobe
+        i1_z, i2_z, ap_z = total_dist_aperture(
+            total_dist_z, range_displacement, dist_properties["th_main_lobe"]
+        )
+        aperture_z.append(ap_z)
+
+
 def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
 
     # Unpack param vars
@@ -1366,6 +1541,98 @@ def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
         plt.savefig(
             os.path.join(root_img, f"{param_var['dist_name']}_aperture_r_z.png")
         )
+        plt.close("all")
+
+
+def plot_sensibility_2d(apertures_rr, apertures_zz, param_var, axis="both"):
+
+    # Unpack param vars
+    root_img = param_var["root_img"]
+    values_x = param_var["values_x"]
+    values_y = param_var["values_y"]
+    xlabel = param_var["xlabel"]
+    ylabel = param_var["ylabel"]
+
+    pad = 0.2
+    cmap = "jet_r"  # "binary"
+    aspect = "auto"
+    cbar_width = "3%"
+
+    if axis == "r" or axis == "both":
+        # Define vmin and vmax
+        vmin = 0
+        vmax = np.percentile(apertures_rr, 50)
+
+        # Plot aperture map
+        _, ax = plt.subplots(1, 1)
+        pc = plt.pcolormesh(
+            values_x,
+            values_y,
+            apertures_rr.T,
+            shading="auto",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.title(
+            r"$2 r_{"
+            + f"{param_var['th_r']}"
+            + r"\textrm{"
+            + param_var["dist_unit"]
+            + r" } }\, \textrm{[m]}$"
+        )
+        ax.set_aspect(aspect, adjustable="box")
+        divider1 = make_axes_locatable(ax)
+        cax = divider1.append_axes("right", size=cbar_width, pad=pad)
+        plt.colorbar(pc, cax=cax, label=param_var["colorbar_title"])
+
+        # Save
+        fpath = os.path.join(
+            root_img,
+            f"{param_var['dist_name']}_aperture_rr.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight", dpi=300)
+        plt.close("all")
+
+    if axis == "z" or axis == "both":
+        # Define vmin and vmax
+        vmin = 0
+        vmax = np.percentile(apertures_zz, 50)
+
+        # Plot aperture map
+        _, ax = plt.subplots(1, 1)
+        pc = plt.pcolormesh(
+            values_x,
+            values_y,
+            apertures_zz.T,
+            shading="auto",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+
+        plt.xlabel(xlabel)
+        plt.ylabel(ylabel)
+        plt.title(
+            r"$2 z_{"
+            + f"{param_var['th_z']}"
+            + r"\textrm{"
+            + param_var["dist_unit"]
+            + r" } }\, \textrm{[m]}$"
+        )
+        ax.set_aspect(aspect, adjustable="box")
+        divider1 = make_axes_locatable(ax)
+        cax = divider1.append_axes("right", size=cbar_width, pad=pad)
+        plt.colorbar(pc, cax=cax, label=param_var["colorbar_title"])
+
+        # Save
+        fpath = os.path.join(
+            root_img,
+            f"{param_var['dist_name']}_aperture_zz.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight", dpi=300)
         plt.close("all")
 
 
@@ -1483,13 +1750,13 @@ if __name__ == "__main__":
     bottom_bc = "pressure_release"
     dists = ["hermitian_angle", "frobenius"]
 
-    covered_range = 15 * 1e3
-    dr = 100
-    zmin = 1
-    zmax = 999
-    dz = 10
-    for dist in dists:
-        full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
+    # covered_range = 15 * 1e3
+    # dr = 100
+    # zmin = 1
+    # zmax = 999
+    # dz = 10
+    # for dist in dists:
+    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
     # covered_range = 5
     # dz = 0.1
@@ -1497,19 +1764,24 @@ if __name__ == "__main__":
     # zmin = 1
     # zmax = 11
 
-    # params = ["delta_rcv", "df"]
-    # # params = ["r_src"]
-    # # dist = "hermitian_angle"
+    params = ["n_rcv", "delta_rcv"]
+    # params = ["r_src"]
+    # dist = "hermitian_angle"
     # for param in params:
     #     for dist in dists:
     #         sensibility_ideal_waveguide(
     #             param=param, axis="both", bottom_bc=bottom_bc, dist=dist
     #         )
 
-    covered_range = 10
-    dz = 0.1
-    dr = 0.1
-    zmin = 1
-    zmax = 21
     for dist in dists:
-        full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
+        sensibility_ideal_waveguide_2d(
+            param_couple=["n_rcv", "delta_rcv"], bottom_bc=bottom_bc, dist=dist
+        )
+
+    # covered_range = 10
+    # dz = 0.1
+    # dr = 0.1
+    # zmin = 1
+    # zmax = 21
+    # for dist in dists:
+    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)

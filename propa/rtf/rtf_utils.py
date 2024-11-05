@@ -166,8 +166,8 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
     elif rtf.ndim == 2:
         # Calculate inner product and norms along the receiver axis (axis=1)
         ax_rcv = 1
-        inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=ax_rcv))
-        norm_ref = np.linalg.norm(rtf_ref_expanded, axis=ax_rcv)
+        inner_prod = np.abs(np.sum(rtf_ref.conj() * rtf, axis=ax_rcv))
+        norm_ref = np.linalg.norm(rtf_ref, axis=ax_rcv)
         norm_rtf = np.linalg.norm(rtf, axis=ax_rcv)
 
         # Cosine of Hermitian angle, clipped for stability

@@ -15,17 +15,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-# import xarray as xr
-# import scipy.interpolate as sp_int
-
 from misc import *
-from propa.rtf.ideal_waveguide import *
-
-# from propa.kraken_toolbox.run_kraken import runkraken
-# from propa.rtf.ideal_waveguide import waveguide_params
-# from localisation.verlinden.testcases.testcase_envs import TestCase1_0
-# from real_data_analysis.real_data_utils import get_csdm_snapshot_number
-from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_consts import *
 
 from propa.rtf.rtf_utils import (
     D_frobenius,
@@ -33,10 +23,12 @@ from propa.rtf.rtf_utils import (
     true_rtf,
     interp_true_rtf,
 )
+from propa.rtf.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import *
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_kraken import *
+from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_consts import *
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_testcases import *
 
 
@@ -59,7 +51,7 @@ def dist_versus_snr(snrs, testcase=1, dist="frobenius"):
     for i_snr, snr_dB in enumerate(snrs):
         plot = False
         # plot = i_snr % 100 == 0
-        print(f"i = {i_snr}, snr = {snr_dB}, plot = {plot}")
+        # print(f"i = {i_snr}, snr = {snr_dB}, plot = {plot}")
         if testcase == 1:
             # plot = False
             res_snr = testcase_1_unpropagated_whitenoise(snr_dB=snr_dB, plot=plot)
@@ -266,7 +258,7 @@ if __name__ == "__main__":
     # for snr_dB in snrs:
     #     testcase_1_unpropagated_whitenoise(snr_dB=snr_dB)
 
-    res = testcase_1_unpropagated_whitenoise(snr_dB=20)
+    res = testcase_1_unpropagated_whitenoise(snr_dB=0)
     # compare_rtf_vs_received_spectrum(
     #     res["props"],
     #     res["cs"]["f"],
@@ -276,16 +268,16 @@ if __name__ == "__main__":
     #     rcv_signal=res["signal"],
     # )
 
-    testcase_2_propagated_whitenoise(snr_dB=20)
+    testcase_2_propagated_whitenoise(snr_dB=0)
     # testcase_3_propagated_interference(plot=True, interference_type="dirac")
-    testcase_3_propagated_interference(snr_dB=20, plot=True, interference_type="z_call")
+    testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z_call")
     # testcase_3_propagated_interference(snr_dB=10, plot=True, interference_type="z_call")
     # testcase_3_propagated_interference(plot=True, interference_type="ricker_pulse")
 
     # check_interp()
     # snrs = [0, 10]
-    # # snrs = np.round(np.arange(-50, 50, 0.1), 1)
-    # # snrs = np.arange(-5, 5, 1)
+    # snrs = np.round(np.arange(-50, 50, 0.1), 1)
+    # snrs = np.arange(-5, 5, 1)
 
     # dist_versus_snr(snrs, testcase=1, dist="hermitian_angle")
     # dist_versus_snr(snrs, testcase=2, dist="hermitian_angle")

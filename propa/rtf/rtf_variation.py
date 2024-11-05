@@ -15,6 +15,8 @@
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
+
+
 from propa.rtf.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import ROOT_RTF_DATA
 from propa.rtf.rtf_utils import (
@@ -25,6 +27,7 @@ from propa.rtf.rtf_utils import (
     D_hermitian_angle_fast,
 )
 from publication.PublicationFigure import PubFigure
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
 
@@ -266,7 +269,7 @@ def PI_var_z(varin):
     plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
     plt.ylabel(dist_properties["ylabel"])
     plt.title(dist_properties["title"])
-    plt.legend()
+    plt.legend(loc="upper left")
     # plt.ylim(0, max(d1max, d2max) + 5)
     plt.grid()
 
@@ -384,30 +387,42 @@ def Pi_var_rz(varin):
 
     # Define common vmin and vmax
     vmin = 0
-    vmax = np.percentile(total_dist, 75)
+    vmax = np.percentile(total_dist, 50)
+    cmap = "jet_r"  # "binary"
+    aspect = (
+        "equal"
+        if np.round(range_displacement[-1] - range_displacement[0], 0)
+        == np.round(depth_displacement[-1] - depth_displacement[0], 0)
+        else "auto"
+    )
 
     # Plot generalized distance map
-    plt.figure()
-    plt.pcolormesh(
+    pad = 0.2
+    cbar_width = "3%"
+    _, ax = plt.subplots(1, 1)
+    pc = plt.pcolormesh(
         range_displacement,
         depth_displacement,
         total_dist.T,
         shading="auto",
-        cmap="binary",
+        cmap=cmap,
         vmin=vmin,
         vmax=vmax,
     )
-    plt.colorbar(label=dist_properties["colorbar_title"])
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
     plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
     plt.title(dist_properties["title"])
+    ax.set_aspect(aspect, adjustable="box")
+    divider1 = make_axes_locatable(ax)
+    cax = divider1.append_axes("right", size=cbar_width, pad=pad)
+    plt.colorbar(pc, cax=cax, label=dist_properties["colorbar_title"])
 
     # Save
     fpath = os.path.join(
         root,
         f"{dist}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
     )
-    plt.savefig(fpath)
+    plt.savefig(fpath, bbox_inches="tight", dpi=300)
 
     for i_rcv in range(n_rcv):
 
@@ -427,21 +442,23 @@ def Pi_var_rz(varin):
             g_ref_expanded_single_rcv, g_rz_single_rcv, **dist_kwargs
         )
 
-        plt.figure()
-        plt.pcolormesh(
+        _, ax = plt.subplots(1, 1)
+        pc = plt.pcolormesh(
             range_displacement,
             depth_displacement,
             single_rcv_pair_dist.T,
             shading="auto",
-            cmap="binary",
+            cmap=cmap,
             vmin=vmin,
             vmax=vmax,
-            # vmax=np.percentile(single_rcv_pair_dist, 45),
         )
-        plt.colorbar(label=dist_properties["colorbar_title"])
         plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
         plt.ylabel(r"$z - z_s \, \textrm{[m]}$")
         plt.title(dist_properties["label"] + r"$\,\, (\Pi_{" + f"{i_rcv},0" + "})$")
+        ax.set_aspect(aspect, adjustable="box")
+        divider1 = make_axes_locatable(ax)
+        cax = divider1.append_axes("right", size=cbar_width, pad=pad)
+        plt.colorbar(pc, cax=cax, label=dist_properties["colorbar_title"])
 
         # Save
         fpath = os.path.join(
@@ -449,7 +466,7 @@ def Pi_var_rz(varin):
             f"{dist}_rcv_{i_rcv}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
             # f"D2_rcv_{i_rcv+1}_rr_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_dr_{dr}_zz_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_dr_{dz}.png",
         )
-        plt.savefig(fpath)
+        plt.savefig(fpath, bbox_inches="tight", dpi=300)
 
         plt.close("all")
 
@@ -562,7 +579,7 @@ def full_test(
     # Variations along the range and depth axes
     Pi_var_rz(varin)
 
-    # # Variations along the range axis
+    # Variations along the range axis
     PI_var_r(varin)
 
     # Variations along the depth axis
@@ -805,7 +822,7 @@ def sensibility_ideal_waveguide_delta_rcv(
         ]
     )
 
-    _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
+    _, r_src, z_src, _, n_rcv, _, f = default_params()
 
     root_img = init_sensibility_path("delta_rcv", bottom_bc=bottom_bc)
 
@@ -1380,7 +1397,7 @@ def pick_distance_to_apply(dist, axis="rz"):
         dist_func = D_frobenius
         dist_kwargs = {}
         apply_log = True
-        colobar_title = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+        colobar_title = r"$10\textrm{log}_{10}(1+\mathcal{D}_F)\, \textrm{[dB]}$"
         th_main_lobe = 3  # 3dB main lobe
         label = r"$\mathcal{D}_F$"
         dist_unit = "dB"
@@ -1391,11 +1408,11 @@ def pick_distance_to_apply(dist, axis="rz"):
 
         elif axis == "r":
             title = r"$\mathcal{D}_F(r, z=z_s)$"
-            ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+            ylabel = r"$10\textrm{log}_{10}(1+\mathcal{D}_F)\, \textrm{[dB]}$"
 
         elif axis == "z":
             title = r"$\mathcal{D}_F(r=r_s, z)$"
-            ylabel = r"$10log_{10}(1+D)\, \textrm{[dB]}$"
+            ylabel = r"$10\textrm{log}_{10}(1+\mathcal{D}_F)\, \textrm{[dB]}$"
 
     elif dist == "hermitian_angle":
         dist_func = D_hermitian_angle_fast
@@ -1466,35 +1483,33 @@ if __name__ == "__main__":
     bottom_bc = "pressure_release"
     dists = ["hermitian_angle", "frobenius"]
 
-    # covered_range = 15 * 1e3
-    # dr = 100
-    # zmin = 1
-    # zmax = 999
-    # dz = 10
-    # for dist in dists:
-    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
+    covered_range = 15 * 1e3
+    dr = 100
+    zmin = 1
+    zmax = 999
+    dz = 10
+    for dist in dists:
+        full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
     # covered_range = 5
+    # dz = 0.1
     # dr = 0.1
     # zmin = 1
     # zmax = 11
-    # dz = 0.1
-    # for dist in dists:
-    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
-    params = ["r_src", "z_src", "n_rcv", "delta_rcv", "df"]
-    # params = ["r_src"]
-    # dist = "hermitian_angle"
-    for param in params:
-        for dist in dists:
-            sensibility_ideal_waveguide(
-                param=param, axis="both", bottom_bc=bottom_bc, dist=dist
-            )
+    # params = ["delta_rcv", "df"]
+    # # params = ["r_src"]
+    # # dist = "hermitian_angle"
+    # for param in params:
+    #     for dist in dists:
+    #         sensibility_ideal_waveguide(
+    #             param=param, axis="both", bottom_bc=bottom_bc, dist=dist
+    #         )
 
-    # covered_range = 10 * 1e3
-    # dr = 10
-    # zmin = 1
-    # zmax = D - 1
-    # dz = 1
-
-    # full_test(covered_range, dr, zmin, zmax, dz, dist="D2")
+    covered_range = 10
+    dz = 0.1
+    dr = 0.1
+    zmin = 1
+    zmax = 21
+    for dist in dists:
+        full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)

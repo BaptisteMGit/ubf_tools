@@ -241,7 +241,7 @@ def z_call(signal_args={}, model_args={}):
     The Journal of the Acoustical Society of America, 149(6), 4422–4436. https://doi.org/10.1121/10.0005281
 
     The SL and depth were estimated for the ABW at 188.5 +/- 2.1 dB and 25.0 +/- 3.7m
-    ICI = 66.5 s
+    ICI = 66.4 s
 
     Parameters
     ----------
@@ -271,7 +271,7 @@ def z_call(signal_args={}, model_args={}):
         "M", Tz / 2
     )  # Time at which the frequency is at the middle of the slope.
     alpha = model_args.get("alpha", 1.8)  # Slope of the Z-call.
-    ici = model_args.get("ici", 66.5)  # Inter-Call Interval.
+    ici = model_args.get("ici", 66.4)  # Inter-Call Interval.
 
     # Unpack signal params
     fs = signal_args.get("fs", 100)  # Sampling frequency.
@@ -322,20 +322,15 @@ def z_call(signal_args={}, model_args={}):
 
     # Normalize z-call to the desired source level
     single_z_call = normalize_to_sl(single_z_call, sl)
-    # sigma_single_z_call = (
-    #     10 ** (sl / 20) * P0
-    # )  # Target rms amplitude to reach the desired SL
-    # single_z_call = single_z_call * sigma_single_z_call / np.std(single_z_call)
-
-    # print(
-    #     f"Effective SL : {20 * np.log10(np.std(single_z_call) / p0)} dB re 1 µPa @ 1m"
-    # )
 
     # 2) Generate desired signals containing nz z-calls separated by ICI = 66.5 s
     # nz = 0 to get maximum number of z-calls in the signal duration
     if nz == 0 and signal_duration is not None:
         nz = int(
-            (signal_duration - start_offset_seconds - stop_offset_seconds) / (Tz + ici)
+            np.ceil(
+                (signal_duration - start_offset_seconds - stop_offset_seconds)
+                / (Tz + ici)
+            )
         )
         t_max = signal_duration
     elif nz != 0 and signal_duration is not None:
@@ -398,11 +393,31 @@ if __name__ == "__main__":
     signal_args = {
         "fs": 100,
         "nz": 0,
-        "start_offset_seconds": 5,
-        "stop_offset_seconds": 15,
-        "signal_duration": 200,
+        "start_offset_seconds": 2,
+        "stop_offset_seconds": 2,
+        "signal_duration": 50 * 5,
+        "sl": 2.5,
     }
     s, t = z_call(signal_args)
+    # signal_args = {
+    #     "fs": 100,
+    #     "nz": 0,
+    #     "start_offset_seconds": 5.182,
+    #     "stop_offset_seconds": 15,
+    #     "signal_duration": 50 * 5,
+    #     "sl": 2.5,
+    # }
+    # s_rep, t = z_call(signal_args)
+    # signal_args = {
+    #     "fs": 100,
+    #     "nz": 0,
+    #     "start_offset_seconds": 5.45,
+    #     "stop_offset_seconds": 15,
+    #     "signal_duration": 50 * 5,
+    #     "sl": 2.5,
+    # }
+    # s_rep_2, t = z_call(signal_args)
+    # s += s_rep + s_rep_2
     plt.figure()
     plt.plot(t, s)
     plt.xlabel("Time (s)")
@@ -411,7 +426,10 @@ if __name__ == "__main__":
     # Derive stft
     import scipy.signal as sp
 
-    nperseg = 2**9
+    # nperseg = 2**9
+    # noverlap = int(0.8 * nperseg)
+    nperseg = 2**7
+    # noverlap = int(0.8 * nperseg)
     noverlap = int(0.8 * nperseg)
     print(f"nperseg = {nperseg}, noverlap = {noverlap}")
     f, t, stft = sp.stft(s, fs=100, nperseg=nperseg, noverlap=noverlap)

@@ -25,7 +25,7 @@ from localisation.verlinden.testcases.testcase_envs import TestCase1_0
 from real_data_analysis.real_data_utils import get_csdm_snapshot_number
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_consts import *
 
-
+from signals.signals import generate_ship_signal
 from propa.rtf.rtf_estimation_const import *
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *
@@ -690,6 +690,21 @@ def load_data():
     kraken_data.update({"t": t_kraken, "f": f_kraken, "n_rcv": N_RCV})
 
     return kraken_data
+
+
+def testcase_bottom_properties():
+    # Environment with properties to minimize the impulse response duration
+    bott_hs_properties = {
+        "rho": 1.5 * RHO_W * 1e-3,  # Density (g/cm^3)
+        # "c_p": 1500,  # P-wave celerity (m/s)
+        "c_p": 1550,  # P-wave celerity (m/s)
+        "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+        "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
+        "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
+        "z": None,
+    }
+
+    return bott_hs_properties
 
 
 if __name__ == "__main__":

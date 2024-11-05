@@ -24,7 +24,7 @@ from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation_const import *
 from propa.rtf.rtf_utils import (
     D_frobenius,
-    D_hermitian_angle,
+    D_hermitian_angle_fast,
     true_rtf,
     interp_true_rtf,
 )
@@ -550,17 +550,24 @@ def plot_dist_vs_snr_hermitian_angle(snrs, dist_cs, dist_cw, title, savepath=Non
 
 
 def compare_rtf_vs_received_spectrum(
-    fig_props, kraken_data, f_cs, rtf_cs, f_cw=None, rtf_cw=None, rcv_signal=None
+    fig_props,
+    kraken_data,
+    f_cs,
+    rtf_cs,
+    f_cw=None,
+    rtf_cw=None,
+    rcv_signal=None,
+    rcv_noise=None,
 ):
 
     # Load true RTF
     f_true, rtf_true = interp_true_rtf(kraken_data, f_cs)
 
     # Derive Hermitian angle distance
-    dist_cs = D_hermitian_angle(
+    dist_cs = D_hermitian_angle_fast(
         rtf_ref=rtf_true, rtf=rtf_cs, unit="deg", apply_mean=False
     )
-    dist_cw = D_hermitian_angle(
+    dist_cw = D_hermitian_angle_fast(
         rtf_ref=rtf_true, rtf=rtf_cw, unit="deg", apply_mean=False
     )
 
@@ -568,14 +575,22 @@ def compare_rtf_vs_received_spectrum(
     fig, ax1 = plt.subplots()
     ax2 = ax1.twinx()
 
-    # Twin axis for received spectrum
-    spec2 = np.abs(rcv_signal[f"rcv{0}"]["spect"]) ** 2
-    val = -10 * np.log10(spec2)
-    f = rcv_signal["f"]
+    # Twin axis for received snr
+    # Derive received snr at receiver 0
+    snr = rcv_signal["rcv0"]["psd"][1] / rcv_noise["rcv0"]["psd"][1]
+    val = -10 * np.log10(snr)
+    f_snr = rcv_signal["rcv0"]["psd"][0]
+    # spec2 = np.abs(rcv_signal[f"rcv{0}"]["spect"]) ** 2
+    # val = -10 * np.log10(spec2)
+    # f = rcv_signal["f"]
 
-    ax1.plot(f, val, color="k", linestyle="-", linewidth=0.2)
+    ax1.plot(f_snr, val, color="k", linestyle="-", linewidth=0.8)
     # ax1.scatter(f, val, color="k", marker=".", s=1)
-    ax1.set_ylabel(r"$-10 log_{10}(|S(f)|^2) \, \textrm{[dB]}$")
+    # ax1.set_ylabel(r"$-10 log_{10}(|S(f)|^2) \, \textrm{[dB]}$")
+    # ax1.set_ylabel(r"$-\textrm{snr} (f) \, \textrm{[dB]}$")
+    ax1.set_ylabel(
+        r"$- 10 \textrm{log}_{10} \left ( \frac{S_{xx} (f)} {S_{vv}(f)} \right ) \, \textrm{[dB]}$"
+    )
 
     ax2.plot(
         f_cs,

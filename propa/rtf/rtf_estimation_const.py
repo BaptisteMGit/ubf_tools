@@ -13,10 +13,7 @@
 # Import
 # ======================================================================================================================
 import os
-from cst import RHO_W, C0
 
-ROOT_FOLDER = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_estimation\short_ri_waveguide"
-ROOT_DATA = os.path.join(ROOT_FOLDER, "data")
 ROOT_RTF_DATA = (
     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\rtf\ideal_waveguide"
 )

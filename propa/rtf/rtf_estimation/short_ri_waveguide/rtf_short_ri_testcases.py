@@ -36,21 +36,6 @@ from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_kraken import (
 # ======================================================================================================================
 
 
-def testcase_bottom_properties():
-    # Environment with properties to minimize the impulse response duration
-    bott_hs_properties = {
-        "rho": 1.5 * RHO_W * 1e-3,  # Density (g/cm^3)
-        # "c_p": 1500,  # P-wave celerity (m/s)
-        "c_p": 1550,  # P-wave celerity (m/s)
-        "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
-        "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
-        "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
-        "z": None,
-    }
-
-    return bott_hs_properties
-
-
 def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
     """
     Test case 1
@@ -134,7 +119,14 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
         mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
         plot_rtf_estimation(fig_props, kraken_data, f_cs, rtf_cs, f_cw, rtf_cw)
         compare_rtf_vs_received_spectrum(
-            fig_props, kraken_data, f_cs, rtf_cs, f_cw, rtf_cw, rcv_signal=rcv_sig_data
+            fig_props,
+            kraken_data,
+            f_cs,
+            rtf_cs,
+            f_cw,
+            rtf_cw,
+            rcv_signal=rcv_sig_data,
+            rcv_noise=rcv_noise_data,
         )
 
         plt.close("all")
@@ -241,7 +233,14 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
         mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
         plot_rtf_estimation(fig_props, kraken_data, f_cs, rtf_cs, f_cw, rtf_cw)
         compare_rtf_vs_received_spectrum(
-            fig_props, kraken_data, f_cs, rtf_cs, f_cw, rtf_cw, rcv_signal=rcv_sig_data
+            fig_props,
+            kraken_data,
+            f_cs,
+            rtf_cs,
+            f_cw,
+            rtf_cw,
+            rcv_signal=rcv_sig_data,
+            rcv_noise=rcv_noise_data,
         )
         plt.close("all")
 
@@ -317,11 +316,16 @@ def testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z
     # Convert to array
     rcv_sig = np.empty((ns, N_RCV))
     rcv_noise = np.empty((ns, N_RCV))
+    rcv_noise_data = {key: rcv_interference_data[key] for key in rcv_interference_data}
     for i in range(N_RCV):
         id_rcv = f"rcv{i}"
         rcv_sig[:, i] = rcv_sig_data[id_rcv]["sig"]
         rcv_noise[:, i] = (
             rcv_interference_data[id_rcv]["sig"] + additive_noise[id_rcv]["sig"]
+        )
+        rcv_noise_data[id_rcv]["sig"] = rcv_noise[:, i]
+        rcv_noise_data[id_rcv]["sig"] = scipy.signal.welch(
+            rcv_noise[:, i], fs=fs, nperseg=2**12, noverlap=2**11
         )
 
     alpha_tau_ir = 3
@@ -376,7 +380,14 @@ def testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z
         mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
         plot_rtf_estimation(fig_props, kraken_data, f_cs, rtf_cs, f_cw, rtf_cw)
         compare_rtf_vs_received_spectrum(
-            fig_props, kraken_data, f_cs, rtf_cs, f_cw, rtf_cw, rcv_signal=rcv_sig_data
+            fig_props,
+            kraken_data,
+            f_cs,
+            rtf_cs,
+            f_cw,
+            rtf_cw,
+            rcv_signal=rcv_sig_data,
+            rcv_noise=rcv_noise_data,
         )
         # plt.show()
         plt.close("all")

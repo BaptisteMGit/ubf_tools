@@ -49,8 +49,11 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
     """
 
     # Load propagated signal
-    _, r_src, _, _, _ = waveguide_params()
-    direct_delay = r_src / C0
+    _, r_src, z_src, z_rcv, _ = waveguide_params()
+    d = np.sqrt(r_src**2 + (z_rcv - z_src) ** 2)
+    direct_delay = d / C0
+    # print(f"direct_delay = {direct_delay}")
+
     rcv_sig_data = derive_received_signal(tau_ir=TAU_IR, delay_correction=direct_delay)
     t = rcv_sig_data["t"]
 
@@ -82,13 +85,14 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
     alpha_overlap = 1 / 2
     noverlap = int(nperseg * alpha_overlap)
 
-    print(f"nperseg = {nperseg}, noverlap = {noverlap}")
+    # print(f"nperseg = {nperseg}, noverlap = {noverlap}")
 
     # Estimate RTF using covariance substraction method
     f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
         t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
 
+    # Estimate RTF using covariance whitening method
     f_cw, rtf_cw, _, _, _ = rtf_covariance_whitening(
         t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
@@ -163,8 +167,9 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
     """
 
     # Load propagated signal
-    _, r_src, _, _, _ = waveguide_params()
-    direct_delay = r_src / C0
+    _, r_src, z_src, z_rcv, _ = waveguide_params()
+    d = np.sqrt(r_src**2 + (z_rcv - z_src) ** 2)
+    direct_delay = d / C0
     rcv_sig_data = derive_received_signal(tau_ir=TAU_IR, delay_correction=direct_delay)
     t = rcv_sig_data["t"]
 
@@ -276,8 +281,9 @@ def testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z
     """
 
     # Load propagated signal
-    _, r_src, _, _, _ = waveguide_params()
-    direct_delay = r_src / C0
+    _, r_src, z_src, z_rcv, _ = waveguide_params()
+    d = np.sqrt(r_src**2 + (z_rcv - z_src) ** 2)
+    direct_delay = d / C0
     t0 = time()
     rcv_sig_data = derive_received_signal(tau_ir=TAU_IR, delay_correction=direct_delay)
     print(f"derive_received_signal: {time() - t0:.2f} s")

@@ -45,6 +45,7 @@ def D_frobenius(rtf_ref, rtf, **kwargs):
     # For variation studies
     if rtf.ndim == 4:
         # Expand rtf_ref to the same shape as rtf
+
         tile_shape = tuple(
             [rtf.shape[i] - rtf_ref.shape[i] + 1 for i in range(rtf.ndim)]
         )
@@ -132,18 +133,26 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
 
     unit = kwargs.get("unit", "deg")
     apply_mean = kwargs.get("apply_mean", True)
+    ax_rcv = kwargs.get("ax_rcv", 3 if rtf.ndim == 4 else 1)
 
     # Case: 4D input for variation studies
     if rtf.ndim == 4:
+
         # Expand rtf_ref along the necessary axes for broadcasting
         # rtf_ref_expanded = np.expand_dims(rtf_ref, axis=(1, 3))
+        if rtf_ref.ndim == 2:
+            ax_to_expand = tuple(
+                [i for i in range(1, rtf.ndim) if i != ax_rcv]
+            )  # Frequency axis is assumed to always be the first axis
+            rtf_ref = np.expand_dims(rtf_ref, axis=ax_to_expand)
+
         tile_shape = tuple(
             [rtf.shape[i] - rtf_ref.shape[i] + 1 for i in range(rtf.ndim)]
         )
         rtf_ref_expanded = np.tile(rtf_ref, tile_shape)
 
-        # Calculate inner product and norms along the receiver axis (axis=2)
-        ax_rcv = 2
+        # Calculate inner product and norms along the receiver axis
+        # ax_rcv = 2
         inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=ax_rcv))
         norm_ref = np.linalg.norm(rtf_ref_expanded, axis=ax_rcv)
         norm_rtf = np.linalg.norm(rtf, axis=ax_rcv)
@@ -159,13 +168,13 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
         if apply_mean:
             dist = np.nanmean(dist, axis=0)
 
-        # Flatten if only one receiver or one depth
+        # Flatten if only one range or one depth
         dist = np.squeeze(dist)
 
     # Case: 2D input for simple distance evaluation
     elif rtf.ndim == 2:
         # Calculate inner product and norms along the receiver axis (axis=1)
-        ax_rcv = 1
+        # ax_rcv = 1
         inner_prod = np.abs(np.sum(rtf_ref.conj() * rtf, axis=ax_rcv))
         norm_ref = np.linalg.norm(rtf_ref, axis=ax_rcv)
         norm_rtf = np.linalg.norm(rtf, axis=ax_rcv)

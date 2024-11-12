@@ -367,6 +367,7 @@ def Pi_var_rz(varin):
             Pi_ref=g_ref,
             r_src=r_src,
             z_src=z_src,
+            root_data=ROOT_RTF_DATA,
         )
 
     # Expand g_ref to the same shape as g_rz
@@ -471,7 +472,7 @@ def Pi_var_rz(varin):
         plt.close("all")
 
 
-def save_rtf(f, r, z, x_rcv, PI_rz, Pi_ref, r_src, z_src):
+def save_rtf(f, r, z, x_rcv, PI_rz, Pi_ref, r_src, z_src, root_data):
     # PI_rz is of shape (nf, nr, nrcv, nz)
     ds = xr.Dataset(
         data_vars={
@@ -509,7 +510,7 @@ def save_rtf(f, r, z, x_rcv, PI_rz, Pi_ref, r_src, z_src):
     fname = (
         f"PI_rz_r_{r[0]:.0f}_{r[-1]:.0f}_z_{z[0]:.0f}_{z[-1]:.0f}_dr_{dr}_dz_{dz}.nc"
     )
-    fpath = os.path.join(ROOT_RTF_DATA, fname)
+    fpath = os.path.join(root_data, fname)
 
     ds.to_netcdf(fpath)
 
@@ -1034,11 +1035,19 @@ def sensibility_ideal_waveguide_n_rcv(
 def sensibility_ideal_waveguide_2d_n_rcv_delta_rcv(
     axis, bottom_bc="pressure_release", dist="hermitian_angle"
 ):
-    # nb_rcv = np.arange(2, 11, 1)
-    # delta_rcv = np.arange(0.2, 20.2, 0.2)
+    nb_rcv = np.arange(2, 8, 1)
+    # delta_rcv = np.arange(10, 510, 10)
+    d_rcv_1 = np.arange(0.1, 2.2, 0.2)
+    # d_rcv_2 = np.arange(1.2, 2.2, 0.2)
+    d_rcv_3 = np.arange(2.5, 5.5, 0.5)
+    d_rcv_4 = np.arange(6, 11, 1)
+    d_rcv_5 = np.arange(20, 120, 120)
+    delta_rcv = np.concatenate([d_rcv_1, d_rcv_3, d_rcv_4, d_rcv_5])
+    n_iteration = len(nb_rcv) * len(delta_rcv)
+    print(f"Number of iterations : {n_iteration}")
 
-    nb_rcv = [2, 3, 4, 5, 6]
-    delta_rcv = [1, 5, 10, 20]
+    # nb_rcv = [2, 3, 4, 5, 6]
+    # delta_rcv = [1, 5, 10, 20]
 
     _, r_src, z_src, _, n_rcv, _, f = default_params()
 
@@ -1058,7 +1067,7 @@ def sensibility_ideal_waveguide_2d_n_rcv_delta_rcv(
     param_var["values_x"] = nb_rcv
     param_var["values_y"] = delta_rcv
     param_var["xlabel"] = r"$n_{rcv}$"
-    param_var["ylabel"] = r"$\delta_{rcv}$"
+    param_var["ylabel"] = r"$\delta_{rcv} \, \textrm{[m]}$"
 
     # Get distance properties for plots
     _, _, dist_properties = pick_distance_to_apply(dist)
@@ -1072,17 +1081,23 @@ def sensibility_ideal_waveguide_2d_n_rcv_delta_rcv(
     apertures_zz = []
 
     # Compute the distance metric for each delta_rcv
-    for i_d, n_rcv in enumerate(nb_rcv):
+    i_iter = 0
+    for i_d, n_rcv in enumerate(nb_rcv[::-1]):
         apertures_r = []
         apertures_z = []
         for i_d2, d_rcv in enumerate(delta_rcv):
 
+            t0 = time()
             input_var["n_rcv"] = n_rcv
             input_var["delta_rcv"] = d_rcv
 
             study_param_sensibility_2d(
                 input_var, apertures_r, apertures_z, axis=axis, dist=dist
             )
+            dt = time() - t0
+            # print(f"Elapsed time = {dt}")
+            print(f"Expected time = {dt * (n_iteration - i_iter) / 60} min")
+            i_iter += 1
 
         apertures_rr.append(apertures_r)
         apertures_zz.append(apertures_z)
@@ -1684,6 +1699,7 @@ def pick_distance_to_apply(dist, axis="rz"):
     elif dist == "hermitian_angle":
         dist_func = D_hermitian_angle_fast
         dist_kwargs = {
+            "ax_rcv": 2,
             "unit": "deg",
             "apply_mean": True,
         }
@@ -1764,8 +1780,8 @@ if __name__ == "__main__":
     # zmin = 1
     # zmax = 11
 
-    params = ["n_rcv", "delta_rcv"]
-    # params = ["r_src"]
+    # params = ["n_rcv", "delta_rcv"]
+    # # params = ["r_src"]
     # dist = "hermitian_angle"
     # for param in params:
     #     for dist in dists:
@@ -1773,15 +1789,15 @@ if __name__ == "__main__":
     #             param=param, axis="both", bottom_bc=bottom_bc, dist=dist
     #         )
 
-    for dist in dists:
-        sensibility_ideal_waveguide_2d(
-            param_couple=["n_rcv", "delta_rcv"], bottom_bc=bottom_bc, dist=dist
-        )
-
-    # covered_range = 10
-    # dz = 0.1
-    # dr = 0.1
-    # zmin = 1
-    # zmax = 21
     # for dist in dists:
-    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
+    #     sensibility_ideal_waveguide_2d(
+    #         param_couple=["n_rcv", "delta_rcv"], bottom_bc=bottom_bc, dist=dist
+    #     )
+
+    covered_range = 1
+    dz = 0.1
+    dr = 0.1
+    zmin = 4
+    zmax = 6
+    dist = "hermitian_angle"
+    full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)

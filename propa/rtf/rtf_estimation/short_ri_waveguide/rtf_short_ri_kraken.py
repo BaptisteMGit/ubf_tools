@@ -25,10 +25,10 @@ from localisation.verlinden.testcases.testcase_envs import TestCase1_0
 from real_data_analysis.real_data_utils import get_csdm_snapshot_number
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_consts import *
 
-from signals.signals import generate_ship_signal
 from propa.rtf.rtf_estimation_const import *
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *
+from signals.signals import generate_ship_signal, dirac, z_call, ricker_pulse
 
 
 def derive_kraken_tf():
@@ -107,6 +107,32 @@ def derive_kraken_tf_loose_grid():
     )
     # Save transfert function as a csv
     fpath = os.path.join(ROOT_DATA, "kraken_tf_loose_grid.nc")
+    h_kraken_surface_noise_xr.to_netcdf(fpath)
+
+
+def derive_kraken_tf_mfp_grid():
+
+    # Load params
+    depth, r_src, z_src, z_rcv, _ = waveguide_params()
+
+    # Run kraken
+    f, r, z, h_kraken_loose_grid = run_kraken_simulation_mfp_grid(
+        r_src, z_src, z_rcv, depth
+    )
+
+    # Define xarray dataset for the transfert function
+    h_kraken_surface_noise_xr = xr.Dataset(
+        data_vars=dict(
+            tf_real=(
+                ["f", "z", "r"],
+                np.real(h_kraken_loose_grid),
+            ),
+            tf_imag=(["f", "z", "r"], np.imag(h_kraken_loose_grid)),
+        ),
+        coords={"f": f, "r": r, "z": z},
+    )
+    # Save transfert function as a csv
+    fpath = os.path.join(ROOT_DATA, "kraken_tf_mfp_grid.nc")
     h_kraken_surface_noise_xr.to_netcdf(fpath)
 
 
@@ -386,6 +412,100 @@ def run_kraken_simulation_loose_grid(r_src, z_src, z_rcv, depth):
     return f, ts, r, z, h_kraken_loose_grid
 
 
+def run_kraken_simulation_mfp_grid(r_src, z_src, z_rcv, depth):
+
+    dr_mfp_grid = 50
+    rmax = r_src + 20 * 1e3  # Maximal range
+
+    # Reciprocity
+    z_src = z_rcv
+    # Potential interferers located near the surface
+    dz_mfp_grid = 5
+    z_min = 0
+    z_max = 200
+    nz = int((z_max - z_min) / dz_mfp_grid) + 1
+
+    # Create the frequency vector
+    # nf = 1025
+    # f = np.linspace(0, 50, nf)
+    duration = 50 * TAU_IR
+    ts = 1e-2
+    nt = int(duration / ts)
+    f = fft.rfftfreq(nt, ts)
+
+    # Init env
+    bott_hs_properties = testcase_bottom_properties()
+
+    tc_varin = {
+        "freq": f,
+        "src_depth": z_src,
+        "max_range_m": rmax,
+        "mode_theory": "adiabatic",
+        "flp_n_rcv_z": nz,
+        "flp_rcv_z_min": z_min,
+        "flp_rcv_z_max": z_max,
+        "min_depth": depth,
+        "max_depth": depth,
+        "dr_flp": dr_mfp_grid,
+        "nb_modes": 200,
+        "bottom_boundary_condition": "acousto_elastic",
+        "nmedia": 2,
+        "phase_speed_limits": [200, 20000],
+        "bott_hs_properties": bott_hs_properties,
+    }
+    tc = TestCase1_0(mode="prod", testcase_varin=tc_varin)
+    title = "Simple waveguide with short impulse response"
+    tc.title = title
+    tc.env_dir = os.path.join(ROOT_FOLDER, "tmp")
+    tc.update(tc_varin)
+
+    # For too long frequencies vector field fails to compute -> we will iterate over frequency subband to compute the transfert function
+    fmax = 50
+    fmin = cutoff_frequency(C0, depth, bottom_bc="pressure_release")
+    n_subband = 600
+    i_subband = 1
+    f0 = fmin
+    f1 = f[n_subband]
+    # h_kraken = np.zeros_like(f, dtype=complex)
+    nr = int(rmax / dr_mfp_grid + 1)
+    nf = len(f)
+    h_kraken_loose_grid = np.zeros((nf, nz, nr), dtype=complex)
+
+    while f0 < fmax:
+        # Frequency subband
+        f_kraken = f[(f < f1) & (f >= f0)]
+        # print(i_subband, f0, f1, len(f_kraken))
+        pad_before = np.sum(f < f0)
+        pad_after = np.sum(f >= f1)
+
+        # Update env
+        varin_update = {"freq": f_kraken}
+        tc.update(varin_update)
+
+        pressure_field, field_pos = runkraken(
+            env=tc.env,
+            flp=tc.flp,
+            frequencies=tc.env.freq,
+            parallel=True,
+            verbose=True,
+        )
+
+        h_kraken_subband = np.squeeze(pressure_field, axis=(1, 2))
+        r = field_pos["r"]["r"]
+        z = field_pos["r"]["z"]
+
+        h_kraken_loose_grid += np.pad(
+            h_kraken_subband, ((pad_before, pad_after), (0, 0), (0, 0))
+        )
+
+        # Update frequency subband
+        i_subband += 1
+        f0 = f1
+        f1 = f[min(n_subband * i_subband, len(f) - 1)]
+
+    return f, r, z, h_kraken_loose_grid
+
+
 def derive_received_signal(tau_ir, delay_correction=0, sl=200):
     """
     Derive the received signal at the receivers.
@@ -435,10 +555,11 @@ def derive_received_signal(tau_ir, delay_correction=0, sl=200):
         sl=sl,
     )
 
-    p0 = 1e-6  # 1 uPa
-    print(
-        f"Effective source level before windowing : {20 * np.log10(np.std(s) / p0)} dB re 1 uPa at 1 m"
-    )
+    # p0 = 1e-6  # 1 uPa
+    # print(
+    #     f"Effective source level before windowing : {20 * np.log10(np.std(s) / p0)} dB re 1 uPa at 1 m"
+    # )
+
     # Apply windowing to avoid side-effects
     # s *= sp.windows.tukey(len(s), alpha=0.5)
     s *= np.hanning(len(s))
@@ -446,6 +567,8 @@ def derive_received_signal(tau_ir, delay_correction=0, sl=200):
     # Apply delay correction so that the signal is centered within the time window (otherwise the signal is shifted with wrap around effect in the time domain)
     src_spectrum *= np.exp(1j * 2 * np.pi * f * delay_correction)
 
+    # tau = f * delay_correction
+    # print(f"Tau corr at src pos (2000, 2050): {tau[2000:2050]}")
     # Derive psd
     psd = scipy.signal.welch(s, fs=fs, nperseg=2**12, noverlap=2**11)
 
@@ -726,4 +849,6 @@ if __name__ == "__main__":
     # rcv_sig = derive_received_signal(tau_ir=TAU_IR)
     # plot_signal(rcv_sig=rcv_sig, root_img=ROOT_IMG)
     # plt.show()
-    pass
+
+    derive_kraken_tf_mfp_grid()
+    # pass

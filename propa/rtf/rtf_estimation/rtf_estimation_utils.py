@@ -40,6 +40,55 @@ def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**1
     ff, tt, stft_list_x = get_stft_list(x, fs, nperseg, noverlap)
     stft_x = np.array(stft_list_x)
 
+    f, rtf = rtf_cw(f, n_rcv, stft_x, Rv)
+
+    # # Loop over frequencies
+    # rtf = np.zeros((len(f), n_rcv), dtype=complex)
+    # # First receiver is considered as the reference
+    # e1 = np.eye(n_rcv)[:, 0]
+
+    # for i, f_i in enumerate(f):
+    #     Rv_f = Rv[i]
+    #     # Rs_f = Rs[i]
+    #     # Rx_f = Rx[i]
+    #     stft_x_f = stft_x[:, i, :]
+
+    #     # Cholesky decomposition of the noise csdm and its inverse : Equation (25a) and (25b)
+    #     Rv_half = scipy.linalg.cholesky(Rv_f, lower=False)
+    #     # Rv_half_inv = np.linalg.inv(Rv_half).T        # Theoreticaly equivalent but leads to greater numerical errors
+    #     Rv_inv_f = np.linalg.inv(Rv_f)
+    #     Rv_half_inv = scipy.linalg.cholesky(Rv_inv_f, lower=False)
+
+    #     # Compute the whitened signal csdm : Equation (26)
+    #     stft_y_f = Rv_half_inv @ stft_x_f
+
+    #     # Compute the whitened signal csdm : Equation (31)
+    #     # Reshape to the required shape for the computation
+    #     stft_y_f = [
+    #         stft_y_f[i, np.newaxis, :] for i in range(n_rcv)
+    #     ]  # List of stft at frequency f : n_rcv element of shape (n_freq=1, n_seg)
+    #     Ry_f = compute_csd_matrix_fast(
+    #         stft_y_f, n_seg_cov="all"
+    #     )  # Covariance matrix at frequency f
+    #     Ry_f = (
+    #         Ry_f.squeeze()
+    #     )  # Remove useless frequency dimension to get shape (n_rcv, n_rcv)
+
+    #     # Eigenvalue decomposition of Ry_f to get q (major eingenvector) : Equation (32)
+    #     eig_val, eig_vect = np.linalg.eig(Ry_f)
+    #     # We can check that the Ry_f can be diagonalized np.round(np.abs(np.linalg.inv(eig_vect) @ Ry_f @ eig_vect), 5)
+
+    #     i_max_eig = np.argmax(np.abs(eig_val))
+    #     q = eig_vect[:, i_max_eig]
+
+    #     rtf_f = (Rv_half @ q) / (e1.T @ Rv_half @ q)  # Equation (32)
+    #     rtf[i, :] = rtf_f
+
+    return f, rtf, Rx, Rs, Rv
+
+
+def rtf_cw(f, n_rcv, stft_x, Rv):
+
     # Loop over frequencies
     rtf = np.zeros((len(f), n_rcv), dtype=complex)
     # First receiver is considered as the reference
@@ -82,7 +131,7 @@ def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**1
         rtf_f = (Rv_half @ q) / (e1.T @ Rv_half @ q)  # Equation (32)
         rtf[i, :] = rtf_f
 
-    return f, rtf, Rx, Rs, Rv
+    return f, rtf
 
 
 def rtf_covariance_substraction(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
@@ -103,9 +152,27 @@ def rtf_covariance_substraction(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2
     #     rank = np.linalg.matrix_rank(Rs[i])
     #     print(f"Rank of Rs at f = {f[i]} Hz : {rank}")
 
+    f, rtf = rtf_cs(f, n_rcv, Rx, Rv)
+
     # Rx : CSDM of signal + noise
     # Rs : CSDM of signal
     # Rv : CSDM of noise
+    # R_delta = Rx - Rv  # Equation (9)
+
+    # # Loop over frequencies
+    # rtf = np.zeros((len(f), n_rcv), dtype=complex)
+    # # First receiver is considered as the reference
+    # e1 = np.eye(n_rcv)[:, 0]
+
+    # for i, f_i in enumerate(f):
+    #     R_delta_f = R_delta[i]
+    #     rtf_f = (R_delta_f @ e1) / (e1.T @ R_delta_f @ e1)
+    #     rtf[i, :] = rtf_f
+
+    return f, rtf, Rx, Rs, Rv
+
+
+def rtf_cs(f, n_rcv, Rx, Rv):
     R_delta = Rx - Rv  # Equation (9)
 
     # Loop over frequencies
@@ -118,7 +185,7 @@ def rtf_covariance_substraction(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2
         rtf_f = (R_delta_f @ e1) / (e1.T @ R_delta_f @ e1)
         rtf[i, :] = rtf_f
 
-    return f, rtf, Rx, Rs, Rv
+    return f, rtf
 
 
 def get_csdm(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):

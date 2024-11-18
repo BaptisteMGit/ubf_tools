@@ -26,6 +26,7 @@ copernicusmarine = "*"
 openpyxl = "*"
 ipympl = "*"
 pyproj = "*"
+nptdms = "*"
 
 [dev-packages]
 ipykernel = "*"

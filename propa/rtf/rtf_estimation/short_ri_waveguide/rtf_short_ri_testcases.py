@@ -119,9 +119,13 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
             os.makedirs(tc_folder)
 
         kraken_data = load_data()
+        # Plot signal components
         plot_signal_components(fig_props, t, rcv_sig, rcv_noise)
+        # Plot mean CSDM
         mean_Rx, mean_Rs, mean_Rv = plot_mean_csdm(fig_props, Rx, Rs, Rv)
+        # Plot RTF estimation
         plot_rtf_estimation(fig_props, kraken_data, f_cs, rtf_cs, f_cw, rtf_cw)
+        # Plot distance and SNR comparison
         compare_rtf_vs_received_spectrum(
             fig_props,
             kraken_data,
@@ -131,6 +135,15 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
             rtf_cw,
             rcv_signal=rcv_sig_data,
             rcv_noise=rcv_noise_data,
+        )
+
+        # Plot hermitian angle distribution
+        plot_rtf_estimation_hermitian_angle_distribution(
+            fig_props,
+            kraken_data,
+            f_cs,
+            rtf_cs,
+            rtf_cw,
         )
 
         plt.close("all")
@@ -271,7 +284,13 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
     return testcase_results
 
 
-def testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z_call"):
+def testcase_3_propagated_interference(
+    snr_dB=0,
+    plot=True,
+    interference_type="z_call",
+    interferer_r=None,
+    interferer_z=None,
+):
     """
     Test case 2
         - Waveguide: simple waveguide with short impulse response.
@@ -293,10 +312,11 @@ def testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z
     ns = len(t)
     fs = 1 / (t[1] - t[0])
 
-    interferer_r = [5 * 1e3, 15 * 1e3, 50 * 1e3]
     # interferer_z = [30, 25]
     # interferer_r = np.arange(5, 50, 5) * 1e3
-    interferer_z = [25, 35, 30]
+    if interferer_r is None or interferer_z is None:
+        interferer_r = [5 * 1e3, 15 * 1e3, 50 * 1e3]
+        interferer_z = [25, 35, 30]
 
     n_src = len(interferer_r)
     interference_arg = {
@@ -358,10 +378,15 @@ def testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z
 
     # Set properties to pass to the plotting functions
     # Create folder to save results
+    if len(interferer_r) > 1:
+        src_range_label = f"{interferer_r[0] // 1e3}to{interferer_r[-1] // 1e3}km"
+    else:
+        src_range_label = f"{interferer_r[0] // 1e3}km"
+
     tc_folder = os.path.join(
         ROOT_IMG,
         "testcase_3_propagated_interference",
-        f"{interference_type}_{n_src}_src",
+        f"{interference_type}_{n_src}_src_{src_range_label}",
         f"snr_{snr_dB}dB",
     )
 

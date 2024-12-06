@@ -14,6 +14,10 @@
 # ======================================================================================================================
 from real_data_analysis.fiberscope.fiberscope_utils import *
 
+from publication.PublicationFigure import PubFigure
+
+PubFigure()
+
 # ======================================================================================================================
 # Test 1 : Sweep 8 - 15 kHz
 # Sweep length = 100 ms
@@ -92,7 +96,7 @@ t_interp_pulse = 1  # Inter sweep period
 t_pulse = 100 * 1e-3  # Single sweep duration
 t_ir = 1  # Approximated impulse response duration (simple value to ensure no energy is received after this time)
 # n_sweep = 10  # Number of sweep emitted
-n_sweep = 2  # Number of sweep emitted
+n_sweep = 10  # Number of sweep emitted
 
 f0 = 8e3  # Start frequency
 f1 = 15e3  # End frequency
@@ -110,6 +114,7 @@ processing_props = {
     "hydro_to_process": None,
     "ref_hydro": 1,
     "method": "cs",
+    # "method": "both",
     "alpha_th": 0.001 * 1e-2,
     "split_method": "band_energy",
 }
@@ -121,18 +126,35 @@ recording_names_N1 = [
     "10-10-2024T12-03-02-201689_P4_N1_Sweep_211",
     "10-10-2024T14-42-01-833325_P5_N2_Sweep_267",  # Name N2 but actually N1
     "10-10-2024T15-54-25-737795_P6_N1_Sweep_323",
+    # "11-10-2024T10-51-56-563968_P3_N1_Sweep_385",  # P7
+    # "11-10-2024T12-08-20-091131_P1_N1_Sweep_437",  # P8
 ]
 
 # for recording_name in recording_names_N1:
-#     run_analysis(recording_name, recording_props, processing_props)
+#     run_analysis(
+#         recording_name, recording_props, processing_props, plot_rtf_estimation=True
+#     )
 
-recording_name_to_loc = "10-10-2024T12-04-46-610661_P4_N3_Sweep_213"
-# # recording_name_to_loc = "09-10-2024T11-03-11-806485_P1_N1_Sweep_49"
+# recording_name_to_loc = "10-10-2024T12-04-46-610661_P4_N3_Sweep_213"
+# recording_name_to_loc = "09-10-2024T11-03-11-806485_P1_N1_Sweep_49"
+# recording_name_to_loc = (
+#     "11-10-2024T10-51-56-563968_P3_N1_Sweep_385"  # Position P7, chirp1
+# )
+# recording_name_to_loc = "11-10-2024T12-08-20-091131_P1_N1_Sweep_437"  # P8, chirp1
+# recording_name_to_loc = "11-10-2024T15-31-53-479056_P3_N1_Sweep_472"  # P11 chirp1
+
+recording_name_to_loc = "10-10-2024T09-45-50-516056_P3_N3_Sweep_153"
+# recording_name = "09-10-2024T10-34-58-394627_P1_N1_Sweep_34"
+# run_analysis(
+#     recording_name_to_loc, recording_props, processing_props, plot_rtf_estimation=True
+# )
 
 # localise(
 #     recording_names=recording_names_N1,
 #     recording_name_to_loc=recording_name_to_loc,
 #     recording_props=recording_props,
+#     processing_props=processing_props,
+#     # pos_ids=["P1", "P2", "P3", "P4", "P5", "P6", "P8"],
 # )
 
 ### Same batch of test with lower snr ###
@@ -150,7 +172,7 @@ recording_names_N3 = [
 # for recording_name in recording_names_N3:
 #     run_analysis(recording_name, recording_props, processing_props)
 
-recording_name_to_loc = "10-10-2024T12-04-46-610661_P4_N3_Sweep_213"
+# recording_name_to_loc = "10-10-2024T12-04-46-610661_P4_N3_Sweep_213"
 # recording_name_to_loc = "09-10-2024T11-03-11-806485_P1_N1_Sweep_49"
 
 
@@ -158,6 +180,7 @@ recording_name_to_loc = "10-10-2024T12-04-46-610661_P4_N3_Sweep_213"
 #     recording_names=recording_names_N3,
 #     recording_name_to_loc=recording_name_to_loc,
 #     recording_props=recording_props,
+#     processing_props=processing_props
 # )
 
 # N5
@@ -175,7 +198,7 @@ recording_names_N5 = [
 #     run_analysis(recording_name, recording_props, processing_props)
 
 # recording_name_to_loc = "10-10-2024T12-03-02-201689_P4_N1_Sweep_211"
-recording_name_to_loc = "09-10-2024T11-09-10-352993_P1_N5_Sweep_53"
+# recording_name_to_loc = "09-10-2024T11-09-10-352993_P1_N5_Sweep_53"
 # run_analysis(recording_name_to_loc, recording_props_2, processing_props_2)
 # recording_name_to_loc = "09-10-2024T11-03-11-806485_P1_N1_Sweep_49"
 
@@ -183,12 +206,16 @@ recording_name_to_loc = "09-10-2024T11-09-10-352993_P1_N5_Sweep_53"
 #     recording_names=recording_names_N5,
 #     recording_name_to_loc=recording_name_to_loc,
 #     recording_props=recording_props,
+#     processing_props=processing_props
 # )
 
 
 # Load and plot dynamic recording
 
 recording_name = "10-10-2024T16-53-43-200271_PR_N1_346"
+# recording_name = "10-10-2024T17-13-59-861860_PR_N1_Sweep_350"
+# recording_name = "10-10-2024T17-05-55-728169_PR_bruit_348"
+
 date = recording_name.split("T")[0]
 data_path = os.path.join(data_root, f"Campagne_{date}")
 file_name = f"{recording_name}.tdms"
@@ -198,19 +225,19 @@ img_path = os.path.join(img_root, recording_name)
 if not os.path.exists(img_path):
     os.makedirs(img_path)
 
-# data = load_fiberscope_data(file_path)
-# data = data.drop_vars(
-#     [
-#         "ff",
-#         "tt",
-#         "stft_amp",
-#         "stft_phase",
-#     ]
-# )
+data = load_fiberscope_data(file_path)
+data = data.drop_vars(
+    [
+        "ff",
+        "tt",
+        "stft_amp",
+        "stft_phase",
+    ]
+)
 
-# data = data.sel(time=slice(0, 40))
-# data.signal.sel(h_index=1).plot()
-# plt.show()
+data = data.sel(time=slice(0, 40))
+data.signal.sel(h_index=2).plot()
+plt.show()
 
 t_interp_pulse = 1  # Inter sweep period
 t_pulse = 100 * 1e-3  # Single sweep duration
@@ -255,23 +282,191 @@ recording_names_dynamic = [
 # print(recording_names_dynamic)
 
 # for recording_name in recording_names_dynamic:
-#     run_analysis(recording_name, recording_props, processing_props)
+#     run_analysis(
+#         recording_name, recording_props, processing_props, plot_rtf_estimation=True
+#     )
 
 recording_props["n_em"] = 10
 # recording_name_to_loc = "10-10-2024T09-43-06-620681_P3_N1_Sweep_151"
 # recording_name_to_loc = "09-10-2024T16-51-22-900122_P2_N1_Sweep_93"
 # recording_name_to_loc = "09-10-2024T10-34-58-394627_P1_N1_Sweep_34"
-recording_name_to_loc = "10-10-2024T12-03-02-201689_P4_N1_Sweep_211"
-run_analysis(recording_name_to_loc, recording_props, processing_props)
+# recording_name_to_loc = "10-10-2024T12-03-02-201689_P4_N1_Sweep_211"
 
-# recording_name_to_loc = "09-10-2024T11-03-11-806485_P1_N1_Sweep_49"
+root_loc = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\fiberscope"
+img_path = os.path.join(root_loc, recording_props["dynamic_recording_name"])
+if not os.path.exists(img_path):
+    os.makedirs(img_path)
 
-localise(
-    recording_names=recording_names_dynamic,
-    recording_name_to_loc=recording_name_to_loc,
-    recording_props=recording_props,
-)
+dict_th_pos = {
+    "P1": 0,
+    "P2": 10,
+    "P3": 20,
+    "P4": 25,
+    "P5": 15,
+    "P6": 5,
+}
 
+
+records_to_loc = [
+    # P1
+    "09-10-2024T10-34-58-394627_P1_N1_Sweep_34",
+    # "09-10-2024T10-36-04-231393_P1_N2_Sweep_35",
+    # "09-10-2024T10-37-04-088817_P1_N3_Sweep_36",
+    # "09-10-2024T10-38-08-970528_P1_N4_Sweep_37",
+    # "09-10-2024T10-39-11-308093_P1_N5_Sweep_38",
+    # P2
+    "09-10-2024T16-51-22-900122_P2_N1_Sweep_93",
+    # P3
+    "10-10-2024T09-43-06-620681_P3_N1_Sweep_151",
+    "10-10-2024T09-44-55-048883_P3_N2_Sweep_152",
+    "10-10-2024T09-45-50-516056_P3_N3_Sweep_153",
+    "10-10-2024T09-46-45-046175_P3_N4_Sweep_154",
+    "10-10-2024T09-47-33-438942_P3_N5_Sweep_155",
+    # P4
+    "10-10-2024T12-03-02-201689_P4_N1_Sweep_211",
+    "10-10-2024T14-42-01-833325_P5_N2_Sweep_267",
+    "10-10-2024T15-54-25-737795_P6_N1_Sweep_323",
+]
+
+
+# record_names_snr_test = [
+#     "10-10-2024T09-43-06-620681_P3_N1_Sweep_151",
+#     "10-10-2024T09-44-55-048883_P3_N2_Sweep_152",
+#     "10-10-2024T09-45-50-516056_P3_N3_Sweep_153",
+#     "10-10-2024T09-46-45-046175_P3_N4_Sweep_154",
+#     "10-10-2024T09-47-33-438942_P3_N5_Sweep_155",
+# ]
+# record_names_snr_test = [
+#     "09-10-2024T10-34-58-394627_P1_N1_Sweep_34",
+#     "09-10-2024T10-36-04-231393_P1_N2_Sweep_35",
+#     "09-10-2024T10-37-04-088817_P1_N3_Sweep_36",
+#     "09-10-2024T10-38-08-970528_P1_N4_Sweep_37",
+#     "09-10-2024T10-39-11-308093_P1_N5_Sweep_38",
+# ]
+
+# process records
+# for recording_name in record_names_snr_test:
+#     run_analysis(
+#         recording_name, recording_props, processing_props, plot_rtf_estimation=True
+#     )
+
+# dict_loc = {}
+
+# for recording_name_to_loc in record_names_snr_test:
+#     pos_id = recording_name_to_loc.split("_")[1]
+#     th_pos = dict_th_pos[pos_id]
+#     range_from_p1, dist, snrs = localise(
+#         recording_names=recording_names_dynamic,
+#         recording_name_to_loc=recording_name_to_loc,
+#         recording_props=recording_props,
+#         processing_props=processing_props,
+#         th_pos=th_pos,
+#     )
+#     r_hat = range_from_p1[np.argmin(dist)]
+#     dict_loc[recording_name_to_loc] = {
+#         "d": dist,
+#         "r": range_from_p1,
+#         "r_th": th_pos,
+#         "r_hat": r_hat,
+#         "snr_h5": snrs[-1],
+#     }
+
+# abs_err = np.abs(
+#     np.array([d["r_hat"] for d in dict_loc.values()])
+#     - np.array([d["r_th"] for d in dict_loc.values()])
+# )
+# snrs = np.array([d["snr_h5"] for d in dict_loc.values()])
+# lvls = [r"$N_1$", r"$N_2$", r"$N_3$", r"$N_4$", r"$N_5$"]
+# plt.figure()
+# plt.plot(snrs, abs_err, color="k", marker="o")
+# # Annote levels
+# for i, txt in enumerate(lvls):
+#     plt.annotate(txt, (snrs[i] + 0.2, abs_err[i] + 0.0001), fontsize=16)
+
+# plt.ylabel(r"$\epsilon_r = |r_{th} - \hat{r}|\, \textrm{[m]}$")
+# plt.xlabel(r"$H_5 \,\textrm{SNR [dB]}$")
+# filepath = os.path.join(img_path, "abs_err_vs_snr_P1.png")
+# plt.savefig(filepath)
+
+records_to_loc = ["10-10-2024T16-53-43-200271_PR_N1_346_P1_r20.25m_P4"]
+dict_loc = {}
+
+for recording_name_to_loc in records_to_loc:
+    # pos_id = recording_name_to_loc.split("_")[-1]
+    # th_pos = dict_th_pos[pos_id]
+    th_pos = float(recording_name_to_loc.split("_")[-2][1:-1])
+    range_from_p1, dist, _ = localise(
+        recording_names=recording_names_dynamic,
+        recording_name_to_loc=recording_name_to_loc,
+        recording_props=recording_props,
+        processing_props=processing_props,
+        th_pos=th_pos,
+    )
+    r_hat = range_from_p1[np.argmin(dist)]
+    dict_loc[recording_name_to_loc] = {
+        "d": dist,
+        "r": range_from_p1,
+        "r_th": th_pos,
+        "r_hat": r_hat,
+    }
+
+# # Derive absolute error between theoretical and estimated range
+# abs_err = np.abs(
+#     np.array([d["r_hat"] for d in dict_loc.values()])
+#     - np.array([d["r_th"] for d in dict_loc.values()])
+# )
+# plt.figure()
+# plt.plot(dict_th_pos.keys(), abs_err, color="k", marker="o")
+# plt.ylabel(r"$\epsilon_r = |r_{th} - \hat{r}|\, \textrm{[m]}$")
+# plt.xlabel(r"$\textrm{Position id}$")
+
+# root_loc = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\fiberscope"
+# img_path = os.path.join(root_loc, recording_props["dynamic_recording_name"])
+# if not os.path.exists(img_path):
+#     os.makedirs(img_path)
+
+
+# filepath = os.path.join(img_path, "abs_err.png")
+# plt.savefig(filepath)
+
+# run_analysis(recording_name_to_loc, recording_props, processing_props)
+
+# # recording_name_to_loc = "09-10-2024T11-03-11-806485_P1_N1_Sweep_49"
+
+### Positions with different immersions ###
+# Position P7
+# recording_name_to_loc = "11-10-2024T10-51-56-563968_P3_N1_Sweep_385"    # Chirp1
+# recording_name_to_loc = "11-10-2024T10-57-39-705595_P3_N1_Sweep_390"  # Chirp2
+# run_analysis(recording_name_to_loc, recording_props, processing_props)
+# localise(
+#     recording_names=recording_names_dynamic,
+#     recording_name_to_loc=recording_name_to_loc,
+#     recording_props=recording_props,
+#     processing_props=processing_props
+# )
+
+
+# # Position P8
+# recording_name_to_loc = "11-10-2024T12-08-20-091131_P1_N1_Sweep_437"  # Chirp 1
+# # run_analysis(recording_name_to_loc, recording_props, processing_props)
+# localise(
+#     recording_names=recording_names_dynamic,
+#     recording_name_to_loc=recording_name_to_loc,
+#     recording_props=recording_props,
+# )
+
+# recording_name_to_loc = "10-10-2024T15-54-25-737795_P6_N1_Sweep_323"
+# # recording_name_to_loc = "10-10-2024T14-42-01-833325_P5_N2_Sweep_267"
+
+# pos_id = recording_name_to_loc.split("_")[1]
+# th_pos = dict_th_pos[pos_id]
+# localise(
+#     recording_names=recording_names_dynamic,
+#     recording_name_to_loc=recording_name_to_loc,
+#     recording_props=recording_props,
+#     processing_props=processing_props,
+#     th_pos=th_pos,
+# )
 
 # Load recording from dynamic split corresponding to P3
 recording_name = "10-10-2024T09-43-06-620681_P3_N1_Sweep_151"

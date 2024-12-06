@@ -62,17 +62,6 @@ def wiener_deconvolution(x, y, rho_f=None):
     return h
 
 
-def psd_deconvolution(x, y, fs, nperseg=2**12, noverlap=2**11):
-    """Derive impulse response from psd estimates"""
-
-    # Derive psds
-    f, s_xx = sp.welch(x, fs, nperseg, noverlap)
-    f, s_yy = sp.welch(y, fs, nperseg, noverlap)
-
-    # Estimate s_hh =
-    pass
-
-
 if __name__ == "__main__":
     x = np.random.randn(100)
     y = np.random.randn(100)

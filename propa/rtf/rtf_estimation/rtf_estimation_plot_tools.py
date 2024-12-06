@@ -629,6 +629,52 @@ def compare_rtf_vs_received_spectrum(
     print("Mean Hermitian angle distance CW: ", np.nanmean(dist_cw))
 
 
+def plot_rtf_estimation_hermitian_angle_distribution(
+    fig_props,
+    kraken_data,
+    f_cs,
+    rtf_cs,
+    rtf_cw,
+):
+
+    # Load true RTF
+    f_true, rtf_true = interp_true_rtf(kraken_data, f_cs)
+
+    # Derive Hermitian angle distance
+    dist_cs = D_hermitian_angle_fast(
+        rtf_ref=rtf_true, rtf=rtf_cs, unit="deg", apply_mean=False
+    )
+    dist_cw = D_hermitian_angle_fast(
+        rtf_ref=rtf_true, rtf=rtf_cw, unit="deg", apply_mean=False
+    )
+
+    # Derive mean angle
+    mean_cs = np.nanmean(dist_cs)
+    mean_cw = np.nanmean(dist_cw)
+
+    plt.figure()
+    plt.hist(dist_cs, bins=100, alpha=0.5, color="b", label=r"$\theta_{\textrm{CS}}$")
+    plt.hist(dist_cw, bins=100, alpha=0.5, color="r", label=r"$\theta_{\textrm{CW}}$")
+    # Add mean angle
+    plt.axvline(
+        mean_cs, color="b", linestyle="--", label=r"$\overline{\theta_{\textrm{CS}}}$"
+    )
+    plt.axvline(
+        mean_cw, color="r", linestyle="--", label=r"$\overline{\theta_{\textrm{CW}}}$"
+    )
+
+    plt.xlabel(r"$\theta \, \textrm{[°]}$")
+    plt.ylabel(r"$\textrm{Count}$")
+    plt.title(
+        r"$\textrm{Hermitian angle distribution}$" + f"\n({csdm_info_line(fig_props)})"
+    )
+    plt.legend()
+    plt.grid()
+    plt.savefig(
+        os.path.join(fig_props["folder_path"], f"hermitian_angle_distribution.png")
+    )
+
+
 def plot_rtf_estimation(fig_props, kraken_data, f_cs, rtf_cs, f_cw=None, rtf_cw=None):
 
     # Load true RTF

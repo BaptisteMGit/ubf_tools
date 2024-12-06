@@ -133,6 +133,7 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
 
     unit = kwargs.get("unit", "deg")
     apply_mean = kwargs.get("apply_mean", True)
+    apply_median = kwargs.get("apply_median", False)
     ax_rcv = kwargs.get("ax_rcv", 3 if rtf.ndim == 4 else 1)
 
     # Case: 4D input for variation studies
@@ -167,6 +168,8 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
         # Take mean along frequency axis if needed
         if apply_mean:
             dist = np.nanmean(dist, axis=0)
+        elif apply_median:
+            dist = np.nanmedian(dist, axis=0)
 
         # Flatten if only one range or one depth
         dist = np.squeeze(dist)
@@ -188,7 +191,10 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
 
         if apply_mean:
             dist = np.nanmean(dist)
+        elif apply_median:
+            dist = np.nanmedian(dist)
 
+    # return dist, cos_angle
     return dist
 
 

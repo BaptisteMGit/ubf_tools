@@ -531,8 +531,22 @@ if __name__ == "__main__":
     # bottom_bc = "pressure_release"
 
     # test_g_mat_h_mat(bottom_bc=bottom_bc)
+    depth = 1000
+    f = 50
+    k = 2 * np.pi * f / 1500
+    M = nb_propagating_modes(f, 1500, depth, bottom_bc="pressure_release")
+    print(M)
+    kzm = M * np.pi / depth
+    krm = np.sqrt(k**2 - kzm**2)
+    print(f"k_zm : {kzm}")
+    print(f"k_rm : {krm}")
 
-    print_arrivals(z_src=5, z_rcv=999, r=30 * 1e3, depth=1000, n=4)
+    zs = 5
+    z0 = 999
+    print(f"sin(kzm zs) : {np.sin(kzm * zs)}")
+    print(f"Approx term : {kzm * zs  - 1/6 * (kzm * zs)**3}")
+    # print(f"Approx term : {-1 + 1/6 * (M*np.pi/depth)**3 * (depth-z0)**3}")
+    # print_arrivals(z_src=5, z_rcv=999, r=30 * 1e3, depth=1000, n=4)
 
 #     D = 1e3
 #     f = 5

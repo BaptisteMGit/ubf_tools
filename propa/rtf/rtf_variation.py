@@ -95,7 +95,9 @@ def PI_var_r(varin):
     #  apply_log, _, title, label, ylabel, _
     dist_func, dist_kwargs, dist_properties = pick_distance_to_apply(dist, axis="r")
 
+    # total_dist, gamma = dist_func(g_ref, g_r, **dist_kwargs)
     total_dist = dist_func(g_ref, g_r, **dist_kwargs)
+
     range_displacement = r_src_list - r_src
 
     # Convert to dB
@@ -113,13 +115,40 @@ def PI_var_r(varin):
     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
     plt.title(dist_properties["title"])
     plt.grid()
-
     # Save
     fpath = os.path.join(
         root,
         f"{dist}_r_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}.png",
     )
     plt.savefig(fpath)
+
+    # if dist == "hermitian_angle":
+
+    #     # phi = np.cos(total_dist * np.pi / 180)
+    #     phi = np.squeeze(gamma, axis=-1)
+
+    #     # Plot phi
+    #     plt.figure()
+    #     for i_f in [100, 200, 300, 400]:
+    #         plt.plot(
+    #             range_displacement,
+    #             phi[i_f, :],
+    #             label=f"{f[i_f]:.0f} Hz",
+    #         )
+    #     plt.ylabel(r"$\gamma_r$")
+    #     plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
+    #     plt.title(r"$\gamma(r - r_s, z_s)$")
+    #     plt.legend()
+    #     plt.grid()
+    #     plt.show()
+
+    #     # Save
+    #     fpath = os.path.join(
+    #         root,
+    #         f"{dist}_r_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_phi.png",
+    #     )
+    #     plt.savefig(fpath)
+    #     plt.close("all")
 
     plt.figure()
 
@@ -240,6 +269,28 @@ def PI_var_z(varin):
         f"{dist}_z_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}.png",
     )
     plt.savefig(fpath)
+
+    if dist == "hermitian_angle":
+        phi = np.cos(total_dist * np.pi / 180)
+
+        # Plot phi
+        plt.figure()
+        plt.plot(
+            depth_displacement,
+            phi,
+        )
+        plt.ylabel(r"$\phi$")
+        plt.xlabel(r"$z - z_s \, \textrm{[m]}$")
+        plt.title(r"$\phi$")
+        plt.grid()
+
+        # Save
+        fpath = os.path.join(
+            root,
+            f"{dist}_z_{depth_displacement[0]:.0f}_{depth_displacement[-1]:.0f}_phi.png",
+        )
+        plt.savefig(fpath)
+        plt.close("all")
 
     plt.figure()
     # Iterate over receivers
@@ -578,7 +629,7 @@ def full_test(
     }
 
     # Variations along the range and depth axes
-    Pi_var_rz(varin)
+    # Pi_var_rz(varin)
 
     # Variations along the range axis
     PI_var_r(varin)
@@ -1702,6 +1753,7 @@ def pick_distance_to_apply(dist, axis="rz"):
             "ax_rcv": 2,
             "unit": "deg",
             "apply_mean": True,
+            "apply_median": False,
         }
         apply_log = False
         colobar_title = r"$\theta \, \textrm{[°]}$"
@@ -1766,19 +1818,21 @@ if __name__ == "__main__":
     bottom_bc = "pressure_release"
     dists = ["hermitian_angle", "frobenius"]
 
-    # covered_range = 15 * 1e3
-    # dr = 100
-    # zmin = 1
-    # zmax = 999
-    # dz = 10
-    # for dist in dists:
-    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
+    covered_range = 15 * 1e3
+    dr = 100
+    zmin = 1
+    zmax = 999
+    dz = 10
+    for dist in dists:
+        full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
-    # covered_range = 5
+    # dist = "hermitian_angle"
+    # covered_range = 25
     # dz = 0.1
     # dr = 0.1
     # zmin = 1
-    # zmax = 11
+    # zmax = 51
+    # full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
     # params = ["n_rcv", "delta_rcv"]
     # # params = ["r_src"]
@@ -1794,10 +1848,10 @@ if __name__ == "__main__":
     #         param_couple=["n_rcv", "delta_rcv"], bottom_bc=bottom_bc, dist=dist
     #     )
 
-    covered_range = 1
-    dz = 0.1
-    dr = 0.1
-    zmin = 4
-    zmax = 6
-    dist = "hermitian_angle"
-    full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
+    # covered_range = 1
+    # dz = 0.1
+    # dr = 0.1
+    # zmin = 4
+    # zmax = 6
+    # dist = "hermitian_angle"
+    # full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)

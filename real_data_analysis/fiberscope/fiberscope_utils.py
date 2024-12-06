@@ -23,9 +23,10 @@ from propa.rtf.rtf_utils import D_hermitian_angle_fast
 from real_data_analysis.fiberscope.read_tdms import load_fiberscope_data
 from real_data_analysis.deconvolution_utils import crosscorr_deconvolution
 from propa.rtf.rtf_estimation.rtf_estimation_utils import (
-    get_csdm_from_signal,
     rtf_cs,
     rtf_cw,
+    get_stft_list,
+    get_csdm_from_signal,
 )
 
 # Set figure properties
@@ -303,22 +304,47 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
     ff, Rx = get_csdm_from_signal(tx, x, nperseg, noverlap)
     ff, Rv = get_csdm_from_signal(tv, v, nperseg, noverlap)
 
-    if method == "cs":
-        f, rtf = rtf_cs(ff, n_hydro, Rx, Rv)
-    elif method == "cw":
-        # f, rtf = rtf_cw(ff, n_hydro, Rx, Rv)
-        pass
+    # Add Rx and R_v to the dataset
+    data["f_csdm"] = ff
+    data["Rx"] = (
+        ["f_csdm", "h_index", "h_index"],
+        np.abs(Rx),
+    )
+    data["Rv"] = (
+        ["f_csdm", "h_index", "h_index"],
+        np.abs(Rv),
+    )
 
-    # Add frequency and estimated rtf to the dataset
-    data["f_rtf"] = f
-    data["rtf_amp_hat"] = (
-        ["h_index", "f_rtf"],
-        np.abs(rtf).T,
-    )
-    data["rtf_phase_hat"] = (
-        ["h_index", "f_rtf"],
-        np.angle(rtf).T,
-    )
+    if method in ["cs", "both"]:
+        f, rtf = rtf_cs(ff, n_hydro, Rx, Rv)
+        # Add frequency and estimated rtf to the dataset
+        data["f_rtf_cs"] = f
+        data["rtf_amp_cs"] = (
+            ["h_index", "f_rtf_cs"],
+            np.abs(rtf).T,
+        )
+        data["rtf_phase_cs"] = (
+            ["h_index", "f_rtf_cs"],
+            np.angle(rtf).T,
+        )
+    if method in ["cw", "both"]:
+        # nperseg /= 2
+        # noverlap /= 2
+        x = data.signal.T.values
+        ff, _, stft_list_x = get_stft_list(x, 1 / ts, nperseg, noverlap)
+        stft_x = np.array(stft_list_x)
+
+        f, rtf = rtf_cw(ff, n_hydro, stft_x, Rv)
+        # Add frequency and estimated rtf to the dataset
+        data["f_rtf_cw"] = f
+        data["rtf_amp_cw"] = (
+            ["h_index", "f_rtf_cw"],
+            np.abs(rtf).T,
+        )
+        data["rtf_phase_cw"] = (
+            ["h_index", "f_rtf_cw"],
+            np.angle(rtf).T,
+        )
 
     return data
 
@@ -603,10 +629,12 @@ def illustrate_signal_noise_split_process(data, recording_props, processing_prop
     # )
 
 
-def analyse_rtf_estimation_results(recording_name):
+def analyse_rtf_estimation_results(recording_name, processing_props):
     data_rtf = xr.open_dataset(
         os.path.join(processed_data_path, f"{recording_name}_rtf.nc")
     )
+
+    method = processing_props.get("method", "cs")  # Method to derive the RTF
 
     for i_hydro in data_rtf.h_index.values:
         rtf_hydro = data_rtf.sel(h_index=i_hydro)
@@ -620,15 +648,27 @@ def analyse_rtf_estimation_results(recording_name):
             + f" ({recording_name})",
         )
 
-        rtf_hydro.rtf_amp_hat.plot(
-            x="f_rtf",
-            label=r"$\Pi_{" + str(i_hydro) + r"}^{(CS)}$" + f" ({recording_name})",
-            linestyle="-",
-            color="b",
-            marker="o",
-            linewidth=0.2,
-            markersize=2,
-        )
+        if method in ["cs", "both"]:
+            rtf_hydro.rtf_amp_cs.plot(
+                x="f_rtf_cs",
+                label=r"$\Pi_{" + str(i_hydro) + r"}^{(CS)}$" + f" ({recording_name})",
+                linestyle="-",
+                color="b",
+                marker="o",
+                linewidth=0.2,
+                markersize=2,
+            )
+
+        if method in ["cw", "both"]:
+            rtf_hydro.rtf_amp_cw.plot(
+                x="f_rtf_cw",
+                label=r"$\Pi_{" + str(i_hydro) + r"}^{(CW)}$" + f" ({recording_name})",
+                linestyle="-",
+                color="r",
+                marker="o",
+                linewidth=0.2,
+                markersize=2,
+            )
 
         plt.title("")
         plt.xlabel(r"$f \, \textrm{[Hz]}$")
@@ -643,24 +683,46 @@ def analyse_rtf_estimation_results(recording_name):
         plt.close("all")
 
         plt.figure()
-        rtf_hydro.rtf_phase.plot(
+        rtf_phase = rtf_hydro.rtf_phase
+        # rtf_phase = rtf_hydro.rtf_phase.sel(
+        #     f_ir=rtf_hydro.f_rtf_cs.values, method="nearest"
+        # )
+        # rtf_phase.values = np.unwrap(rtf_phase.values)
+        rtf_phase.plot(
             x="f_ir",
             color="k",
             label=r"$\Pi_{"
             + str(i_hydro)
             + r"} \textrm{(deconvolution)}$"
             + f" ({recording_name})",
+            # marker="o",
+            # linewidth=0.2,
+            # markersize=2,
         )
 
-        rtf_hydro.rtf_phase_hat.plot(
-            x="f_rtf",
-            label=r"$\Pi_{" + str(i_hydro) + r"}^{(CS)}$" + f" ({recording_name})",
-            linestyle="-",
-            color="b",
-            marker="o",
-            linewidth=0.2,
-            markersize=2,
-        )
+        if method in ["cs", "both"]:
+            # rtf_hydro.rtf_phase_cs.values = np.unwrap(rtf_hydro.rtf_phase_cs.values)
+            rtf_hydro.rtf_phase_cs.plot(
+                x="f_rtf_cs",
+                label=r"$\Pi_{" + str(i_hydro) + r"}^{(CS)}$" + f" ({recording_name})",
+                linestyle="-",
+                color="b",
+                marker="o",
+                linewidth=0.2,
+                markersize=2,
+            )
+
+        if method in ["cw", "both"]:
+            # rtf_hydro.rtf_phase_cw.values = np.unwrap(rtf_hydro.rtf_phase_cw.values)
+            rtf_hydro.rtf_phase_cw.plot(
+                x="f_rtf_cw",
+                label=r"$\Pi_{" + str(i_hydro) + r"}^{(CW)}$" + f" ({recording_name})",
+                linestyle="-",
+                color="r",
+                marker="o",
+                linewidth=0.2,
+                markersize=2,
+            )
 
         plt.title("")
         plt.xlabel(r"$f \, \textrm{[Hz]}$")
@@ -673,10 +735,43 @@ def analyse_rtf_estimation_results(recording_name):
         )
         plt.close("all")
 
+    # Plot csdm
+    rx_vmax = data_rtf.Rx.mean(axis=0).values.max()
+    rv_vmax = data_rtf.Rv.mean(axis=0).values.max()
+    vmax = max(rx_vmax, rv_vmax)
+    plt.figure()
+    im = plt.pcolormesh(
+        data_rtf.h_index.values,
+        data_rtf.h_index.values,
+        data_rtf.Rv.mean(axis=0).values,
+        vmax=vmax,
+    )
+    plt.colorbar(im)
+    plt.xlabel(r"$\textrm{Receiver id}$")
+    plt.ylabel(r"$\textrm{Receiver id}$")
+    plt.title(r"$\mathbf{\hat{R}_v}$")
+    plt.savefig(os.path.join(data_rtf.attrs["img_path"], "noise_csdm.png"))
 
-def run_analysis(recording_name, recording_props, processing_props):
+    plt.figure()
+    im = plt.pcolormesh(
+        data_rtf.h_index.values,
+        data_rtf.h_index.values,
+        data_rtf.Rx.mean(axis=0).values,
+        vmax=vmax,
+    )
+    plt.colorbar(im)
+    plt.xlabel(r"$\textrm{Receiver id}$")
+    plt.ylabel(r"$\textrm{Receiver id}$")
+    plt.title(r"$\mathbf{\hat{R}_x}$")
+    plt.savefig(os.path.join(data_rtf.attrs["img_path"], "signal_csdm.png"))
+
+
+def run_analysis(
+    recording_name, recording_props, processing_props, plot_rtf_estimation=False
+):
     derive_rtf(recording_name, recording_props, processing_props)
-    analyse_rtf_estimation_results(recording_name)
+    if plot_rtf_estimation:
+        analyse_rtf_estimation_results(recording_name, processing_props)
 
 
 def split_dynamic_recording(data, recording_props, processing_props):
@@ -803,10 +898,19 @@ def process_single_rec(data, recording_name, recording_props, processing_props):
     data.close()
 
 
-def localise(recording_names, recording_name_to_loc, recording_props):
+def localise(
+    recording_names,
+    recording_name_to_loc,
+    recording_props,
+    processing_props,
+    pos_ids=[],
+    th_pos=None,
+):
     # Unpack usefull props
     f0 = recording_props.get("f0", 8e3)
     f1 = recording_props.get("f1", 15e3)
+    rtf_method = processing_props.get("method", "cs")
+
     # Load all datasets
     recording_names_all = recording_names + [recording_name_to_loc]
     datasets = {}
@@ -814,15 +918,17 @@ def localise(recording_names, recording_name_to_loc, recording_props):
         ds_i = xr.open_dataset(
             os.path.join(processed_data_path, f"{recording_name}_rtf.nc")
         )
-        datasets[recording_name] = ds_i
+        datasets[recording_name] = ds_i.sel({f"f_rtf_{rtf_method}": slice(f0, f1)})
 
+        # datasets[recording_name] = ds_i.sel(f_rtf=slice(f0, f1))
+    # print(f"SNR {datasets[recording_name_to_loc].snr.values} dB")
     # Derive distance between rtf at the position of interrest and other positions
     ds_true_pos = datasets[recording_name_to_loc]
-    rtf_ref = ds_true_pos.rtf_amp_hat * np.exp(1j * ds_true_pos.rtf_phase_hat)
+    rtf_ref = ds_true_pos.rtf_amp_cs * np.exp(1j * ds_true_pos.rtf_phase_cs)
     dist = []
     for recording_name in recording_names:
         ds_pos = datasets[recording_name]
-        rtf_pos = ds_pos.rtf_amp_hat * np.exp(1j * ds_pos.rtf_phase_hat)
+        rtf_pos = ds_pos.rtf_amp_cs * np.exp(1j * ds_pos.rtf_phase_cs)
 
         # Derive distance using hermitian angle
         dist_kwargs = {"ax_rcv": 0, "apply_mean": True}
@@ -830,24 +936,51 @@ def localise(recording_names, recording_name_to_loc, recording_props):
         dist.append(d)
 
     # Extract position ids from names
-    if "PR" in recording_names[0]:  # Source is dynamic
-        pos_ids = [float(n.split("_")[-2][1:-1]) for n in recording_names]
-    else:
-        pos_ids = [n.split("_")[-4] for n in recording_names]
+    dyn_loc = False
+    if len(pos_ids) == 0:
+        if "PR" in recording_names[0]:  # Source is dynamic
+            pos_ids = [float(n.split("_")[-2][1:-1]) for n in recording_names]
+            dyn_loc = True
+        else:
+            pos_ids = [n.split("_")[-4] for n in recording_names]
 
     plt.figure()
-    plt.plot(pos_ids, dist)
-    plt.xlabel(r"$\textrm{Position}$")
+    plt.plot(pos_ids, dist, color="k", marker="o", linestyle="-", markersize=5)
+
+    if dyn_loc:
+        xlabel = r"$\textrm{Range from P1}  \, \textrm{[m]}$"
+        if th_pos is not None:
+            plt.axvline(
+                th_pos, color="r", linestyle="--", label=r"$\textrm{True position}$"
+            )
+    else:
+        xlabel = r"$\textrm{Position}$"
+        if th_pos is not None:
+            # idx_th_pos = pos_ids.index(th_pos)
+            plt.axvline(
+                # pos_ids[th_pos],
+                th_pos,
+                color="r",
+                linestyle="--",
+                label=r"$\textrm{True position}$",
+            )
+
+    plt.xlabel(xlabel)
     plt.ylabel(r"$\theta \textrm{[°]}$")
     plt.title(r"$\textrm{" + f"{recording_name_to_loc}" + r"}$")
+    plt.legend()
     plt.savefig(
         os.path.join(
             ds_true_pos.attrs["img_path"], f"{recording_name_to_loc}_localisation.png"
         )
     )
     # plt.show()
-    print(f"SNR {ds_pos.snr.values} dB")
-    print(dist)
+    # print(f"SNR {ds_pos.snr.values} dB")
+    # print(dist)
+
+    snrs = datasets[recording_name_to_loc].snr.values
+
+    return pos_ids, dist, snrs
 
 
 # ======================================================================================================================
@@ -897,7 +1030,7 @@ def localise(recording_names, recording_name_to_loc, recording_props):
 #         + f" ({recording_name_2})",
 #     )
 
-#     rtf_hydro_1.rtf_amp_hat.plot(
+#     rtf_hydro_1.rtf_amp_cs.plot(
 #         x="f_rtf",
 #         label=r"$\Pi_{" + str(i_hydro) + r"}^{(CS)}$" + f" ({recording_name_1})",
 #         linestyle="-",
@@ -906,7 +1039,7 @@ def localise(recording_names, recording_name_to_loc, recording_props):
 #         linewidth=0.2,
 #         markersize=2,
 #     )
-#     rtf_hydro_2.rtf_amp_hat.plot(
+#     rtf_hydro_2.rtf_amp_cs.plot(
 #         x="f_rtf",
 #         label=r"$\Pi_{" + str(i_hydro) + r"}^{(CS)}$" + f" ({recording_name_2})",
 #         linestyle="-",
@@ -945,7 +1078,7 @@ def localise(recording_names, recording_name_to_loc, recording_props):
 #         + r"} \textrm{(deconvolution)}$"
 #         + f" ({recording_name_2})",
 #     )
-#     rtf_hydro_1.rtf_phase_hat.plot(
+#     rtf_hydro_1.rtf_phase_cs.plot(
 #         x="f_rtf",
 #         label=r"$\Pi_{" + str(i_hydro) + r"}^{(CS)}$" + f" ({recording_name_1})",
 #         linestyle="-",
@@ -954,7 +1087,7 @@ def localise(recording_names, recording_name_to_loc, recording_props):
 #         linewidth=0.2,
 #         markersize=2,
 #     )
-#     rtf_hydro_2.rtf_phase_hat.plot(
+#     rtf_hydro_2.rtf_phase_cs.plot(
 #         x="f_rtf",
 #         label=r"$\Pi_{" + str(i_hydro) + r"}^{(CS)}$" + f" ({recording_name_2})",
 #         linestyle="-",

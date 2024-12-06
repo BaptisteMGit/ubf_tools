@@ -258,7 +258,10 @@ if __name__ == "__main__":
     # for snr_dB in snrs:
     #     testcase_1_unpropagated_whitenoise(snr_dB=snr_dB)
 
+    res = testcase_1_unpropagated_whitenoise(snr_dB=-25)
+    res = testcase_1_unpropagated_whitenoise(snr_dB=25)
     res = testcase_1_unpropagated_whitenoise(snr_dB=0)
+
     # compare_rtf_vs_received_spectrum(
     #     res["props"],
     #     res["cs"]["f"],
@@ -268,9 +271,20 @@ if __name__ == "__main__":
     #     rcv_signal=res["signal"],
     # )
 
-    testcase_2_propagated_whitenoise(snr_dB=0)
+    # testcase_2_propagated_whitenoise(snr_dB=0)
     # testcase_3_propagated_interference(plot=True, interference_type="dirac")
-    testcase_3_propagated_interference(snr_dB=0, plot=True, interference_type="z_call")
+    # abw_z = [25]
+    # abw_ranges = [15 * 1e3, 50 * 1e3]
+    # for r in abw_ranges:
+    #     abw_r = [r]
+    #     testcase_3_propagated_interference(
+    #         snr_dB=0,
+    #         plot=True,
+    #         interference_type="z_call",
+    #         interferer_r=abw_r,
+    #         interferer_z=abw_z,
+    #     )
+
     # testcase_3_propagated_interference(snr_dB=10, plot=True, interference_type="z_call")
     # testcase_3_propagated_interference(plot=True, interference_type="ricker_pulse")
 

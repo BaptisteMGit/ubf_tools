@@ -617,7 +617,6 @@ def derive_received_noise(
 ):
 
     received_noise = {}
-    rcv_noise = np.empty((ns, N_RCV))
 
     # Compute the received noise signal
     if propagated:
@@ -751,6 +750,7 @@ def derive_received_interference(ns, fs, interference_arg={}):
                 "nz": 0,  # Let the function derived the maximum number of z-calls in the signal duration
                 "signal_duration": ns / fs,
                 "sl": 188.5,
+                # "sl": 170,
                 # "start_offset_seconds": 0,
                 # "end_offset_seconds": 0,
             }

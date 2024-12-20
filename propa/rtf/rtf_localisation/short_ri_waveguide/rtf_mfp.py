@@ -12,9 +12,13 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
-import scipy.interpolate as sp_int
+import sys
+
+sys.path.append(r"C:\Users\baptiste.menetrier\Desktop\devPy\phd")
 
 import dask.array as da
+import scipy.interpolate as sp_int
+
 from dask import delayed
 from dask.diagnostics import ProgressBar
 
@@ -192,6 +196,20 @@ def mfp_simulated_replicas(testcase, snr_dB):
 
     plot_args["rtf_method"] = "cw"
     plot_ambiguity_surface(amb_surf=D_cw, r_src=r_src, z_src=z_src, plot_args=plot_args)
+
+    # Estimate source position
+    z_min_cs, r_min_cs = np.unravel_index(np.argmin(D_cs.values), D_cs.shape)
+    r_src_hat_cs = D_cs.r[r_min_cs]
+    z_src_hat_cs = D_cs.z[z_min_cs]
+
+    z_min_cw, r_min_cw = np.unravel_index(np.argmin(D_cw.values), D_cw.shape)
+    r_src_hat_cw = D_cw.r[r_min_cw]
+    z_src_hat_cw = D_cw.z[z_min_cw]
+
+    pos_hat_cs = (r_src_hat_cs, z_src_hat_cs)
+    pos_hat_cw = (r_src_hat_cw, z_src_hat_cw)
+
+    return pos_hat_cs, pos_hat_cw
 
 
 def mfp_measured_replicas(testcase, snr_dB):
@@ -430,6 +448,20 @@ def mfp_measured_replicas(testcase, snr_dB):
     plot_args["rtf_method"] = "cw"
     plot_ambiguity_surface(amb_surf=D_cw, r_src=r_src, z_src=z_src, plot_args=plot_args)
 
+    # Estimate source position
+    z_min_cs, r_min_cs = np.unravel_index(np.argmin(D_cs.values), D_cs.shape)
+    r_src_hat_cs = D_cs.r[r_min_cs]
+    z_src_hat_cs = D_cs.z[z_min_cs]
+
+    z_min_cw, r_min_cw = np.unravel_index(np.argmin(D_cw.values), D_cw.shape)
+    r_src_hat_cw = D_cw.r[r_min_cw]
+    z_src_hat_cw = D_cw.z[z_min_cw]
+
+    pos_hat_cs = (r_src_hat_cs, z_src_hat_cs)
+    pos_hat_cw = (r_src_hat_cw, z_src_hat_cw)
+
+    return pos_hat_cs, pos_hat_cw
+
 
 def get_received_signal(
     tf_xr, tau_ir, rmin, rmax, grid_lims, grid_resolution, sl=200, z_rcv=999, r_rcv=0
@@ -624,6 +656,347 @@ def derive_received_noise(
     rcv_noise_xr.attrs["sigma_noise"] = sigma_noise
 
     return rcv_noise_xr
+
+
+# ======================================================================================================================
+# Test functions
+# ======================================================================================================================
+
+
+def test(
+    rtf_cs, rtf_cw, f_cs, f_cw, rtf_grid, z_src, r_src, n_rcv, dist_func, dist_kwargs
+):
+    kraken_data = load_data()
+    f_true, rtf_true = true_rtf(kraken_data)
+
+    # Check distance
+    dist_kwargs["ax_rcv"] = 1
+    rtf_kraken_rcv_pos = rtf_grid.sel(r=r_src, z=z_src)
+    d_cs = dist_func(rtf_cs.values, rtf_kraken_rcv_pos.values, **dist_kwargs)
+    d_cw = dist_func(rtf_cw.values, rtf_kraken_rcv_pos.values, **dist_kwargs)
+
+    print("Distance between estimated RTF and RTF at source position:")
+    print(f"CS: {d_cs:.2f}°")
+    print(f"CW: {d_cw:.2f}°")
+
+    f_interp, rtf_true_interp = interp_true_rtf(kraken_data, f_cs)
+    d_cs = dist_func(rtf_cs.values, rtf_true_interp, **dist_kwargs)
+    d_cw = dist_func(rtf_cw.values, rtf_true_interp, **dist_kwargs)
+
+    print("Distance between estimated RTF and true RTF at source position:")
+    print(f"CS: {d_cs:.2f}°")
+    print(f"CW: {d_cw:.2f}°")
+
+    d = dist_func(rtf_kraken_rcv_pos.values, rtf_true_interp, **dist_kwargs)
+
+    print(f"Distance between true and grid rtf at src pos: {d:.2f}°")
+
+    root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\short_ri_waveguide\test_implementation"
+    for i in range(0, n_rcv):
+        # delta_r = i * delta_rcv
+        # hf_ref = kraken_data[f"rcv{i}"]["h_f"]
+        # hf_loose_grid = tf_rcv_ref.sel(r=r_src - delta_r, z=z_src).values
+        # plt.figure()
+        # plt.plot(ds_tf.f, np.abs(hf_loose_grid), label=f"loose grid - {i}")
+        # plt.plot(f_true, np.abs(hf_ref), label=f"ref - {i}")
+        # # plt.yscale("log")
+        # plt.legend()
+        # fpath = os.path.join(root_img, f"tf_ref_vs_loose_grid_{i}.png")
+        # plt.savefig(fpath)
+
+        # rtf_ref = rtf_true[:, i]
+        # rtf_loose_grid = (
+        #     tf_rcv_ref.sel(r=r_src - delta_r, z=z_src).values
+        #     / tf_rcv_ref.sel(r=r_src, z=z_src).values
+        # )
+        # plt.figure()
+        # plt.plot(ds_tf.f, np.abs(rtf_loose_grid), label=f"loose grid - {i}")
+        # plt.plot(f_true, np.abs(rtf_ref), label=f"ref - {i}")
+        # # plt.yscale("log")
+        # plt.legend()
+        # fpath = os.path.join(root_img, f"rtf_ref_vs_loose_grid_{i}.png")
+        # plt.savefig(fpath)
+
+        # rtf_grid_i = rtf_grid[..., i]
+        # rtf_i = rtf_grid_i[:, idx_z_src, idx_r_src]
+        rtf_i = np.abs(rtf_grid.sel(idx_rcv=i, z=z_src, r=r_src))
+
+        plt.figure()
+        plt.plot(f_cs, np.abs(rtf_cs.sel(idx_rcv=i)), label="cs")
+        plt.plot(f_cw, np.abs(rtf_cw.sel(idx_rcv=i)), label="cw")
+        plt.plot(f_interp, np.abs(rtf_true_interp[:, i]), label="ref", marker="o")
+        plt.plot(f_cs, rtf_i, label="loose grid", color="k", linestyle="--", marker="x")
+        plt.legend()
+        plt.yscale("log")
+        plt.xlabel(r"$f \, \textrm{[Hz]}$")
+        plt.ylabel(r"$|\Pi(f)|$")
+
+        fpath = os.path.join(root_img, f"rtf_estim_ref_vs_loose_grid_{i}.png")
+        plt.savefig(fpath)
+
+        # Same plot but for the phase
+        rtf_i = np.angle(rtf_grid.sel(idx_rcv=i, z=z_src, r=r_src))
+        plt.figure()
+        plt.plot(f_cs, np.angle(rtf_cs.sel(idx_rcv=i)), label="cs")
+        plt.plot(f_cw, np.angle(rtf_cw.sel(idx_rcv=i)), label="cw")
+        plt.plot(f_cs, np.angle(rtf_true_interp[:, i]), label="ref")
+        plt.plot(f_cs, rtf_i, label="loose grid", color="k", linestyle="--")
+        plt.legend()
+        plt.xlabel(r"$f \, \textrm{[Hz]}$")
+        plt.ylabel(r"$\angle \Pi(f)$")
+
+        fpath = os.path.join(root_img, f"rtf_estim_ref_vs_loose_grid_phase_{i}.png")
+        plt.savefig(fpath)
+
+
+def plot_waveguide_mean_tl():
+
+    n_rcv, z_src, r_src, delta_rcv = common_params()
+
+    # Load data
+    data_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_estimation\short_ri_waveguide\data\kraken_tf_mfp_grid.nc"
+    ds_tf = xr.open_dataset(data_path)
+
+    # Subsample the dataset along range axis to increase performance
+    dr_subsample = 500
+    r_subsample = np.arange(0, ds_tf.r.max(), dr_subsample)
+    ds_tf = ds_tf.sel(r=r_subsample, method="nearest")
+
+    # Define grid limits
+    rmin = 5 * 1e3
+    rmax = 45 * 1e3
+    rmin_load = rmin - n_rcv * delta_rcv * 1.5
+    rmax_load = rmax + n_rcv * delta_rcv * 1.5
+    zmin = 1
+    zmax = 950
+    ds_tf = ds_tf.sel(r=slice(rmin_load, rmax_load), z=slice(zmin, zmax))
+
+    tf = ds_tf.tf_real + 1j * ds_tf.tf_imag
+    # Replace 0 by nan
+    tf = np.abs(tf).where(tf != 0, np.nan)
+    tl_mean = 20 * np.log10(tf).mean(dim="f")
+
+    plt.figure()
+    tl_mean.plot(
+        yincrease=False,
+        cmap="jet",
+        cbar_kwargs={"label": "Mean TL [dB]"},
+    )
+    # Save
+    fpath = os.path.join(ROOT_IMG_TEST, "mean_tl_waveguide.png")
+    plt.savefig(fpath)
+
+    # # Plot tl at diffent freqs
+    # f_to_plot = [5, 10, 15, 20, 25, 30, 35, 40, 45]
+    # for f in f_to_plot:
+    #     plt.figure()
+    #     tl_f = 20 * np.log10(tf.sel(f=f))
+    #     tl_f.plot(
+    #         yincrease=False,
+    #         cmap="jet",
+    #         cbar_kwargs={"label": "Mean TL [dB]"},
+    #     )
+    #     plt.title(f"TL at {f} Hz")
+    #     # Save
+    #     fpath = os.path.join(ROOT_IMG_TEST, f"tl_waveguide_{f}Hz.png")
+    #     plt.savefig(fpath)
+
+    # Plot mean tl over a given frequency band
+    fmin = 11
+    fmax = 16
+    tl_band = 20 * np.log10(tf.sel(f=slice(fmin, fmax)))
+    tl_mean_band = tl_band.mean(dim="f")
+
+    plt.figure()
+    tl_mean_band.plot(
+        yincrease=False,
+        cmap="jet",
+        cbar_kwargs={"label": f"Mean TL [dB] ({fmin}-{fmax} Hz)"},
+    )
+    # Save
+    fpath = os.path.join(ROOT_IMG_TEST, f"mean_tl_waveguide_{fmin}-{fmax}Hz.png")
+    plt.savefig(fpath)
+
+
+if __name__ == "__main__":
+
+    # plot_waveguide_mean_tl()
+
+    tc = 1
+    snr = 0
+
+    mfp_simulated_replicas(tc, snr)
+    mfp_measured_replicas(tc, snr)
+
+    snrs = [-30, -20, -10, 0, 10, 20, 30]
+    # snrs = np.arange(-50, 55, 5)
+
+    _, z_src, r_src, _ = common_params()
+
+    # snrs = [0, 1]
+    n_monte_carlo = 10
+
+    # pos_cs_hat_simulated_replicas = []
+    # pos_cw_hat_simulated_replicas = []
+    # for snr in snrs:
+    #     pos_cs = []
+    #     pos_cw = []
+    #     for i in range(n_monte_carlo):
+    #         pos_cs_hat, pos_cw_hat = mfp_simulated_replicas(tc, snr)
+    #         pos_cs.append(pos_cs_hat)
+    #         pos_cw.append(pos_cw_hat)
+
+    #     pos_cs_hat_simulated_replicas.append(pos_cs)
+    #     pos_cw_hat_simulated_replicas.append(pos_cw)
+
+    # pos_cs_hat_simulated_replicas = np.array(pos_cs_hat_simulated_replicas)
+    # pos_cw_hat_simulated_replicas = np.array(pos_cw_hat_simulated_replicas)
+
+    # rmse_pos_cs = np.sqrt(
+    #     np.mean((pos_cs_hat_simulated_replicas - np.array([r_src, z_src])) ** 2, axis=1)
+    # )
+    # rmse_pos_cw = np.sqrt(
+    #     np.mean((pos_cw_hat_simulated_replicas - np.array([r_src, z_src])) ** 2, axis=1)
+    # )
+
+    # # Plot rmse vs snr
+    # root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\short_ri_waveguide\simulated_replicas\testcase_1_unpropagated_whitenoise"
+    # # Range
+    # plt.figure()
+    # plt.plot(
+    #     snrs,
+    #     rmse_pos_cs[:, 0],
+    #     label="CS",
+    #     linestyle="-",
+    #     color="b",
+    #     marker="o",
+    #     linewidth=0.5,
+    #     markersize=2,
+    # )
+    # plt.plot(
+    #     snrs,
+    #     rmse_pos_cw[:, 0],
+    #     label="CW",
+    #     linestyle="-",
+    #     color="r",
+    #     marker="o",
+    #     linewidth=0.5,
+    #     markersize=2,
+    # )
+    # plt.xlabel(r"$\textrm{SNR [dB]}$")
+    # plt.ylabel(r"$\textrm{RMSE [m]}$")
+    # plt.legend()
+
+    # plt.savefig(os.path.join(root_img, "rmse_vs_snr_range.png"))
+
+    # # Depth
+    # plt.figure()
+    # plt.plot(
+    #     snrs,
+    #     rmse_pos_cs[:, 1],
+    #     label="CS",
+    #     linestyle="-",
+    #     color="b",
+    #     marker="o",
+    #     linewidth=0.5,
+    #     markersize=2,
+    # )
+    # plt.plot(
+    #     snrs,
+    #     rmse_pos_cw[:, 1],
+    #     label="CW",
+    #     linestyle="-",
+    #     color="r",
+    #     marker="o",
+    #     linewidth=0.5,
+    #     markersize=2,
+    # )
+    # plt.xlabel(r"$\textrm{SNR [dB]}$")
+    # plt.ylabel(r"$\textrm{RMSE [m]}$")
+    # plt.legend()
+
+    # plt.savefig(os.path.join(root_img, "rmse_vs_snr_depth.png"))
+
+    # pos_cs_hat_measured_replicas = []
+    # pos_cw_hat_measured_replicas = []
+    # for snr in snrs:
+    #     pos_cs = []
+    #     pos_cw = []
+    #     for i in range(n_monte_carlo):
+    #         pos_cs_hat, pos_cw_hat = mfp_measured_replicas(tc, snr)
+    #         pos_cs.append(pos_cs_hat)
+    #         pos_cw.append(pos_cw_hat)
+
+    #     pos_cs_hat_measured_replicas.append(pos_cs)
+    #     pos_cw_hat_measured_replicas.append(pos_cw)
+
+    # pos_cs_hat_measured_replicas = np.array(pos_cs_hat_measured_replicas)
+    # pos_cw_hat_measured_replicas = np.array(pos_cw_hat_measured_replicas)
+
+    # rmse_pos_cs = np.sqrt(
+    #     np.mean((pos_cs_hat_measured_replicas - np.array([r_src, z_src])) ** 2, axis=1)
+    # )
+    # rmse_pos_cw = np.sqrt(
+    #     np.mean((pos_cw_hat_measured_replicas - np.array([r_src, z_src])) ** 2, axis=1)
+    # )
+
+    # # Plot rmse vs snr
+    # root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\short_ri_waveguide\measured_replicas\testcase_1_unpropagated_whitenoise"
+    # # Range
+    # plt.figure()
+    # plt.plot(
+    #     snrs,
+    #     rmse_pos_cs[:, 0],
+    #     label="CS",
+    #     linestyle="-",
+    #     color="b",
+    #     marker="o",
+    #     linewidth=0.5,
+    #     markersize=2,
+    # )
+    # plt.plot(
+    #     snrs,
+    #     rmse_pos_cw[:, 0],
+    #     label="CW",
+    #     linestyle="-",
+    #     color="r",
+    #     marker="o",
+    #     linewidth=0.5,
+    #     markersize=2,
+    # )
+    # plt.xlabel(r"$\textrm{SNR [dB]}$")
+    # plt.ylabel(r"$\textrm{RMSE [m]}$")
+    # plt.legend()
+
+    # plt.savefig(os.path.join(root_img, "rmse_vs_snr_range.png"))
+
+    # # Depth
+    # plt.figure()
+    # plt.plot(
+    #     snrs,
+    #     rmse_pos_cs[:, 1],
+    #     label="CS",
+    #     linestyle="-",
+    #     color="b",
+    #     marker="o",
+    #     linewidth=0.5,
+    #     markersize=2,
+    # )
+    # plt.plot(
+    #     snrs,
+    #     rmse_pos_cw[:, 1],
+    #     label="CW",
+    #     linestyle="-",
+    #     color="r",
+    #     marker="o",
+    #     linewidth=0.5,
+    #     markersize=2,
+    # )
+    # plt.xlabel(r"$\textrm{SNR [dB]}$")
+    # plt.ylabel(r"$\textrm{RMSE [m]}$")
+    # plt.legend()
+
+    # plt.savefig(os.path.join(root_img, "rmse_vs_snr_depth.png"))
 
     # if noise_model == "gaussian":
     #     for i in range(n_rcv):
@@ -955,104 +1328,3 @@ def derive_received_noise(
 # ds_noise.sel(idx_rcv=0).var(dim=["t"]).plot(yincrease=False)
 # fpath = os.path.join(ROOT_IMG_TEST, "noise_var_rcv0.png")
 # plt.savefig(fpath)
-
-
-# ======================================================================================================================
-# Test functions
-# ======================================================================================================================
-
-
-def test(
-    rtf_cs, rtf_cw, f_cs, f_cw, rtf_grid, z_src, r_src, n_rcv, dist_func, dist_kwargs
-):
-    kraken_data = load_data()
-    f_true, rtf_true = true_rtf(kraken_data)
-
-    # Check distance
-    dist_kwargs["ax_rcv"] = 1
-    rtf_kraken_rcv_pos = rtf_grid.sel(r=r_src, z=z_src)
-    d_cs = dist_func(rtf_cs.values, rtf_kraken_rcv_pos.values, **dist_kwargs)
-    d_cw = dist_func(rtf_cw.values, rtf_kraken_rcv_pos.values, **dist_kwargs)
-
-    print("Distance between estimated RTF and RTF at source position:")
-    print(f"CS: {d_cs:.2f}°")
-    print(f"CW: {d_cw:.2f}°")
-
-    f_interp, rtf_true_interp = interp_true_rtf(kraken_data, f_cs)
-    d_cs = dist_func(rtf_cs.values, rtf_true_interp, **dist_kwargs)
-    d_cw = dist_func(rtf_cw.values, rtf_true_interp, **dist_kwargs)
-
-    print("Distance between estimated RTF and true RTF at source position:")
-    print(f"CS: {d_cs:.2f}°")
-    print(f"CW: {d_cw:.2f}°")
-
-    d = dist_func(rtf_kraken_rcv_pos.values, rtf_true_interp, **dist_kwargs)
-
-    print(f"Distance between true and grid rtf at src pos: {d:.2f}°")
-
-    root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\short_ri_waveguide\test_implementation"
-    for i in range(0, n_rcv):
-        # delta_r = i * delta_rcv
-        # hf_ref = kraken_data[f"rcv{i}"]["h_f"]
-        # hf_loose_grid = tf_rcv_ref.sel(r=r_src - delta_r, z=z_src).values
-        # plt.figure()
-        # plt.plot(ds_tf.f, np.abs(hf_loose_grid), label=f"loose grid - {i}")
-        # plt.plot(f_true, np.abs(hf_ref), label=f"ref - {i}")
-        # # plt.yscale("log")
-        # plt.legend()
-        # fpath = os.path.join(root_img, f"tf_ref_vs_loose_grid_{i}.png")
-        # plt.savefig(fpath)
-
-        # rtf_ref = rtf_true[:, i]
-        # rtf_loose_grid = (
-        #     tf_rcv_ref.sel(r=r_src - delta_r, z=z_src).values
-        #     / tf_rcv_ref.sel(r=r_src, z=z_src).values
-        # )
-        # plt.figure()
-        # plt.plot(ds_tf.f, np.abs(rtf_loose_grid), label=f"loose grid - {i}")
-        # plt.plot(f_true, np.abs(rtf_ref), label=f"ref - {i}")
-        # # plt.yscale("log")
-        # plt.legend()
-        # fpath = os.path.join(root_img, f"rtf_ref_vs_loose_grid_{i}.png")
-        # plt.savefig(fpath)
-
-        # rtf_grid_i = rtf_grid[..., i]
-        # rtf_i = rtf_grid_i[:, idx_z_src, idx_r_src]
-        rtf_i = np.abs(rtf_grid.sel(idx_rcv=i, z=z_src, r=r_src))
-
-        plt.figure()
-        plt.plot(f_cs, np.abs(rtf_cs.sel(idx_rcv=i)), label="cs")
-        plt.plot(f_cw, np.abs(rtf_cw.sel(idx_rcv=i)), label="cw")
-        plt.plot(f_interp, np.abs(rtf_true_interp[:, i]), label="ref", marker="o")
-        plt.plot(f_cs, rtf_i, label="loose grid", color="k", linestyle="--", marker="x")
-        plt.legend()
-        plt.yscale("log")
-        plt.xlabel(r"$f \, \textrm{[Hz]}$")
-        plt.ylabel(r"$|\Pi(f)|$")
-
-        fpath = os.path.join(root_img, f"rtf_estim_ref_vs_loose_grid_{i}.png")
-        plt.savefig(fpath)
-
-        # Same plot but for the phase
-        rtf_i = np.angle(rtf_grid.sel(idx_rcv=i, z=z_src, r=r_src))
-        plt.figure()
-        plt.plot(f_cs, np.angle(rtf_cs.sel(idx_rcv=i)), label="cs")
-        plt.plot(f_cw, np.angle(rtf_cw.sel(idx_rcv=i)), label="cw")
-        plt.plot(f_cs, np.angle(rtf_true_interp[:, i]), label="ref")
-        plt.plot(f_cs, rtf_i, label="loose grid", color="k", linestyle="--")
-        plt.legend()
-        plt.xlabel(r"$f \, \textrm{[Hz]}$")
-        plt.ylabel(r"$\angle \Pi(f)$")
-
-        fpath = os.path.join(root_img, f"rtf_estim_ref_vs_loose_grid_phase_{i}.png")
-        plt.savefig(fpath)
-
-
-if __name__ == "__main__":
-    tc = 1
-    snr = 0
-    snrs = [-30, -20, -10, 0, 10, 20, 30]
-
-    for snr in snrs:
-        mfp_measured_replicas(tc, snr)
-        mfp_simulated_replicas(tc, snr)

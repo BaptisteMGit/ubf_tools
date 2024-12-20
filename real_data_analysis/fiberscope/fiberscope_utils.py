@@ -64,7 +64,10 @@ def process_recording(recording_name, recording_props, processing_props):
     process_single_rec(data, recording_name, recording_props, processing_props)
 
 
-def derive_rtf(recording_name, recording_props, processing_props):
+def derive_rtf(recording_name, recording_props, processing_props, verbose=False):
+
+    if verbose:
+        print(f"Processing recording {recording_name} - RTF estimation")
 
     # Load data if already processed
     fpath = os.path.join(processed_data_path, f"{recording_name}.nc")
@@ -145,7 +148,7 @@ def split_signal_noise(data, recording_props, processing_props):
         # 3) Split signal and noise based on the energy level in the frequency band of interest
         # energy_threshold = energy_band.max() * alpha_th
         energy_threshold = np.max(energy_band[tt > tt.max() * 2 / 3]) * 4
-        print(f"energy_threshold = {energy_threshold}")
+        # print(f"energy_threshold = {energy_threshold}")
         time_with_energy_above_threshold = tt[energy_band > energy_threshold]
         # split_time = time_with_energy_above_threshold[-1]
         split_time_0 = time_with_energy_above_threshold[0]
@@ -298,7 +301,7 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
     # Covariance substraction
     tau_ir = 0.5
     nperseg = int(tau_ir / ts)
-    print(f"nperseg : {nperseg}")
+    # print(f"nperseg : {nperseg}")
     # nperseg = 2**12
     noverlap = nperseg // 2
     ff, Rx = get_csdm_from_signal(tx, x, nperseg, noverlap)
@@ -629,7 +632,11 @@ def illustrate_signal_noise_split_process(data, recording_props, processing_prop
     # )
 
 
-def analyse_rtf_estimation_results(recording_name, processing_props):
+def analyse_rtf_estimation_results(recording_name, processing_props, verbose=False):
+
+    if verbose:
+        print(f"Analyzing recording {recording_name} - Plotting RTF estimation results")
+
     data_rtf = xr.open_dataset(
         os.path.join(processed_data_path, f"{recording_name}_rtf.nc")
     )
@@ -767,11 +774,17 @@ def analyse_rtf_estimation_results(recording_name, processing_props):
 
 
 def run_analysis(
-    recording_name, recording_props, processing_props, plot_rtf_estimation=False
+    recording_name,
+    recording_props,
+    processing_props,
+    plot_rtf_estimation=False,
+    verbose=False,
 ):
-    derive_rtf(recording_name, recording_props, processing_props)
+    derive_rtf(recording_name, recording_props, processing_props, verbose=verbose)
     if plot_rtf_estimation:
-        analyse_rtf_estimation_results(recording_name, processing_props)
+        analyse_rtf_estimation_results(
+            recording_name, processing_props, verbose=verbose
+        )
 
 
 def split_dynamic_recording(data, recording_props, processing_props):
@@ -981,6 +994,29 @@ def localise(
     snrs = datasets[recording_name_to_loc].snr.values
 
     return pos_ids, dist, snrs
+
+
+def re_order_recordings(recording_names):
+    """
+    Re-order the recordings so that distance from P1 are ordered in ascending order.
+    """
+
+    ordered_pos = [
+        "P1",  # Reference position
+        "P6",  # 5m from P1
+        "P2",  # 10m from P1
+        "P5",  # 15m from P1
+        "P3",  # 20m from P1
+        "P4",  # 25m from P1
+    ]
+    ordered_recording_names = []
+    for pos in ordered_pos:
+        for rec in recording_names:
+            if pos in rec:
+                ordered_recording_names.append(rec)
+                break
+
+    return ordered_pos, ordered_recording_names
 
 
 # ======================================================================================================================

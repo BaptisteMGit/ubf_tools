@@ -12,6 +12,10 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import sys
+
+sys.path.append(r"C:\Users\baptiste.menetrier\Desktop\devPy\phd")
+
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
@@ -95,15 +99,117 @@ def PI_var_r(varin):
     #  apply_log, _, title, label, ylabel, _
     dist_func, dist_kwargs, dist_properties = pick_distance_to_apply(dist, axis="r")
 
+    dist_kwargs["apply_mean"] = False
     # total_dist, gamma = dist_func(g_ref, g_r, **dist_kwargs)
     total_dist = dist_func(g_ref, g_r, **dist_kwargs)
 
     range_displacement = r_src_list - r_src
 
+    target_range = 1000
+    idx_target = np.argmin(np.abs(range_displacement - target_range))
+
+    plt.figure()
+    n_sum = np.arange(1, len(total_dist[:, idx_target]) + 1)
+    selected_idx_f = [np.random.choice(range(n_sum.shape[0]), n) for n in n_sum]
+    mean_dist = [np.mean(total_dist[idx_f, idx_target]) for idx_f in selected_idx_f]
+    plt.plot(n_sum, mean_dist)
+    plt.ylabel(r"$\frac{1}{n}\sum\limits_{\omega \in \Omega_n} \theta(\omega) $")
+    plt.xlabel(r"$n$")
+    plt.title(r"$r - r_s = " + str(target_range) + r"\, \textrm{m}$")
+    plt.grid()
+    # Save
+    fpath = os.path.join(
+        root,
+        f"theta_mean_n_r{target_range}m.png",
+    )
+    plt.savefig(fpath)
+    # plt.show()
+
+    mean_mat = []
+    for r in range_displacement:
+        idx_target = np.argmin(np.abs(range_displacement - r))
+        n_sum = np.arange(1, len(total_dist[:, idx_target]) + 1)
+        selected_idx_f = [np.random.choice(range(n_sum.shape[0]), n) for n in n_sum]
+        mean_dist = [np.mean(total_dist[idx_f, idx_target]) for idx_f in selected_idx_f]
+        mean_mat.append(mean_dist)
+
+    mean_mat = np.array(mean_mat)
+    plt.figure()
+    plt.pcolormesh(
+        range_displacement,
+        n_sum,
+        mean_mat.T,
+        shading="auto",
+        cmap="jet_r",
+        vmax=25,
+        vmin=10,
+    )
+    plt.colorbar(
+        label=r"$\frac{1}{n}\sum\limits_{\omega \in \Omega_n} \theta(\omega) $"
+    )
+    plt.ylabel(r"$n$")
+    plt.xlabel(r"$r - r_s \textrm{[m]}$")
+    # plt.title()
+    plt.grid()
+    # Save
+    fpath = os.path.join(
+        root,
+        f"theta_mean_n_r.png",
+    )
+    plt.savefig(fpath)
+    # plt.show()
+
     # Convert to dB
     if dist_properties["apply_log"]:
         total_dist += 1
         total_dist = 10 * np.log10(total_dist)
+
+    freq_plot = [5, 10, 15]
+    cols = ["k", "r", "b"]
+    plt.figure()
+    for i, f_i in enumerate(freq_plot):
+        i_f = np.argmin(np.abs(f - f_i))
+        plt.plot(
+            range_displacement,
+            total_dist[i_f, :],
+            label=f"{f[i_f]:.0f} Hz",
+            color=cols[i],
+        )
+    plt.ylabel(r"$\theta(r, z=z_s)$")
+    plt.xlabel(r"$r - r_s \, \textrm{[m]}$")
+    # plt.title(r"$\gamma(r - r_s, z_s)$")
+    plt.legend()
+    plt.grid()
+    # Save
+    fpath = os.path.join(
+        root,
+        f"{dist}_r_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_f.png",
+    )
+    plt.savefig(fpath)
+
+    # Spectral analysis of the theta(r, z_s) function
+    plt.figure()
+    for i, f_i in enumerate(freq_plot):
+        i_f = np.argmin(np.abs(f - f_i))
+        centered_theta = total_dist[i_f, :] - np.mean(total_dist[i_f, :])
+        spectrum = np.fft.fft(centered_theta)
+        freq = np.fft.fftfreq(spectrum.shape[0], d=dr)
+        plt.plot(
+            freq,
+            np.abs(spectrum),
+            label=f"{f[i_f]:.0f} Hz",
+            color=cols[i],
+        )
+    plt.ylabel(r"$|\mathcal{F}[\theta(r, z=z_s)]|$")
+    plt.xlabel(r"$k \, \textrm{[m]}^{-1}$")
+    plt.legend()
+    # save
+    fpath = os.path.join(
+        root,
+        f"{dist}_r_{range_displacement[0]:.0f}_{range_displacement[-1]:.0f}_f_spectrum.png",
+    )
+    plt.savefig(fpath)
+    plt.show()
 
     # Plot generalized distance map
     plt.figure()
@@ -629,7 +735,7 @@ def full_test(
     }
 
     # Variations along the range and depth axes
-    # Pi_var_rz(varin)
+    Pi_var_rz(varin)
 
     # Variations along the range axis
     PI_var_r(varin)
@@ -729,6 +835,10 @@ def sensibility_ideal_waveguide(
     # Sensibility to the frequency resolution
     if param == "df":
         sensibility_ideal_waveguide_df(axis=axis, bottom_bc=bottom_bc, dist=dist)
+
+    # Sensibility to number of frequency samples
+    if param == "nf":
+        sensibility_ideal_waveguide_nf(axis=axis, bottom_bc=bottom_bc, dist=dist)
 
 
 def sensibility_ideal_waveguide_2d(
@@ -891,6 +1001,13 @@ def sensibility_ideal_waveguide_delta_rcv(
         ]
     )
 
+    # delta_rcv = np.array(
+    #     [
+    #         0.1,
+    #         0.2,
+    #     ]
+    # )
+
     _, r_src, z_src, _, n_rcv, _, f = default_params()
 
     root_img = init_sensibility_path("delta_rcv", bottom_bc=bottom_bc)
@@ -930,8 +1047,40 @@ def sensibility_ideal_waveguide_delta_rcv(
             input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
+    # Derive reference aperture for comparison
+    ap_r_ref, ap_z_ref = default_aperture(param_var, axis=axis, dist=dist)
+
     # Plot the main lobe aperture as a function of delta_rcv
-    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+    plot_sensibility(
+        apertures_r,
+        apertures_z,
+        param_var,
+        axis=axis,
+        ap_r_ref=ap_r_ref,
+        ap_z_ref=ap_z_ref,
+    )
+
+
+def default_aperture(param_var, axis="both", dist="hermitian_angle"):
+    _, r_src, z_src, _, n_rcv, delta_rcv, f = default_params()
+    input_var_ref = {
+        "r_src": r_src,
+        "z_src": z_src,
+        "n_rcv": n_rcv,
+        "df": f[1] - f[0],
+        "delta_rcv": delta_rcv,
+    }
+
+    param_var["idx"] = 0
+    param_var["value"] = None
+
+    ap_r_ref = []
+    ap_z_ref = []
+    study_param_sensibility(
+        input_var_ref, param_var, ap_r_ref, ap_z_ref, axis=axis, dist=dist, plot=False
+    )
+
+    return ap_r_ref, ap_z_ref
 
 
 def sensibility_ideal_waveguide_r_src(
@@ -981,8 +1130,18 @@ def sensibility_ideal_waveguide_r_src(
             input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
+    # Derive reference aperture for comparison
+    ap_r_ref, ap_z_ref = default_aperture(param_var, axis=axis, dist=dist)
+
     # Plot the main lobe aperture as a function of delta_rcv
-    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+    plot_sensibility(
+        apertures_r,
+        apertures_z,
+        param_var,
+        axis=axis,
+        ap_r_ref=ap_r_ref,
+        ap_z_ref=ap_z_ref,
+    )
 
 
 def sensibility_ideal_waveguide_z_src(
@@ -1030,8 +1189,18 @@ def sensibility_ideal_waveguide_z_src(
             input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
+    # Derive reference aperture for comparison
+    ap_r_ref, ap_z_ref = default_aperture(param_var, axis=axis, dist=dist)
+
     # Plot the main lobe aperture as a function of delta_rcv
-    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+    plot_sensibility(
+        apertures_r,
+        apertures_z,
+        param_var,
+        axis=axis,
+        ap_r_ref=ap_r_ref,
+        ap_z_ref=ap_z_ref,
+    )
 
 
 def sensibility_ideal_waveguide_n_rcv(
@@ -1079,8 +1248,18 @@ def sensibility_ideal_waveguide_n_rcv(
             input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
+    # Derive reference aperture for comparison
+    ap_r_ref, ap_z_ref = default_aperture(param_var, axis=axis, dist=dist)
+
     # Plot the main lobe aperture as a function of delta_rcv
-    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+    plot_sensibility(
+        apertures_r,
+        apertures_z,
+        param_var,
+        axis=axis,
+        ap_r_ref=ap_r_ref,
+        ap_z_ref=ap_z_ref,
+    )
 
 
 def sensibility_ideal_waveguide_2d_n_rcv_delta_rcv(
@@ -1163,7 +1342,8 @@ def sensibility_ideal_waveguide_2d_n_rcv_delta_rcv(
 def sensibility_ideal_waveguide_df(
     axis, bottom_bc="pressure_release", dist="hermitian_angle"
 ):
-    freq_res = np.arange(0.1, 15.1, 0.1)
+    high_freq_res = np.arange(0.01, 2.01, 0.01)
+    freq_res = np.concatenate([high_freq_res, np.arange(0.1, 15.1, 0.1)])
 
     _, r_src, z_src, _, n_rcv, delta_rcv, _ = default_params()
 
@@ -1182,7 +1362,7 @@ def sensibility_ideal_waveguide_df(
     param_var["unit"] = "Hz"
     param_var["root_img"] = root_img
     param_var["values"] = freq_res
-    param_var["xlabel"] = r"$\Delta_f \, \textrm{Hz}$"
+    param_var["xlabel"] = r"$\Delta_f \, \textrm{[Hz]}$"
 
     # Get distance properties for plots
     _, _, dist_properties = pick_distance_to_apply(dist)
@@ -1205,8 +1385,157 @@ def sensibility_ideal_waveguide_df(
             input_var, param_var, apertures_r, apertures_z, axis=axis, dist=dist
         )
 
+    # Derive reference aperture for comparison
+    ap_r_ref, ap_z_ref = default_aperture(param_var, axis=axis, dist=dist)
+
     # Plot the main lobe aperture as a function of delta_rcv
-    plot_sensibility(apertures_r, apertures_z, param_var, axis=axis)
+    plot_sensibility(
+        apertures_r,
+        apertures_z,
+        param_var,
+        axis=axis,
+        ap_r_ref=ap_r_ref,
+        ap_z_ref=ap_z_ref,
+    )
+
+
+def sensibility_ideal_waveguide_nf(
+    axis, bottom_bc="pressure_release", dist="hermitian_angle"
+):
+
+    depth, r_src, z_src, z_rcv, n_rcv, delta_rcv, f = default_params()
+
+    root_img = init_sensibility_path("nf", bottom_bc=bottom_bc)
+
+    # Define input vars
+    input_var = {}
+    input_var["n_rcv"] = n_rcv
+    input_var["r_src"] = r_src
+    input_var["z_src"] = z_src
+    input_var["delta_rcv"] = delta_rcv
+
+    # Define param vars
+    param_var = {}
+    param_var["name"] = "nf"
+    param_var["unit"] = "Hz"
+    param_var["root_img"] = root_img
+    param_var["xlabel"] = r"$n_f$"
+
+    # Get distance properties
+    dist_func, dist_kwargs, dist_properties = pick_distance_to_apply(dist)
+    param_var["th_r"] = dist_properties["th_main_lobe"]
+    param_var["th_z"] = dist_properties["th_main_lobe"]
+    param_var["dist_unit"] = dist_properties["dist_unit"]
+    param_var["dist_name"] = dist
+
+    apertures_r = []
+    apertures_z = []
+
+    # Compute rtf vecors for the maximum frequency resolution
+    # high resolution frequency vector
+    f = np.arange(f[0], f[-1], 0.01)
+    nf = np.arange(1, len(f) + 1)
+    param_var["values"] = nf
+
+    # Define the receivers position
+    x_rcv = np.array([i * delta_rcv for i in range(n_rcv)])
+
+    ### Range axis ###
+    if axis == "r" or axis == "both":
+        # Derive ref RTF
+        r_src_list, r_src_rcv_ref, r_src_rcv, _, f, g_ref = derive_Pi_ref(
+            r_src, z_src, x_rcv, f, axis="r", bottom_bc=bottom_bc
+        )
+
+        # Derive RTF for the set of potential source positions (r_src_rcv)
+        f, g = g_mat(
+            f,
+            z_src,
+            z_rcv_ref=z_rcv,
+            z_rcv=z_rcv,
+            depth=depth,
+            r_rcv_ref=r_src_rcv_ref,
+            r=r_src_rcv,
+            bottom_bc=bottom_bc,
+        )
+
+        for i, nf_i in enumerate(nf):
+            # subsampling_idx = np.arange(0, len(f), nf_i)
+            subsampling_idx = np.linspace(0, len(f), nf_i, dtype=int, endpoint=False)
+            # subsampling_idx = np.random.choice(len(f), nf_i)
+
+            g_ref_subsampled = g_ref[subsampling_idx, ...]
+            g_subsampled = g[subsampling_idx, ...]
+            # Derive the distance
+            total_dist_r = dist_func(g_ref_subsampled, g_subsampled, **dist_kwargs)
+            range_displacement = r_src_list - r_src
+
+            # Apply log if required
+            if dist_properties["apply_log"]:
+                total_dist_r += 1
+                total_dist_r = 10 * np.log10(total_dist_r)
+
+            # Derive aperure of the main lobe
+            # th_r = 3  # threshold
+            i1_r, i2_r, ap_r = total_dist_aperture(
+                total_dist_r, range_displacement, dist_properties["th_main_lobe"]
+            )
+            apertures_r.append(ap_r)
+
+    ### Depth axis ###
+    if axis == "z" or axis == "both":
+        # Derive ref RTF
+        z_src_list, r_src_rcv_ref, r_src_rcv, _, f, g_ref = derive_Pi_ref(
+            r_src, z_src, x_rcv, f, axis="z", bottom_bc=bottom_bc
+        )
+
+        # Derive RTF for the set of potential source positions (r_src_rcv)
+        f, g = g_mat(
+            f,
+            z_src_list,
+            z_rcv_ref=z_rcv,
+            z_rcv=z_rcv,
+            depth=depth,
+            r_rcv_ref=r_src_rcv_ref,
+            r=r_src_rcv,
+            bottom_bc=bottom_bc,
+        )
+
+        for i, nf_i in enumerate(nf):
+            # subsampling_idx = np.arange(0, len(f), nf_i)
+            subsampling_idx = np.linspace(0, len(f), nf_i, dtype=int, endpoint=False)
+            # subsampling_idx = np.random.choice(len(f), nf_i)
+
+            g_ref_subsampled = g_ref[subsampling_idx, ...]
+            g_subsampled = g[subsampling_idx, ...]
+
+            # Derive the distance
+            total_dist_z = dist_func(g_ref_subsampled, g_subsampled, **dist_kwargs)
+            depth_displacement = z_src_list - z_src
+
+            # Apply log if required
+            if dist_properties["apply_log"]:
+                total_dist_z += 1
+                total_dist_z = 10 * np.log10(total_dist_z)
+
+            # Derive aperure of the main lobe
+            i1_z, i2_z, ap_z = total_dist_aperture(
+                total_dist_z, range_displacement, dist_properties["th_main_lobe"]
+            )
+            apertures_z.append(ap_z)
+
+    # Derive reference aperture for comparison
+    ap_r_ref, ap_z_ref = default_aperture(param_var, axis=axis, dist=dist)
+
+    # Plot the main lobe aperture as a function of delta_rcv
+    plot_sensibility(
+        apertures_r,
+        apertures_z,
+        param_var,
+        axis=axis,
+        ap_r_ref=ap_r_ref,
+        ap_z_ref=ap_z_ref,
+    )
 
 
 def init_sensibility_path(param, bottom_bc="pressure_release"):
@@ -1245,6 +1574,7 @@ def study_param_sensibility(
     axis="both",
     bottom_bc="pressure_release",
     dist="hermitian_angle",
+    plot=True,
 ):
     # Load default params
     depth, _, _, z_rcv, _, _, f = default_params()
@@ -1344,7 +1674,7 @@ def study_param_sensibility(
 
     # Plot generalized distance map
 
-    if idx % 5 == 0:
+    if idx % 5 == 0 and plot:
         if axis == "r" or axis == "both":
 
             # Get distance properties for plots
@@ -1532,7 +1862,9 @@ def study_param_sensibility_2d(
         aperture_z.append(ap_z)
 
 
-def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
+def plot_sensibility(
+    apertures_r, apertures_z, param_var, axis="both", ap_r_ref=None, ap_z_ref=None
+):
 
     # Unpack param vars
     root_img = param_var["root_img"]
@@ -1542,6 +1874,9 @@ def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
     if axis == "r" or axis == "both":
         plt.figure()
         plt.plot(values, apertures_r, marker=".", color="k")
+        if ap_r_ref is not None:
+            plt.axhline(ap_r_ref, color="k", linestyle="--", label=r"$\textrm{ref}$")
+            plt.legend()
         plt.xlabel(xlabel)
         plt.ylabel(
             r"$2 r_{"
@@ -1557,6 +1892,9 @@ def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
     if axis == "z" or axis == "both":
         plt.figure()
         plt.plot(values, apertures_z, marker=".", color="r")
+        if ap_z_ref is not None:
+            plt.axhline(ap_z_ref, color="r", linestyle="--", label=r"$\textrm{ref}$")
+            plt.legend()
         plt.xlabel(xlabel)
         plt.ylabel(
             r"$2 z_{"
@@ -1593,6 +1931,28 @@ def plot_sensibility(apertures_r, apertures_z, param_var, axis="both"):
             + param_var["dist_unit"]
             + r" }}$",
         )
+        if ap_r_ref is not None:
+            plt.axhline(
+                ap_r_ref,
+                color="k",
+                linestyle="--",
+                label=r"$2 z_{"
+                + f"{param_var['th_r']}"
+                + r"\textrm{"
+                + param_var["dist_unit"]
+                + r" }} (\textrm{ref}) $",
+            )
+        if ap_z_ref is not None:
+            plt.axhline(
+                ap_z_ref,
+                color="r",
+                linestyle="--",
+                label=r"$2 z_{"
+                + f"{param_var['th_r']}"
+                + r"\textrm{"
+                + param_var["dist_unit"]
+                + r" }} (\textrm{ref}) $",
+            )
 
         plt.xlabel(xlabel)
         plt.ylabel(
@@ -1818,20 +2178,20 @@ if __name__ == "__main__":
     bottom_bc = "pressure_release"
     dists = ["hermitian_angle", "frobenius"]
 
-    covered_range = 15 * 1e3
-    dr = 100
-    zmin = 1
-    zmax = 999
-    dz = 10
-    for dist in dists:
-        full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
+    # covered_range = 15 * 1e3
+    # dr = 100
+    # zmin = 1
+    # zmax = 999
+    # dz = 10
+    # for dist in dists:
+    #     full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
     # dist = "hermitian_angle"
-    # covered_range = 25
-    # dz = 0.1
-    # dr = 0.1
-    # zmin = 1
-    # zmax = 51
+    # covered_range = 5000
+    # dz = 1
+    # dr = 10
+    # zmin = 4.5
+    # zmax = 5.5
     # full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
 
     # params = ["n_rcv", "delta_rcv"]
@@ -1855,3 +2215,16 @@ if __name__ == "__main__":
     # zmax = 6
     # dist = "hermitian_angle"
     # full_test(covered_range, dr, zmin, zmax, dz, dist=dist, bottom_bc=bottom_bc)
+
+    # Sensibility test case use in the RTF report on ideal waveguide
+
+    # params = ["z_src", "r_src"]
+    params = ["nf"]
+    # dist = "hermitian_angle"
+    dists = ["hermitian_angle"]
+
+    for param in params:
+        for dist in dists:
+            sensibility_ideal_waveguide(
+                param=param, axis="both", bottom_bc=bottom_bc, dist=dist
+            )

@@ -12,6 +12,10 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import sys
+
+sys.path.append(r"C:\Users\baptiste.menetrier\Desktop\devPy\phd")
+
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -32,7 +36,7 @@ from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_consts import *
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_testcases import *
 
 
-def dist_versus_snr(snrs, testcase=1, dist="frobenius"):
+def dist_versus_snr(snrs, testcase=1, dist="frobenius", tc_kwargs={}):
 
     # Select dist function to apply
     if dist == "frobenius":
@@ -58,8 +62,14 @@ def dist_versus_snr(snrs, testcase=1, dist="frobenius"):
         elif testcase == 2:
             res_snr = testcase_2_propagated_whitenoise(snr_dB=snr_dB, plot=plot)
         elif testcase == 3:
+            interferer_r = tc_kwargs.get("interferer_r", None)
+            interferer_z = tc_kwargs.get("interferer_z", None)
             res_snr = testcase_3_propagated_interference(
-                snr_dB=snr_dB, plot=plot, interference_type="z_call"
+                snr_dB=snr_dB,
+                plot=plot,
+                interference_type="z_call",
+                interferer_r=interferer_r,
+                interferer_z=interferer_z,
             )
 
         # Save rtfs into dedicated list
@@ -258,9 +268,9 @@ if __name__ == "__main__":
     # for snr_dB in snrs:
     #     testcase_1_unpropagated_whitenoise(snr_dB=snr_dB)
 
-    res = testcase_1_unpropagated_whitenoise(snr_dB=-25)
-    res = testcase_1_unpropagated_whitenoise(snr_dB=25)
-    res = testcase_1_unpropagated_whitenoise(snr_dB=0)
+    # res = testcase_1_unpropagated_whitenoise(snr_dB=-25)
+    # res = testcase_1_unpropagated_whitenoise(snr_dB=25)
+    # res = testcase_1_unpropagated_whitenoise(snr_dB=0)
 
     # compare_rtf_vs_received_spectrum(
     #     res["props"],
@@ -285,7 +295,18 @@ if __name__ == "__main__":
     #         interferer_z=abw_z,
     #     )
 
-    # testcase_3_propagated_interference(snr_dB=10, plot=True, interference_type="z_call")
+    tc_3_kwargs = {
+        "interferer_r": [45 * 1e3],
+        "interferer_z": [25],
+    }
+    testcase_3_propagated_interference(
+        snr_dB=0,
+        plot=True,
+        interference_type="z_call",
+        force_snr_interference=True,
+        snr_interference_dB=5,
+        **tc_3_kwargs,
+    )
     # testcase_3_propagated_interference(plot=True, interference_type="ricker_pulse")
 
     # check_interp()
@@ -295,8 +316,9 @@ if __name__ == "__main__":
 
     # dist_versus_snr(snrs, testcase=1, dist="hermitian_angle")
     # dist_versus_snr(snrs, testcase=2, dist="hermitian_angle")
-    # dist_versus_snr(snrs, testcase=3, dist="hermitian_angle")
+
+    # dist_versus_snr(snrs, testcase=3, dist="hermitian_angle", tc_kwargs=tc_3_kwargs)
 
     # dist_versus_snr(snrs, testcase=2)
 
-    plt.show()
+    # plt.show()

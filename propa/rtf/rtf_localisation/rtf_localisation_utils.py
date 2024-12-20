@@ -66,11 +66,11 @@ def plot_ambiguity_surface(amb_surf, r_src, z_src, plot_args):
     )
     # estimated_pos_label = r"$\hat{X}_{src}" + f" = ({r_src_hat:.2f}, {z_src_hat:.2f})$"
     plt.scatter(
-        r_src, z_src, color="k", marker="x", label=true_pos_label, s=50
-    )  # True source position
-    plt.scatter(
-        r_src_hat, z_src_hat, color="w", marker="o", label=estimated_pos_label, s=50
+        r_src_hat, z_src_hat, color="w", marker="o", label=estimated_pos_label, s=100
     )  # Estimated source position
+    plt.scatter(
+        r_src, z_src, color="k", marker="x", label=true_pos_label, s=100
+    )  # True source position
     plt.xlabel(r"$r \, \textrm{[m]}$")
     plt.ylabel(r"$z \, \textrm{[m]}$")
     plt.legend()

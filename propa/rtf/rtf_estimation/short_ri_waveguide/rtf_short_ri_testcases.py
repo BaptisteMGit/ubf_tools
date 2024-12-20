@@ -290,9 +290,11 @@ def testcase_3_propagated_interference(
     interference_type="z_call",
     interferer_r=None,
     interferer_z=None,
+    force_snr_interference=False,
+    snr_interference_dB=None,
 ):
     """
-    Test case 2
+    Test case 3
         - Waveguide: simple waveguide with short impulse response.
         - Signal: ship signal propagated through the waveguide using Kraken.
         - Noise: interference signal propagated through the waveguide.
@@ -328,6 +330,21 @@ def testcase_3_propagated_interference(
     }
     t0 = time()
     rcv_interference_data = derive_received_interference(ns, fs, interference_arg)
+
+    if force_snr_interference:
+        # Derive std at first receiver
+        sigma_interference = np.std(rcv_interference_data[f"rcv0"]["sig"])
+        # Normalize received interference to have the desired SNR
+        if snr_interference_dB is None:
+            snr_interference_dB = snr_dB
+
+        sigma_2 = 10 ** (-snr_interference_dB / 10)
+        alpha = (
+            np.sqrt(sigma_2) / sigma_interference * np.std(rcv_sig_data["rcv0"]["sig"])
+        )
+        for i in range(len(rcv_interference_data.keys())):
+            rcv_interference_data[f"rcv{i}"]["sig"] *= alpha
+
     print(f"derive_received_interference: {time() - t0:.2f} s")
 
     additive_noise = derive_received_noise(

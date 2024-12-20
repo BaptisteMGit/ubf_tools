@@ -403,7 +403,7 @@ def count_publications_per_year(
     Returns:
         pd.DataFrame: Un tableau contenant les années et le nombre de publications correspondantes.
     """
-    # Lecture de l'extension du fichier 
+    # Lecture de l'extension du fichier
     ext = os.path.splitext(file_path)[1]
 
     if ext == ".csv":
@@ -440,9 +440,9 @@ def count_publications_per_year(
 
 
 def export_to_dat(df, file_path):
-    """ 
+    """
     Exporte le DataFrame sous forme de fichier .dat compatible avec LaTeX.
-    
+
     Args:
         df (pd.DataFrame): Le DataFrame contenant les données à exporter.
         dat_file (str): Le nom du fichier .dat à générer (par défaut: 'publications_data.dat').
@@ -459,27 +459,27 @@ def export_to_dat(df, file_path):
 
 if __name__ == "__main__":
 
-    """ Gather acronyms and bibliographies from a manuscript folder """
+    """Gather acronyms and bibliographies from a manuscript folder"""
     # # Usage
     # manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
     # output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\glossary_acoustics.tex"
 
     # # gather_acronyms(manuscript_folder, output_file)
 
-    # # Usage
-    # output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
-
-    # gather_bibliographies(manuscript_folder, output_file)
+    # Usage
+    manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
+    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
+    gather_bibliographies(manuscript_folder, output_file)
 
     """ Count publications per year """
-    # Exemple d'utilisation de la fonction
-    file_path = r"C:\Users\baptiste.menetrier\Desktop\doc\biblio\Localisation\lens_mfp_publi_1970_2023_4journals.csv"
-    output_filename = "lens_mfp_publi_1970_2023_4journals_per_year"
-    result_df, result_filepath = count_publications_per_year(file_path, output_filename)
-    print(result_df)
+    # # Exemple d'utilisation de la fonction
+    # file_path = r"C:\Users\baptiste.menetrier\Desktop\doc\biblio\Localisation\lens_mfp_publi_1970_2023_4journals.csv"
+    # output_filename = "lens_mfp_publi_1970_2023_4journals_per_year"
+    # result_df, result_filepath = count_publications_per_year(file_path, output_filename)
+    # print(result_df)
 
-    # Utilisation
-    export_to_dat(result_df, result_filepath)
+    # # Utilisation
+    # export_to_dat(result_df, result_filepath)
 
 
 # # Test plot_animation_moviepy

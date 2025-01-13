@@ -87,9 +87,67 @@ def derive_rtf(recording_name, recording_props, processing_props, verbose=False)
     # Derive rtf from tf estimated by deconvolution
     data = derive_rtf_from_tf(data, ref_hydro)
 
+    # Derive GCC for comparison
+    data = derive_gcc(data, recording_props, processing_props)
+
     # Save results
     data.to_netcdf(os.path.join(processed_data_path, f"{recording_name}_rtf.nc"))
     data.close()
+
+
+def derive_gcc(data, recording_props, processing_props):
+
+    # Unpack usefull properties
+    gcc_method = processing_props.get("gcc_method", "scot")  # Method to derive the GCC
+    ts = data.ts
+
+    # Inputs : array of shape (nt, n_rcv)
+    y = data.signal.T.values
+    yref = data.signal.isel(
+        h_index=0
+    ).T.values  # Arrays have been rolled to have the reference hydrophone at the first position previously
+
+    # Cast to the same shape as y to derive cross power density spectrums
+    yref = np.expand_dims(yref, axis=1)
+    tile_shape = tuple([y.shape[i] - yref.shape[i] + 1 for i in range(y.ndim)])
+    yref = np.tile(yref, tile_shape)
+
+    # Derive cross power density spectrums
+    nperseg = 2**12
+    noverlap = nperseg // 2
+    ff, Rxy = sp.csd(yref, y, fs=1 / ts, nperseg=nperseg, noverlap=noverlap, axis=0)
+    _, Rxx = sp.csd(yref, yref, fs=1 / ts, nperseg=nperseg, noverlap=noverlap, axis=0)
+    _, Ryy = sp.csd(y, y, fs=1 / ts, nperseg=nperseg, noverlap=noverlap, axis=0)
+
+    # Apply gcc weights
+
+    if gcc_method == "scot":
+        # Compute the GCC-SCOT
+        w = 1 / np.abs(np.sqrt(Rxx * Ryy))
+    elif gcc_method == "phat":
+        # Compute the GCC-PHAT
+        w = 1 / np.abs(Rxy)
+    elif gcc_method == "ml":
+        # Compute the GCC-ML
+        gamma_xy = sp.coherence(
+            yref, y, fs=1 / ts, nperseg=nperseg, noverlap=noverlap, axis=0
+        )  # magnitude squared coherence estimate
+        w = 1 / Rxy * gamma_xy / (1 - gamma_xy)
+
+    gcc_f = w * Rxy
+
+    # Add results to the dataset
+    data["f_gcc"] = ff
+    data["gcc_amp"] = (
+        ["h_index", "f_gcc"],
+        np.abs(gcc_f).T,
+    )
+    data["gcc_phase"] = (
+        ["h_index", "f_gcc"],
+        np.angle(gcc_f).T,
+    )
+
+    return data
 
 
 def split_signal_noise(data, recording_props, processing_props):
@@ -154,7 +212,7 @@ def split_signal_noise(data, recording_props, processing_props):
         split_time_0 = time_with_energy_above_threshold[0]
         split_time_1 = time_with_energy_above_threshold[-1]
 
-    only_signal = []
+    signal_plus_noise = []
     only_noise = []
     # Loop over each hydrophone to extract signal and noise
     for i_hydro in range(n_hydro):
@@ -200,36 +258,39 @@ def split_signal_noise(data, recording_props, processing_props):
         noise_array = np.concatenate(noise_array)
 
         # Store the signal and noise in the dedicated arrays
-        only_signal.append(sig_array)
+        signal_plus_noise.append(sig_array)
         only_noise.append(noise_array)
 
     # Pad with zeros to ensure all arrays have the same length
-    max_len_sig = max([sig.size for sig in only_signal])
+    max_len_sig = max([sig.size for sig in signal_plus_noise])
     max_len_noise = max([noise.size for noise in only_noise])
     for i_hydro in range(n_hydro):
-        only_signal[i_hydro] = np.pad(
-            only_signal[i_hydro], (0, max_len_sig - only_signal[i_hydro].size)
+        signal_plus_noise[i_hydro] = np.pad(
+            signal_plus_noise[i_hydro],
+            (0, max_len_sig - signal_plus_noise[i_hydro].size),
         )
         only_noise[i_hydro] = np.pad(
             only_noise[i_hydro], (0, max_len_noise - only_noise[i_hydro].size)
         )
 
     # Convert to arrays
-    only_signal = np.array(only_signal)
+    signal_plus_noise = np.array(signal_plus_noise)
     only_noise = np.array(only_noise)
 
     # Create new time vectors
-    only_signal_time = np.linspace(0, only_signal.shape[1] * ts, only_signal.shape[1])
+    signal_plus_noise_time = np.linspace(
+        0, signal_plus_noise.shape[1] * ts, signal_plus_noise.shape[1]
+    )
     only_noise_time = np.linspace(0, only_noise.shape[1] * ts, only_noise.shape[1])
 
     # Add coordinate to the dataset
-    data["only_signal_time"] = only_signal_time
+    data["signal_plus_noise_time"] = signal_plus_noise_time
     data["only_noise_time"] = only_noise_time
 
     # Add signal and noise to the dataset
-    data["only_signal"] = (
-        ["h_index", "only_signal_time"],
-        only_signal,
+    data["signal_plus_noise"] = (
+        ["h_index", "signal_plus_noise_time"],
+        signal_plus_noise,
     )
     data["only_noise"] = (
         ["h_index", "only_noise_time"],
@@ -238,9 +299,9 @@ def split_signal_noise(data, recording_props, processing_props):
 
     # Derive SNR in the frequency band of interest
     noise_fft = np.fft.rfft(only_noise, axis=1)
-    signal_fft = np.fft.rfft(only_signal, axis=1)
+    signal_fft = np.fft.rfft(signal_plus_noise, axis=1)
     f_noise = np.fft.rfftfreq(only_noise.shape[1], d=ts)
-    f_signal = np.fft.rfftfreq(only_signal.shape[1], d=ts)
+    f_signal = np.fft.rfftfreq(signal_plus_noise.shape[1], d=ts)
     f_in_band_noise = np.logical_and(f_noise >= f0, f_noise <= f1)
     f_in_band_sig = np.logical_and(f_signal >= f0, f_signal <= f1)
     snr = np.sum(np.abs(signal_fft[:, f_in_band_sig]) ** 2, axis=1) / np.sum(
@@ -260,9 +321,9 @@ def split_signal_noise(data, recording_props, processing_props):
     plt.savefig(os.path.join(data.attrs["img_path"], "original_signal.png"))
 
     plt.figure()
-    data.only_signal.plot(x="only_signal_time", hue="h_index")
+    data.signal_plus_noise.plot(x="signal_plus_noise_time", hue="h_index")
     plt.title("Signal")
-    plt.savefig(os.path.join(data.attrs["img_path"], "only_signal.png"))
+    plt.savefig(os.path.join(data.attrs["img_path"], "signal_plus_noise.png"))
 
     plt.figure()
     data.only_noise.plot(x="only_noise_time", hue="h_index")
@@ -281,7 +342,7 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
     ts = data.ts
 
     # Check if the signal and noise have already been split
-    if "only_signal" not in data:
+    if "signal_plus_noise" not in data:
         # illustrate_signal_noise_split_process(data, recording_props, processing_props)
         data = split_signal_noise(data, recording_props, processing_props)
 
@@ -294,8 +355,8 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
     )
 
     # Input to cs and cw functions must be array of shape (nt, n_rcv)
-    x = data.only_signal.T.values
-    tx = data.only_signal_time.values
+    x = data.signal_plus_noise.T.values
+    tx = data.signal_plus_noise_time.values
     v = data.only_noise.T.values
     tv = data.only_noise_time.values
     # Covariance substraction

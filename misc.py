@@ -23,7 +23,8 @@ import numpy as np
 import pandas as pd
 import multiprocessing
 import scipy.fft as sp_fft
-import moviepy.editor as mpy
+
+# import moviepy.editor as mpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.transforms as transforms
@@ -61,6 +62,30 @@ def mult_along_axis(A, B, axis):
     return A * B_brc
 
 
+def cast_matrix_to_target_shape(matrix, target_shape):
+
+    # Cast matrix to target shape
+    # 1) Identify missing dimensions
+    missing_dims = [dim for dim in target_shape if dim not in matrix.shape]
+    # Link missing dimensions to the corresponding axis
+    missing_dims_axis = [
+        i for i in range(len(target_shape)) if target_shape[i] in missing_dims
+    ]
+    # 2) Add missing dimensions
+    matrix_target_shape = np.expand_dims(matrix, axis=missing_dims_axis)
+    # 3) Repeat matrix along missing dimensions
+    tile_shape = tuple(
+        [
+            target_shape[i] - matrix_target_shape.shape[i] + 1
+            for i in range(len(target_shape))
+        ]
+    )
+    # 4) Tile matrix
+    matrix_target_shape = np.tile(matrix_target_shape, tile_shape)
+
+    return matrix_target_shape
+
+
 def plot_animation(
     var_to_plot,
     nb_frames,
@@ -95,59 +120,59 @@ def plot_animation(
     anim.save(anim_filename)
 
 
-def plot_animation_moviepy(
-    var_to_plot,
-    time_label,
-    nb_frames,
-    anim_filename,
-    fps_sec=30,
-    **kwargs,
-):
-    """
-    Plot and save animations using MoviePy.
+# def plot_animation_moviepy(
+#     var_to_plot,
+#     time_label,
+#     nb_frames,
+#     anim_filename,
+#     fps_sec=30,
+#     **kwargs,
+# ):
+#     """
+#     Plot and save animations using MoviePy.
 
-    :param var_to_plot: Data to be plotted (xarray DataArray).
-    :param nb_frames: Number of frames in the animation (integer).
-    :param anim_filename: Output filename for the animation (string).
-    :param fps_sec: Frames per second (integer).
-    :param kwargs: Additional plotting arguments (e.g., cmap, vmin, vmax).
-    """
+#     :param var_to_plot: Data to be plotted (xarray DataArray).
+#     :param nb_frames: Number of frames in the animation (integer).
+#     :param anim_filename: Output filename for the animation (string).
+#     :param fps_sec: Frames per second (integer).
+#     :param kwargs: Additional plotting arguments (e.g., cmap, vmin, vmax).
+#     """
 
-    # fig, ax = plt.subplots(1, 1)
-    figsize = (12, 8)
-    dpi = 100
-    fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
-    var_to_plot.isel({time_label: 0}).plot(ax=ax, **kwargs)
+#     # fig, ax = plt.subplots(1, 1)
+#     figsize = (12, 8)
+#     dpi = 100
+#     fig, ax = plt.subplots(1, 1, figsize=figsize, dpi=dpi)
+#     var_to_plot.isel({time_label: 0}).plot(ax=ax, **kwargs)
 
-    # Function to update the plot for each frame and return NumPy array
-    def animate_func(i):
-        # Plot the image and get the colorbar object
-        img = var_to_plot.isel({time_label: i}).plot(
-            ax=ax, add_colorbar=False, **kwargs
-        )
+#     # Function to update the plot for each frame and return NumPy array
+#     def animate_func(i):
+#         # Plot the image and get the colorbar object
+#         img = var_to_plot.isel({time_label: i}).plot(
+#             ax=ax, add_colorbar=False, **kwargs
+#         )
 
-        # Create a PIL Image from the Matplotlib figure
-        buf = io.BytesIO()
-        plt.savefig(buf, format="png")
-        buf.seek(0)
-        img_pil = Image.open(buf)
+#         # Create a PIL Image from the Matplotlib figure
+#         buf = io.BytesIO()
+#         plt.savefig(buf, format="png")
+#         buf.seek(0)
+#         img_pil = Image.open(buf)
 
-        # Convert the PIL Image to a NumPy array
-        img_array = np.array(img_pil)
+#         # Convert the PIL Image to a NumPy array
+#         img_array = np.array(img_pil)
 
-        return img_array
+#         return img_array
 
-    # Create a list of NumPy arrays for each frame
-    frames = [animate_func(i) for i in range(nb_frames)]
+#     # Create a list of NumPy arrays for each frame
+#     frames = [animate_func(i) for i in range(nb_frames)]
 
-    # Create the MoviePy ImageSequenceClip from the list of NumPy arrays
-    animation_clip = mpy.ImageSequenceClip(frames, fps=fps_sec)
+#     # Create the MoviePy ImageSequenceClip from the list of NumPy arrays
+#     animation_clip = mpy.ImageSequenceClip(frames, fps=fps_sec)
 
-    # Save the animation as an MP4 video file
-    animation_clip.write_videofile(anim_filename)
+#     # Save the animation as an MP4 video file
+#     animation_clip.write_videofile(anim_filename)
 
-    # Close the figure to avoid memory leaks
-    plt.close(fig)
+#     # Close the figure to avoid memory leaks
+#     plt.close(fig)
 
 
 def delete_folders(root_dir, folder_name_pattern):

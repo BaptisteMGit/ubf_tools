@@ -17,19 +17,30 @@ The Journal of the Acoustical Society of America, 154(1), 295–306. https://doi
 import os
 import numpy as np
 import xarray as xr
+import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from cst import RHO_W
 from signals.signals import lfm_chirp
 from misc import cast_matrix_to_target_shape, mult_along_axis
 from publication.PublicationFigure import PubFigure
-from propa.kraken_toolbox.run_kraken import readshd
-from propa.rtf.rtf_utils import D_hermitian_angle_fast
+from propa.kraken_toolbox.run_kraken import readshd, run_kraken_exec, run_field_exec
+from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
+
+from skimage import measure  # Import for contour detection
+from sklearn.cluster import KMeans
+from sklearn import preprocessing
+from scipy.spatial import ConvexHull
+from matplotlib.path import Path
+
 
 PubFigure()
 ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase"
 ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data"
 ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\zhang_et_al_2023"
+
+# Minimum value to replace 0 before converting metrics to dB scale
+MIN_VAL_LOG = 1e-5
 
 
 def params():
@@ -186,6 +197,266 @@ def save_simulation_netcdf():
     tf_zhang.close()
 
 
+def build_signal():
+    """Derive received signal(library / event)"""
+    # Load transfert function dataset
+    fpath = os.path.join(ROOT_DATA, "tf_zhang_grid.nc")
+    ds = xr.open_dataset(fpath)
+
+    # Load library spectrum
+    f = ds.f.values
+    # library_props, S_f_library = library_src_spectrum(f)
+    library_props, S_f_library, f_library, idx_in_band = library_src_spectrum()
+
+    # Load event spectrum
+    _, S_f_event = event_src_spectrum(f)
+
+    # Load params
+    depth, receivers, source, grid, frequency, _ = params()
+
+    # fmin_synthesis = 0
+    # fmax_synthesis = 10000
+    df = ds.f.diff("f").values[0]
+
+    # Add x and y coordinates to dataset
+    ds.coords["x"] = grid["x"][0, :]
+    ds.coords["y"] = grid["y"][:, 0]
+
+    for i_rcv in range(len(receivers["x"])):
+        # Build tf grid
+        r_grid = grid["r"][i_rcv].flatten()
+        tf_vect = ds.tf_real.sel(r=r_grid, method="nearest") + 1j * ds.tf_imag.sel(
+            r=r_grid, method="nearest"
+        )
+        tf_grid = tf_vect.values.reshape((ds.sizes["f"], ds.sizes["x"], ds.sizes["y"]))
+        # tf_grid[...] = 1  # TODO remove
+
+        # Derive received spectrum
+        y_f = mult_along_axis(tf_grid, S_f_library, axis=0)
+
+        # # Pad with 0 to spans the whole frequency range 0 - 1000 Hz
+        # pad_before = int((library_props["f0"] - fmin_synthesis) / df)
+        # pad_after = int((fmax_synthesis - library_props["f1"]) / df)
+        # y_f = np.pad(y_f, ((pad_before, pad_after), (0, 0), (0, 0)), mode="constant")
+
+        y_t = np.fft.irfft(y_f, axis=0)
+
+        # nfft_inv = xr_rdsrc.nfft
+        # df = xr_rdsrc.df
+        # T_tot = 1 / df
+
+        # k0 = 2 * np.pi * propagating_freq / C0
+        # norm_factor = np.exp(1j * k0) / (4 * np.pi)
+
+        # # Received signal spectrum resulting from the convolution of the src signal and the impulse response
+        # propagating_spectrum = mult_along_axis(propagating_spectrum, norm_factor, axis=-1)
+        # transmitted_field_f = ds.tf_gridded * propagating_spectrum
+
+        # # Apply corresponding delay to the signal
+        # if apply_delay:
+        #     tau = ds.delay_rcv.min(
+        #         dim="idx_rcv"
+        #     )  # Delay to apply to the signal to take into account the propagation time
+
+        #     # Expand tau to the signal shape
+        #     tau = tau.expand_dims({"kraken_freq": ds.sizes["kraken_freq"]}, axis=-1)
+        #     # Derive delay factor
+        #     tau_vec = mult_along_axis(tau, propagating_freq, axis=-1)
+        #     delay_f = np.exp(1j * 2 * np.pi * tau_vec)
+        #     # Expand delay factor to the signal shape
+        #     delay_f = tau.copy(deep=True, data=delay_f).expand_dims(
+        #         {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
+        #     )
+        #     # Apply delay
+        #     transmitted_field_f = transmitted_field_f * delay_f
+        plt.figure()
+        plt.plot(y_t[:, 0, 0])
+        plt.savefig("test.png")
+        plt.show()
+
+        # print()
+
+
+def library_src_spectrum():
+    """Library source signal spectrum : Zhang et al. 2023 -> LFM 100 - 500 Hz"""
+    # Library source is defined as a LFM 100-500 Hz
+    library_props = {
+        "f0": 100,
+        "f1": 500,
+        "fs": 2000,
+        "T": 10,
+        "phi": 0,
+    }
+
+    # s, t = lfm_chirp(
+    #     library_props["f0"],
+    #     library_props["f1"],
+    #     library_props["fs"],
+    #     library_props["T"],
+    # )
+
+    # pad_time_s = 1
+    # npad = pad_time_s * library_props["fs"]
+    t = np.arange(0, library_props["T"], 1 / library_props["fs"])
+    s = sp.chirp(
+        # t[npad:-npad],
+        t,
+        library_props["f0"],
+        library_props["T"],
+        library_props["f1"],
+        method="linear",
+        # method="hyperbolic",
+    )
+    # Pad with 0 before and after
+    # s = np.pad(s, (npad, npad))
+    # Apply window
+    # s *= sp.windows.hann(len(s))
+
+    S_f_library = np.fft.rfft(s)
+    f_library = np.fft.rfftfreq(len(s), 1 / library_props["fs"])
+
+    # Plot signal and spectrum
+    plt.figure()
+    plt.plot(t, s)
+    plt.xlabel(r"$\textrm{Time [s]}$")
+    plt.ylabel(r"$s(t)$")
+    fpath = os.path.join(ROOT_IMG, f"library_source_signal.png")
+    plt.savefig(fpath)
+
+    plt.figure()
+    plt.plot(f_library, np.abs(S_f_library))
+    plt.xlabel(r"$\textrm{Frequency [Hz]}$")
+    plt.ylabel(r"$|S(f)|$")
+    fpath = os.path.join(ROOT_IMG, f"library_source_spectrum.png")
+    plt.savefig(fpath)
+    plt.close("all")
+    # plt.show()
+
+    # Interp library source spectrum at desired frequencies
+    # S_f_library = np.interp(f, f_library, S_f_library)
+
+    # Keep frequencies between 50 and 550 Hz
+    idx_in_band = (f_library >= 50) & (f_library <= 550)
+
+    # Right frequencies in band in a
+    f_in_band = f_library[idx_in_band]
+    txt = " ".join([f"{f:.2f}" for f in f_in_band])
+    fpath = os.path.join(ROOT, "tmp", "f_in_band.txt")
+    with open(fpath, "w") as f:
+        f.write(txt)
+    # np.savetxt(fpath, f_in_band, fmt="%.2f")
+
+    # f_library = f_library[idx]
+    # S_f_library = S_f_library[idx]
+
+    return library_props, S_f_library, f_library, idx_in_band
+
+
+def build_tf_grid():
+
+    library_props, S_f_library, freq, idx_in_band = library_src_spectrum()
+
+    f = freq[idx_in_band]
+
+    # For too long frequencies vector field fails to compute -> we will iterate over frequency subband to compute the transfert function
+    n_subband = 900
+    i_subband = 1
+    f0 = f[0]
+    f1 = f[n_subband]
+
+    # Load tf to get range vector information
+    fpath = os.path.join(ROOT_DATA, "tf_zhang.nc")
+    ds = xr.open_dataset(fpath)
+    nr = ds.sizes["r"]
+
+    nf = len(f)
+    h_grid = np.zeros((nf, nr), dtype=complex)
+
+    fname = "testcase_zhang2023"
+    working_dir = os.path.join(ROOT, "tmp")
+    env_file = os.path.join(working_dir, f"{fname}.env")
+
+    # Read env file
+    with open(env_file, "r") as file:
+        lines = file.readlines()
+
+    while f0 < f[-1]:
+
+        # Frequency subband
+        f_kraken = f[(f < f1) & (f >= f0)]
+        # print(i_subband, f0, f1, len(f_kraken))
+        pad_before = np.sum(f < f0)
+        pad_after = np.sum(f >= f1)
+
+        # Modify number of frequencies
+        nb_freq = f"{len(f_kraken)}                                                     ! Number of frequencies\n"
+        lines[-2] = nb_freq
+        # Replace frequencies in the env file
+        new_freq_line = " ".join([f"{fi:.2f}" for fi in f_kraken])
+        new_freq_line += "    ! Frequencies (Hz)"
+        lines[-1] = new_freq_line
+
+        # Write new env file
+        with open(env_file, "w") as file:
+            file.writelines(lines)
+
+        # Run kraken and field
+        os.chdir(working_dir)
+        run_kraken_exec(fname)
+        run_field_exec(fname)
+
+        # Read shd from previously run kraken
+        shdfile = f"{fname}.shd"
+
+        _, _, _, _, read_freq, _, field_pos, pressure_field = readshd(
+            filename=shdfile, freq=f_kraken
+        )
+        tf_subband = np.squeeze(pressure_field, axis=(1, 2, 3))  # (nf, nr)
+
+        h_grid += np.pad(tf_subband, ((pad_before, pad_after), (0, 0)))
+
+        # Update frequency subband
+        i_subband += 1
+        f0 = f1
+        f1 = f[min(n_subband * i_subband, len(f) - 1)]
+
+    # return f, r, z, h_grid
+
+    # Pad h_grid with 0 for frequencies outside the 50 - 550 Hz band
+    pad_before = np.sum(freq < 50)
+    pad_after = np.sum(freq > 550)
+    h_grid = np.pad(h_grid, ((pad_before, pad_after), (0, 0)))
+
+    # Build xarray dataset
+    library_zhang = xr.Dataset(
+        data_vars=dict(
+            tf_real=(
+                ["f", "r"],
+                np.real(h_grid),
+            ),
+            tf_imag=(["f", "r"], np.imag(h_grid)),
+        ),
+        coords={
+            "f": freq,
+            "r": field_pos["r"]["r"],
+        },
+    )
+
+    # Save as netcdf
+    fpath = os.path.join(ROOT_DATA, "tf_zhang_grid.nc")
+    library_zhang.to_netcdf(fpath)
+
+
+def event_src_spectrum(f):
+    """Event source signal spectrum : Zhang et al. 2023 -> Gaussian noise"""
+
+    event_props = {}
+    # Event source is defined as a Gaussian noise
+    S_f_event = np.ones_like(f)
+
+    return event_props, S_f_event
+
+
 def build_features():
 
     # Load tf dataset
@@ -195,41 +466,15 @@ def build_features():
     # Load params
     depth, receivers, source, grid, frequency, _ = params()
 
-    # Library source is defined as a LFM 100-500 Hz
-    library_src = {
-        "f0": 100,
-        "f1": 500,
-        "fs": 5000,
-        "T": 100,
-        "phi": 0,
-    }
+    # Load library source spectrum
+    _, S_f_library = library_src_spectrum(ds.f.values)
 
-    s, t = lfm_chirp(
-        library_src["f0"],
-        library_src["f1"],
-        library_src["fs"],
-        library_src["T"],
-        library_src["phi"],
-    )
+    # Load event source spectrum
+    _, S_f_event = event_src_spectrum(ds.f.values)
 
-    # TODO : remove
-    import scipy.signal as sp
-
-    s = sp.chirp(
-        t, library_src["f0"], library_src["T"], library_src["f1"], method="hyperbolic"
-    )
-
-    S_f_library = np.fft.rfft(s)
-    f_library = np.fft.rfftfreq(len(s), 1 / library_src["fs"])
-    # Interp library source spectrum at desired frequencies
-    S_f_library = np.interp(ds.f.values, f_library, S_f_library)
-
-    # Event source is defined as a Gaussian noise, ie S_f_event = 1
-    S_f_event = np.ones_like(S_f_library)
-
-    # Add x and y coordinates to dataset
-    ds.coords["x"] = grid["x"][0, :]
-    ds.coords["y"] = grid["y"][:, 0]
+    # # Add x and y coordinates to dataset
+    # ds.coords["x"] = grid["x"][0, :]
+    # ds.coords["y"] = grid["y"][:, 0]
 
     rtf_src = []  # RFT vector at the source position
     rtf_grid = []  # RTF vector evaluated at each grid pixel
@@ -316,7 +561,7 @@ def build_features():
             w = 1 / np.abs(np.sqrt(Sxx_ref * Syy))
             # Apply GCC-SCOT
             gcc_grid_i = w * Sxy
-            gcc_grid_i = gcc_grid_i.values.reshape(
+            gcc_grid_i = gcc_grid_i.reshape(
                 (ds.sizes["f"], ds.sizes["x"], ds.sizes["y"])
             )
             gcc_grid.append(gcc_grid_i)
@@ -411,18 +656,26 @@ def plot_study_zhang2023():
         "dist": "normalized_metric",
         "root_img": ROOT_IMG,
         "testcase": "zhang_et_al_2023",
-        "dist_label": r"$d_{rtf}$",
-        "vmax": 1,
-        "vmin": -0.2,
+        # "dist_label": r"$d_{rtf}$",
+        "dist_label": r"$\textrm{[dB]}$",
+        # "vmax": 1,
+        # "vmin": 0,
+        # dB scale
+        "vmax": 0,
+        "vmin": -10,
     }
 
     plot_args_gcc = {
         "dist": "gcc_scot",
         "root_img": ROOT_IMG,
         "testcase": "zhang_et_al_2023",
-        "dist_label": r"$d_{gcc}$",
-        "vmax": 1,
-        "vmin": -0.2,
+        # "dist_label": r"$d_{gcc}$",
+        "dist_label": r"$\textrm{[dB]}$",
+        # "vmax": 1,
+        # "vmin": 0,
+        # dB scale
+        "vmax": 0,
+        "vmin": -10,
     }
 
     ###### Two sensor pairs ######
@@ -447,6 +700,8 @@ def plot_study_zhang2023():
             plot_args=plot_args_theta,
             loc_arg="min",
         )
+        plt.close("all")
+
         # d_rtf
         plot_ambiguity_surface(
             amb_surf=ds_cpl.d_rtf,
@@ -454,10 +709,13 @@ def plot_study_zhang2023():
             plot_args=plot_args_d_rtf,
             loc_arg="max",
         )
+        plt.close("all")
+
         # d_gcc
         plot_ambiguity_surface(
             amb_surf=ds_cpl.d_gcc, source=source, plot_args=plot_args_gcc, loc_arg="max"
         )
+        plt.close("all")
 
     ###### Full array ######
     fpath = os.path.join(
@@ -478,19 +736,28 @@ def plot_study_zhang2023():
         plot_args=plot_args_theta,
         loc_arg="min",
     )
+    plt.close("all")
+
     # d_rtf
     plot_ambiguity_surface(
         amb_surf=ds_fa.d_rtf, source=source, plot_args=plot_args_d_rtf, loc_arg="max"
     )
+    plt.close("all")
+
     # d_gcc
     plot_ambiguity_surface(
         amb_surf=ds_fa.d_gcc, source=source, plot_args=plot_args_gcc, loc_arg="max"
     )
+    plt.close("all")
 
     ###### Figure 4 : Subplot in Zhang et al 2023 ######
     cmap = "jet"
-    vmax = 1
-    vmin = -0.2
+    # vmax = 1
+    # vmin = 0
+
+    # dB scale
+    vmax = 0
+    vmin = -10
 
     x_src = source["x"]
     y_src = source["y"]
@@ -542,7 +809,7 @@ def plot_study_zhang2023():
             )
 
             # Add colorbar
-            cbar = plt.colorbar(im, ax=ax)
+            cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
 
             ax.scatter(
                 x_src * 1e-3,
@@ -573,9 +840,13 @@ def plot_study_zhang2023():
     # Save figure
     fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig4.png")
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
+    plt.close("all")
 
     ###### Figure 5 : Subplot in Zhang et al 2023 ######
     f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+
+    vmin = -10  # dB
+    vmax = 0  # dB
 
     # Plot d_gcc and d_rtf
     for i, dist in enumerate(["d_gcc", "d_rtf"]):
@@ -592,7 +863,7 @@ def plot_study_zhang2023():
         )
 
         # Add colorbar
-        cbar = plt.colorbar(im, ax=ax)
+        cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
 
         ax.scatter(
             x_src * 1e-3,
@@ -617,6 +888,472 @@ def plot_study_zhang2023():
 
     # Save figure
     fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig5.png")
+    plt.savefig(fpath, dpi=300, bbox_inches="tight")
+    plt.close("all")
+
+    ###### Figure 5 distribution ######
+    f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+
+    percentile_threshold = 0.995
+    bins = ds_fa["d_gcc"].size // 10
+
+    # Plot d_gcc and d_rtf
+    mainlobe_th = {}
+    for i, dist in enumerate(["d_gcc", "d_rtf"]):
+        ax = axs[i]
+        amb_surf = ds_fa[dist]
+
+        amb_surf.plot.hist(ax=ax, bins=bins, alpha=0.5, color="b")
+
+        # Vertical line representing the percentile threshold
+        percentile = np.percentile(amb_surf.values, percentile_threshold * 100)
+        mainlobe_th[dist] = percentile
+        ax.axvline(
+            percentile,
+            color="r",
+            linestyle="--",
+            label=f"{percentile_threshold*100:.0f}th percentile",
+        )
+
+        ax.set_title(f"Full array")
+        ax.set_xlim(-20, 0)
+        ax.set_xlabel(r"$\textrm{[dB]}$")
+
+    # Save figure
+    fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig5_dist.png")
+    plt.savefig(fpath, dpi=300, bbox_inches="tight")
+    plt.close("all")
+
+    ###### Figure 5 showing pixels selected as the mainlobe ######
+    f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+
+    # Find mainlobe contours
+    mainlobe_contours = find_mainlobe(ds_fa)
+
+    # Plot d_gcc and d_rtf
+    for i, dist in enumerate(["d_gcc", "d_rtf"]):
+        ax = axs[i]
+        amb_surf = ds_fa[dist]
+
+        im = ax.pcolormesh(
+            ds_fa["x"].values * 1e-3,
+            ds_fa["y"].values * 1e-3,
+            amb_surf.values.T,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+
+        contour = mainlobe_contours[dist]
+        ax.plot(
+            ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
+            ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
+            color="k",
+            linewidth=2,
+            # label="Mainlobe Boundary" if i == 0 else None,
+        )
+
+        ax.set_title(f"Full array")
+        ax.set_xlabel(r"$x \textrm{[km]}$")
+        if i == 0:
+            ax.set_ylabel(r"$y \, \textrm{[km]}$")
+        else:
+            ax.set_ylabel("")
+
+        # # Set xticks
+        ax.set_xticks([3.500, 4.000, 4.500])
+        ax.set_yticks([6.400, 6.900, 7.400])
+
+    # Save figure
+    fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig5_mainlobe.png")
+    plt.savefig(fpath, dpi=300, bbox_inches="tight")
+    plt.close("all")
+
+    # TODO : move the msr part to a dedicated function once the rtf estimation block is ok
+    # Derive mainlobe to side lobe ratio
+
+    f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+
+    msr = {}
+    for i, dist in enumerate(["d_gcc", "d_rtf"]):
+        mainlobe_mask = np.zeros_like(amb_surf.values, dtype=bool)
+
+        ax = axs[i]
+        amb_surf = ds_fa[dist]
+
+        contour = mainlobe_contours[dist]
+
+        # Convert contour indices to integers
+        contour_x_idx = np.round(contour[:, 0]).astype(int)
+        contour_y_idx = np.round(contour[:, 1]).astype(int)
+
+        # Ensure indices stay within valid bounds
+        contour_x_idx = np.clip(contour_x_idx, 0, ds_fa["x"].size - 1)
+        contour_y_idx = np.clip(contour_y_idx, 0, ds_fa["y"].size - 1)
+
+        contour_points = np.c_[
+            ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]
+        ]
+
+        # Step 3: Compute convex hull
+        hull = ConvexHull(contour_points)
+        hull_points = contour_points[hull.vertices]  # Get convex hull vertices
+
+        # Step 4: Convert convex hull to a polygon
+        poly_path = Path(hull_points)
+
+        # # Convert contour indices to actual x and y values
+        # poly_path = Path(
+        #     np.c_[ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]]
+        # )
+
+        # Step 3: Create a grid of coordinates
+        X, Y = np.meshgrid(ds_fa["x"].values, ds_fa["y"].values, indexing="ij")
+
+        # Step 4: Flatten the grid and check which points are inside the polygon
+        points = np.c_[X.ravel(), Y.ravel()]  # Flatten grid coordinates
+        inside = poly_path.contains_points(points)
+
+        # Step 5: Reshape the result into the original grid shape and update the mask
+        mainlobe_mask |= inside.reshape(
+            X.shape
+        )  # Use logical OR to combine multiple contours
+        # mainlobe_mask = mainlobe_mask.T
+
+        # Plot ambiguity surface without mainlobe pixels
+        amb_surf_without_mainlobe = amb_surf.copy()
+        amb_surf_without_mainlobe.values[mainlobe_mask] = np.nan
+
+        im = ax.pcolormesh(
+            ds_fa["x"].values * 1e-3,
+            ds_fa["y"].values * 1e-3,
+            amb_surf_without_mainlobe.values.T,
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+        )
+
+        ax.plot(
+            ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
+            ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
+            color="k",
+            linewidth=2,
+            # label="Mainlobe Boundary" if i == 0 else None,
+        )
+
+        # Add convex hull to the plot
+        hull_points = np.vstack([hull_points, hull_points[0]])
+
+        ax.plot(
+            hull_points[:, 0] * 1e-3,
+            hull_points[:, 1] * 1e-3,
+            "r-",
+            linewidth=2,
+            label="Mainlobe Convex Hull",
+        )
+
+        # Source pos
+        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
+        x_src_hat = amb_surf.x[x_idx]
+        y_src_hat = amb_surf.y[y_idx]
+        ax.scatter(
+            x_src_hat * 1e-3,
+            y_src_hat * 1e-3,
+            facecolors="none",
+            edgecolors="k",
+            label="Estimated source position",
+            s=20,
+            linewidths=3,
+        )
+
+        ax.set_title(f"Full array")
+        ax.set_xlabel(r"$x \textrm{[km]}$")
+        if i == 0:
+            ax.set_ylabel(r"$y \, \textrm{[km]}$")
+        else:
+            ax.set_ylabel("")
+
+        # # Set xticks
+        ax.set_xticks([3.500, 4.000, 4.500])
+        ax.set_yticks([6.400, 6.900, 7.400])
+
+        # Compute mainlobe to side lobe ratio
+        msr[dist] = np.max(
+            amb_surf.values[~mainlobe_mask]
+        )  # MSR = mainlobe_dB - side_lobe_dB (mainlobe_dB = max(ambsurf) = 0dB)
+
+        print(f"MSR {dist} : {msr[dist]:.2f} dB")
+
+    # Save figure
+    fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig5_nomainlobe.png")
+    plt.savefig(fpath, dpi=300, bbox_inches="tight")
+    plt.close("all")
+
+
+def find_mainlobe(ds_fa):
+
+    mainlobe_contours = {}
+
+    for dist in ["d_gcc", "d_rtf"]:
+
+        amb_surf = ds_fa[dist]
+
+        ### 1) Double k-means approach ###
+        # 1.1) K-means clustering on the ambiguity surface level
+
+        # Reshape ambiguity surface to 1D array
+        amb_surf_1d = amb_surf.values.flatten()
+
+        # Apply K-means clustering
+        n_clusters = 7
+        x_coord, y_coord = np.meshgrid(ds_fa.x.values, ds_fa.y.values)
+        X = np.vstack(
+            [x_coord.flatten(), y_coord.flatten(), amb_surf_1d]
+        )  # 3 Columns x, y, S(x, y)
+        X_norm = preprocessing.normalize(X).T
+        X_norm[:, 0:2] *= 2  # Increase the weight of the spatial coordinates
+        # X_norm = X.T
+        kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto")
+        kmeans.fit(X_norm)
+
+        # 1.2) Segmentation
+        # Reshape labels to 2D array
+        labels = kmeans.labels_.reshape(amb_surf.shape)
+
+        # 1.3) Plot
+        f, ax = plt.subplots(1, 1, figsize=(5, 5))
+
+        # Define a discrete colormap with n_clusters colors
+        cmap = plt.get_cmap("jet", n_clusters)
+        im = ax.pcolormesh(
+            ds_fa["x"].values * 1e-3,
+            ds_fa["y"].values * 1e-3,
+            labels.T,
+            cmap=cmap,
+        )
+
+        # Add colorbar with n_clusters ticks
+        cbar = plt.colorbar(
+            im, ax=ax, label=r"$\textrm{Class}$", ticks=range(n_clusters)[::2]
+        )
+        ax.set_title(f"Full array")
+        ax.set_xlabel(r"$x \textrm{[km]}$")
+        ax.set_ylabel(r"$y \, \textrm{[km]}$")
+        ax.set_xticks([3.500, 4.000, 4.500])
+        ax.set_yticks([6.400, 6.900, 7.400])
+
+        # Save figure
+        fpath = os.path.join(ROOT_IMG, f"loc_zhang2023_fig5_segmentation_{dist}.png")
+        plt.savefig(fpath, dpi=300, bbox_inches="tight")
+
+        # 1.4) Select the class corresponding to the estimated position defined by the maximum of the ambiguity surface
+        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
+        x_src_hat = amb_surf.x[x_idx]
+        y_src_hat = amb_surf.y[y_idx]
+        src_hat_class = labels[x_idx, y_idx]
+
+        # Find contours of src_hat_class and select the contour corresponding to the estimated position
+        contours = measure.find_contours(labels == src_hat_class, level=0.5)
+        for contour in contours:
+            # Check if src_hat is within the contour
+            idx_x_min = np.min(contour[:, 0].astype(int))
+            idx_x_max = np.max(contour[:, 0].astype(int))
+            idx_y_min = np.min(contour[:, 1].astype(int))
+            idx_y_max = np.max(contour[:, 1].astype(int))
+            if (idx_x_min <= x_idx <= idx_x_max) and (idx_y_min <= y_idx <= idx_y_max):
+                break
+
+        mainlobe_contours[dist] = contour
+
+        # 1.5) Plot ambiguity surface and highligh pixels falling into the src_hat_class
+        f, ax = plt.subplots(1, 1, figsize=(5, 5))
+
+        # Define a discrete colormap with n_clusters colors
+        im = ax.pcolormesh(
+            ds_fa["x"].values * 1e-3,
+            ds_fa["y"].values * 1e-3,
+            amb_surf.values.T,
+            cmap="jet",
+            vmin=-10,
+            vmax=0,
+        )
+
+        # # Highligh mainlobe pixels
+        ax.plot(
+            ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
+            ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
+            color="k",
+            linewidth=2,
+        )
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
+        ax.scatter(
+            x_src_hat * 1e-3,
+            y_src_hat * 1e-3,
+            facecolors="none",
+            edgecolors="k",
+            label="Estimated source position",
+            s=20,
+            linewidths=3,
+        )
+
+        ax.set_title(f"Full array")
+        ax.set_xlabel(r"$x \textrm{[km]}$")
+        ax.set_ylabel(r"$y \, \textrm{[km]}$")
+        ax.set_xticks([3.500, 4.000, 4.500])
+        ax.set_yticks([6.400, 6.900, 7.400])
+
+        # Save figure
+        fpath = os.path.join(
+            ROOT_IMG, f"loc_zhang2023_fig5_segmentation_highlight_{dist}.png"
+        )
+        plt.savefig(fpath, dpi=300, bbox_inches="tight")
+
+    return mainlobe_contours
+
+
+def main_lobe_segmentation_study():
+
+    # Load params
+    depth, receivers, source, grid, frequency, _ = params()
+
+    # Load full array dataset
+    fpath = os.path.join(
+        ROOT_DATA,
+        f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
+    )
+    ds_fa = xr.open_dataset(fpath)
+
+    dist = "d_gcc"
+    amb_surf = ds_fa[dist]
+
+    ### 1) Double k-means approach ###
+    # 1.1) K-means clustering on the ambiguity surface level
+
+    # Reshape ambiguity surface to 1D array
+    amb_surf_1d = amb_surf.values.flatten()
+
+    # Apply K-means clustering
+    n_clusters = 8
+    x_coord, y_coord = np.meshgrid(ds_fa.x.values, ds_fa.y.values)
+    X = np.vstack(
+        [x_coord.flatten(), y_coord.flatten(), amb_surf_1d]
+    )  # 3 Columns x, y, S(x, y)
+    X_norm = preprocessing.normalize(X).T
+    X_norm[:, 0:2] *= 2  # Increase the weight of the spatial coordinates
+    # X_norm = X.T
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto")
+    kmeans.fit(X_norm)
+
+    # kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(
+    #     amb_surf_1d.reshape(-1, 1)
+    # )
+
+    # 1.2) Segmentation
+    # Reshape labels to 2D array
+    labels = kmeans.labels_.reshape(amb_surf.shape)
+
+    # 1.3) Plot
+    f, ax = plt.subplots(1, 1, figsize=(5, 5))
+
+    # Define a discrete colormap with n_clusters colors
+    cmap = plt.get_cmap("jet", n_clusters)
+    im = ax.pcolormesh(
+        ds_fa["x"].values * 1e-3,
+        ds_fa["y"].values * 1e-3,
+        # amb_surf.values.T,
+        labels.T,
+        cmap=cmap,
+        # cmap="jet",
+        # vmin=-10,
+        # vmax=0,
+    )
+
+    # Add colorbar with n_clusters ticks
+    cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{Class}$", ticks=range(n_clusters))
+    # cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{Class}$")
+    ax.set_title(f"Full array")
+    ax.set_xlabel(r"$x \textrm{[km]}$")
+    ax.set_ylabel(r"$y \, \textrm{[km]}$")
+    ax.set_xticks([3.500, 4.000, 4.500])
+    ax.set_yticks([6.400, 6.900, 7.400])
+
+    # # Plot segmentation
+    # for i in range(n_clusters):
+    #     mask = labels == i
+    #     ax.contour(mask, levels=[0.5])
+
+    # Save figure
+    fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig5_segmentation.png")
+    plt.savefig(fpath, dpi=300, bbox_inches="tight")
+
+    # 1.4) Select the class corresponding to the estimated position defined by the maximum of the ambiguity surface
+    x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
+    x_src_hat = amb_surf.x[x_idx]
+    y_src_hat = amb_surf.y[y_idx]
+    src_hat_class = labels[x_idx, y_idx]
+
+    # Find contours of src_hat_class and select the contour corresponding to the estimated position
+    contours = measure.find_contours(labels == src_hat_class, level=0.5)
+    for contour in contours:
+        # Check if src_hat is within the contour
+        idx_x_min = np.min(contour[:, 0].astype(int))
+        idx_x_max = np.max(contour[:, 0].astype(int))
+        idx_y_min = np.min(contour[:, 1].astype(int))
+        idx_y_max = np.max(contour[:, 1].astype(int))
+        if (idx_x_min <= x_idx <= idx_x_max) and (idx_y_min <= y_idx <= idx_y_max):
+            break
+
+    # 1.5) Plot ambiguity surface and highligh pixels falling into the src_hat_class
+    f, ax = plt.subplots(1, 1, figsize=(5, 5))
+
+    # Define a discrete colormap with n_clusters colors
+    im = ax.pcolormesh(
+        ds_fa["x"].values * 1e-3,
+        ds_fa["y"].values * 1e-3,
+        amb_surf.values.T,
+        cmap="jet",
+        vmin=-10,
+        vmax=0,
+    )
+
+    # # Highligh mainlobe pixels
+    ax.plot(
+        ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
+        ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
+        color="k",
+        linewidth=2,
+    )
+
+    # mask = labels == src_hat_class
+    # ax.contour(
+    #     ds_fa["x"].values * 1e-3,
+    #     ds_fa["y"].values * 1e-3,
+    #     mask.T,
+    #     levels=[0.5],
+    #     colors="k",
+    # )
+
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
+    ax.scatter(
+        x_src_hat * 1e-3,
+        y_src_hat * 1e-3,
+        facecolors="none",
+        edgecolors="k",
+        label="Estimated source position",
+        s=20,
+        linewidths=3,
+    )
+
+    ax.set_title(f"Full array")
+    ax.set_xlabel(r"$x \textrm{[km]}$")
+    ax.set_ylabel(r"$y \, \textrm{[km]}$")
+    ax.set_xticks([3.500, 4.000, 4.500])
+    ax.set_yticks([6.400, 6.900, 7.400])
+
+    # Save figure
+    fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig5_segmentation_highlight.png")
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
 
 
@@ -663,12 +1400,20 @@ def process_localisation_zhang2023(nf=10):
 
         # Add theta to dataset
         ds_cpl_rtf["theta"] = (["x", "y"], theta.T)
-        # Convert theta to a metric between -1 and 1
-        theta_inv = (
-            theta_max - ds_cpl_rtf.theta
-        )  # So that the source position is the maximum value
-        d_rtf = (theta_inv - theta_max / 2) / (theta_max / 2)  # To lie between -1 and 1
-        ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf.values)
+        # # Convert theta to a metric between -1 and 1
+        # theta_inv = (
+        #     theta_max - ds_cpl_rtf.theta
+        # )  # So that the source position is the maximum value
+        # d_rtf = (theta_inv - theta_max / 2) / (theta_max / 2)  # To lie between -1 and 1
+
+        # Normalize
+        d_rtf = normalize_metric_contrast(-ds_cpl_rtf.theta)
+
+        # Convert to dB
+        d_rtf = d_rtf.values
+        d_rtf[d_rtf == 0] = MIN_VAL_LOG
+        d_rtf = 10 * np.log10(d_rtf)
+        ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf)
 
         ## GCC ##
         ds_cpl_gcc = ds.sel(idx_rcv_ref=rcv_cpl[0], idx_rcv=rcv_cpl[1])
@@ -680,8 +1425,17 @@ def process_localisation_zhang2023(nf=10):
         gcc_src = cast_matrix_to_target_shape(gcc_src, gcc_grid.shape)
 
         # Build cross corr (Equation (8) in Zhang et al. 2023)
+        # d_gcc = np.sum(gcc_grid * np.conj(gcc_src) * df, axis=0)
         d_gcc = np.abs(np.sum(gcc_grid * np.conj(gcc_src) * df, axis=0))
-        d_gcc = d_gcc / np.max(d_gcc)
+        # d_gcc = d_gcc / np.max(d_gcc)
+
+        # Normalize
+        d_gcc = normalize_metric_contrast(d_gcc)
+
+        # Convert to dB
+        d_gcc = d_gcc
+        d_gcc[d_gcc == 0] = MIN_VAL_LOG
+        d_gcc = 10 * np.log10(d_gcc)  # Convert to dB
 
         # Add d to dataset
         ds_cpl_gcc["d_gcc"] = (["x", "y"], d_gcc.T)
@@ -723,16 +1477,29 @@ def process_localisation_zhang2023(nf=10):
 
     # Add theta to dataset
     ds_cpl_rtf["theta"] = (["x", "y"], theta.T)
-    # Convert theta to a metric between -1 and 1
-    theta_inv = (
-        theta_max - ds_cpl_rtf.theta
-    )  # So that the source position is the maximum value
-    d_rtf = (theta_inv - theta_max / 2) / (theta_max / 2)  # To lie between -1 and 1
-    ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf.values)
+    # # Convert theta to a metric between -1 and 1
+    # theta_inv = (
+    #     theta_max - ds_cpl_rtf.theta
+    # )  # So that the source position is the maximum value
+    # d_rtf = (theta_inv - theta_max / 2) / (theta_max / 2)  # To lie between -1 and 1
+
+    d_rtf = normalize_metric_contrast(-ds_cpl_rtf.theta)  # q in [0, 1]
+
+    #  Replace 0 by 1e-5 to avoid log(0) in dB conversion
+    d_rtf = d_rtf.values
+    d_rtf[d_rtf == 0] = MIN_VAL_LOG
+    d_rtf = 10 * np.log10(d_rtf)  # Convert to dB
+    ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf)
 
     ## GCC ##
     d_gcc_fullarray = np.array(d_gcc_fullarray)
+    # Convert back to linear scale before computing the mean
+    d_gcc_fullarray = 10 ** (d_gcc_fullarray / 10)
     d_gcc_fullarray = np.mean(d_gcc_fullarray, axis=0)
+
+    # Convert to dB
+    d_gcc_fullarray[d_gcc_fullarray == 0] = MIN_VAL_LOG
+    d_gcc_fullarray = 10 * np.log10(d_gcc_fullarray)
 
     # Build dataset to be saved as netcdf
     ds_cpl_fullarray = xr.Dataset(
@@ -901,6 +1668,7 @@ def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):
         extend="neither",
         # robust=True,
         cbar_kwargs={"label": dist_label},
+        # cbar_kwargs={"label": r"$\textrm{[dB]}$"},
     )
     # amb_surf.plot.contourf(
     #     x="x",
@@ -996,7 +1764,10 @@ def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):
 if __name__ == "__main__":
     # params()
     # save_simulation_netcdf()
-    build_features()
+    # build_tf_grid()
+    build_signal()
+    # build_features()
+
     # sub_arrays = [
     #     None,
     #     [0, 1, 4, 5],
@@ -1012,8 +1783,10 @@ if __name__ == "__main__":
     # for sub_array in sub_arrays:
     # localise(sub_array=sub_array)
 
-    process_localisation_zhang2023(nf=10)
-    plot_study_zhang2023()
+    # process_localisation_zhang2023(nf=10)
+    # plot_study_zhang2023()
+
+    # main_lobe_segmentation_study()
 
 
 ## Left overs ##

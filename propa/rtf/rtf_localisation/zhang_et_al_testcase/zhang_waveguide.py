@@ -20,7 +20,7 @@ import xarray as xr
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
-from cst import RHO_W
+from cst import RHO_W, C0
 from signals.signals import lfm_chirp
 from misc import cast_matrix_to_target_shape, mult_along_axis
 from publication.PublicationFigure import PubFigure
@@ -199,8 +199,15 @@ def save_simulation_netcdf():
 
 def build_signal():
     """Derive received signal(library / event)"""
-    # Load transfert function dataset
-    fpath = os.path.join(ROOT_DATA, "tf_zhang_grid.nc")
+
+    # Load params
+    depth, receivers, source, grid, frequency, _ = params()
+
+    # Load gridded dataset
+    dx = np.diff(grid["x"][0, :])[0]
+    dy = np.diff(grid["y"][:, 0])[0]
+    fname = f"tf_zhang_grid_dx{dx}m_dy{dy}m.nc"
+    fpath = os.path.join(ROOT_DATA, fname)
     ds = xr.open_dataset(fpath)
 
     # Load library spectrum
@@ -211,70 +218,75 @@ def build_signal():
     # Load event spectrum
     _, S_f_event = event_src_spectrum(f)
 
-    # Load params
-    depth, receivers, source, grid, frequency, _ = params()
+    df = ds.df
+    shape_grid = (
+        ds.sizes["idx_rcv"],
+        ds.sizes["f"],
+        ds.sizes["x"],
+        ds.sizes["y"],
+    )
 
-    # fmin_synthesis = 0
-    # fmax_synthesis = 10000
-    df = ds.f.diff("f").values[0]
-
-    # Add x and y coordinates to dataset
-    ds.coords["x"] = grid["x"][0, :]
-    ds.coords["y"] = grid["y"][:, 0]
-
+    # Derive delay for each receiver
+    delay_rcv = []
     for i_rcv in range(len(receivers["x"])):
-        # Build tf grid
         r_grid = grid["r"][i_rcv].flatten()
-        tf_vect = ds.tf_real.sel(r=r_grid, method="nearest") + 1j * ds.tf_imag.sel(
-            r=r_grid, method="nearest"
-        )
-        tf_grid = tf_vect.values.reshape((ds.sizes["f"], ds.sizes["x"], ds.sizes["y"]))
-        # tf_grid[...] = 1  # TODO remove
+        tau_rcv = r_grid / C0
+        tau_rcv = tau_rcv.reshape((ds.sizes["x"], ds.sizes["y"]))
+        delay_rcv.append(tau_rcv)
 
-        # Derive received spectrum
-        y_f = mult_along_axis(tf_grid, S_f_library, axis=0)
+    delay_rcv = np.array(delay_rcv)
 
-        # # Pad with 0 to spans the whole frequency range 0 - 1000 Hz
-        # pad_before = int((library_props["f0"] - fmin_synthesis) / df)
-        # pad_after = int((fmax_synthesis - library_props["f1"]) / df)
-        # y_f = np.pad(y_f, ((pad_before, pad_after), (0, 0), (0, 0)), mode="constant")
+    # Add delay to dataset
+    ds["delay_rcv"] = (["idx_rcv", "x", "y"], delay_rcv)
 
+    # Same delay is applied to each receiver : the receiver with the minimum delay is taken as the time reference
+    # (we are only interested on relative time difference)
+    tau = ds.delay_rcv.min(dim="idx_rcv")
+    # Cast tau to grid shape
+    tau = cast_matrix_to_target_shape(tau, ds.tf_real.shape[1:])
+
+    y_t_grid = []
+    for i_rcv in range(len(receivers["x"])):
+
+        tf_grid = ds.tf_real.sel(idx_rcv=i_rcv) + 1j * ds.tf_imag.sel(idx_rcv=i_rcv)
+
+        # Derive received spectrum (Y = SH)
+        k0 = 2 * np.pi * ds.f / C0
+        norm_factor = np.exp(1j * k0) / (4 * np.pi)
+
+        y_f = mult_along_axis(tf_grid, S_f_library * norm_factor, axis=0)
+
+        # Derive delay factor to take into account the propagation time
+        tau_vec = mult_along_axis(tau, ds.f, axis=0)
+        delay_f = np.exp(1j * 2 * np.pi * tau_vec)
+
+        # Apply delay
+        y_f *= delay_f
+
+        # FFT inv to get signal
         y_t = np.fft.irfft(y_f, axis=0)
 
-        # nfft_inv = xr_rdsrc.nfft
-        # df = xr_rdsrc.df
-        # T_tot = 1 / df
+        y_t_grid.append(y_t)
 
-        # k0 = 2 * np.pi * propagating_freq / C0
-        # norm_factor = np.exp(1j * k0) / (4 * np.pi)
+        # plt.figure()
+        # plt.plot(y_t[:, 0, 0])
+        # plt.savefig(f"test_{i_rcv}.png")
+        # plt.show()
 
-        # # Received signal spectrum resulting from the convolution of the src signal and the impulse response
-        # propagating_spectrum = mult_along_axis(propagating_spectrum, norm_factor, axis=-1)
-        # transmitted_field_f = ds.tf_gridded * propagating_spectrum
+    y_t_grid = np.array(y_t_grid)
 
-        # # Apply corresponding delay to the signal
-        # if apply_delay:
-        #     tau = ds.delay_rcv.min(
-        #         dim="idx_rcv"
-        #     )  # Delay to apply to the signal to take into account the propagation time
+    # Add to dataset
+    t = np.arange(0, library_props["T"], 1 / library_props["fs"])
+    ds.coords["t"] = t
+    ds["s_l"] = (["idx_rcv", "t", "x", "y"], y_t_grid)
 
-        #     # Expand tau to the signal shape
-        #     tau = tau.expand_dims({"kraken_freq": ds.sizes["kraken_freq"]}, axis=-1)
-        #     # Derive delay factor
-        #     tau_vec = mult_along_axis(tau, propagating_freq, axis=-1)
-        #     delay_f = np.exp(1j * 2 * np.pi * tau_vec)
-        #     # Expand delay factor to the signal shape
-        #     delay_f = tau.copy(deep=True, data=delay_f).expand_dims(
-        #         {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
-        #     )
-        #     # Apply delay
-        #     transmitted_field_f = transmitted_field_f * delay_f
-        plt.figure()
-        plt.plot(y_t[:, 0, 0])
-        plt.savefig("test.png")
-        plt.show()
+    # Drop vars to reduce size
+    ds = ds.drop_vars(["tf_real", "tf_imag", "f"])
 
-        # print()
+    # Save dataset
+    fname = f"zhang_library_dx{dx}m_dy{dy}m.nc"
+    fpath = os.path.join(ROOT_DATA, fname)
+    ds.to_netcdf(fpath)
 
 
 def library_src_spectrum():
@@ -352,7 +364,7 @@ def library_src_spectrum():
     return library_props, S_f_library, f_library, idx_in_band
 
 
-def build_tf_grid():
+def build_tf_dataset():
 
     library_props, S_f_library, freq, idx_in_band = library_src_spectrum()
 
@@ -443,8 +455,74 @@ def build_tf_grid():
     )
 
     # Save as netcdf
-    fpath = os.path.join(ROOT_DATA, "tf_zhang_grid.nc")
+    fpath = os.path.join(ROOT_DATA, "tf_zhang_dataset.nc")
     library_zhang.to_netcdf(fpath)
+
+
+def grid_dataset():
+
+    # Load dataset
+    fpath = os.path.join(ROOT_DATA, "tf_zhang_dataset.nc")
+    ds = xr.open_dataset(fpath)
+
+    # Load param
+    depth, receivers, source, grid, frequency, _ = params()
+
+    # Create new dataset
+    ds_grid = xr.Dataset(
+        coords=dict(
+            f=ds.f.values,
+            x=grid["x"][0, :],
+            y=grid["y"][:, 0],
+            idx_rcv=range(len(receivers["x"])),
+        ),
+        attrs=dict(
+            df=ds.f.diff("f").values[0],
+            dx=np.diff(grid["x"][0, :])[0],
+            dy=np.diff(grid["y"][:, 0])[0],
+            testcase="zhang_et_al_2023",
+        ),
+    )
+
+    # Grid tf to the desired resolution
+    # Preprocess tf to decrease the number of point for further interpolation
+    r_grid_all_rcv = np.array(
+        [grid["r"][i_rcv].flatten() for i_rcv in range(len(receivers["x"]))]
+    )
+    r_grid_all_rcv_unique = np.unique(np.round(r_grid_all_rcv.flatten(), 0))
+
+    tf_vect = ds.tf_real.sel(
+        r=r_grid_all_rcv_unique, method="nearest"
+    ) + 1j * ds.tf_imag.sel(r=r_grid_all_rcv_unique, method="nearest")
+
+    tf_grid_ds = xr.Dataset(
+        coords=dict(
+            f=ds.f.values,
+            r=r_grid_all_rcv_unique,
+        ),
+        data_vars=dict(tf=(["f", "r"], tf_vect.values)),
+    )
+
+    gridded_tf = []
+    grid_shape = (ds_grid.sizes["f"], ds_grid.sizes["x"], ds_grid.sizes["y"])
+    for i_rcv in range(len(receivers["x"])):
+        r_grid = grid["r"][i_rcv].flatten()
+        tf_ircv = tf_grid_ds.tf.sel(r=r_grid, method="nearest")
+
+        tf_grid = tf_ircv.values.reshape(grid_shape)
+        gridded_tf.append(tf_grid)
+
+    gridded_tf = np.array(gridded_tf)
+    # Add to dataset
+    grid_coords = ["idx_rcv", "f", "x", "y"]
+    ds_grid["tf_real"] = (grid_coords, np.real(gridded_tf))
+    ds_grid["tf_imag"] = (grid_coords, np.imag(gridded_tf))
+
+    # Save dataset
+    fname = f"tf_zhang_grid_dx{ds_grid.dx}m_dy{ds_grid.dy}m.nc"
+    fpath = os.path.join(ROOT_DATA, fname)
+    ds_grid.to_netcdf(fpath)
+    ds_grid.close()
 
 
 def event_src_spectrum(f):
@@ -1764,8 +1842,9 @@ def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):
 if __name__ == "__main__":
     # params()
     # save_simulation_netcdf()
-    # build_tf_grid()
-    build_signal()
+    # build_tf_dataset()
+    # grid_dataset()
+    # build_signal()
     # build_features()
 
     # sub_arrays = [

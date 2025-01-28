@@ -17,6 +17,7 @@ import numpy as np
 import xarray as xr
 import dask.array as da
 
+from time import time
 from dask import delayed
 from dask.diagnostics import ProgressBar
 from misc import cast_matrix_to_target_shape, mult_along_axis
@@ -836,6 +837,15 @@ def build_features_fullsimu():
     # ) + 1j * ds.tf_imag.sel(r=r_src_i, method="nearest")
     # rtf_event_i = tf_src_i.values / tf_src_ref.values
     # rtf_event.append(rtf_event_i)
+
+
+def build_features_snr(snrs):
+    for snr in snrs:
+        print(f"Start building loc features for snr = {snr}dB ...")
+        t0 = time()
+        build_features_from_time_signal(snr)
+        elasped_time = time() - t0
+        print(f"Features built (elapsed time = {elasped_time}s)")
 
 
 if __name__ == "__main__":

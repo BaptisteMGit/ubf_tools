@@ -211,8 +211,8 @@ def plot_study_zhang2023(folder):
             # cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
 
             ax.scatter(
-                x_src * 1e-3,
-                y_src * 1e-3,
+                x_src,
+                y_src,
                 facecolors="none",
                 edgecolors="k",
                 label=true_pos_label,
@@ -224,17 +224,23 @@ def plot_study_zhang2023(folder):
                 r"$s_{" + str(rcv_cpl[0] + 1) + "} - s_{" + str(rcv_cpl[1] + 1) + r"}$"
             )
             if i == 1:
-                ax.set_xlabel(r"$x \, \textrm{[m]}$")
+                ax.set_xlabel(r"$x \, \textrm{[km]}$")
             else:
                 ax.set_xlabel("")
             if i_cpl == 0:
-                ax.set_ylabel(r"$y \, \textrm{[m]}$")
+                ax.set_ylabel(r"$y \, \textrm{[km]}$")
             else:
                 ax.set_ylabel("")
 
             # # Set xticks
-            ax.set_xticks([3500, 4000, 4500])
+            # ax.set_xticks([3500, 4000, 4500])
+            # ax.set_yticks([6400, 6900, 7400])
+            ax.set_xticks(
+                [3500, 4000, 4500],
+            )
+            ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
             ax.set_yticks([6400, 6900, 7400])
+            ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig4.png")
@@ -277,8 +283,8 @@ def plot_study_zhang2023(folder):
         # cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
 
         ax.scatter(
-            x_src * 1e-3,
-            y_src * 1e-3,
+            x_src,
+            y_src,
             facecolors="none",
             edgecolors="k",
             label=true_pos_label,
@@ -287,15 +293,22 @@ def plot_study_zhang2023(folder):
         )
 
         ax.set_title(f"Full array")
-        ax.set_xlabel(r"$x \textrm{[m]}$")
+        ax.set_xlabel(r"$x \textrm{[km]}$")
         if i == 0:
-            ax.set_ylabel(r"$y \, \textrm{[m]}$")
+            ax.set_ylabel(r"$y \, \textrm{[km]}$")
         else:
             ax.set_ylabel("")
 
         # # Set xticks
-        ax.set_xticks([3500, 4000, 4500])
+        # ax.set_xticks([3500, 4000, 4500])
+        # ax.set_yticks([6400, 6900, 7400])
+        # # Set xticks
+        ax.set_xticks(
+            [3500, 4000, 4500],
+        )
+        ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
         ax.set_yticks([6400, 6900, 7400])
+        ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig5.png")
@@ -336,11 +349,11 @@ def plot_study_zhang2023(folder):
     plt.close("all")
 
     ###### Figure 5 showing pixels selected as the mainlobe ######
-    f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
 
     # Find mainlobe contours
     mainlobe_contours = find_mainlobe(ds_fa)
 
+    f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
     # Plot d_gcc and d_rtf
     for i, dist in enumerate(["d_gcc", "d_rtf"]):
         ax = axs[i]
@@ -349,7 +362,7 @@ def plot_study_zhang2023(folder):
         im = ax.pcolormesh(
             ds_fa["x"].values * 1e-3,
             ds_fa["y"].values * 1e-3,
-            amb_surf.values,
+            amb_surf.values.T,
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
@@ -372,8 +385,12 @@ def plot_study_zhang2023(folder):
             ax.set_ylabel("")
 
         # # Set xticks
-        ax.set_xticks([3.500, 4.000, 4.500])
+        ax.set_xticks(
+            [3.500, 4.000, 4.500],
+        )
+        ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
         ax.set_yticks([6.400, 6.900, 7.400])
+        ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig5_mainlobe.png")
@@ -486,8 +503,14 @@ def plot_study_zhang2023(folder):
             ax.set_ylabel("")
 
         # # Set xticks
-        ax.set_xticks([3.500, 4.000, 4.500])
+        # ax.set_xticks([3.500, 4.000, 4.500])
+        # ax.set_yticks([6.400, 6.900, 7.400])
+        ax.set_xticks(
+            [3.500, 4.000, 4.500],
+        )
+        ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
         ax.set_yticks([6.400, 6.900, 7.400])
+        ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
 
         # Compute mainlobe to side lobe ratio
         msr[dist] = np.max(

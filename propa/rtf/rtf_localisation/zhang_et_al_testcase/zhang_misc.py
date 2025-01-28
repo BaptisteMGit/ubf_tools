@@ -28,8 +28,8 @@ from skimage import measure  # Import for contour detection
 from sklearn.cluster import KMeans
 from sklearn import preprocessing
 
+PubFigure(ticks_fontsize=22)
 
-PubFigure()
 ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase"
 ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data"
 ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\zhang_et_al_2023"
@@ -359,6 +359,7 @@ def find_mainlobe(ds_fa):
             ROOT_IMG, f"loc_zhang2023_fig5_segmentation_highlight_{dist}.png"
         )
         plt.savefig(fpath, dpi=300, bbox_inches="tight")
+        plt.close("all")
 
     return mainlobe_contours
 

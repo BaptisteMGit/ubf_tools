@@ -25,7 +25,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 
 
-def process_localisation_zhang2023(ds, folder, nf=10):
+def process_localisation_zhang2023(ds, folder, nf=10, freq_draw_method="random"):
     # Load params
     depth, receivers, source, grid, frequency, _ = params()
 
@@ -44,9 +44,17 @@ def process_localisation_zhang2023(ds, folder, nf=10):
     }
 
     # Select a few frequencies
-    # nf = 10
     df = np.diff(ds.f.values)[0]
-    f_loc = np.random.choice(ds.f.values, nf)
+    if (
+        freq_draw_method == "random"
+    ):  # Same option as used by Zhang et al 2023 yet results (especially the msr are not reproductible from one run to another with the same input dataset)
+        f_loc = np.random.choice(ds.f.values, nf)
+    elif (
+        freq_draw_method == "equally_spaced"
+    ):  # Reproductible option used for msr study
+        idx_f_loc = np.linspace(0, ds.sizes["f"] - 1, nf, dtype=int)
+        f_loc = ds.f.values[idx_f_loc]
+
     ds = ds.sel(f=f_loc)
 
     d_gcc_fullarray = []
@@ -194,9 +202,43 @@ def process_localisation_zhang2023(ds, folder, nf=10):
     ds_cpl_fullarray.to_netcdf(fpath)
 
 
+def process_all_snr(
+    snrs,
+    n_monte_carlo,
+    dx=20,
+    dy=20,
+    nf=10,
+    freq_draw_method="random",
+):
+    folder = f"from_signal_dx{dx}m_dy{dy}m"
+
+    for snr in snrs:
+        # Run simulation n_monte_carlo times at the same snr to derive the mean MSR
+        for i_mc in range(n_monte_carlo):
+            # Run simulation (one simulation = 1 generation of noise)
+            fpath = os.path.join(
+                ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr}dB.nc"
+            )
+            ds = xr.open_dataset(fpath)
+
+            process_localisation_zhang2023(ds, folder, nf, freq_draw_method)
+
+
+def study_msr_vs_snr(snrs):
+    for snr in snrs:
+        pass
+        # Load dataset
+
+        # Estimate msr
+
+        # Store msr
+
+    # Plot msr vs snr
+
+
 if __name__ == "__main__":
 
-    nf = 40
+    nf = 10
     dx, dy = 20, 20
     # # Load rtf data
     # fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
@@ -206,12 +248,12 @@ if __name__ == "__main__":
     # process_localisation_zhang2023(ds, folder, nf=nf)
     # plot_study_zhang2023(folder)
 
-    fpath = os.path.join(ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
-    fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_nperseg11.nc")
+    # fpath = os.path.join(ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
+    fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr0dB.nc")
     ds = xr.open_dataset(fpath)
 
     folder = f"from_signal_dx{dx}m_dy{dy}m"
-    process_localisation_zhang2023(ds, folder, nf=nf)
+    process_localisation_zhang2023(ds, folder, nf=nf, freq_draw_method="equally_spaced")
     plot_study_zhang2023(folder)
 
 

@@ -18,8 +18,7 @@ import xarray as xr
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
-from matplotlib.path import Path
-from scipy.spatial import ConvexHull
+
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
 
 # ======================================================================================================================
@@ -27,7 +26,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
 # ======================================================================================================================
 
 
-def plot_study_zhang2023(folder):
+def plot_study_zhang2023(folder, data_fname=None):
     # Load params
     depth, receivers, source, grid, frequency, _ = params()
 
@@ -81,9 +80,17 @@ def plot_study_zhang2023(folder):
     # Select receivers to build the sub-array
     rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
     for rcv_cpl in rcv_couples:
+
+        # Load data
+        if data_fname is None:
+            data_fname_cpl = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
+        else:
+            data_fname_cpl = f"{data_fname}_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
+
         fpath = os.path.join(
             root_data,
-            f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
+            # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
+            data_fname_cpl,
         )
         ds_cpl = xr.open_dataset(fpath)
 
@@ -117,9 +124,15 @@ def plot_study_zhang2023(folder):
         plt.close("all")
 
     ###### Full array ######
+    # Load data
+    if data_fname is None:
+        data_fname_fa = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc"
+    else:
+        data_fname_fa = f"{data_fname}_fullarray.nc"
     fpath = os.path.join(
         root_data,
-        f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
+        # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
+        data_fname_fa,
     )
     ds_fa = xr.open_dataset(fpath)
 
@@ -150,6 +163,17 @@ def plot_study_zhang2023(folder):
     plt.close("all")
 
     ###### Figure 4 : Subplot in Zhang et al 2023 ######
+
+    # Define plot args for ambiguity surfaces
+    xticks_pos_km = [3.5, 4.0, 4.5]
+    yticks_pos_km = [6.4, 6.9, 7.4]
+    xticks_pos_m = [xt * 1e3 for xt in xticks_pos_km]
+    yticks_pos_m = [yt * 1e3 for yt in yticks_pos_km]
+    xticks_label_km = [f"${xt:.1f}$" for xt in xticks_pos_km]
+    yticks_label_km = [f"${yt:.1f}$" for yt in yticks_pos_km]
+    # xticks_label_m = [f"${xt:.0f}$" for xt in xticks_pos_m]
+    # yticks_label_m = [f"${yt:.0f}$" for yt in yticks_pos_m]
+
     cmap = "jet"
     # vmax = 1
     # vmin = 0
@@ -171,9 +195,21 @@ def plot_study_zhang2023(folder):
     f, axs = plt.subplots(2, 3, figsize=(15, 10), sharex=True, sharey=True)
 
     for i_cpl, rcv_cpl in enumerate(rcv_couples):
+        # fpath = os.path.join(
+        #     root_data,
+        #     f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
+        # )
+        # ds_cpl = xr.open_dataset(fpath)
+
+        # Load data
+        if data_fname is None:
+            data_fname_cpl = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
+        else:
+            data_fname_cpl = f"{data_fname}_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
+
         fpath = os.path.join(
             root_data,
-            f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
+            data_fname_cpl,
         )
         ds_cpl = xr.open_dataset(fpath)
 
@@ -235,12 +271,10 @@ def plot_study_zhang2023(folder):
             # # Set xticks
             # ax.set_xticks([3500, 4000, 4500])
             # ax.set_yticks([6400, 6900, 7400])
-            ax.set_xticks(
-                [3500, 4000, 4500],
-            )
-            ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
-            ax.set_yticks([6400, 6900, 7400])
-            ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
+            ax.set_xticks(xticks_pos_m)
+            ax.set_yticks(yticks_pos_m)
+            ax.set_xticklabels(xticks_label_km, fontsize=22)
+            ax.set_yticklabels(yticks_label_km, fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig4.png")
@@ -303,12 +337,10 @@ def plot_study_zhang2023(folder):
         # ax.set_xticks([3500, 4000, 4500])
         # ax.set_yticks([6400, 6900, 7400])
         # # Set xticks
-        ax.set_xticks(
-            [3500, 4000, 4500],
-        )
-        ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
-        ax.set_yticks([6400, 6900, 7400])
-        ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
+        ax.set_xticks(xticks_pos_m)
+        ax.set_yticks(yticks_pos_m)
+        ax.set_xticklabels(xticks_label_km, fontsize=22)
+        ax.set_yticklabels(yticks_label_km, fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig5.png")
@@ -384,145 +416,18 @@ def plot_study_zhang2023(folder):
         else:
             ax.set_ylabel("")
 
-        # # Set xticks
-        ax.set_xticks(
-            [3.500, 4.000, 4.500],
-        )
-        ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
-        ax.set_yticks([6.400, 6.900, 7.400])
-        ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
+        # Set xticks
+        ax.set_xticks(xticks_pos_km)
+        ax.set_yticks(yticks_label_km)
+        ax.set_xticklabels(xticks_label_km, fontsize=22)
+        ax.set_yticklabels(yticks_label_km, fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig5_mainlobe.png")
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
     plt.close("all")
 
-    # TODO : move the msr part to a dedicated function once the rtf estimation block is ok
-    # Derive mainlobe to side lobe ratio
-
-    f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
-
-    msr = {}
-    for i, dist in enumerate(["d_gcc", "d_rtf"]):
-        mainlobe_mask = np.zeros_like(amb_surf.values, dtype=bool)
-
-        ax = axs[i]
-        amb_surf = ds_fa[dist]
-
-        contour = mainlobe_contours[dist]
-
-        # Convert contour indices to integers
-        contour_x_idx = np.round(contour[:, 0]).astype(int)
-        contour_y_idx = np.round(contour[:, 1]).astype(int)
-
-        # Ensure indices stay within valid bounds
-        contour_x_idx = np.clip(contour_x_idx, 0, ds_fa["x"].size - 1)
-        contour_y_idx = np.clip(contour_y_idx, 0, ds_fa["y"].size - 1)
-
-        contour_points = np.c_[
-            ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]
-        ]
-
-        # Step 3: Compute convex hull
-        hull = ConvexHull(contour_points)
-        hull_points = contour_points[hull.vertices]  # Get convex hull vertices
-
-        # Step 4: Convert convex hull to a polygon
-        poly_path = Path(hull_points)
-
-        # # Convert contour indices to actual x and y values
-        # poly_path = Path(
-        #     np.c_[ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]]
-        # )
-
-        # Step 3: Create a grid of coordinates
-        X, Y = np.meshgrid(ds_fa["x"].values, ds_fa["y"].values, indexing="ij")
-
-        # Step 4: Flatten the grid and check which points are inside the polygon
-        points = np.c_[X.ravel(), Y.ravel()]  # Flatten grid coordinates
-        inside = poly_path.contains_points(points)
-
-        # Step 5: Reshape the result into the original grid shape and update the mask
-        mainlobe_mask |= inside.reshape(
-            X.shape
-        )  # Use logical OR to combine multiple contours
-        # mainlobe_mask = mainlobe_mask.T
-
-        # Plot ambiguity surface without mainlobe pixels
-        amb_surf_without_mainlobe = amb_surf.copy()
-        amb_surf_without_mainlobe = amb_surf_without_mainlobe.values
-        amb_surf_without_mainlobe[mainlobe_mask] = np.nan
-
-        im = ax.pcolormesh(
-            ds_fa["x"].values * 1e-3,
-            ds_fa["y"].values * 1e-3,
-            amb_surf_without_mainlobe.T,
-            cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
-        )
-
-        ax.plot(
-            ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
-            ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
-            color="k",
-            linewidth=2,
-            # label="Mainlobe Boundary" if i == 0 else None,
-        )
-
-        # Add convex hull to the plot
-        hull_points = np.vstack([hull_points, hull_points[0]])
-
-        ax.plot(
-            hull_points[:, 0] * 1e-3,
-            hull_points[:, 1] * 1e-3,
-            "r-",
-            linewidth=2,
-            label="Mainlobe Convex Hull",
-        )
-
-        # Source pos
-        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
-        x_src_hat = amb_surf.x[x_idx]
-        y_src_hat = amb_surf.y[y_idx]
-        ax.scatter(
-            x_src_hat * 1e-3,
-            y_src_hat * 1e-3,
-            facecolors="none",
-            edgecolors="k",
-            label="Estimated source position",
-            s=20,
-            linewidths=3,
-        )
-
-        ax.set_title(f"Full array")
-        ax.set_xlabel(r"$x \textrm{[km]}$")
-        if i == 0:
-            ax.set_ylabel(r"$y \, \textrm{[km]}$")
-        else:
-            ax.set_ylabel("")
-
-        # # Set xticks
-        # ax.set_xticks([3.500, 4.000, 4.500])
-        # ax.set_yticks([6.400, 6.900, 7.400])
-        ax.set_xticks(
-            [3.500, 4.000, 4.500],
-        )
-        ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
-        ax.set_yticks([6.400, 6.900, 7.400])
-        ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
-
-        # Compute mainlobe to side lobe ratio
-        msr[dist] = np.max(
-            amb_surf.values[~mainlobe_mask]
-        )  # MSR = mainlobe_dB - side_lobe_dB (mainlobe_dB = max(ambsurf) = 0dB)
-
-        print(f"MSR {dist} : {msr[dist]:.2f} dB")
-
-    # Save figure
-    fpath = os.path.join(root_img, "loc_zhang2023_fig5_nomainlobe.png")
-    plt.savefig(fpath, dpi=300, bbox_inches="tight")
-    plt.close("all")
+    estimate_msr(ds_fa=ds_fa, plot=True, root_img=root_img, verbose=True)
 
 
 def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):

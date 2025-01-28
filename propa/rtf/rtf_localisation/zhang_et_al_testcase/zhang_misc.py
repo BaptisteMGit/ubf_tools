@@ -19,8 +19,11 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from cst import RHO_W, C0
-from signals.signals import lfm_chirp
-from misc import cast_matrix_to_target_shape, mult_along_axis
+
+# from signals.signals import lfm_chirp
+# from misc import cast_matrix_to_target_shape, mult_along_axis
+from matplotlib.path import Path
+from scipy.spatial import ConvexHull
 from publication.PublicationFigure import PubFigure
 
 
@@ -156,13 +159,13 @@ def params():
     return depth, receivers, source, grid, frequency, bott_hs_properties
 
 
-def library_src_spectrum():
+def library_src_spectrum(f0=100, f1=500, fs=2000):
     """Library source signal spectrum : Zhang et al. 2023 -> LFM 100 - 500 Hz"""
     # Library source is defined as a LFM 100-500 Hz
     library_props = {
-        "f0": 100,
-        "f1": 500,
-        "fs": 2000,
+        "f0": f0,
+        "f1": f1,
+        "fs": fs,
         "T": 10,
         "phi": 0,
     }
@@ -186,6 +189,14 @@ def library_src_spectrum():
         method="linear",
         # method="hyperbolic",
     )
+
+    # Normalise signal to get unit variance
+    s /= np.std(s)
+
+    # # Add library signal power to the library props to calibrate the event signal
+    # library_props["sig_var"] = np.var(s)
+    # library_props["nt"] = len(s)
+
     # Pad with 0 before and after
     # s = np.pad(s, (npad, npad))
     # Apply window
@@ -231,14 +242,39 @@ def library_src_spectrum():
     return library_props, S_f_library, f_library, idx_in_band
 
 
-def event_src_spectrum(f):
-    """Event source signal spectrum : Zhang et al. 2023 -> Gaussian noise"""
+def event_src_spectrum(T, fs):
+    """Event source signal spectrum : Zhang et al. 2023 -> Gaussian noise
+    The variance of the signal is set to the variance of the library signal (assuming both signal have same power)
+    """
 
     event_props = {}
     # Event source is defined as a Gaussian noise
-    S_f_event = np.ones_like(f)
 
-    return event_props, S_f_event
+    # The easiest, yet not elegant way to calibrate the event signal is to set the variance of the event signal to the variance of the library signal in the time domain
+    t = np.arange(0, T, 1 / fs)
+    nt = len(t)
+    s_e = np.random.normal(0, 1, nt)  # Unit var signal
+
+    S_f_event = np.fft.rfft(s_e)
+    f_event = np.fft.rfftfreq(nt, 1 / fs)
+
+    plt.figure()
+    plt.plot(t, s_e)
+    plt.xlabel(r"$\textrm{Time [s]}$")
+    plt.ylabel(r"$s(t)$")
+    fpath = os.path.join(ROOT_IMG, f"event_source_signal.png")
+    plt.savefig(fpath)
+
+    plt.figure()
+    plt.plot(f_event, np.abs(S_f_event))
+    plt.xlabel(r"$\textrm{Frequency [Hz]}$")
+    plt.ylabel(r"$|S(f)|$")
+    fpath = os.path.join(ROOT_IMG, f"event_source_spectrum.png")
+    plt.savefig(fpath)
+    plt.close("all")
+    # S_f_event = np.ones_like(f)
+
+    return event_props, S_f_event, f_event
 
 
 def find_mainlobe(ds_fa):
@@ -249,8 +285,7 @@ def find_mainlobe(ds_fa):
 
         amb_surf = ds_fa[dist]
 
-        ### 1) Double k-means approach ###
-        # 1.1) K-means clustering on the ambiguity surface level
+        ### 1) K-means approach ###
 
         # Reshape ambiguity surface to 1D array
         amb_surf_1d = amb_surf.values.flatten()
@@ -262,7 +297,7 @@ def find_mainlobe(ds_fa):
             [x_coord.flatten(), y_coord.flatten(), amb_surf_1d]
         )  # 3 Columns x, y, S(x, y)
         X_norm = preprocessing.normalize(X).T
-        X_norm[:, 0:2] *= 2  # Increase the weight of the spatial coordinates
+        X_norm[:, 0:2] *= 2.5  # Increase the weight of the spatial coordinates
         # X_norm = X.T
         kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto")
         kmeans.fit(X_norm)
@@ -362,6 +397,158 @@ def find_mainlobe(ds_fa):
         plt.close("all")
 
     return mainlobe_contours
+
+
+def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
+    # Derive mainlobe to side lobe ratio
+
+    if plot:
+        f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+        cmap = "jet"
+        vmin = -10
+        vmax = 0
+
+        xticks_pos_km = [3.5, 4.0, 4.5]
+        yticks_pos_km = [6.4, 6.9, 7.4]
+        xticks_label_km = [f"${xt:.1f}$" for xt in xticks_pos_km]
+        yticks_label_km = [f"${yt:.1f}$" for yt in yticks_pos_km]
+
+    # Find mainlobe contours
+    mainlobe_contours = find_mainlobe(ds_fa)
+    msr = {}
+    pos_hat = {}
+    for i, dist in enumerate(["d_gcc", "d_rtf"]):
+        if plot:
+            ax = axs[i]
+
+        amb_surf = ds_fa[dist]
+        mainlobe_mask = np.zeros_like(amb_surf.values, dtype=bool)
+
+        contour = mainlobe_contours[dist]
+
+        # Convert contour indices to integers
+        contour_x_idx = np.round(contour[:, 0]).astype(int)
+        contour_y_idx = np.round(contour[:, 1]).astype(int)
+
+        # Ensure indices stay within valid bounds
+        contour_x_idx = np.clip(contour_x_idx, 0, ds_fa["x"].size - 1)
+        contour_y_idx = np.clip(contour_y_idx, 0, ds_fa["y"].size - 1)
+
+        contour_points = np.c_[
+            ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]
+        ]
+
+        # Step 3: Compute convex hull
+        hull = ConvexHull(contour_points)
+        hull_points = contour_points[hull.vertices]  # Get convex hull vertices
+
+        # Step 4: Convert convex hull to a polygon
+        poly_path = Path(hull_points)
+
+        # # Convert contour indices to actual x and y values
+        # poly_path = Path(
+        #     np.c_[ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]]
+        # )
+
+        # Step 3: Create a grid of coordinates
+        X, Y = np.meshgrid(ds_fa["x"].values, ds_fa["y"].values, indexing="ij")
+
+        # Step 4: Flatten the grid and check which points are inside the polygon
+        points = np.c_[X.ravel(), Y.ravel()]  # Flatten grid coordinates
+        inside = poly_path.contains_points(points)
+
+        # Step 5: Reshape the result into the original grid shape and update the mask
+        mainlobe_mask |= inside.reshape(
+            X.shape
+        )  # Use logical OR to combine multiple contours
+        # mainlobe_mask = mainlobe_mask.T
+
+        # Source pos
+        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
+        x_src_hat = amb_surf.x[x_idx]
+        y_src_hat = amb_surf.y[y_idx]
+        pos_hat[dist] = {"x": x_src_hat, "y": y_src_hat}
+
+        # Compute mainlobe to side lobe ratio
+        msr[dist] = np.max(
+            amb_surf.values[~mainlobe_mask]
+        )  # MSR = mainlobe_dB - side_lobe_dB (mainlobe_dB = max(ambsurf) = 0dB)
+
+        if verbose:
+            print(f"MSR {dist} : {msr[dist]:.2f} dB")
+
+        if plot:
+            # Plot ambiguity surface without mainlobe pixels
+            amb_surf_without_mainlobe = amb_surf.copy(deep=True)
+            amb_surf_without_mainlobe = amb_surf_without_mainlobe.values
+            amb_surf_without_mainlobe[mainlobe_mask] = np.nan
+
+            im = ax.pcolormesh(
+                ds_fa["x"].values * 1e-3,
+                ds_fa["y"].values * 1e-3,
+                amb_surf_without_mainlobe.T,
+                cmap=cmap,
+                vmin=vmin,
+                vmax=vmax,
+            )
+
+            ax.plot(
+                ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
+                ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
+                color="k",
+                linewidth=2,
+                # label="Mainlobe Boundary" if i == 0 else None,
+            )
+
+            # Add convex hull to the plot
+            hull_points = np.vstack([hull_points, hull_points[0]])
+
+            ax.plot(
+                hull_points[:, 0] * 1e-3,
+                hull_points[:, 1] * 1e-3,
+                "r-",
+                linewidth=2,
+                label="Mainlobe Convex Hull",
+            )
+
+            ax.scatter(
+                x_src_hat * 1e-3,
+                y_src_hat * 1e-3,
+                facecolors="none",
+                edgecolors="k",
+                label="Estimated source position",
+                s=20,
+                linewidths=3,
+            )
+
+            ax.set_title(f"Full array")
+            ax.set_xlabel(r"$x \textrm{[km]}$")
+            if i == 0:
+                ax.set_ylabel(r"$y \, \textrm{[km]}$")
+            else:
+                ax.set_ylabel("")
+
+            # # Set xticks
+            ax.set_xticks(xticks_pos_km)
+            ax.set_yticks(yticks_pos_km)
+            ax.set_xticklabels(xticks_label_km, fontsize=22)
+            ax.set_yticklabels(yticks_label_km, fontsize=22)
+
+            # ax.set_xticks(
+            #     [3.500, 4.000, 4.500],
+            # )
+            # ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
+            # ax.set_yticks([6.400, 6.900, 7.400])
+            # ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
+
+    if plot:
+        # Save figure
+        fpath = os.path.join(root_img, "loc_zhang2023_fig5_nomainlobe.png")
+        plt.savefig(fpath, dpi=300, bbox_inches="tight")
+        plt.close("all")
+        # plt.show()
+
+    return msr, pos_hat
 
 
 if __name__ == "__main__":

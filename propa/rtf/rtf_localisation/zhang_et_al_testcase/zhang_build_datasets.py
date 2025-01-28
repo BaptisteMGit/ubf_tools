@@ -204,12 +204,23 @@ def build_signal():
     fpath = os.path.join(ROOT_DATA, fname)
     ds = xr.open_dataset(fpath)
 
+    # Limit max frequency to speed up
+    fs_target = 1200
+    fmax = fs_target / 2
+    ds = ds.sel(f=slice(0, fmax))
+
     # Load library spectrum
-    f = ds.f.values
-    library_props, S_f_library, f_library, idx_in_band = library_src_spectrum()
+    # f = ds.f.values
+    library_props, S_f_library, f_library, idx_in_band = library_src_spectrum(
+        fs=fs_target
+    )
 
     # Load event spectrum
-    _, S_f_event = event_src_spectrum(f)
+    _, S_f_event, _ = event_src_spectrum(
+        # target_var=library_props["sig_var"],
+        T=library_props["T"],
+        fs=library_props["fs"],
+    )
 
     # Derive delay for each receiver
     delay_rcv = []
@@ -284,7 +295,7 @@ def build_signal():
     ds = ds.drop_vars(["tf_real", "tf_imag", "f"])
 
     # Save dataset
-    fname = f"zhang_library_dx{dx}m_dy{dy}m.nc"
+    fname = f"zhang_library_dx{grid['dx']}m_dy{grid['dy']}m.nc"
     fpath = os.path.join(ROOT_DATA, fname)
     ds.to_netcdf(fpath)
 
@@ -339,8 +350,10 @@ def derive_received_noise(
     return noise_da
 
 
-def build_features_from_time_signal(snr_dB=0):
+def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
     """Step 4.2 : build localisation features for DCF GCC and RTF MFP from syntethic time signal."""
+
+    t_start = time()
 
     # Load params
     depth, receivers, source, grid, frequency, _ = params()
@@ -353,10 +366,11 @@ def build_features_from_time_signal(snr_dB=0):
     ds_sig = xr.open_dataset(fpath)
 
     # Load library spectrum
-    library_props, S_f_library, f_library, idx_in_band = library_src_spectrum()
+    fs = 1200
+    library_props, S_f_library, f_library, idx_in_band = library_src_spectrum(fs=fs)
 
     # Load event spectrum
-    _, S_f_event = event_src_spectrum(f_library)
+    # _, S_f_event = event_src_spectrum(f_library)
 
     rtf_event = []  # RFT vector at the source position
     rtf_library = []  # RTF vector evaluated at each grid pixel
@@ -372,24 +386,57 @@ def build_features_from_time_signal(snr_dB=0):
         snr_dB=snr_dB,
     )
 
-    for i_ref in range(len(receivers["x"])):
+    # Add noise
+    ds_sig_gcc = ds_sig.copy(deep=True)
+    ds_sig_gcc["s_l"] += noise_da
+    ds_sig_gcc["s_e"] += noise_da.sel(x=source["x"], y=source["y"], method="nearest")
+
+    # Plot signal and noise
+    f, axs = plt.subplots(3, 1, figsize=(15, 12), sharex=True)
+    # Only signal at source position
+    ds_sig.s_l.sel(idx_rcv=0, x=source["x"], y=source["y"], method="nearest").plot(
+        ax=axs[0]
+    )
+    axs[0].set_title("Library signal at source position")
+    # Only noise at source position
+    noise_da.sel(idx_rcv=0, x=source["x"], y=source["y"], method="nearest").plot(
+        ax=axs[1]
+    )
+    axs[1].set_title("Noise at source position")
+    # Signal + noise at source position
+    ds_sig_gcc.s_l.sel(idx_rcv=0, x=source["x"], y=source["y"], method="nearest").plot(
+        ax=axs[2]
+    )
+    axs[2].set_title("Library signal + noise at source position")
+
+    fpath = os.path.join(
+        ROOT_IMG,
+        f"signal_noise_snr{snr_dB}dB.png",
+    )
+    plt.savefig(fpath)
+
+    # List of potential reference receivers to test
+    rcv_refs = range(len(receivers["x"]))  # General case
+
+    # if all_rcv_ref:
+    #     rcv_refs = range(len(receivers["x"]))  # General case
+    #     rcv_ref_tag = "all_rcv_ref"
+    # else:
+    #     rcv_refs = [0]  # Quicker case for snr study
+    #     rcv_ref_tag = "rcv_ref_0"
+
+    for i_ref in rcv_refs:
 
         y_library_ref = ds_sig.s_l.sel(idx_rcv=i_ref)
         y_event_ref = ds_sig.s_e.sel(idx_rcv=i_ref)
 
         ## RTF ##
-        # alpha_tau_ir = 3
-        # seg_length = alpha_tau_ir * TAU_IR
-        # nperseg = int(seg_length / (t[1] - t[0]))
-        # # Find the nearest power of 2
-        # nperseg = 2 ** int(np.log2(nperseg) + 1)
-        # alpha_overlap = 1 / 2
-        # noverlap = int(nperseg * alpha_overlap)
         nperseg = 2**11
+        # nperseg = 256
         noverlap = nperseg // 2
 
         # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
-        ds_sig_rtf = ds_sig.copy()
+        ds_sig_rtf = ds_sig.copy(deep=True)
         idx_pos_ref = np.argmin(np.abs(ds_sig_rtf.idx_rcv.values - i_ref))
         npos_to_roll = ds_sig_rtf.sizes["idx_rcv"] - idx_pos_ref
         ds_sig_rtf = ds_sig_rtf.roll(
@@ -499,8 +546,8 @@ def build_features_from_time_signal(snr_dB=0):
 
         for i_rcv in range(len(receivers["x"])):
 
-            y_library_i = ds_sig.s_l.sel(idx_rcv=i_rcv)
-            y_event_i = ds_sig.s_e.sel(idx_rcv=i_rcv)
+            y_library_i = ds_sig_gcc.s_l.sel(idx_rcv=i_rcv)
+            y_event_i = ds_sig_gcc.s_e.sel(idx_rcv=i_rcv)
 
             ## GCC SCOT ##
 
@@ -531,7 +578,7 @@ def build_features_from_time_signal(snr_dB=0):
             # Apply GCC-SCOT
             gcc_library_i = w * Sxy_library
             gcc_library_i = gcc_library_i.reshape(
-                (fxx.size, ds_sig.sizes["x"], ds_sig.sizes["y"])
+                (fxx.size, ds_sig_gcc.sizes["x"], ds_sig_gcc.sizes["y"])
             )
             gcc_library.append(gcc_library_i)
 
@@ -636,6 +683,8 @@ def build_features_from_time_signal(snr_dB=0):
     ds_res_from_sig.to_netcdf(fpath)
     ds_res_from_sig.close()
 
+    print(f"Features derived from time signal in {time() - t_start:.2f} s")
+
 
 def build_features_fullsimu():
     """Step 4.1 : build localisation features for DCF GCC and RTF methods.
@@ -651,12 +700,21 @@ def build_features_fullsimu():
     fpath = os.path.join(ROOT_DATA, fname)
     ds_tf = xr.open_dataset(fpath)
 
+    # Limit max frequency to speed up
+    fs = 1200
+    fmax = fs / 2
+    ds_tf = ds_tf.sel(f=slice(0, fmax))
+
     # Load library spectrum
-    f = ds_tf.f.values
-    library_props, S_f_library, f_library, idx_in_band = library_src_spectrum()
+    # f = ds_tf.f.values
+    library_props, S_f_library, f_library, idx_in_band = library_src_spectrum(fs=fs)
 
     # Load event spectrum
-    _, S_f_event = event_src_spectrum(f)
+    _, S_f_event, _ = event_src_spectrum(
+        # target_var=library_props["sig_var"],
+        T=library_props["T"],
+        fs=library_props["fs"],
+    )
 
     # Restrict ds_tf, S_flibrary and S_f_event to the signal band [100, 500]
     idx_band = (f_library >= library_props["f0"]) & (f_library <= library_props["f1"])
@@ -839,13 +897,13 @@ def build_features_fullsimu():
     # rtf_event.append(rtf_event_i)
 
 
-def build_features_snr(snrs):
-    for snr in snrs:
-        print(f"Start building loc features for snr = {snr}dB ...")
-        t0 = time()
-        build_features_from_time_signal(snr)
-        elasped_time = time() - t0
-        print(f"Features built (elapsed time = {elasped_time}s)")
+# def build_features_snr(snrs):
+#     for snr in snrs:
+#         print(f"Start building loc features for snr = {snr}dB ...")
+#         t0 = time()
+#         build_features_from_time_signal(snr)
+#         elasped_time = time() - t0
+#         print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
 
 
 if __name__ == "__main__":
@@ -857,4 +915,4 @@ if __name__ == "__main__":
     # build_signal()
     ## Step 4
     # build_features_fullsimu()
-    build_features_from_time_signal()
+    build_features_from_time_signal(snr_dB=-10)

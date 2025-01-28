@@ -17,15 +17,25 @@ The Journal of the Acoustical Society of America, 154(1), 295–306. https://doi
 import os
 import numpy as np
 import xarray as xr
+import pandas as pd
 
+from time import time
+from misc import cast_matrix_to_target_shape
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
+from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     plot_study_zhang2023,
 )
-from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
+    build_features_from_time_signal,
+)
+
+PubFigure(ticks_fontsize=22)
 
 
-def process_localisation_zhang2023(ds, folder, nf=10, freq_draw_method="random"):
+def process_localisation_zhang2023(
+    ds, folder, nf=10, freq_draw_method="random", data_fname=None
+):
     # Load params
     depth, receivers, source, grid, frequency, _ = params()
 
@@ -101,7 +111,9 @@ def process_localisation_zhang2023(ds, folder, nf=10, freq_draw_method="random")
         )
 
         # Cast gcc_event to the same shape as gcc_grid
-        gcc_event = cast_matrix_to_target_shape(gcc_event, gcc_grid.shape)
+        gcc_event = cast_matrix_to_target_shape(
+            gcc_event, gcc_grid.shape
+        )  # TODO might need to fix a bug for nf=50
 
         # Build cross corr (Equation (8) in Zhang et al. 2023)
         # d_gcc = np.sum(gcc_grid * np.conj(gcc_event) * df, axis=0)
@@ -136,9 +148,15 @@ def process_localisation_zhang2023(ds, folder, nf=10, freq_draw_method="random")
         )
 
         # Save dataset
+        if data_fname is None:
+            data_fname_cpl = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
+        else:
+            data_fname_cpl = f"{data_fname}_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
+
         fpath = os.path.join(
             root_data,
-            f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
+            # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
+            data_fname_cpl,
         )
         ds_cpl.to_netcdf(fpath)
 
@@ -195,9 +213,15 @@ def process_localisation_zhang2023(ds, folder, nf=10, freq_draw_method="random")
     )
 
     # Save dataset
+    if data_fname is None:
+        data_fname_fa = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc"
+    else:
+        data_fname_fa = f"{data_fname}_fullarray.nc"
+
     fpath = os.path.join(
         root_data,
-        f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
+        # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
+        data_fname_fa,
     )
     ds_cpl_fullarray.to_netcdf(fpath)
 
@@ -207,38 +231,187 @@ def process_all_snr(
     n_monte_carlo,
     dx=20,
     dy=20,
-    nf=10,
-    freq_draw_method="random",
+    nf=100,
+    freq_draw_method="equally_spaced",
 ):
+
+    # Load params
+    depth, receivers, source, grid, frequency, _ = params()
+
     folder = f"from_signal_dx{dx}m_dy{dy}m"
 
+    dr_pos_gcc = []
+    dr_pos_rtf = []
+    dr_txt_filepath = os.path.join(ROOT_DATA, folder, "dr_pos_snr.txt")
+    header_line = "snr i_mc dr_gcc dr_rtf\n"
+    with open(dr_txt_filepath, "w") as f:
+        f.write(header_line)
+
+    msr_gcc = []
+    msr_rtf = []
+
+    msr_txt_filepath = os.path.join(ROOT_DATA, folder, "msr_snr.txt")
+    header_line = "snr i_mc d_gcc d_rtf\n"
+    with open(msr_txt_filepath, "w") as f:
+        f.write(header_line)
+
     for snr in snrs:
+        subfolder = os.path.join(folder, f"snr_{snr}dB")
+        if not os.path.exists(os.path.join(ROOT_DATA, subfolder)):
+            os.makedirs(os.path.join(ROOT_DATA, subfolder))
+
         # Run simulation n_monte_carlo times at the same snr to derive the mean MSR
         for i_mc in range(n_monte_carlo):
             # Run simulation (one simulation = 1 generation of noise)
+            print(f"Start building loc features for snr = {snr}dB ...")
+            t0 = time()
+            build_features_from_time_signal(snr)
+            elasped_time = time() - t0
+            print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
+
+            # Load results
             fpath = os.path.join(
                 ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr}dB.nc"
             )
             ds = xr.open_dataset(fpath)
 
-            process_localisation_zhang2023(ds, folder, nf, freq_draw_method)
+            # Process results
+            data_rootname = f"loc_zhang_dx{dx}m_dy{dy}m_snr{snr}dB_mc{i_mc}"
+            process_localisation_zhang2023(
+                ds, subfolder, nf, freq_draw_method, data_fname=data_rootname
+            )
+
+            # Plot results
+            if i_mc == 0:
+                plot_study_zhang2023(subfolder, data_fname=data_rootname)
+
+            # Load processed surface and derive msr
+            fpath = os.path.join(
+                os.path.join(ROOT_DATA, subfolder),
+                f"{data_rootname}_fullarray.nc",
+            )
+            ds_fa = xr.open_dataset(fpath)
+
+            msr, pos_hat = estimate_msr(ds_fa)
+
+            # MSR
+            msr_gcc.append(msr["d_gcc"])
+            msr_rtf.append(msr["d_rtf"])
+
+            # Save to text file for further analysis
+            newline = f"{snr} {i_mc} {msr['d_gcc']} {msr['d_rtf']}\n"
+            with open(msr_txt_filepath, "a") as f:
+                f.write(newline)
+
+            # Position error
+            delta_r_gcc = np.sqrt(
+                (pos_hat["d_gcc"]["x"] - source["x"]) ** 2
+                + (pos_hat["d_gcc"]["y"] - source["y"]) ** 2
+            )
+            delta_r_rtf = np.sqrt(
+                (pos_hat["d_rtf"]["x"] - source["x"]) ** 2
+                + (pos_hat["d_rtf"]["y"] - source["y"]) ** 2
+            )
+            dr_pos_gcc.append(delta_r_gcc)
+            dr_pos_rtf.append(delta_r_rtf)
+
+            # Save to text file for further analysis
+            newline = f"{snr} {i_mc} {delta_r_gcc} {delta_r_rtf}\n"
+            with open(dr_txt_filepath, "a") as f:
+                f.write(newline)
 
 
-def study_msr_vs_snr(snrs):
-    for snr in snrs:
-        pass
-        # Load dataset
+def study_msr_vs_snr():
+    """Plot metrics (MSR, RMSE) vs SNR for both GCC and RTF"""
 
-        # Estimate msr
+    folder = "from_signal_dx20m_dy20m"
+    # Load msr results
+    msr_txt_filepath = os.path.join(ROOT_DATA, folder, "msr_snr.txt")
+    msr = pd.read_csv(msr_txt_filepath, sep=" ")
 
-        # Store msr
+    # Compute mean and std of msr for each snr
+    msr_mean = msr.groupby("snr").mean()
+    msr_std = msr.groupby("snr").std()
 
-    # Plot msr vs snr
+    # Plot results
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    ax.errorbar(
+        msr_mean.index,
+        msr_mean["d_gcc"],
+        yerr=msr_std["d_gcc"],
+        fmt="o-",
+        label=r"$\textrm{DCF (GCC SCOT)}$",
+    )
+    ax.errorbar(
+        msr_mean.index,
+        msr_mean["d_rtf"],
+        yerr=msr_std["d_rtf"],
+        fmt="o-",
+        label=r"$\textrm{RTF}$",
+    )
+    ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+    ax.set_xlabel(r"$\textrm{MSR [dB]}$")
+    ax.legend()
+    ax.grid()
+    # plt.show()
+    fpath = os.path.join(ROOT_IMG, folder, "msr_snr.png")
+    plt.savefig(fpath)
+
+    # Load position error results
+    dr_txt_filepath = os.path.join(ROOT_DATA, folder, "dr_pos_snr.txt")
+    dr = pd.read_csv(dr_txt_filepath, sep=" ")
+
+    # Compute mean and std of position error for each snr
+    dr_mean = dr.groupby("snr").mean()
+    dr_std = dr.groupby("snr").std()
+
+    # Plot results
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    ax.errorbar(
+        dr_mean.index,
+        dr_mean["dr_gcc"],
+        yerr=dr_std["dr_gcc"],
+        fmt="o-",
+        label=r"$\textrm{DCF (GCC SCOT)}$",
+    )
+    ax.errorbar(
+        dr_mean.index,
+        dr_mean["dr_rtf"],
+        yerr=dr_std["dr_rtf"],
+        fmt="o-",
+        label=r"$\textrm{RTF}$",
+    )
+    ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+    ax.set_ylabel(r"$\Delta_r \textrm{[m]}$")
+    ax.legend()
+    ax.grid()
+
+    fpath = os.path.join(ROOT_IMG, folder, "dr_pos_snr.png")
+    plt.savefig(fpath)
+
+    dr["dr_gcc"] = dr["dr_gcc"] ** 2
+    dr["dr_rtf"] = dr["dr_rtf"] ** 2
+    mse = dr.groupby("snr").mean()
+    rmse = np.sqrt(mse)
+
+    # Plot results
+    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+    ax.plot(rmse.index, rmse["dr_gcc"], "o-", label=r"$\textrm{DCF (GCC SCOT)}$")
+    ax.plot(rmse.index, rmse["dr_rtf"], "o-", label=r"$\textrm{RTF}$")
+    ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+    ax.set_ylabel(r"$\textrm{RMSE [m]}$")
+    ax.legend()
+    ax.grid()
+
+    fpath = os.path.join(ROOT_IMG, folder, "rmse_snr.png")
+    plt.savefig(fpath)
+
+    # plt.show()
 
 
 if __name__ == "__main__":
 
-    nf = 10
+    nf = 200
     dx, dy = 20, 20
     # # Load rtf data
     # fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
@@ -249,13 +422,25 @@ if __name__ == "__main__":
     # plot_study_zhang2023(folder)
 
     # fpath = os.path.join(ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
-    fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr0dB.nc")
-    ds = xr.open_dataset(fpath)
+    # fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr-10dB.nc")
+    # ds = xr.open_dataset(fpath)
 
-    folder = f"from_signal_dx{dx}m_dy{dy}m"
-    process_localisation_zhang2023(ds, folder, nf=nf, freq_draw_method="equally_spaced")
-    plot_study_zhang2023(folder)
+    # folder = f"from_signal_dx{dx}m_dy{dy}m"
+    # process_localisation_zhang2023(ds, folder, nf=nf, freq_draw_method="equally_spaced")
+    # plot_study_zhang2023(folder)
 
+    snrs = [-5, 5]
+    n_monte_carlo = 2
+    process_all_snr(
+        snrs,
+        n_monte_carlo,
+        dx=20,
+        dy=20,
+        nf=100,
+        freq_draw_method="equally_spaced",
+    )
+
+    # study_msr_vs_snr()
 
 ## Left overs ##
 

@@ -22,7 +22,9 @@ import matplotlib.pyplot as plt
 from misc import *
 from propa.rtf.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import *
-from real_data_analysis.real_data_utils import compute_csd_matrix_fast
+from real_data_analysis.real_data_utils import (
+    compute_csd_matrix_fast,
+)
 
 
 def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
@@ -37,8 +39,7 @@ def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**1
 
     f, Rx, Rs, Rv = get_csdm(t, rcv_sig, rcv_noise, nperseg, noverlap)
 
-    ff, tt, stft_list_x = get_stft_list(x, fs, nperseg, noverlap)
-    stft_x = np.array(stft_list_x)
+    ff, tt, stft_x = get_stft_list(x, fs, nperseg, noverlap)
 
     f, rtf = rtf_cw(f, n_rcv, stft_x, Rv)
 
@@ -73,7 +74,7 @@ def rtf_cw(f, n_rcv, stft_x, Rv):
             stft_y_f[i, np.newaxis, :] for i in range(n_rcv)
         ]  # List of stft at frequency f : n_rcv element of shape (n_freq=1, n_seg)
         Ry_f = compute_csd_matrix_fast(
-            stft_y_f, n_seg_cov="all"
+            stft_y_f, n_seg_cov=0
         )  # Covariance matrix at frequency f
         Ry_f = (
             Ry_f.squeeze()
@@ -95,6 +96,7 @@ def rtf_cw(f, n_rcv, stft_x, Rv):
 def rtf_covariance_substraction(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
     """
     Derive the RTF using covariance substraction method described in Markovich-Golan, S., & Gannot, S. (2015).
+    Reference receiver is assumed to be the first one.
     """
     # Derive usefull params
     x = rcv_sig + rcv_noise
@@ -116,17 +118,55 @@ def rtf_covariance_substraction(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2
 
 
 def rtf_cs(f, n_rcv, Rx, Rv):
+    """
+    Derive RTF vector using covariance subtraction method described in Markovich-Golan, S., & Gannot, S. (2015).
+    Reference receiver is assumed to be the first one.
+
+    Parameters:
+    f : ndarray
+        Frequencies vector.
+    n_rcv : int
+        Number of receivers
+    Rx : ndarray
+        3D CSD matrix for signal at receiver positions (frequency bins x num_receivers x num_receivers).
+    Rv : ndarray
+        3D CSD matrix for noise at receiver positions (frequency bins x num_receivers x num_receivers).
+
+    Returns:
+    f : ndarray
+        Frequencies vector.
+    rtf : ndarray
+        Relative Transfer Function (RTF) matrix (len(f) x num_receivers).
+    """
+
     R_delta = Rx - Rv  # Equation (9)
 
-    # Loop over frequencies
-    rtf = np.zeros((len(f), n_rcv), dtype=complex)
-    # First receiver is considered as the reference
+    # # Loop over frequencies
+    # rtf = np.zeros((len(f), n_rcv), dtype=complex)
+    # # First receiver is considered as the reference
+    # e1 = np.eye(n_rcv)[:, 0]
+
+    # from time import time
+
+    # t0 = time()
+    # for i, f_i in enumerate(f):
+    #     R_delta_f = R_delta[i]
+    #     rtf_f = (R_delta_f @ e1) / (e1.T @ R_delta_f @ e1)
+    #     rtf[i, :] = rtf_f
+    # print(f"Ellapsed time = {time()-t0}")
+
+    # t0 = time()
+
+    # Faster implementation
+    # Reference receiver is assumed to be the first one
     e1 = np.eye(n_rcv)[:, 0]
 
-    for i, f_i in enumerate(f):
-        R_delta_f = R_delta[i]
-        rtf_f = (R_delta_f @ e1) / (e1.T @ R_delta_f @ e1)
-        rtf[i, :] = rtf_f
+    # Vectorized computation of rtf across all frequencies
+    R_delta_e1 = R_delta @ e1
+    e1_TR_delta_e1 = e1.T @ R_delta @ e1
+    rtf = R_delta_e1 / e1_TR_delta_e1[:, None]
+
+    # print(f"Ellapsed time (fast) = {time()-t0}")
 
     return f, rtf
 
@@ -134,6 +174,7 @@ def rtf_cs(f, n_rcv, Rx, Rv):
 def get_csdm(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
     """
     Derive the CSDM of the received signal and noise.
+    Shape of received signal and noise must be (ns, nrcv) where ns is the number of samples and nrcv is the number of receivers
     """
     x = rcv_sig + rcv_noise
     ff, csdm_x = get_csdm_from_signal(t, x, nperseg, noverlap)
@@ -146,10 +187,14 @@ def get_csdm(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
 def get_csdm_from_signal(t, y, nperseg=2**12, noverlap=2**11):
     """
     Derive the CSDM of y.
+    Shape of y must be (ns, nrcv) where ns is the number of samples and nrcv is the number of receivers
     """
     fs = 1 / (t[1] - t[0])
     ff, _, stft_list = get_stft_list(y, fs, nperseg, noverlap)
-    csdm_y = compute_csd_matrix_fast(stft_list, n_seg_cov="all")
+
+    # t0 = time()
+    csdm_y = compute_csd_matrix_fast(stft_list, n_seg_cov=0)
+    # print(f"Ellapsed time (first) : {time() - t0}s")
 
     return ff, csdm_y
 
@@ -157,22 +202,43 @@ def get_csdm_from_signal(t, y, nperseg=2**12, noverlap=2**11):
 def get_stft_list(y, fs, nperseg, noverlap):
     """
     Derive the STFT of each component of y.
+
+    Args:
+    - y (np.ndarray): A 2D array with shape (ns, nrcv), where ns is the number of samples and nrcv is the number of receivers.
+    - fs (float): Sampling frequency of the signal.
+    - nperseg (int): Length of each segment for the STFT.
+    - noverlap (int): Number of overlapping samples between consecutive segments.
+
+    Returns:
+    - ff (np.ndarray): Array of frequency bins for the STFT (shape: (n_freq_bins,)).
+    - tt (np.ndarray): Array of time bins for the STFT (shape: (n_time_bins,)).
+    - stft_list (np.ndarray): 3D array with the STFT of each receiver (shape: (n_rcv, n_freq_bins, n_time_bins)), where n_rcv is the number of receivers.
     """
 
-    stft_list = []
-    n_rcv = y.shape[1]
+    # stft_list = []
+    # n_rcv = y.shape[1]
 
-    for i in range(n_rcv):
-        ff, tt, stft = sp.stft(
-            y[:, i],
-            fs=fs,
-            window="hann",
-            nperseg=nperseg,
-            noverlap=noverlap,
-        )
-        stft_list.append(stft)
+    # t0 = time()
+    # for i in range(n_rcv):
+    #     ff, tt, stft = sp.stft(
+    #         y[:, i],
+    #         fs=fs,
+    #         window="hann",
+    #         nperseg=nperseg,
+    #         noverlap=noverlap,
+    #     )
+    #     stft_list.append(stft)
+    # print(f"Ellapsed time (loop) : {time() - t0}s")
 
-    return ff, tt, stft_list
+    # t0 = time()
+    ff, tt, stft_array = sp.stft(
+        y, fs=fs, window="hann", nperseg=nperseg, noverlap=noverlap, axis=0
+    )
+    stft_array = np.moveaxis(stft_array, 1, 0)
+    # print(f"Ellapsed time (direct) : {time() - t0}s")
+    # print(np.all(stft_array == np.array(stft_list)))
+
+    return ff, tt, stft_array
 
 
 if __name__ == "__main__":

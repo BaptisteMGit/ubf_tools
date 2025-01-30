@@ -275,42 +275,41 @@ def compute_csd_matrix_fast(stfts, n_seg_cov):
     Returns:
     - csd_matrix: 3D CSD matrix (frequency bins x num_receivers x num_receivers).
     """
-    num_receivers = len(stfts)  # Number of receivers
-    num_freq_bins, num_snapshots = stfts[0].shape  # Frequency bins and time snapshots
+    num_receivers = len(stfts)
+    num_freq_bins, num_snapshots = stfts[0].shape
 
     if n_seg_cov == "all":
         n_seg_cov = num_snapshots
 
-    n_available_segments = num_snapshots // n_seg_cov  # Number of segment blocks
+    n_available_segments = num_snapshots // n_seg_cov
 
-    # Initialize CSD matrix (frequency bins x num_receivers x num_receivers x n_available_segments)
-    csd_matrix = np.zeros(
+    # Convert list of arrays into a single array
+    stacked_stfts = np.asarray(
+        stfts
+    )  # Shape: (num_receivers, num_freq_bins, num_snapshots)
+    stacked_stfts = np.moveaxis(
+        stacked_stfts, 0, -1
+    )  # (num_freq_bins, num_snapshots, num_receivers)
+
+    # Preallocate CSD matrix
+    csd_matrix = np.empty(
         (num_freq_bins, num_receivers, num_receivers, n_available_segments),
         dtype=np.complex128,
     )
 
-    # Stack STFTs for all receivers into a 3D array: (frequency bins x time snapshots x num_receivers)
-    stacked_stfts = np.stack(
-        stfts, axis=-1
-    )  # Shape: (num_freq_bins, num_snapshots, num_receivers)
-
-    # Loop over time segments and compute CSD for each frequency bin
+    # Compute CSD matrix using batch operations
     for k in range(n_available_segments):
-        # Extract the segment of the STFT for the current block
         idx_start = k * n_seg_cov
         stft_block = stacked_stfts[
             :, idx_start : idx_start + n_seg_cov, :
-        ]  # Shape: (freq_bins, seg_cov, num_receivers)
+        ]  # View-based slicing
+        stft_block_conj = np.conj(stft_block)  # Precompute conjugate
 
-        # Compute the CSD matrix for this block: Sum the outer products over time snapshots
-        # Efficient matrix multiplication: batch matrix product over frequency bins
-        csd_matrix_k = np.einsum("ftr,fts->frs", stft_block, np.conj(stft_block))
-        csd_matrix[..., k] = csd_matrix_k / n_seg_cov
+        csd_matrix[..., k] = (
+            np.einsum("ftr,fts->frs", stft_block, stft_block_conj) / n_seg_cov
+        )
 
-    if n_available_segments == 1:
-        csd_matrix = np.squeeze(csd_matrix, axis=-1)
-
-    return csd_matrix
+    return np.squeeze(csd_matrix, axis=-1) if n_available_segments == 1 else csd_matrix
 
 
 def get_csdm_snapshot_number(y, fs, nperseg, noverlap):

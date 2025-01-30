@@ -350,6 +350,92 @@ def derive_received_noise(
     return noise_da
 
 
+def estimate_rtf(
+    ds_sig, noise_da, i_ref, source, library_props, nperseg=2**11, noverlap=2**10
+):
+    # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
+    ds_sig_rtf = ds_sig.copy(deep=True)
+    idx_pos_ref = np.argmin(np.abs(ds_sig_rtf.idx_rcv.values - i_ref))
+    npos_to_roll = ds_sig_rtf.sizes["idx_rcv"] - idx_pos_ref
+    ds_sig_rtf = ds_sig_rtf.roll(
+        idx_rcv=npos_to_roll,
+        roll_coords=True,
+    )
+    t = ds_sig_rtf.t.values
+
+    # Noise
+    rcv_noise = noise_da.sel(x=source["x"], y=source["y"], method="nearest").values
+    rcv_noise = rcv_noise.T
+
+    ## Event ##
+    rcv_sig = ds_sig_rtf.s_e.values
+
+    # Transpose to fit rtf estimation required input shape (ns, nrcv)
+    rcv_sig = rcv_sig.T
+    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
+        t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
+    )
+
+    ## Library ##
+    # Dummy and dirty way to derive the RTF from the received signal -> loop over each grid pixel
+
+    # Signal
+    rcv_sig = ds_sig_rtf.s_l.sel(x=source["x"], y=source["y"], method="nearest").values
+
+    # Transpose to fit rtf estimation required input shape (ns, nrcv)
+    rcv_sig = rcv_sig.T
+
+    # Use the first signal slice to set f_cs by running rtf_covariance_substraction once
+    f_rtf, rtf, _, _, _ = rtf_covariance_substraction(
+        t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
+    )
+
+    # # Use Dask delayed and progress bar for tracking
+    with ProgressBar():
+        results_cs = []
+        # results_cw = []
+        for x_i in ds_sig_rtf.x.values:
+            for y_i in ds_sig_rtf.y.values:
+                rcv_sig = ds_sig_rtf.s_l.sel(x=x_i, y=y_i).values
+                rcv_noise = noise_da.sel(x=x_i, y=y_i).values
+
+                # Transpose to fit rtf estimation required input shape (ns, nrcv)
+                rcv_sig = rcv_sig.T
+                rcv_noise = rcv_noise.T
+
+                # Wrap function call in dask delayed
+                delayed_rtf_cs = da.from_delayed(
+                    delayed(
+                        lambda t, sig, noise: rtf_covariance_substraction(
+                            t, sig, noise, nperseg, noverlap
+                        )[1]
+                    )(t, rcv_sig, rcv_noise),
+                    shape=(len(f_rtf), rcv_sig.shape[1]),
+                    dtype=complex,
+                )
+                results_cs.append(delayed_rtf_cs)
+
+        # Compute all RTFs
+        rtf_cs_l = da.stack(results_cs).compute()
+
+    # Reshape to the required shape
+    # First step : reshape to (nx, ny, nf, n_rcv)
+    shape = (len(ds_sig.x), len(ds_sig.y)) + rtf_cs_l.shape[1:]
+    rtf_cs_l = rtf_cs_l.reshape(shape)
+
+    # Step 2 : permute to (nf, nx, ny, n_rcv)
+    axis_permutation = (2, 0, 1, 3)
+    rtf_cs_l = np.transpose(rtf_cs_l, axis_permutation)
+
+    # Restict to the frequency band of interest
+    idx_band = (f_rtf >= library_props["f0"]) & (f_rtf <= library_props["f1"])
+    f_rtf = f_rtf[idx_band]
+    rtf_cs_l = rtf_cs_l[idx_band]
+    rtf_cs_e = rtf_cs_e[idx_band]
+
+    return rtf_cs_l, rtf_cs_e
+
+
 def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
     """Step 4.2 : build localisation features for DCF GCC and RTF MFP from syntethic time signal."""
 
@@ -376,8 +462,6 @@ def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
     rtf_library = []  # RTF vector evaluated at each grid pixel
     gcc_event = []  # GCC vector evaluated at the source position
     gcc_library = []  # GCC-SCOT vector evaluated at each grid pixel
-
-    t = ds_sig.t.values
 
     noise_da = derive_received_noise(
         s_library=ds_sig.s_l,
@@ -435,86 +519,15 @@ def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
         # nperseg = 256
         noverlap = nperseg // 2
 
-        # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
-        ds_sig_rtf = ds_sig.copy(deep=True)
-        idx_pos_ref = np.argmin(np.abs(ds_sig_rtf.idx_rcv.values - i_ref))
-        npos_to_roll = ds_sig_rtf.sizes["idx_rcv"] - idx_pos_ref
-        ds_sig_rtf = ds_sig_rtf.roll(
-            idx_rcv=npos_to_roll,
-            roll_coords=True,
+        rtf_cs_l, rtf_cs_e = estimate_rtf(
+            ds_sig=ds_sig,
+            noise_da=noise_da,
+            i_ref=i_ref,
+            source=source,
+            library_props=library_props,
+            nperseg=nperseg,
+            noverlap=noverlap,
         )
-
-        # Noise
-        rcv_noise = noise_da.sel(x=source["x"], y=source["y"], method="nearest").values
-        rcv_noise = rcv_noise.T
-
-        ## Event ##
-        rcv_sig = ds_sig_rtf.s_e.values
-
-        # Transpose to fit rtf estimation required input shape (ns, nrcv)
-        rcv_sig = rcv_sig.T
-        f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
-            t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
-        )
-
-        ## Library ##
-        # Dummy and dirty way to derive the RTF from the received signal -> loop over each grid pixel
-
-        # Signal
-        rcv_sig = ds_sig_rtf.s_l.sel(
-            x=source["x"], y=source["y"], method="nearest"
-        ).values
-
-        # Transpose to fit rtf estimation required input shape (ns, nrcv)
-        rcv_sig = rcv_sig.T
-
-        # Use the first signal slice to set f_cs by running rtf_covariance_substraction once
-        f_rtf, rtf, _, _, _ = rtf_covariance_substraction(
-            t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
-        )
-
-        # Use Dask delayed and progress bar for tracking
-        with ProgressBar():
-            results_cs = []
-            # results_cw = []
-            for x_i in ds_sig_rtf.x.values:
-                for y_i in ds_sig_rtf.y.values:
-                    rcv_sig = ds_sig_rtf.s_l.sel(x=x_i, y=y_i).values
-                    rcv_noise = noise_da.sel(x=x_i, y=y_i).values
-
-                    # Transpose to fit rtf estimation required input shape (ns, nrcv)
-                    rcv_sig = rcv_sig.T
-                    rcv_noise = rcv_noise.T
-
-                    # Wrap function call in dask delayed
-                    delayed_rtf_cs = da.from_delayed(
-                        delayed(
-                            lambda t, sig, noise: rtf_covariance_substraction(
-                                t, sig, noise, nperseg, noverlap
-                            )[1]
-                        )(t, rcv_sig, rcv_noise),
-                        shape=(len(f_rtf), rcv_sig.shape[1]),
-                        dtype=complex,
-                    )
-                    results_cs.append(delayed_rtf_cs)
-
-            # Compute all RTFs
-            rtf_cs_l = da.stack(results_cs).compute()
-
-        # Reshape to the required shape
-        # First step : reshape to (nx, ny, nf, n_rcv)
-        shape = (len(ds_sig.x), len(ds_sig.y)) + rtf_cs_l.shape[1:]
-        rtf_cs_l = rtf_cs_l.reshape(shape)
-
-        # Step 2 : permute to (nf, nx, ny, n_rcv)
-        axis_permutation = (2, 0, 1, 3)
-        rtf_cs_l = np.transpose(rtf_cs_l, axis_permutation)
-
-        # Restict to the frequency band of interest
-        idx_band = (f_rtf >= library_props["f0"]) & (f_rtf <= library_props["f1"])
-        f_rtf = f_rtf[idx_band]
-        rtf_cs_l = rtf_cs_l[idx_band]
-        rtf_cs_e = rtf_cs_e[idx_band]
 
         rtf_library.append(rtf_cs_l)
         rtf_event.append(rtf_cs_e)
@@ -674,6 +687,10 @@ def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
         ["idx_rcv_ref", "f", "idx_rcv"],
         rtf_event.imag,
     )
+
+    # Subsample frequency to save memory
+    subsample_idx = np.arange(0, ds_res_from_sig.sizes["f"])[::5]
+    ds_res_from_sig = ds_res_from_sig.isel(f=subsample_idx)
 
     # Save updated dataset
     fpath = os.path.join(
@@ -915,4 +932,4 @@ if __name__ == "__main__":
     # build_signal()
     ## Step 4
     # build_features_fullsimu()
-    build_features_from_time_signal(snr_dB=-10)
+    build_features_from_time_signal(snr_dB=-40)

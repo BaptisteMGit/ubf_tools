@@ -141,22 +141,6 @@ def rtf_cs(f, n_rcv, Rx, Rv):
 
     R_delta = Rx - Rv  # Equation (9)
 
-    # # Loop over frequencies
-    # rtf = np.zeros((len(f), n_rcv), dtype=complex)
-    # # First receiver is considered as the reference
-    # e1 = np.eye(n_rcv)[:, 0]
-
-    # from time import time
-
-    # t0 = time()
-    # for i, f_i in enumerate(f):
-    #     R_delta_f = R_delta[i]
-    #     rtf_f = (R_delta_f @ e1) / (e1.T @ R_delta_f @ e1)
-    #     rtf[i, :] = rtf_f
-    # print(f"Ellapsed time = {time()-t0}")
-
-    # t0 = time()
-
     # Faster implementation
     # Reference receiver is assumed to be the first one
     e1 = np.eye(n_rcv)[:, 0]
@@ -215,28 +199,12 @@ def get_stft_list(y, fs, nperseg, noverlap):
     - stft_list (np.ndarray): 3D array with the STFT of each receiver (shape: (n_rcv, n_freq_bins, n_time_bins)), where n_rcv is the number of receivers.
     """
 
-    # stft_list = []
-    # n_rcv = y.shape[1]
-
-    # t0 = time()
-    # for i in range(n_rcv):
-    #     ff, tt, stft = sp.stft(
-    #         y[:, i],
-    #         fs=fs,
-    #         window="hann",
-    #         nperseg=nperseg,
-    #         noverlap=noverlap,
-    #     )
-    #     stft_list.append(stft)
-    # print(f"Ellapsed time (loop) : {time() - t0}s")
-
     # t0 = time()
     ff, tt, stft_array = sp.stft(
         y, fs=fs, window="hann", nperseg=nperseg, noverlap=noverlap, axis=0
     )
     stft_array = np.moveaxis(stft_array, 1, 0)
     # print(f"Ellapsed time (direct) : {time() - t0}s")
-    # print(np.all(stft_array == np.array(stft_list)))
 
     return ff, tt, stft_array
 

@@ -296,11 +296,19 @@ def find_mainlobe(ds_fa):
         X = np.vstack(
             [x_coord.flatten(), y_coord.flatten(), amb_surf_1d]
         )  # 3 Columns x, y, S(x, y)
+        # X = amb_surf_1d.reshape(-1, 1)
         X_norm = preprocessing.normalize(X).T
-        X_norm[:, 0:2] *= 2.5  # Increase the weight of the spatial coordinates
+        X_norm[:, 0:2] *= 1  # Increase the weight of the spatial coordinates
         # X_norm = X.T
         kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto")
         kmeans.fit(X_norm)
+
+        # # K means using only the ambiguity surface
+        # n_clusters = 7
+        # X = amb_surf_1d.reshape(-1, 1)
+        # X_norm = preprocessing.normalize(X)
+        # kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto")
+        # kmeans.fit(X_norm)
 
         # 1.2) Segmentation
         # Reshape labels to 2D array
@@ -410,8 +418,12 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
 
         xticks_pos_km = [3.5, 4.0, 4.5]
         yticks_pos_km = [6.4, 6.9, 7.4]
-        xticks_label_km = [f"${xt:.1f}$" for xt in xticks_pos_km]
-        yticks_label_km = [f"${yt:.1f}$" for yt in yticks_pos_km]
+        xticks_pos_m = [xt * 1e3 for xt in xticks_pos_km]
+        yticks_pos_m = [yt * 1e3 for yt in yticks_pos_km]
+        # xticks_label_km = [xt for xt in xticks_pos_km]
+        # yticks_label_km = [yt for yt in yticks_pos_km]
+        # xticks_label_km = [f"${xt:.1f}$" for xt in xticks_pos_km]
+        # yticks_label_km = [f"${yt:.1f}$" for yt in yticks_pos_km]
 
     # Find mainlobe contours
     mainlobe_contours = find_mainlobe(ds_fa)
@@ -422,6 +434,13 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
             ax = axs[i]
 
         amb_surf = ds_fa[dist]
+
+        # Source pos
+        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
+        x_src_hat = amb_surf.x[x_idx]
+        y_src_hat = amb_surf.y[y_idx]
+        pos_hat[dist] = {"x": x_src_hat, "y": y_src_hat}
+
         mainlobe_mask = np.zeros_like(amb_surf.values, dtype=bool)
 
         contour = mainlobe_contours[dist]
@@ -439,40 +458,43 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
         ]
 
         # Step 3: Compute convex hull
-        hull = ConvexHull(contour_points)
-        hull_points = contour_points[hull.vertices]  # Get convex hull vertices
+        try:
+            hull = ConvexHull(contour_points)
+            hull_points = contour_points[hull.vertices]  # Get convex hull vertices
 
-        # Step 4: Convert convex hull to a polygon
-        poly_path = Path(hull_points)
+            # Step 4: Convert convex hull to a polygon
+            poly_path = Path(hull_points)
 
-        # # Convert contour indices to actual x and y values
-        # poly_path = Path(
-        #     np.c_[ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]]
-        # )
+            # # Convert contour indices to actual x and y values
+            # poly_path = Path(
+            #     np.c_[ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]]
+            # )
 
-        # Step 3: Create a grid of coordinates
-        X, Y = np.meshgrid(ds_fa["x"].values, ds_fa["y"].values, indexing="ij")
+            # Step 3: Create a grid of coordinates
+            X, Y = np.meshgrid(ds_fa["x"].values, ds_fa["y"].values, indexing="ij")
 
-        # Step 4: Flatten the grid and check which points are inside the polygon
-        points = np.c_[X.ravel(), Y.ravel()]  # Flatten grid coordinates
-        inside = poly_path.contains_points(points)
+            # Step 4: Flatten the grid and check which points are inside the polygon
+            points = np.c_[X.ravel(), Y.ravel()]  # Flatten grid coordinates
+            inside = poly_path.contains_points(points)
 
-        # Step 5: Reshape the result into the original grid shape and update the mask
-        mainlobe_mask |= inside.reshape(
-            X.shape
-        )  # Use logical OR to combine multiple contours
-        # mainlobe_mask = mainlobe_mask.T
+            # Step 5: Reshape the result into the original grid shape and update the mask
+            mainlobe_mask |= inside.reshape(
+                X.shape
+            )  # Use logical OR to combine multiple contours
+            # mainlobe_mask = mainlobe_mask.T
+            plot_hull = True
 
-        # Source pos
-        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
-        x_src_hat = amb_surf.x[x_idx]
-        y_src_hat = amb_surf.y[y_idx]
-        pos_hat[dist] = {"x": x_src_hat, "y": y_src_hat}
+        except:
+            # Handle case where it impossible to define a contour
+            mainlobe_mask[x_idx, y_idx] = 1  # Mainlobe = single pixel
+            plot_hull = False
 
         # Compute mainlobe to side lobe ratio
-        msr[dist] = np.max(
-            amb_surf.values[~mainlobe_mask]
-        )  # MSR = mainlobe_dB - side_lobe_dB (mainlobe_dB = max(ambsurf) = 0dB)
+        main_lobe = np.max(amb_surf.values)
+        side_lobe = np.max(amb_surf.values[~mainlobe_mask])
+        # print(f"Mainlobe lvl = {main_lobe:.2f} dB")
+        # print(f"Side lobe lvl = {side_lobe:.2f} dB")
+        msr[dist] = -(main_lobe - side_lobe)  # MSR = mainlobe_dB - side_lobe_dB
 
         if verbose:
             print(f"MSR {dist} : {msr[dist]:.2f} dB")
@@ -484,8 +506,8 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
             amb_surf_without_mainlobe[mainlobe_mask] = np.nan
 
             im = ax.pcolormesh(
-                ds_fa["x"].values * 1e-3,
-                ds_fa["y"].values * 1e-3,
+                ds_fa["x"].values,
+                ds_fa["y"].values,
                 amb_surf_without_mainlobe.T,
                 cmap=cmap,
                 vmin=vmin,
@@ -493,27 +515,28 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
             )
 
             ax.plot(
-                ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
-                ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
+                ds_fa["x"].values[contour[:, 0].astype(int)],
+                ds_fa["y"].values[contour[:, 1].astype(int)],
                 color="k",
                 linewidth=2,
                 # label="Mainlobe Boundary" if i == 0 else None,
             )
 
             # Add convex hull to the plot
-            hull_points = np.vstack([hull_points, hull_points[0]])
+            if plot_hull:
+                hull_points = np.vstack([hull_points, hull_points[0]])
 
-            ax.plot(
-                hull_points[:, 0] * 1e-3,
-                hull_points[:, 1] * 1e-3,
-                "r-",
-                linewidth=2,
-                label="Mainlobe Convex Hull",
-            )
+                ax.plot(
+                    hull_points[:, 0],
+                    hull_points[:, 1],
+                    "r-",
+                    linewidth=2,
+                    label="Mainlobe Convex Hull",
+                )
 
             ax.scatter(
-                x_src_hat * 1e-3,
-                y_src_hat * 1e-3,
+                x_src_hat,
+                y_src_hat,
                 facecolors="none",
                 edgecolors="k",
                 label="Estimated source position",
@@ -522,17 +545,17 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
             )
 
             ax.set_title(f"Full array")
-            ax.set_xlabel(r"$x \textrm{[km]}$")
+            ax.set_xlabel(r"$x \textrm{[m]}$")
             if i == 0:
-                ax.set_ylabel(r"$y \, \textrm{[km]}$")
+                ax.set_ylabel(r"$y \, \textrm{[m]}$")
             else:
                 ax.set_ylabel("")
 
             # # Set xticks
-            ax.set_xticks(xticks_pos_km)
-            ax.set_yticks(yticks_pos_km)
-            ax.set_xticklabels(xticks_label_km, fontsize=22)
-            ax.set_yticklabels(yticks_label_km, fontsize=22)
+            ax.set_xticks(xticks_pos_m)
+            ax.set_yticks(yticks_pos_m)
+            # ax.set_xticklabels(xticks_label_km, fontsize=22)
+            # ax.set_yticklabels(yticks_label_km, fontsize=22)
 
             # ax.set_xticks(
             #     [3.500, 4.000, 4.500],

@@ -474,118 +474,6 @@ def estimate_dcf_gcc(
     Sxx_event_ref = Sxx_event_ref[idx_band]
 
     # Power spectral density at each grid point for all receivers
-    _, Syy_library = sp.welch(
-        ds_sig_gcc.s_l,
-        fs=library_props["fs"],
-        nperseg=nperseg,
-        noverlap=noverlap,
-        axis=1,
-    )
-
-    for i_rcv in ds_sig_gcc.idx_rcv.values:
-
-        y_library_i = ds_sig_gcc.s_l.sel(idx_rcv=i_rcv)
-        y_event_i = ds_sig_gcc.s_e.sel(idx_rcv=i_rcv)
-
-        ## GCC SCOT ##
-
-        ## library ##
-        # Power spectral density at each grid point associated to the receiver i
-        _, Syy_library_i = sp.welch(
-            y_library_i,
-            fs=library_props["fs"],
-            nperseg=nperseg,
-            noverlap=noverlap,
-            axis=0,
-        )
-        Syy_library_i = Syy_library_i[idx_band]
-
-        # Cross power spectral density between the reference receiver and receiver i
-        _, Sxy_library = sp.csd(
-            y_library_ref,
-            y_library_i,
-            fs=library_props["fs"],
-            nperseg=nperseg,
-            noverlap=noverlap,
-            axis=0,
-        )
-        Sxy_library = Sxy_library[idx_band]
-
-        # Compute weights for GCC-SCOT
-        w = 1 / np.abs(np.sqrt(Sxx_library_ref * Syy_library_i))
-        # Apply GCC-SCOT
-        gcc_library_i = w * Sxy_library
-        gcc_library_i = gcc_library_i.reshape(
-            (fxx.size, ds_sig_gcc.sizes["x"], ds_sig_gcc.sizes["y"])
-        )
-        gcc_library.append(gcc_library_i)
-
-        ## Event ##
-        # Power spectral density at the source position associated to the receiver i
-        _, Syy_event_i = sp.welch(
-            y_event_i,
-            fs=library_props["fs"],
-            nperseg=nperseg,
-            noverlap=noverlap,
-        )
-        Syy_event_i = Syy_event_i[idx_band]
-
-        # Cross power spectral density between reference receiver and receiver i at source position$
-        _, Sxy_event = sp.csd(
-            y_event_ref,
-            y_event_i,
-            fs=library_props["fs"],
-            nperseg=nperseg,
-            noverlap=noverlap,
-            axis=0,
-        )
-        Sxy_event = Sxy_event[idx_band]
-
-        # Compute weights for GCC-SCOT
-        w_src = 1 / np.abs(np.sqrt(Sxx_event_ref * Syy_event_i))
-        # Apply GCC-SCOT
-        gcc_event_i = w_src * Sxy_event
-        gcc_event.append(gcc_event_i)
-
-
-def estimate_dcf_gcc_fast(
-    ds_sig_gcc,
-    gcc_library,
-    gcc_event,
-    i_ref,
-    library_props,
-    nperseg=2**11,
-    noverlap=2**10,
-):
-
-    y_library_ref = ds_sig_gcc.s_l.sel(idx_rcv=i_ref)
-    y_event_ref = ds_sig_gcc.s_e.sel(idx_rcv=i_ref)
-
-    # Power spectral density at each grid pixel associated to the reference receiver -> library
-    fxx, Sxx_library_ref = sp.welch(
-        y_library_ref,
-        fs=library_props["fs"],
-        nperseg=nperseg,
-        noverlap=noverlap,
-        axis=0,
-    )
-
-    # Power spectral density at the source position associated to the reference receiver -> event
-    _, Sxx_event_ref = sp.welch(
-        y_event_ref,
-        fs=library_props["fs"],
-        nperseg=nperseg,
-        noverlap=noverlap,
-        axis=0,
-    )
-
-    # Restict to the frequency band of interest
-    idx_band = (fxx >= library_props["f0"]) & (fxx <= library_props["f1"])
-    fxx = fxx[idx_band]
-    Sxx_library_ref = Sxx_library_ref[idx_band]
-    Sxx_event_ref = Sxx_event_ref[idx_band]
-
-    # Power spectral density at each grid point for all receivers
     y_library = ds_sig_gcc.s_l
     _, Syy_library = sp.welch(
         y_library,
@@ -596,6 +484,7 @@ def estimate_dcf_gcc_fast(
     )
     Syy_library = Syy_library[:, idx_band, ...]
 
+    # Compute weights for GCC-SCOT library
     w_l = 1 / np.abs(
         np.sqrt(
             cast_matrix_to_target_shape(Sxx_library_ref, Syy_library.shape)
@@ -614,78 +503,47 @@ def estimate_dcf_gcc_fast(
     )
     Syy_event = Syy_event[:, idx_band]
 
-    # Compute weights for GCC-SCOT
+    # Compute weights for GCC-SCOT event
     w_e = 1 / np.abs(
         np.sqrt(cast_matrix_to_target_shape(Sxx_event_ref, Syy_event.shape) * Syy_event)
     )
 
     for i_rcv in ds_sig_gcc.idx_rcv.values:
 
-        y_library_i = ds_sig_gcc.s_l.sel(idx_rcv=i_rcv)
-        y_event_i = ds_sig_gcc.s_e.sel(idx_rcv=i_rcv)
-
-        ## GCC SCOT ##
-
-        ## library ##
-        # Power spectral density at each grid point associated to the receiver i
-        # _, Syy_library_i = sp.welch(
-        #     y_library_i,
-        #     fs=library_props["fs"],
-        #     nperseg=nperseg,
-        #     noverlap=noverlap,
-        #     axis=0,
-        # )
-        # Syy_library_i = Syy_library_i[idx_band]
-
-        # Syy_library_i = Syy_library[i_rcv, ...]
-
         # Cross power spectral density between the reference receiver and receiver i
         _, Sxy_library = sp.csd(
             y_library_ref,
-            y_library_i,
+            y_library.sel(idx_rcv=i_rcv),
             fs=library_props["fs"],
             nperseg=nperseg,
             noverlap=noverlap,
             axis=0,
         )
-        Sxy_library = Sxy_library[idx_band]
-
-        # Compute weights for GCC-SCOT
-        # w = 1 / np.abs(np.sqrt(Sxx_library_ref * Syy_library_i))
 
         # Apply GCC-SCOT
-        gcc_library_i = w_l[i_rcv, ...] * Sxy_library
+        gcc_library_i = w_l[i_rcv, ...] * Sxy_library[idx_band]
         gcc_library_i = gcc_library_i.reshape(
             (fxx.size, ds_sig_gcc.sizes["x"], ds_sig_gcc.sizes["y"])
         )
         gcc_library.append(gcc_library_i)
 
         ## Event ##
-        # # Power spectral density at the source position associated to the receiver i
-        # _, Syy_event_i = sp.welch(
-        #     y_event_i,
-        #     fs=library_props["fs"],
-        #     nperseg=nperseg,
-        #     noverlap=noverlap,
-        # )
-        # Syy_event_i = Syy_event_i[idx_band]
 
         # Cross power spectral density between reference receiver and receiver i at source position$
         _, Sxy_event = sp.csd(
             y_event_ref,
-            y_event_i,
+            y_event.sel(idx_rcv=i_rcv),
             fs=library_props["fs"],
             nperseg=nperseg,
             noverlap=noverlap,
             axis=0,
         )
-        Sxy_event = Sxy_event[idx_band]
 
-        # # Compute weights for GCC-SCOT
-        # w_src = 1 / np.abs(np.sqrt(Sxx_event_ref * Syy_event_i))
         # Apply GCC-SCOT
-        gcc_event_i = w_e[i_rcv, :] * Sxy_event
+        gcc_event_i = w_e[i_rcv, :] * Sxy_event[idx_band]
         gcc_event.append(gcc_event_i)
+
+    return fxx
 
 
 def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
@@ -694,7 +552,7 @@ def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
     t_start = time()
 
     # Load params
-    depth, receivers, source, grid, frequency, _ = params()
+    _, receivers, source, grid, _, _ = params()
     dx = grid["dx"]
     dy = grid["dy"]
 
@@ -705,7 +563,7 @@ def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
 
     # Load library spectrum
     fs = 1200
-    library_props, S_f_library, f_library, idx_in_band = library_src_spectrum(fs=fs)
+    library_props, _, _, _ = library_src_spectrum(fs=fs)
 
     # Load event spectrum
     # _, S_f_event = event_src_spectrum(f_library)
@@ -714,9 +572,6 @@ def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
     rtf_library = []  # RTF vector evaluated at each grid pixel
     gcc_event = []  # GCC vector evaluated at the source position
     gcc_library = []  # GCC-SCOT vector evaluated at each grid pixel
-
-    gcc_event_fast = []  # GCC vector evaluated at the source position
-    gcc_library_fast = []  # GCC-SCOT vector evaluated at each grid pixel
 
     noise_da = derive_received_noise(
         s_library=ds_sig.s_l,
@@ -796,21 +651,6 @@ def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
             noverlap=noverlap,
         )
         print(f"Ellapsed time {time() - t0}s")
-
-        t0 = time()
-        fxx = estimate_dcf_gcc_fast(
-            ds_sig_gcc=ds_sig_gcc,
-            gcc_library=gcc_library_fast,
-            gcc_event=gcc_event_fast,
-            i_ref=i_ref,
-            library_props=library_props,
-            nperseg=nperseg,
-            noverlap=noverlap,
-        )
-        print(f"Ellapsed time (fast) {time() - t0}s")
-
-        print(np.all(np.array(gcc_library) == np.array(gcc_library_fast)))
-        print(np.all(np.array(gcc_event) == np.array(gcc_event_fast)))
 
     # Create dataset to store full simulation result
     ds_res_from_sig = ds_sig.copy()

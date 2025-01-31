@@ -67,7 +67,7 @@ def process_localisation_zhang2023(
 
     ds = ds.sel(f=f_loc)
 
-    d_gcc_fullarray = []
+    # d_gcc_fullarray = []
     ###### Two sensor pairs ######
     # Select receivers to build the sub-array
     rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
@@ -87,11 +87,6 @@ def process_localisation_zhang2023(
 
         # Add theta to dataset
         ds_cpl_rtf["theta"] = (["x", "y"], theta)
-        # # Convert theta to a metric between -1 and 1
-        # theta_inv = (
-        #     theta_max - ds_cpl_rtf.theta
-        # )  # So that the source position is the maximum value
-        # d_rtf = (theta_inv - theta_max / 2) / (theta_max / 2)  # To lie between -1 and 1
 
         # Normalize
         d_rtf = normalize_metric_contrast(-ds_cpl_rtf.theta)
@@ -117,7 +112,9 @@ def process_localisation_zhang2023(
 
         # Build cross corr (Equation (8) in Zhang et al. 2023)
         # d_gcc = np.sum(gcc_grid * np.conj(gcc_event) * df, axis=0)
-        d_gcc = np.abs(np.sum(gcc_grid * np.conj(gcc_event) * df, axis=0))
+        d_gcc = np.abs(
+            np.sum(gcc_grid * np.conj(gcc_event) * df, axis=0)
+        )  # TODO : check if ok to use module
         # d_gcc = d_gcc / np.max(d_gcc)
 
         # Normalize
@@ -132,7 +129,7 @@ def process_localisation_zhang2023(
         ds_cpl_gcc["d_gcc"] = (["x", "y"], d_gcc)
 
         # Store d_gcc for full array incoherent processing
-        d_gcc_fullarray.append(d_gcc)
+        # d_gcc_fullarray.append(d_gcc)
 
         # Build dataset to be saved as netcdf
         ds_cpl = xr.Dataset(
@@ -159,8 +156,51 @@ def process_localisation_zhang2023(
             data_fname_cpl,
         )
         ds_cpl.to_netcdf(fpath)
+        ds_cpl.close()
 
     ###### Full array ######
+    d_gcc_fullarray = []
+
+    # Build full array gcc with all couples
+    rcv_couples = []
+    for i in ds.idx_rcv.values:
+        for j in ds.idx_rcv.values:
+            if i > j:
+                rcv_couples.append([i, j])
+    rcv_couples = np.array(rcv_couples)
+
+    # rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
+    for rcv_cpl in rcv_couples:
+        i_ref = rcv_cpl[0]
+
+        ## GCC ##
+        ds_cpl_gcc = ds.sel(idx_rcv_ref=rcv_cpl[0], idx_rcv=rcv_cpl[1])
+
+        gcc_grid = ds_cpl_gcc.gcc_real.values + 1j * ds_cpl_gcc.gcc_imag.values
+        gcc_event = (
+            ds_cpl_gcc.gcc_event_real.values + 1j * ds_cpl_gcc.gcc_event_imag.values
+        )
+
+        # Cast gcc_event to the same shape as gcc_grid
+        gcc_event = cast_matrix_to_target_shape(
+            gcc_event, gcc_grid.shape
+        )  # TODO might need to fix a bug for nf=50
+
+        # Build cross corr (Equation (8) in Zhang et al. 2023)
+        # d_gcc = np.sum(gcc_grid * np.conj(gcc_event) * df, axis=0)
+        d_gcc = np.abs(np.sum(gcc_grid * np.conj(gcc_event) * df, axis=0))
+        # d_gcc = d_gcc / np.max(d_gcc)
+
+        # # Normalize
+        d_gcc = normalize_metric_contrast(d_gcc)
+
+        # # Convert to dB
+        # d_gcc = d_gcc
+        # d_gcc[d_gcc == 0] = MIN_VAL_LOG
+        # d_gcc = 10 * np.log10(d_gcc)  # Convert to dB
+
+        # Store d_gcc for full array incoherent processing
+        d_gcc_fullarray.append(d_gcc)
 
     ## RTF ##
     i_ref = 0
@@ -190,9 +230,19 @@ def process_localisation_zhang2023(
 
     ## GCC ##
     d_gcc_fullarray = np.array(d_gcc_fullarray)
-    # Convert back to linear scale before computing the mean
-    d_gcc_fullarray = 10 ** (d_gcc_fullarray / 10)
     d_gcc_fullarray = np.mean(d_gcc_fullarray, axis=0)
+
+    # Normalize
+    # d_gcc_fullarray = normalize_metric_contrast(d_gcc_fullarray)
+
+    # # Convert to dB
+    # d_gcc = d_gcc
+    # d_gcc[d_gcc == 0] = MIN_VAL_LOG
+    # d_gcc = 10 * np.log10(d_gcc)  # Convert to dB
+
+    # # Convert back to linear scale before computing the mean
+    # d_gcc_fullarray = 10 ** (d_gcc_fullarray / 10)
+    # d_gcc_fullarray = np.mean(d_gcc_fullarray, axis=0)
 
     # Convert to dB
     d_gcc_fullarray[d_gcc_fullarray == 0] = MIN_VAL_LOG
@@ -200,7 +250,7 @@ def process_localisation_zhang2023(
     # d_gcc_fullarray = d_gcc_fullarray
 
     # Build dataset to be saved as netcdf
-    ds_cpl_fullarray = xr.Dataset(
+    ds_fullarray = xr.Dataset(
         data_vars=dict(
             theta_rtf=(["x", "y"], ds_cpl_rtf.theta.values),
             d_rtf=(["x", "y"], ds_cpl_rtf.d_rtf.values),
@@ -223,7 +273,8 @@ def process_localisation_zhang2023(
         # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
         data_fname_fa,
     )
-    ds_cpl_fullarray.to_netcdf(fpath)
+    ds_fullarray.to_netcdf(fpath)
+    ds_fullarray.close()
 
 
 def process_all_snr(
@@ -233,6 +284,108 @@ def process_all_snr(
     dy=20,
     nf=100,
     freq_draw_method="equally_spaced",
+    i_mc_offset=0,
+):
+
+    # Load params
+    depth, receivers, source, grid, frequency, _ = params()
+
+    folder = f"from_signal_dx{dx}m_dy{dy}m"
+
+    dr_pos_gcc = []
+    dr_pos_rtf = []
+    dr_txt_filepath = os.path.join(ROOT_DATA, folder, "dr_pos_snr.txt")
+
+    if not os.path.exists(dr_txt_filepath):  # To avoid writting over existing file
+        header_line = "snr i_mc dr_gcc dr_rtf\n"
+        with open(dr_txt_filepath, "w") as f:
+            f.write(header_line)
+
+    msr_gcc = []
+    msr_rtf = []
+
+    msr_txt_filepath = os.path.join(ROOT_DATA, folder, "msr_snr.txt")
+
+    if not os.path.exists(msr_txt_filepath):  # To avoid writting over existing file
+        header_line = "snr i_mc d_gcc d_rtf\n"
+        with open(msr_txt_filepath, "w") as f:
+            f.write(header_line)
+
+    for snr in snrs:
+        subfolder = os.path.join(folder, f"snr_{snr}dB")
+        if not os.path.exists(os.path.join(ROOT_DATA, subfolder)):
+            os.makedirs(os.path.join(ROOT_DATA, subfolder))
+
+        # Run simulation n_monte_carlo times at the same snr to derive the mean MSR
+        for i_mc in range(i_mc_offset, n_monte_carlo + i_mc_offset):
+            # Run simulation (one simulation = 1 generation of noise)
+            print(f"Start building loc features for snr = {snr}dB ...")
+            t0 = time()
+            build_features_from_time_signal(snr)
+            elasped_time = time() - t0
+            print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
+
+            # Load results
+            fpath = os.path.join(
+                ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr}dB.nc"
+            )
+            ds = xr.open_dataset(fpath)
+
+            # Process results
+            data_rootname = f"loc_zhang_dx{dx}m_dy{dy}m_snr{snr}dB_mc{i_mc}"
+            process_localisation_zhang2023(
+                ds, subfolder, nf, freq_draw_method, data_fname=data_rootname
+            )
+            ds.close()
+
+            # Plot results
+            if i_mc == 0:
+                plot_study_zhang2023(subfolder, data_fname=data_rootname)
+                plt.close("all")
+
+            # Load processed surface and derive msr
+            fpath = os.path.join(
+                os.path.join(ROOT_DATA, subfolder),
+                f"{data_rootname}_fullarray.nc",
+            )
+            ds_fa = xr.open_dataset(fpath)
+
+            msr, pos_hat = estimate_msr(ds_fa, plot=False)
+            ds_fa.close()
+
+            # MSR
+            msr_gcc.append(msr["d_gcc"])
+            msr_rtf.append(msr["d_rtf"])
+
+            # Save to text file for further analysis
+            newline = f"{snr} {i_mc} {msr['d_gcc']:.2f} {msr['d_rtf']:.2f}\n"
+            with open(msr_txt_filepath, "a") as f:
+                f.write(newline)
+
+            # Position error
+            delta_r_gcc = np.sqrt(
+                (pos_hat["d_gcc"]["x"] - source["x"]) ** 2
+                + (pos_hat["d_gcc"]["y"] - source["y"]) ** 2
+            ).values
+            delta_r_rtf = np.sqrt(
+                (pos_hat["d_rtf"]["x"] - source["x"]) ** 2
+                + (pos_hat["d_rtf"]["y"] - source["y"]) ** 2
+            ).values
+            dr_pos_gcc.append(delta_r_gcc)
+            dr_pos_rtf.append(delta_r_rtf)
+
+            # Save to text file for further analysis
+            newline = f"{snr} {i_mc} {delta_r_gcc:.2f} {delta_r_rtf:.2f}\n"
+            with open(dr_txt_filepath, "a") as f:
+                f.write(newline)
+
+        study_msr_vs_snr()
+
+
+def replay_all_snr(
+    snrs,
+    dx=20,
+    dy=20,
 ):
 
     # Load params
@@ -257,49 +410,29 @@ def process_all_snr(
 
     for snr in snrs:
         subfolder = os.path.join(folder, f"snr_{snr}dB")
-        if not os.path.exists(os.path.join(ROOT_DATA, subfolder)):
-            os.makedirs(os.path.join(ROOT_DATA, subfolder))
-
-        # Run simulation n_monte_carlo times at the same snr to derive the mean MSR
-        for i_mc in range(n_monte_carlo):
-            # Run simulation (one simulation = 1 generation of noise)
-            print(f"Start building loc features for snr = {snr}dB ...")
-            t0 = time()
-            build_features_from_time_signal(snr)
-            elasped_time = time() - t0
-            print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
-
-            # Load results
-            fpath = os.path.join(
-                ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr}dB.nc"
-            )
-            ds = xr.open_dataset(fpath)
-
-            # Process results
-            data_rootname = f"loc_zhang_dx{dx}m_dy{dy}m_snr{snr}dB_mc{i_mc}"
-            process_localisation_zhang2023(
-                ds, subfolder, nf, freq_draw_method, data_fname=data_rootname
-            )
-
-            # Plot results
-            if i_mc == 0:
-                plot_study_zhang2023(subfolder, data_fname=data_rootname)
+        subfolder_fullpath = os.path.join(ROOT_DATA, subfolder)
+        # List available files in subfolder
+        snr_files = [
+            file for file in os.listdir(subfolder_fullpath) if "fullarray" in file
+        ]
+        # for i_mc in range(i_mc_offset, n_monte_carlo + i_mc_offset):
+        for filename in snr_files:
+            file_fullpath = os.path.join(subfolder_fullpath, filename)
+            imc_str = filename.split("_")[-2]
+            i_mc = int(imc_str[2:])
 
             # Load processed surface and derive msr
-            fpath = os.path.join(
-                os.path.join(ROOT_DATA, subfolder),
-                f"{data_rootname}_fullarray.nc",
-            )
-            ds_fa = xr.open_dataset(fpath)
+            ds_fa = xr.open_dataset(file_fullpath)
 
-            msr, pos_hat = estimate_msr(ds_fa)
+            msr, pos_hat = estimate_msr(ds_fa, plot=False)
+            ds_fa.close()
 
             # MSR
             msr_gcc.append(msr["d_gcc"])
             msr_rtf.append(msr["d_rtf"])
 
             # Save to text file for further analysis
-            newline = f"{snr} {i_mc} {msr['d_gcc']} {msr['d_rtf']}\n"
+            newline = f"{snr} {i_mc} {msr['d_gcc']:.2f} {msr['d_rtf']:.2f}\n"
             with open(msr_txt_filepath, "a") as f:
                 f.write(newline)
 
@@ -307,18 +440,20 @@ def process_all_snr(
             delta_r_gcc = np.sqrt(
                 (pos_hat["d_gcc"]["x"] - source["x"]) ** 2
                 + (pos_hat["d_gcc"]["y"] - source["y"]) ** 2
-            )
+            ).values
             delta_r_rtf = np.sqrt(
                 (pos_hat["d_rtf"]["x"] - source["x"]) ** 2
                 + (pos_hat["d_rtf"]["y"] - source["y"]) ** 2
-            )
+            ).values
             dr_pos_gcc.append(delta_r_gcc)
             dr_pos_rtf.append(delta_r_rtf)
 
             # Save to text file for further analysis
-            newline = f"{snr} {i_mc} {delta_r_gcc} {delta_r_rtf}\n"
+            newline = f"{snr} {i_mc} {delta_r_gcc:.2f} {delta_r_rtf:.2f}\n"
             with open(dr_txt_filepath, "a") as f:
                 f.write(newline)
+
+        study_msr_vs_snr()
 
 
 def study_msr_vs_snr():
@@ -350,7 +485,7 @@ def study_msr_vs_snr():
         label=r"$\textrm{RTF}$",
     )
     ax.set_xlabel(r"$\textrm{SNR [dB]}$")
-    ax.set_xlabel(r"$\textrm{MSR [dB]}$")
+    ax.set_ylabel(r"$\textrm{MSR [dB]}$")
     ax.legend()
     ax.grid()
     # plt.show()
@@ -411,7 +546,7 @@ def study_msr_vs_snr():
 
 if __name__ == "__main__":
 
-    nf = 200
+    nf = 20
     dx, dy = 20, 20
     # # Load rtf data
     # fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
@@ -422,25 +557,57 @@ if __name__ == "__main__":
     # plot_study_zhang2023(folder)
 
     # fpath = os.path.join(ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
-    # fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr-10dB.nc")
+    # fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr-40dB.nc")
     # ds = xr.open_dataset(fpath)
 
     # folder = f"from_signal_dx{dx}m_dy{dy}m"
     # process_localisation_zhang2023(ds, folder, nf=nf, freq_draw_method="equally_spaced")
     # plot_study_zhang2023(folder)
 
-    snrs = [-5, 5]
-    n_monte_carlo = 2
-    process_all_snr(
-        snrs,
-        n_monte_carlo,
-        dx=20,
-        dy=20,
-        nf=100,
-        freq_draw_method="equally_spaced",
-    )
+    # # snrs = np.arange(-40, 15, 5)
+    # # print(snrs)
+    # snrs = [5]
+    # n_monte_carlo = 2
+    # i_mc_offset = 8  # TO start numbering simulations results at 10
+    # process_all_snr(
+    #     snrs,
+    #     n_monte_carlo,
+    #     dx=20,
+    #     dy=20,
+    #     nf=100,
+    #     freq_draw_method="equally_spaced",
+    #     i_mc_offset=i_mc_offset,
+    # )
 
-    # study_msr_vs_snr()
+    # snrs = [10]
+    # n_monte_carlo = 10
+    # i_mc_offset = 0  # TO start numbering simulations results at 10
+    # process_all_snr(
+    #     snrs,
+    #     n_monte_carlo,
+    #     dx=20,
+    #     dy=20,
+    #     nf=100,
+    #     freq_draw_method="equally_spaced",
+    #     i_mc_offset=i_mc_offset,
+    # )
+
+    snrs = np.arange(-40, 15, 5)
+    # snrs = np.arange(-20, 15, 5)
+
+    # n_monte_carlo = 10
+    # i_mc_offset = 10  # TO start numbering simulations results at 10
+    # process_all_snr(
+    #     snrs,
+    #     n_monte_carlo,
+    #     dx=20,
+    #     dy=20,
+    #     nf=100,
+    #     freq_draw_method="equally_spaced",
+    #     i_mc_offset=i_mc_offset,
+    # )
+
+    replay_all_snr(snrs=snrs, dx=dx, dy=dy)
 
 ## Left overs ##
 

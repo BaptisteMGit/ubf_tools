@@ -40,6 +40,20 @@ def plot_study_zhang2023(folder, data_fname=None):
     if not os.path.exists(root_data):
         os.makedirs(root_data)
 
+    # Load fullarray data
+    if data_fname is None:
+        data_fname_fa = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc"
+    else:
+        data_fname_fa = f"{data_fname}_fullarray.nc"
+    fpath = os.path.join(
+        root_data,
+        # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
+        data_fname_fa,
+    )
+    ds_fa = xr.open_dataset(fpath)
+
+    vmin_dB = np.round(np.max([ds_fa[dist].median() for dist in ["d_gcc", "d_rtf"]]), 0)
+
     # Define plot args for ambiguity surfaces
     plot_args_theta = {
         "dist": "hermitian_angle",
@@ -60,7 +74,7 @@ def plot_study_zhang2023(folder, data_fname=None):
         # "vmin": 0,
         # dB scale
         "vmax": 0,
-        "vmin": -10,
+        "vmin": vmin_dB,
     }
 
     plot_args_gcc = {
@@ -73,7 +87,7 @@ def plot_study_zhang2023(folder, data_fname=None):
         # "vmin": 0,
         # dB scale
         "vmax": 0,
-        "vmin": -10,
+        "vmin": vmin_dB,
     }
 
     ###### Two sensor pairs ######
@@ -124,17 +138,6 @@ def plot_study_zhang2023(folder, data_fname=None):
         plt.close("all")
 
     ###### Full array ######
-    # Load data
-    if data_fname is None:
-        data_fname_fa = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc"
-    else:
-        data_fname_fa = f"{data_fname}_fullarray.nc"
-    fpath = os.path.join(
-        root_data,
-        # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
-        data_fname_fa,
-    )
-    ds_fa = xr.open_dataset(fpath)
 
     # Update sub array args
     plot_args_theta["sub_array"] = None
@@ -165,14 +168,10 @@ def plot_study_zhang2023(folder, data_fname=None):
     ###### Figure 4 : Subplot in Zhang et al 2023 ######
 
     # Define plot args for ambiguity surfaces
-    xticks_pos_km = [3.5, 4.0, 4.5]
-    yticks_pos_km = [6.4, 6.9, 7.4]
+    xticks_pos_km = [3.6, 4.0, 4.4]
+    yticks_pos_km = [6.5, 6.9, 7.3]
     xticks_pos_m = [xt * 1e3 for xt in xticks_pos_km]
     yticks_pos_m = [yt * 1e3 for yt in yticks_pos_km]
-    xticks_label_km = [f"${xt:.1f}$" for xt in xticks_pos_km]
-    yticks_label_km = [f"${yt:.1f}$" for yt in yticks_pos_km]
-    # xticks_label_m = [f"${xt:.0f}$" for xt in xticks_pos_m]
-    # yticks_label_m = [f"${yt:.0f}$" for yt in yticks_pos_m]
 
     cmap = "jet"
     # vmax = 1
@@ -180,7 +179,7 @@ def plot_study_zhang2023(folder, data_fname=None):
 
     # dB scale
     vmax = 0
-    vmin = -10
+    vmin = vmin_dB
 
     x_src = source["x"]
     y_src = source["y"]
@@ -195,11 +194,6 @@ def plot_study_zhang2023(folder, data_fname=None):
     f, axs = plt.subplots(2, 3, figsize=(15, 10), sharex=True, sharey=True)
 
     for i_cpl, rcv_cpl in enumerate(rcv_couples):
-        # fpath = os.path.join(
-        #     root_data,
-        #     f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
-        # )
-        # ds_cpl = xr.open_dataset(fpath)
 
         # Load data
         if data_fname is None:
@@ -249,10 +243,12 @@ def plot_study_zhang2023(folder, data_fname=None):
             ax.scatter(
                 x_src,
                 y_src,
-                facecolors="none",
-                edgecolors="k",
+                color="k",
+                # facecolors="none",
+                # edgecolors="k",
                 label=true_pos_label,
-                s=200,
+                marker="2",
+                s=250,
                 linewidths=3,
             )
 
@@ -260,11 +256,11 @@ def plot_study_zhang2023(folder, data_fname=None):
                 r"$s_{" + str(rcv_cpl[0] + 1) + "} - s_{" + str(rcv_cpl[1] + 1) + r"}$"
             )
             if i == 1:
-                ax.set_xlabel(r"$x \, \textrm{[km]}$")
+                ax.set_xlabel(r"$x \, \textrm{[m]}$")
             else:
                 ax.set_xlabel("")
             if i_cpl == 0:
-                ax.set_ylabel(r"$y \, \textrm{[km]}$")
+                ax.set_ylabel(r"$y \, \textrm{[m]}$")
             else:
                 ax.set_ylabel("")
 
@@ -273,8 +269,8 @@ def plot_study_zhang2023(folder, data_fname=None):
             # ax.set_yticks([6400, 6900, 7400])
             ax.set_xticks(xticks_pos_m)
             ax.set_yticks(yticks_pos_m)
-            ax.set_xticklabels(xticks_label_km, fontsize=22)
-            ax.set_yticklabels(yticks_label_km, fontsize=22)
+            # ax.set_xticklabels(xticks_label_km, fontsize=22)
+            # ax.set_yticklabels(yticks_label_km, fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig4.png")
@@ -283,9 +279,6 @@ def plot_study_zhang2023(folder, data_fname=None):
 
     ###### Figure 5 : Subplot in Zhang et al 2023 ######
     f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
-
-    vmin = -10  # dB
-    vmax = 0  # dB
 
     # Plot d_gcc and d_rtf
     for i, dist in enumerate(["d_gcc", "d_rtf"]):
@@ -319,17 +312,19 @@ def plot_study_zhang2023(folder, data_fname=None):
         ax.scatter(
             x_src,
             y_src,
-            facecolors="none",
-            edgecolors="k",
+            color="k",
+            # facecolors="none",
+            # edgecolors="k",
             label=true_pos_label,
+            marker="2",
             s=200,
-            linewidths=3,
+            linewidths=2,
         )
 
-        ax.set_title(f"Full array")
-        ax.set_xlabel(r"$x \textrm{[km]}$")
+        ax.set_title(r"$\textrm{Full array}$")
+        ax.set_xlabel(r"$x \textrm{[m]}$")
         if i == 0:
-            ax.set_ylabel(r"$y \, \textrm{[km]}$")
+            ax.set_ylabel(r"$y \, \textrm{[m]}$")
         else:
             ax.set_ylabel("")
 
@@ -339,8 +334,8 @@ def plot_study_zhang2023(folder, data_fname=None):
         # # Set xticks
         ax.set_xticks(xticks_pos_m)
         ax.set_yticks(yticks_pos_m)
-        ax.set_xticklabels(xticks_label_km, fontsize=22)
-        ax.set_yticklabels(yticks_label_km, fontsize=22)
+        # ax.set_xticklabels(xticks_label_km, fontsize=22)
+        # ax.set_yticklabels(yticks_label_km, fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig5.png")
@@ -371,7 +366,7 @@ def plot_study_zhang2023(folder, data_fname=None):
             label=f"{percentile_threshold*100:.0f}th percentile",
         )
 
-        ax.set_title(f"Full array")
+        ax.set_title(r"$\textrm{Full array}$")
         ax.set_xlim(-20, 0)
         ax.set_xlabel(r"$\textrm{[dB]}$")
 
@@ -392,35 +387,38 @@ def plot_study_zhang2023(folder, data_fname=None):
         amb_surf = ds_fa[dist]
 
         im = ax.pcolormesh(
-            ds_fa["x"].values * 1e-3,
-            ds_fa["y"].values * 1e-3,
+            ds_fa["x"].values,
+            ds_fa["y"].values,
             amb_surf.values.T,
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
         )
 
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
+
         contour = mainlobe_contours[dist]
         ax.plot(
-            ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
-            ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
+            ds_fa["x"].values[contour[:, 0].astype(int)],
+            ds_fa["y"].values[contour[:, 1].astype(int)],
             color="k",
             linewidth=2,
             # label="Mainlobe Boundary" if i == 0 else None,
         )
 
-        ax.set_title(f"Full array")
-        ax.set_xlabel(r"$x \textrm{[km]}$")
+        ax.set_title(r"$\textrm{Full array}$")
+        ax.set_xlabel(r"$x \textrm{[m]}$")
         if i == 0:
-            ax.set_ylabel(r"$y \, \textrm{[km]}$")
+            ax.set_ylabel(r"$y \, \textrm{[m]}$")
         else:
             ax.set_ylabel("")
 
         # Set xticks
-        ax.set_xticks(xticks_pos_km)
-        ax.set_yticks(yticks_label_km)
-        ax.set_xticklabels(xticks_label_km, fontsize=22)
-        ax.set_yticklabels(yticks_label_km, fontsize=22)
+        ax.set_xticks(xticks_pos_m)
+        ax.set_yticks(yticks_pos_m)
+        # ax.set_xticklabels(xticks_label_km, fontsize=22)
+        # ax.set_yticklabels(yticks_label_km, fontsize=22)
 
     # Save figure
     fpath = os.path.join(root_img, "loc_zhang2023_fig5_mainlobe.png")
@@ -504,15 +502,27 @@ def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):
     # plt.scatter(
     #     x_src_hat, y_src_hat, color="w", marker="o", label=estimated_pos_label, s=100
     # )  # Estimated source position
+    # plt.scatter(
+    #     x_src,
+    #     y_src,
+    #     facecolors="none",
+    #     edgecolors="k",
+    #     label=true_pos_label,
+    #     s=200,
+    #     linewidths=3,
+    # )  # True source position
+
     plt.scatter(
         x_src,
         y_src,
-        facecolors="none",
-        edgecolors="k",
+        color="k",
+        # facecolors="none",
+        # edgecolors="k",
         label=true_pos_label,
-        s=200,
-        linewidths=3,
-    )  # True source position
+        marker="2",
+        s=400,
+        linewidths=4,
+    )
 
     # # Add receiver positions
     _, receivers, _, grid, _, _ = params()

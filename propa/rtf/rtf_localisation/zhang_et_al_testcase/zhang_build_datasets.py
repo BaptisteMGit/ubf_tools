@@ -546,7 +546,7 @@ def estimate_dcf_gcc(
     return fxx
 
 
-def build_features_from_time_signal(snr_dB=0, all_rcv_ref=True):
+def build_features_from_time_signal(snr_dB=0):
     """Step 4.2 : build localisation features for DCF GCC and RTF MFP from syntethic time signal."""
 
     t_start = time()
@@ -961,5 +961,5 @@ if __name__ == "__main__":
     ## Step 3
     # build_signal()
     ## Step 4
-    # build_features_fullsimu()
-    build_features_from_time_signal(snr_dB=-40)
+    build_features_fullsimu()
+    # build_features_from_time_signal(snr_dB=-40)

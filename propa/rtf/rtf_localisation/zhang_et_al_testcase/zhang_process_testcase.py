@@ -336,12 +336,15 @@ def process_all_snr(
             process_localisation_zhang2023(
                 ds, subfolder, nf, freq_draw_method, data_fname=data_rootname
             )
-            ds.close()
 
             # Plot results
             if i_mc == 0:
                 plot_study_zhang2023(subfolder, data_fname=data_rootname)
                 plt.close("all")
+
+            # Check RTF estimation at a few grid points
+            check_rtf_features(ds_rtf_cs=ds, folder=subfolder)
+            ds.close()
 
             # Load processed surface and derive msr
             fpath = os.path.join(
@@ -380,6 +383,102 @@ def process_all_snr(
                 f.write(newline)
 
         study_msr_vs_snr()
+
+
+def check_rtf_features(ds_rtf_cs, folder):
+
+    # Define folder to store images
+    root_img = os.path.join(ROOT_IMG, folder, "check_rtf")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
+
+    # Load dataset with KRAKEN TF to derive reference RTF
+    _, _, source, grid, frequency, _ = params()
+
+    # Load gridded dataset
+    fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
+    fpath = os.path.join(ROOT_DATA, fname)
+    ds_tf = xr.open_dataset(fpath)
+    # Build complex tf
+    tf = ds_tf.tf_real + 1j * ds_tf.tf_imag
+    # Extract tf between fmin and fmax from ds_rtf_cs
+    tf = tf.sel(f=slice(ds_rtf_cs.f.min(), ds_rtf_cs.f.max()))
+
+    # Define reference receiver to use
+    i_rcv_ref = 0
+    ds_rtf_cs = ds_rtf_cs.sel(idx_rcv_ref=i_rcv_ref)
+    rtf_cs = ds_rtf_cs.rtf_real + 1j * ds_rtf_cs.rtf_imag
+
+    # Define tf_ref
+    tf_ref = tf.sel(idx_rcv=i_rcv_ref)
+
+    # List position where we want to compare estimated RTF to ref RTF (KRAKEN)
+    # Source position + the 4 corners of the grid + one random position inside the grid
+    x_check = [
+        source["x"],
+        ds_tf.x.min().values,
+        ds_tf.x.min().values,
+        ds_tf.x.max().values,
+        ds_tf.x.max().values,
+        ds_tf.x.values[np.random.randint(ds_tf.sizes["x"])],
+    ]
+
+    y_check = [
+        source["y"],
+        ds_tf.y.min().values,
+        ds_tf.y.max().values,
+        ds_tf.y.max().values,
+        ds_tf.y.min().values,
+        ds_tf.y.values[np.random.randint(ds_tf.sizes["y"])],
+    ]
+
+    # Iterate over receivers
+    for i_rcv in tf.idx_rcv.values:
+
+        # Build "true" RTF
+        rtf_true = tf.sel(idx_rcv=i_rcv) / tf_ref
+
+        # Iterate over positions to check
+        for i_check in range(len(x_check)):
+            x_i = x_check[i_check]
+            y_i = y_check[i_check]
+
+            # Extract data at required position
+            rtf_cs_pos = rtf_cs.sel(idx_rcv=i_rcv).sel(x=x_i, y=y_i, method="nearest")
+            rtf_true_pos = rtf_true.sel(x=x_i, y=y_i, method="nearest")
+
+            abs_cs = np.abs(rtf_cs_pos)
+            abs_true = np.abs(rtf_true_pos)
+            # Compare rtf_true to estimated rtf
+
+            plt.figure()
+            abs_true.plot(
+                label=r"$\Pi_{" + str(i_rcv) + r"}^{(Kraken)}$",
+                linestyle="-",
+                color="k",
+                linewidth=1.5,
+            )
+            abs_cs.plot(
+                x="f",
+                linestyle="-",
+                label=r"$\Pi_{" + str(i_rcv) + r"}^{(CS)}$",
+                color="r",
+                marker="o",
+                linewidth=0.2,
+                markersize=3,
+            )
+            plt.legend()
+            plt.yscale("log")
+            plt.xlabel(r"$f \, \textrm{[Hz]}$")
+            plt.ylabel(r"$|\Pi(f)|$")
+
+            # Save figure
+            fname = f"check_rtf_rcv{i_rcv}_x{x_i}_y{y_i}.png"
+            fpath = os.path.join(root_img, fname)
+            plt.savefig(fpath)
+            plt.close("all")
+
+    ds_tf.close()
 
 
 def replay_all_snr(
@@ -556,6 +655,24 @@ if __name__ == "__main__":
     # process_localisation_zhang2023(ds, folder, nf=nf)
     # plot_study_zhang2023(folder)
 
+    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data\zhang_output_from_signal_dx20m_dy20m_snr0dB.nc"
+    ds = xr.open_dataset(fpath)
+
+    fs = 1 / ds.t.diff("t").values[0]
+    s = ds.s_e.sel(idx_rcv=0)
+    xs = 3900
+    ys = 6800
+    # s = ds.s_l.sel(x=xs, y=ys, method="nearest").sel(idx_rcv=0)
+    ff, tt, stft = sp.stft(s.values, fs=fs, nperseg=2**8, noverlap=2**7)
+    plt.figure()
+    # ds.s_e.sel(idx_rcv=0).plot(x="t")
+    s.plot(x="t")
+
+    plt.figure()
+    plt.pcolormesh(np.abs(stft))
+    plt.show()
+    plt.savefig("test")
+
     # fpath = os.path.join(ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
     # fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr-40dB.nc")
     # ds = xr.open_dataset(fpath)
@@ -582,6 +699,22 @@ if __name__ == "__main__":
     # snrs = [10]
     # n_monte_carlo = 10
     # i_mc_offset = 0  # TO start numbering simulations results at 10
+    process_all_snr(
+        snrs,
+        n_monte_carlo,
+        dx=20,
+        dy=20,
+        nf=100,
+        freq_draw_method="equally_spaced",
+        i_mc_offset=i_mc_offset,
+    )
+
+    # snrs = np.arange(-40, 15, 5)
+    # # snrs = np.arange(-20, 15, 5)
+    # # snrs = [-40, -20]
+
+    # n_monte_carlo = 10
+    # i_mc_offset = 0  # TO start numbering simulations results at 10
     # process_all_snr(
     #     snrs,
     #     n_monte_carlo,
@@ -591,10 +724,6 @@ if __name__ == "__main__":
     #     freq_draw_method="equally_spaced",
     #     i_mc_offset=i_mc_offset,
     # )
-
-    snrs = np.arange(-40, 15, 5)
-    # snrs = np.arange(-20, 15, 5)
-
     # n_monte_carlo = 10
     # i_mc_offset = 10  # TO start numbering simulations results at 10
     # process_all_snr(
@@ -607,7 +736,9 @@ if __name__ == "__main__":
     #     i_mc_offset=i_mc_offset,
     # )
 
-    replay_all_snr(snrs=snrs, dx=dx, dy=dy)
+    # replay_all_snr(snrs=snrs, dx=dx, dy=dy)
+    # study_msr_vs_snr()
+
 
 ## Left overs ##
 

@@ -83,7 +83,7 @@ def test_rcv_noise():
         )
         stft_list.append(stft)
     # Step 2 - build the CSDM
-    csdm = compute_csd_matrix_fast(stft_list, n_seg_cov="all")
+    csdm = compute_csd_matrix_fast(stft_list, n_seg_cov=0)
     csdm = np.abs(np.mean(csdm, axis=0))
     csdm /= np.max(csdm)
     # Step 3 - plot
@@ -155,7 +155,7 @@ def test_rcv_signal():
         )
         stft_list.append(stft)
     # Step 2 - build the CSDM
-    csdm = compute_csd_matrix_fast(stft_list, n_seg_cov="all")
+    csdm = compute_csd_matrix_fast(stft_list, n_seg_cov=0)
     csdm = np.abs(np.mean(csdm, axis=0))
     # csdm = np.abs(np.fft.irfft(csdm, axis=0)[0])
     csdm /= np.max(csdm)

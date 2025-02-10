@@ -237,5 +237,13 @@ def interp_true_rtf(kraken_data, f_interp):
     return f_interp, rtf_true_interp
 
 
+def normalize_metric_contrast(d):
+    """Build constrast from a metric d so that q lies in [0, 1]."""
+    d_max = np.max(d)
+    d_min = np.min(d)
+    q = (d - d_min) / (d_max - d_min)
+    return q
+
+
 if __name__ == "__main__":
     pass

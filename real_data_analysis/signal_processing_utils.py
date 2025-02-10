@@ -15,7 +15,7 @@
 import numpy as np
 import scipy.signal as sp
 import matplotlib.pyplot as plt
-from real_data_analysis.real_data_utils import *
+from real_data_analysis.real_data_utils import plot_dsp, plot_stft, get_dsp
 from get_data.wav.get_data_from_rhumrum import get_rhumrum_data
 
 

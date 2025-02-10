@@ -19,6 +19,7 @@ import sys
 # sys.path.append(r"C:\Users\baptiste.menetrier\Desktop\devPy\phd")
 
 import os
+from numba import jit, njit
 import pandas as pd
 import numpy as np
 import scipy.fft as sf
@@ -28,13 +29,14 @@ import matplotlib.pyplot as plt
 from get_data.ais.ais_tools import *
 from get_data.wav.get_data_from_rhumrum import *
 from publication.PublicationFigure import PubFigure
-from real_data_analysis.signal_processing_utils import *
 from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
 
 
-def load_wav_data(date, duration_s, rcv_id, ch, freq_properties):
+def load_wav_data(
+    date, duration_s, rcv_id, ch, freq_properties, save=True, root_wav=None
+):
 
     fmin = freq_properties["fmin"]
     fmax = freq_properties["fmax"]
@@ -59,6 +61,8 @@ def load_wav_data(date, duration_s, rcv_id, ch, freq_properties):
         fmax=fmax,
         filter_type=filter_type,
         filter_corners=filter_corners,
+        save=save,
+        root_wav=root_wav,
     )
 
     sig = corr_sig["BDH"]
@@ -278,7 +282,7 @@ def compute_csd_matrix_fast(stfts, n_seg_cov):
     num_receivers = len(stfts)
     num_freq_bins, num_snapshots = stfts[0].shape
 
-    if n_seg_cov == "all":
+    if n_seg_cov == 0:
         n_seg_cov = num_snapshots
 
     n_available_segments = num_snapshots // n_seg_cov

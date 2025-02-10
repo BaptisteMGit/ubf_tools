@@ -39,7 +39,7 @@ def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**1
 
     f, Rx, Rs, Rv = get_csdm(t, rcv_sig, rcv_noise, nperseg, noverlap)
 
-    ff, tt, stft_x = get_stft_list(x, fs, nperseg, noverlap)
+    ff, tt, stft_x = get_stft_array(x, fs, nperseg, noverlap)
 
     f, rtf = rtf_cw(f, n_rcv, stft_x, Rv)
 
@@ -174,7 +174,7 @@ def get_csdm_from_signal(t, y, nperseg=2**12, noverlap=2**11):
     Shape of y must be (ns, nrcv) where ns is the number of samples and nrcv is the number of receivers
     """
     fs = 1 / (t[1] - t[0])
-    ff, _, stft_list = get_stft_list(y, fs, nperseg, noverlap)
+    ff, _, stft_list = get_stft_array(y, fs, nperseg, noverlap)
 
     # t0 = time()
     csdm_y = compute_csd_matrix_fast(stft_list, n_seg_cov=0)
@@ -183,7 +183,7 @@ def get_csdm_from_signal(t, y, nperseg=2**12, noverlap=2**11):
     return ff, csdm_y
 
 
-def get_stft_list(y, fs, nperseg, noverlap):
+def get_stft_array(y, fs, nperseg, noverlap):
     """
     Derive the STFT of each component of y.
 

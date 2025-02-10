@@ -10,12 +10,19 @@
 """
 
 # ======================================================================================================================
+# References
+# ======================================================================================================================
+""" [1] Bayındır, Cihan. (2013). ENHANCEMENTS TO SYNTHETIC APERTURE RADAR CHIRP WAVEFORMS AND NON-COHERENT SAR CHANGE 
+DETECTION FOLLOWING LARGE SCALE DISASTERS. 10.13140/2.1.1247.3929. """
+
+# ======================================================================================================================
 # Import
 # ======================================================================================================================
 from cst import P0
 import numpy as np
 import scipy.io as sio
 import scipy.signal as sp
+import scipy.special as sp_special
 
 
 def pulse(T, f, fs, t0=0):
@@ -352,13 +359,95 @@ def z_call(signal_args={}, model_args={}):
 
 
 def normalize_to_sl(sig, sl):
+    """Normalize source signal to match desired Source Level sl"""
     target_std = 10 ** (sl / 20) * P0  # Target rms amplitude to reach the desired SL
     sig = sig * target_std / np.std(sig)
     return sig
 
 
+def lfm_chirp(f0, f1, fs, T, phi=0):
+    """LFM chirp signal"""
+    t = np.arange(0, T, 1 / fs)
+    s = np.cos(2 * np.pi * (f0 + (f1 - f0) / (2 * T) * t) * t + phi)
+
+    return s, t
+
+
+def lfm_chirp_analytic_spectrum(alpha, freq):
+    """LFM chirp spectrum analytic expression from [1] Eq.10 p.11"""
+    S_f = (
+        np.sqrt(np.pi / alpha)
+        * np.exp(1j * np.pi / 4)
+        * np.exp(1j * (2 * np.pi * freq) ** 2 / (4 * alpha))
+    )
+    return freq, S_f
+
+
+def pulse_lfm_chirp_analytic_spectrum(alpha, freq, Tp):
+    """Pulse LFM chirp spectrum analytic expression from [1] Eq.23 p.14"""
+
+    omega = 2 * np.pi * freq
+    a = np.sqrt(np.pi / (2 * alpha))
+    b = np.exp(-1j * omega**2 / (4 * alpha))
+    c = F_fresnel((omega + alpha * Tp) / (2 * np.sqrt(alpha))) - F_fresnel(
+        (omega - alpha * Tp) / (2 * np.sqrt(alpha))
+    )
+    S_f = a * b * c
+    return freq, S_f
+
+
+def F_fresnel(z):
+    S, C = sp_special.fresnel(z)
+    F = C + 1j * S
+    return F
+
+
 if __name__ == "__main__":
+
+    import scipy.signal as sp
     import matplotlib.pyplot as plt
+
+    ### LFM Chirp ###
+    f0 = 100
+    f1 = 500
+    fs = 2000
+    T = 500
+    phi = 0
+
+    # Signal
+    s, t = lfm_chirp(f0, f1, fs, T, phi)
+    s = sp.chirp(t, f0, T, f1, method="logarithmic")
+
+    # Add zeros before and after pulse
+    nz = 0
+    s = np.pad(s, nz)
+    ns = len(s)
+    t = np.arange(0, ns * 1 / fs, 1 / fs)
+
+    plt.figure()
+    plt.plot(t, s)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
+    # plt.show()
+
+    # Spectrum
+    alpha = 2 * np.pi * f1 / T
+    f = np.fft.rfftfreq(ns, 1 / fs)
+    # print(f)
+    # f, S_f = lfm_chirp_analytic_spectrum(alpha, f)
+    f, S_f = pulse_lfm_chirp_analytic_spectrum(alpha, f, T)
+
+    # Compute the spectrum using the FFT
+    # s_win = s * sp.windows.hann(len(s))
+    S_f_fft = np.fft.rfft(s, n=ns)
+
+    plt.figure()
+    plt.plot(f, np.abs(S_f_fft) / np.max(np.abs(S_f_fft)), label="FFT")
+    plt.plot(f, np.abs(S_f) / np.max(np.abs(S_f)), label="Analytic")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Amplitude")
+    plt.legend()
+    plt.show()
 
     # s, t = ricker_pulse(fc=200, T=0.05, fs=20 * 200, center=True)
     # plt.figure()
@@ -390,53 +479,52 @@ if __name__ == "__main__":
     # plt.ylabel("Amplitude")
     # plt.legend()
 
-    signal_args = {
-        "fs": 100,
-        "nz": 0,
-        "start_offset_seconds": 2,
-        "stop_offset_seconds": 2,
-        "signal_duration": 50 * 5,
-        "sl": 2.5,
-    }
-    s, t = z_call(signal_args)
     # signal_args = {
     #     "fs": 100,
     #     "nz": 0,
-    #     "start_offset_seconds": 5.182,
-    #     "stop_offset_seconds": 15,
+    #     "start_offset_seconds": 2,
+    #     "stop_offset_seconds": 2,
     #     "signal_duration": 50 * 5,
     #     "sl": 2.5,
     # }
-    # s_rep, t = z_call(signal_args)
-    # signal_args = {
-    #     "fs": 100,
-    #     "nz": 0,
-    #     "start_offset_seconds": 5.45,
-    #     "stop_offset_seconds": 15,
-    #     "signal_duration": 50 * 5,
-    #     "sl": 2.5,
-    # }
-    # s_rep_2, t = z_call(signal_args)
-    # s += s_rep + s_rep_2
-    plt.figure()
-    plt.plot(t, s)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
+    # s, t = z_call(signal_args)
+    # # signal_args = {
+    # #     "fs": 100,
+    # #     "nz": 0,
+    # #     "start_offset_seconds": 5.182,
+    # #     "stop_offset_seconds": 15,
+    # #     "signal_duration": 50 * 5,
+    # #     "sl": 2.5,
+    # # }
+    # # s_rep, t = z_call(signal_args)
+    # # signal_args = {
+    # #     "fs": 100,
+    # #     "nz": 0,
+    # #     "start_offset_seconds": 5.45,
+    # #     "stop_offset_seconds": 15,
+    # #     "signal_duration": 50 * 5,
+    # #     "sl": 2.5,
+    # # }
+    # # s_rep_2, t = z_call(signal_args)
+    # # s += s_rep + s_rep_2
+    # plt.figure()
+    # plt.plot(t, s)
+    # plt.xlabel("Time (s)")
+    # plt.ylabel("Amplitude")
 
-    # Derive stft
-    import scipy.signal as sp
+    # # Derive stft
 
-    # nperseg = 2**9
+    # # nperseg = 2**9
+    # # noverlap = int(0.8 * nperseg)
+    # nperseg = 2**7
+    # # noverlap = int(0.8 * nperseg)
     # noverlap = int(0.8 * nperseg)
-    nperseg = 2**7
-    # noverlap = int(0.8 * nperseg)
-    noverlap = int(0.8 * nperseg)
-    print(f"nperseg = {nperseg}, noverlap = {noverlap}")
-    f, t, stft = sp.stft(s, fs=100, nperseg=nperseg, noverlap=noverlap)
-    plt.figure()
-    plt.pcolormesh(t, f, np.abs(stft))
-    plt.xlabel("Time (s)")
-    plt.ylabel("Frequency (Hz)")
-    plt.colorbar(label="Amplitude")
+    # print(f"nperseg = {nperseg}, noverlap = {noverlap}")
+    # f, t, stft = sp.stft(s, fs=100, nperseg=nperseg, noverlap=noverlap)
+    # plt.figure()
+    # plt.pcolormesh(t, f, np.abs(stft))
+    # plt.xlabel("Time (s)")
+    # plt.ylabel("Frequency (Hz)")
+    # plt.colorbar(label="Amplitude")
 
-    plt.show()
+    # plt.show()

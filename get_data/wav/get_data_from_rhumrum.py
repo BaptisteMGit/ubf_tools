@@ -18,6 +18,7 @@ def get_rhumrum_data(
     filter_corners=2,
     channels=["BDH", "BHZ", "BH1", "BH2"],
     save=True,
+    root_wav=None,
     plot=False,
 ):
 
@@ -63,16 +64,17 @@ def get_rhumrum_data(
             corr_sig.plot()
 
         if save:
-            root_data = (
-                r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM"
-            )
+            if root_wav == None:
+                root_wav = (
+                    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM"
+                )
             fmt = "%Y-%m-%d_%H-%M-%S"
             date_start = pd.to_datetime(date).strftime(fmt)
             date_end = (
                 pd.to_datetime(date) + pd.Timedelta(seconds=duration_sec)
             ).strftime(fmt)
             fname = f"signal_{chnl}_{station_id}_{date_start}_{date_end}.wav"  # on sauvegarde les signaux corriges dans un fichier .wav
-            fpath = os.path.join(root_data, fname)
+            fpath = os.path.join(root_wav, fname)
             wavfile.write(
                 fpath,
                 100,

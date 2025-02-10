@@ -25,7 +25,7 @@ from real_data_analysis.deconvolution_utils import crosscorr_deconvolution
 from propa.rtf.rtf_estimation.rtf_estimation_utils import (
     rtf_cs,
     rtf_cw,
-    get_stft_list,
+    get_stft_array,
     get_csdm_from_signal,
 )
 
@@ -88,17 +88,16 @@ def derive_rtf(recording_name, recording_props, processing_props, verbose=False)
     data = derive_rtf_from_tf(data, ref_hydro)
 
     # Derive GCC for comparison
-    data = derive_gcc(data, recording_props, processing_props)
+    data = derive_gcc(data, processing_props)
 
     # Save results
     data.to_netcdf(os.path.join(processed_data_path, f"{recording_name}_rtf.nc"))
     data.close()
 
 
-def derive_gcc(data, recording_props, processing_props):
+def derive_gcc(data, processing_props):
 
     # Unpack usefull properties
-    gcc_method = processing_props.get("gcc_method", "scot")  # Method to derive the GCC
     ts = data.ts
 
     # Inputs : array of shape (nt, n_rcv)
@@ -120,32 +119,36 @@ def derive_gcc(data, recording_props, processing_props):
     _, Ryy = sp.csd(y, y, fs=1 / ts, nperseg=nperseg, noverlap=noverlap, axis=0)
 
     # Apply gcc weights
-
-    if gcc_method == "scot":
-        # Compute the GCC-SCOT
-        w = 1 / np.abs(np.sqrt(Rxx * Ryy))
-    elif gcc_method == "phat":
-        # Compute the GCC-PHAT
-        w = 1 / np.abs(Rxy)
-    elif gcc_method == "ml":
-        # Compute the GCC-ML
-        gamma_xy = sp.coherence(
-            yref, y, fs=1 / ts, nperseg=nperseg, noverlap=noverlap, axis=0
-        )  # magnitude squared coherence estimate
-        w = 1 / Rxy * gamma_xy / (1 - gamma_xy)
-
-    gcc_f = w * Rxy
-
-    # Add results to the dataset
     data["f_gcc"] = ff
-    data["gcc_amp"] = (
-        ["h_index", "f_gcc"],
-        np.abs(gcc_f).T,
-    )
-    data["gcc_phase"] = (
-        ["h_index", "f_gcc"],
-        np.angle(gcc_f).T,
-    )
+
+    for gcc_method in ["blank", "scot", "phat", "ml"]:
+        if gcc_method == "blank":
+            # No normalization
+            w = 1
+        elif gcc_method == "scot":
+            # Compute the GCC-SCOT
+            w = 1 / np.abs(np.sqrt(Rxx * Ryy))
+        elif gcc_method == "phat":
+            # Compute the GCC-PHAT
+            w = 1 / np.abs(Rxy)
+        elif gcc_method == "ml":
+            # Compute the GCC-ML
+            _, gamma_xy = sp.coherence(
+                yref, y, fs=1 / ts, nperseg=nperseg, noverlap=noverlap, axis=0
+            )  # magnitude squared coherence estimate
+            w = 1 / Rxy * gamma_xy / (1 - gamma_xy)
+
+        gcc_f = w * Rxy
+
+        # Add results to the dataset
+        data[f"gcc_{gcc_method}_amp"] = (
+            ["h_index", "f_gcc"],
+            np.abs(gcc_f).T,
+        )
+        data[f"gcc_{gcc_method}_phase"] = (
+            ["h_index", "f_gcc"],
+            np.angle(gcc_f).T,
+        )
 
     return data
 
@@ -212,6 +215,33 @@ def split_signal_noise(data, recording_props, processing_props):
         split_time_0 = time_with_energy_above_threshold[0]
         split_time_1 = time_with_energy_above_threshold[-1]
 
+    # Derive the number of pulse in the signal
+    y = data.signal.sel(h_index=hydro_for_split_time_calibration)
+    # 1) Derive the stft of the original signal (signal of interest + noise)
+    nperseg = 2**12
+    noverlap = nperseg // 2
+    ff, tt, stft = sp.stft(
+        y.values,
+        fs=1 / ts,
+        window="hann",
+        nperseg=nperseg,
+        noverlap=noverlap,
+        scaling="psd",
+    )
+
+    # 2) Compute the energy in the frequency band of interest
+    f0_idx = np.argmin(np.abs(ff - f0))
+    f1_idx = np.argmin(np.abs(ff - f1))
+    energy_band = np.sum(np.abs(stft[f0_idx:f1_idx, :]) ** 2, axis=0) * (
+        ff[1] - ff[0]
+    )  # Integrate over the frequency band -> energy in V^2
+
+    # Detect impulsions : from below to above threshold
+    impulsions = energy_band > energy_threshold
+
+    # Count impulsions
+    n_em = np.sum(np.diff(impulsions.astype(int)) == 1)
+
     signal_plus_noise = []
     only_noise = []
     # Loop over each hydrophone to extract signal and noise
@@ -225,11 +255,9 @@ def split_signal_noise(data, recording_props, processing_props):
                 time=slice(i_em * t_interp_pulse - ts, (i_em + 1) * t_interp_pulse)
             ).isel(h_index=i_hydro)
 
-            # # Update split time for the current emission
-            # split_time_i_em = split_time + y.time.min().values
-            # # Split signal and noise
-            # signal = y.sel(time=slice(0, split_time_i_em))
-            # noise = y.sel(time=slice(split_time_i_em, y.time.max()))
+            # Ensure y is not empty
+            if y.size == 0:
+                continue
 
             # Update split time for the current emission
             split_time_i_em_0 = split_time_0 + y.time.min().values
@@ -369,20 +397,22 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
     ff, Rv = get_csdm_from_signal(tv, v, nperseg, noverlap)
 
     # Add Rx and R_v to the dataset
-    data["f_csdm"] = ff
+    data.coords["f_csdm"] = ff
+    # Create h_index bis to avoid duplicate coordinates
+    data.coords["h_index_bis"] = data.h_index
     data["Rx"] = (
-        ["f_csdm", "h_index", "h_index"],
+        ["f_csdm", "h_index", "h_index_bis"],
         np.abs(Rx),
     )
     data["Rv"] = (
-        ["f_csdm", "h_index", "h_index"],
+        ["f_csdm", "h_index", "h_index_bis"],
         np.abs(Rv),
     )
 
     if method in ["cs", "both"]:
         f, rtf = rtf_cs(ff, n_hydro, Rx, Rv)
         # Add frequency and estimated rtf to the dataset
-        data["f_rtf_cs"] = f
+        data.coords["f_rtf_cs"] = f
         data["rtf_amp_cs"] = (
             ["h_index", "f_rtf_cs"],
             np.abs(rtf).T,
@@ -395,12 +425,11 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
         # nperseg /= 2
         # noverlap /= 2
         x = data.signal.T.values
-        ff, _, stft_list_x = get_stft_list(x, 1 / ts, nperseg, noverlap)
-        stft_x = np.array(stft_list_x)
+        ff, _, stft_x = get_stft_array(x, 1 / ts, nperseg, noverlap)
 
         f, rtf = rtf_cw(ff, n_hydro, stft_x, Rv)
         # Add frequency and estimated rtf to the dataset
-        data["f_rtf_cw"] = f
+        data.coords["f_rtf_cw"] = f
         data["rtf_amp_cw"] = (
             ["h_index", "f_rtf_cw"],
             np.abs(rtf).T,
@@ -833,6 +862,8 @@ def analyse_rtf_estimation_results(recording_name, processing_props, verbose=Fal
     plt.title(r"$\mathbf{\hat{R}_x}$")
     plt.savefig(os.path.join(data_rtf.attrs["img_path"], "signal_csdm.png"))
 
+    data_rtf.close()
+
 
 def run_analysis(
     recording_name,
@@ -980,6 +1011,246 @@ def localise(
     pos_ids=[],
     th_pos=None,
 ):
+    # Localize using rtf
+    pos_ids, dist, snrs = localise_rtf(
+        recording_names,
+        recording_name_to_loc,
+        recording_props,
+        processing_props,
+        pos_ids=pos_ids,
+        th_pos=th_pos,
+    )
+
+    # Localise using gcc
+    _, dist_gcc, img_path = localise_gcc(
+        recording_names,
+        recording_name_to_loc,
+        recording_props,
+        pos_ids=pos_ids,
+        th_pos=th_pos,
+    )
+
+    # Compare rtf and gcc
+    theta_max = 90
+    d_tmp = theta_max - dist
+    d_rtf = d_tmp / np.max(d_tmp)
+
+    plt.figure()
+    plt.plot(
+        pos_ids, d_rtf, marker="o", linestyle="-", markersize=5, label=r"$\textrm{RTF}$"
+    )
+    for gcc_method in ["blank", "scot", "phat", "ml"]:
+        plt.plot(
+            pos_ids,
+            dist_gcc["mean_dist"][gcc_method],
+            marker="o",
+            linestyle="-",
+            markersize=5,
+            label=gcc_method.upper(),
+        )
+    plt.xlabel(r"$\textrm{Position}$")
+    plt.ylabel(r"$d$")
+    plt.title(r"$\textrm{" + f"{recording_name_to_loc}" + r"}$")
+    plt.legend()
+    plt.savefig(
+        os.path.join(
+            img_path,
+            f"{recording_name_to_loc}_localisation_rtf_gcc_comparison.png",
+        )
+    )
+
+    # Compare rtf and gcc with the constrast measure q
+    # Eq 1.106 rapport RTF
+    q_rtf = (np.max(dist) - dist) / (np.max(dist) - np.min(dist))
+
+    plt.figure()
+    plt.plot(
+        pos_ids, q_rtf, marker="o", linestyle="-", markersize=5, label=r"$\textrm{RTF}$"
+    )
+    for gcc_method in ["blank", "scot", "phat", "ml"]:
+        plt.plot(
+            pos_ids,
+            dist_gcc["mean_dist"][gcc_method],
+            marker="o",
+            linestyle="-",
+            markersize=5,
+            label=gcc_method.upper(),
+        )
+    plt.xlabel(r"$\textrm{Position}$")
+    plt.ylabel(r"$d$")
+    plt.title(r"$\textrm{" + f"{recording_name_to_loc}" + r"}$")
+    plt.legend()
+    plt.savefig(
+        os.path.join(
+            img_path,
+            f"{recording_name_to_loc}_localisation_rtf_gcc_comparison_contrast_q.png",
+        )
+    )
+
+    return pos_ids, dist, snrs, dist_gcc
+
+
+def localise_gcc(
+    recording_names,
+    recording_name_to_loc,
+    recording_props,
+    pos_ids=[],
+    th_pos=None,
+):
+
+    # Unpack usefull props
+    f0 = recording_props.get("f0", 8e3)
+    f1 = recording_props.get("f1", 15e3)
+
+    # Load all datasets
+    recording_names_all = recording_names + [recording_name_to_loc]
+    datasets = {}
+    for recording_name in recording_names_all:
+        ds_i = xr.open_dataset(
+            os.path.join(processed_data_path, f"{recording_name}_rtf.nc")
+        )
+        #
+        datasets[recording_name] = ds_i.sel({"f_gcc": slice(f0, f1)})
+
+    # Loop over the different gcc methods
+    dist = {}
+    dist["mean_dist"] = {}
+    for gcc_method in ["blank", "scot", "phat", "ml"]:
+
+        gcc_dist = []
+        gcc_amp_tag = f"gcc_{gcc_method}_amp"
+        gcc_phase_tag = f"gcc_{gcc_method}_phase"
+
+        # Derive distance between gcc at the position of interrest and other positions
+        ds_true_pos = datasets[recording_name_to_loc]
+        gcc_ref = ds_true_pos[gcc_amp_tag] * np.exp(
+            1j * ds_true_pos[gcc_phase_tag]
+        )  # Build gcc reference
+
+        for recording_name in recording_names:
+            ds_pos = datasets[recording_name]
+            gcc_pos = ds_pos[gcc_amp_tag] * np.exp(1j * ds_pos[gcc_phase_tag])
+
+            # Derive cross correlation
+            # Equation (8) in Zhang et al. 2023
+            df = ds_pos.f_gcc.values[1] - ds_pos.f_gcc.values[0]
+            d = np.abs(np.sum(gcc_ref * np.conj(gcc_pos) * df, axis=1))
+            gcc_dist.append(d)
+
+        gcc_dist = np.array(gcc_dist)
+        gcc_dist /= np.max(gcc_dist, axis=0)  # Normalize
+        dist[gcc_method] = gcc_dist
+
+        # Extract position ids from names
+        dyn_loc = False
+        if len(pos_ids) == 0:
+            if "PR" in recording_names[0]:  # Source is dynamic
+                pos_ids = [float(n.split("_")[-2][1:-1]) for n in recording_names]
+                dyn_loc = True
+            else:
+                pos_ids = [n.split("_")[-4] for n in recording_names]
+
+        img_path = ds_true_pos.attrs["img_path"]
+        plt.figure()
+        h_index_ref = ds_pos.h_index.values[
+            0
+        ]  # Reference hydrophone at the first position in the list
+        hydro_labels = [
+            f"(H$_{i} , H_{h_index_ref})$" for i in ds_true_pos.h_index.values
+        ]
+        plt.plot(
+            pos_ids,
+            gcc_dist,
+            # color="k",
+            marker="o",
+            linestyle="-",
+            markersize=5,
+            label=hydro_labels,
+        )
+
+        if dyn_loc:
+            xlabel = r"$\textrm{Range from P1}  \, \textrm{[m]}$"
+            if th_pos is not None:
+                plt.axvline(
+                    th_pos, color="r", linestyle="--", label=r"$\textrm{True position}$"
+                )
+        else:
+            xlabel = r"$\textrm{Position}$"
+            if th_pos is not None:
+                # idx_th_pos = pos_ids.index(th_pos)
+                plt.axvline(
+                    # pos_ids[th_pos],
+                    th_pos,
+                    color="r",
+                    linestyle="--",
+                    label=r"$\textrm{True position}$",
+                )
+
+        plt.xlabel(xlabel)
+        plt.ylabel(r"$d$")
+        plt.title(r"$\textrm{" + f"{recording_name_to_loc}" + r"}$")
+        plt.legend()
+        plt.savefig(
+            os.path.join(
+                img_path,
+                f"{recording_name_to_loc}_localisation_gcc_{gcc_method}.png",
+            )
+        )
+
+        # Combine all hydrophones for comparison with rtf
+        d_gcc = np.mean(gcc_dist, axis=1)
+        dist["mean_dist"][gcc_method] = d_gcc
+        plt.figure()
+        plt.plot(
+            pos_ids,
+            d_gcc,
+            color="k",
+            marker="o",
+            linestyle="-",
+            markersize=5,
+        )
+
+        if dyn_loc:
+            xlabel = r"$\textrm{Range from P1}  \, \textrm{[m]}$"
+            if th_pos is not None:
+                plt.axvline(
+                    th_pos, color="r", linestyle="--", label=r"$\textrm{True position}$"
+                )
+        else:
+            xlabel = r"$\textrm{Position}$"
+            if th_pos is not None:
+                # idx_th_pos = pos_ids.index(th_pos)
+                plt.axvline(
+                    # pos_ids[th_pos],
+                    th_pos,
+                    color="r",
+                    linestyle="--",
+                    label=r"$\textrm{True position}$",
+                )
+
+        plt.xlabel(xlabel)
+        plt.ylabel(r"$d_{" + gcc_method.upper() + r"}$")
+        plt.title(r"$\textrm{" + f"{recording_name_to_loc}" + r"}$")
+        plt.legend()
+        plt.savefig(
+            os.path.join(
+                img_path,
+                f"{recording_name_to_loc}_localisation_gcc_{gcc_method}_normalized.png",
+            )
+        )
+
+    return pos_ids, dist, img_path
+
+
+def localise_rtf(
+    recording_names,
+    recording_name_to_loc,
+    recording_props,
+    processing_props,
+    pos_ids=[],
+    th_pos=None,
+):
+
     # Unpack usefull props
     f0 = recording_props.get("f0", 8e3)
     f1 = recording_props.get("f1", 15e3)
@@ -1009,6 +1280,7 @@ def localise(
         d = D_hermitian_angle_fast(rtf_ref.values, rtf_pos.values, **dist_kwargs)
         dist.append(d)
 
+    dist = np.array(dist)
     # Extract position ids from names
     dyn_loc = False
     if len(pos_ids) == 0:
@@ -1048,9 +1320,42 @@ def localise(
             ds_true_pos.attrs["img_path"], f"{recording_name_to_loc}_localisation.png"
         )
     )
-    # plt.show()
-    # print(f"SNR {ds_pos.snr.values} dB")
-    # print(dist)
+
+    # Plot with normalize metric for comparison with gcc
+    theta_max = 90
+    d_tmp = theta_max - dist
+    d_rtf = d_tmp / np.max(d_tmp)
+
+    plt.figure()
+    plt.plot(pos_ids, d_rtf, color="k", marker="o", linestyle="-", markersize=5)
+
+    if dyn_loc:
+        xlabel = r"$\textrm{Range from P1}  \, \textrm{[m]}$"
+        if th_pos is not None:
+            plt.axvline(
+                th_pos, color="r", linestyle="--", label=r"$\textrm{True position}$"
+            )
+    else:
+        xlabel = r"$\textrm{Position}$"
+        if th_pos is not None:
+            plt.axvline(
+                # pos_ids[th_pos],
+                th_pos,
+                color="r",
+                linestyle="--",
+                label=r"$\textrm{True position}$",
+            )
+
+    plt.xlabel(xlabel)
+    plt.ylabel(r"$d_{rtf}$")
+    plt.title(r"$\textrm{" + f"{recording_name_to_loc}" + r"}$")
+    plt.legend()
+    plt.savefig(
+        os.path.join(
+            ds_true_pos.attrs["img_path"],
+            f"{recording_name_to_loc}_localisation_normalized.png",
+        )
+    )
 
     snrs = datasets[recording_name_to_loc].snr.values
 

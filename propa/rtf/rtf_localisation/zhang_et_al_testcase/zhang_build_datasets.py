@@ -330,11 +330,8 @@ def derive_received_noise(
     The noise power is defined to match required snr relative to the signal level for the
     """
 
-    # Create noise dataarray
-    noise_da = xr.zeros_like(s_library)
-
     # Build noise signal
-    sigma_noise = np.sqrt(10 ** (-snr_dB / 10))
+    # sigma_n = np.sqrt(10 ** (-snr_dB / 10))
     # Correct definition should use multivariate gaussian noise to ensure the std is the same at each grid pixel
     # Yet, for simplicity we use a simple gaussian distibution over the entire grid to increase perf (this is valid for long time series)
 
@@ -350,16 +347,28 @@ def derive_received_noise(
     # noise_sig = noise_sig.reshape(rcv_sig_xr.shape)
 
     # Derive noise signal
-    noise_sig = np.random.normal(loc=0, scale=sigma_noise, size=s_library.shape)
-    # Normalize to account for the signal power to reach required snr at receiver n°0
-    # We assume that the noise is due to ambiant noise and is the same at each receiver position and does not depend on the source position within the search grid
+    # n = np.random.normal(loc=0, scale=sigma_n, size=s_library.shape)
+
+    # # Normalize to account for the signal power to reach required snr at receiver n°0
+    # # We assume that the noise is due to ambiant noise and is the same at each receiver position and does not depend on the source position within the search grid
+    # sigma_rcv_ref = np.std(s_event_rcv0.values)
+    # noise_sig = n * sigma_rcv_ref
+
+    # Create noise dataarray
+    noise_da = xr.zeros_like(s_library)
+
+    # Event signal power at receiver n°0
     sigma_rcv_ref = np.std(s_event_rcv0.values)
-    noise_sig *= sigma_rcv_ref
+    # Normalize to account for the reference signal power to reach required snr at receiver n°0
+    sigma_v = sigma_rcv_ref * np.sqrt(10 ** (-snr_dB / 10))
+    # We assume that the noise is due to ambiant noise (hence it does not depend on the source position within the search grid) and is the same at each receiver position (receiver electronic noise )
+    noise_sig = np.random.normal(loc=0, scale=sigma_v, size=s_library.shape)
 
     # Store in xarray
     noise_da.values = noise_sig
     noise_da.attrs["sigma_ref"] = sigma_rcv_ref
-    noise_da.attrs["sigma_noise"] = sigma_noise
+    # noise_da.attrs["sigma_noise"] = sigma_n
+    noise_da.attrs["sigma_noise"] = sigma_v
 
     # Check snr
     n_e = noise_da.sel(x=event_source["x"], y=event_source["y"], method="nearest")
@@ -1000,16 +1009,17 @@ def build_features_fullsimu(debug=False):
 
 if __name__ == "__main__":
     debug = False
+    snr_dB = 0
 
     ## Step 1
     # build_tf_dataset()
-    # Step 2
-    grid_dataset(debug=debug)
-    # Step 3
-    build_signal(debug=debug)
-    # Step 4
-    build_features_fullsimu(debug=debug)
-    build_features_from_time_signal(snr_dB=0, debug=debug)
+    # # Step 2
+    # grid_dataset(debug=debug)
+    # # Step 3
+    # build_signal(debug=debug)
+    # # Step 4
+    # build_features_fullsimu(debug=debug)
+    build_features_from_time_signal(snr_dB=snr_dB, debug=debug)
 
     # Step 5 : analysis
     nf = 100
@@ -1019,10 +1029,12 @@ if __name__ == "__main__":
         plot_study_zhang2023,
     )
 
-    fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr0dB.nc")
+    fpath = os.path.join(
+        ROOT_DATA, f"zhang_output_from_signal_dx20m_dy20m_snr{snr_dB:.0f}dB.nc"
+    )
     ds = xr.open_dataset(fpath)
 
-    folder = os.path.join(f"from_signal_dx{dx}m_dy{dy}m", "snr_0dB")
+    folder = os.path.join(f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.0f}dB")
     process_localisation_zhang2023(ds, folder, nf=nf, freq_draw_method="equally_spaced")
     plot_study_zhang2023(folder)
 

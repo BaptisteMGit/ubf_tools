@@ -188,8 +188,7 @@ def grid_dataset(debug=False):
 
     gridded_tf = np.array(gridded_tf)
     # Add to dataset
-    # grid_coords = ["idx_rcv", "f", "x", "y"]
-    grid_coords = ["idx_rcv", "f", "y", "x"]  # Try to fix search grid issues 11/02/2025
+    grid_coords = ["idx_rcv", "f", "y", "x"]  # Fix 11/02/2025
     ds_grid["tf_real"] = (grid_coords, np.real(gridded_tf))
     ds_grid["tf_imag"] = (grid_coords, np.imag(gridded_tf))
 
@@ -241,20 +240,16 @@ def build_signal(debug=False):
     for i_rcv in range(len(receivers["x"])):
         r_grid = grid["r"][i_rcv].flatten()
         tau_rcv = r_grid / C0
-        # tau_rcv = tau_rcv.reshape((ds.sizes["x"], ds.sizes["y"]))
-        tau_rcv = tau_rcv.reshape(
-            (ds.sizes["y"], ds.sizes["x"])
-        )  # Try to fix search grid issues 11/02/2025
+        tau_rcv = tau_rcv.reshape((ds.sizes["y"], ds.sizes["x"]))  # Fix 11/02/2025
         delay_rcv.append(tau_rcv)
 
     delay_rcv = np.array(delay_rcv)
 
     # Add delay to dataset
-    # ds["delay_rcv"] = (["idx_rcv", "x", "y"], delay_rcv)
     ds["delay_rcv"] = (
         ["idx_rcv", "y", "x"],
         delay_rcv,
-    )  # Try to fix search grid issues 11/02/2025
+    )  # Fix 11/02/2025
 
     # Same delay is applied to each receiver : the receiver with the minimum delay is taken as the time reference
     # (we are only interested on relative time difference)
@@ -309,11 +304,10 @@ def build_signal(debug=False):
     # Add to dataset
     t = np.arange(0, library_props["T"], 1 / library_props["fs"])
     ds.coords["t"] = t
-    # ds["s_l"] = (["idx_rcv", "t", "x", "y"], y_t_library)
     ds["s_l"] = (
         ["idx_rcv", "t", "y", "x"],
         y_t_library,
-    )  # Try to fix search grid issues 11/02/2025
+    )  # Fix 11/02/2025
     ds["s_e"] = (["idx_rcv", "t"], y_t_event)
 
     # Drop vars to reduce size
@@ -934,14 +928,8 @@ def build_features_fullsimu(debug=False):
         ds_res_full_simu.sizes["idx_rcv"],
         ds_res_full_simu.sizes["f"],
     )
-    # shape_library = (
-    #     ds_res_full_simu.sizes["idx_rcv_ref"],
-    #     ds_res_full_simu.sizes["idx_rcv"],
-    #     ds_res_full_simu.sizes["f"],
-    #     ds_res_full_simu.sizes["x"],
-    #     ds_res_full_simu.sizes["y"],
-    # )
-    # Try to fix search grid issues 11/02/2025
+
+    # Fix 11/02/2025
     shape_library = (
         ds_res_full_simu.sizes["idx_rcv_ref"],
         ds_res_full_simu.sizes["idx_rcv"],
@@ -969,24 +957,10 @@ def build_features_fullsimu(debug=False):
     # Add rft to dataset
     ds_res_full_simu["rtf_real"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-        # [
-        #     "idx_rcv_ref",
-        #     "f",
-        #     "y",
-        #     "x",
-        #     "idx_rcv",
-        # ],  # Try to fix search grid issues 11/02/2025
         rtf_library.real,
     )
     ds_res_full_simu["rtf_imag"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-        # [
-        #     "idx_rcv_ref",
-        #     "f",
-        #     "y",
-        #     "x",
-        #     "idx_rcv",
-        # ],  # Try to fix search grid issues 11/02/2025
         rtf_library.imag,
     )
     ds_res_full_simu["rtf_event_real"] = (
@@ -1001,24 +975,10 @@ def build_features_fullsimu(debug=False):
     # Add gcc-scot to dataset
     ds_res_full_simu["gcc_real"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-        # [
-        #     "idx_rcv_ref",
-        #     "f",
-        #     "y",
-        #     "x",
-        #     "idx_rcv",
-        # ],  # Try to fix search grid issues 11/02/2025
         gcc_library.real,
     )
     ds_res_full_simu["gcc_imag"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-        # [
-        #     "idx_rcv_ref",
-        #     "f",
-        #     "y",
-        #     "x",
-        #     "idx_rcv",
-        # ],  # Try to fix search grid issues 11/02/2025
         gcc_library.imag,
     )
     ds_res_full_simu["gcc_event_real"] = (
@@ -1036,33 +996,6 @@ def build_features_fullsimu(debug=False):
     )
     ds_res_full_simu.to_netcdf(fpath)
     ds_res_full_simu.close()
-
-    # ## Covariance substraction RTF ##
-    # # Grid
-    # r_i = grid["r"][i_rcv].flatten()
-    # tf_i = ds.tf_real.sel(r=r_i, method="nearest") + 1j * ds.tf_imag.sel(
-    #     r=r_i, method="nearest"
-    # )
-    # rtf_i = tf_i.values / tf_ref.values
-    # rtf_i = rtf_i.reshape((ds.sizes["f"], ds.sizes["x"], ds.sizes["y"]))
-    # rtf_library.append(rtf_i)
-
-    # # Source
-    # r_src_i = r_src_ref = source["r"][i_rcv]
-    # tf_src_i = ds.tf_real.sel(
-    #     r=r_src_i, method="nearest"
-    # ) + 1j * ds.tf_imag.sel(r=r_src_i, method="nearest")
-    # rtf_event_i = tf_src_i.values / tf_src_ref.values
-    # rtf_event.append(rtf_event_i)
-
-
-# def build_features_snr(snrs):
-#     for snr in snrs:
-#         print(f"Start building loc features for snr = {snr}dB ...")
-#         t0 = time()
-#         build_features_from_time_signal(snr)
-#         elasped_time = time() - t0
-#         print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
 
 
 if __name__ == "__main__":

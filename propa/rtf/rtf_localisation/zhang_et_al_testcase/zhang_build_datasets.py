@@ -43,14 +43,6 @@ def build_tf_dataset():
     f0 = f[0]
     f1 = f[n_subband]
 
-    # Load tf to get range vector information
-    fpath = os.path.join(ROOT_DATA, "tf_zhang.nc")
-    ds = xr.open_dataset(fpath)
-    nr = ds.sizes["r"]
-
-    nf = len(f)
-    h_grid = np.zeros((nf, nr), dtype=complex)
-
     fname = "testcase_zhang2023"
     working_dir = os.path.join(ROOT, "tmp")
     env_file = os.path.join(working_dir, f"{fname}.env")
@@ -59,6 +51,7 @@ def build_tf_dataset():
     with open(env_file, "r") as file:
         lines = file.readlines()
 
+    first_iter = True
     while f0 < f[-1]:
 
         # Frequency subband
@@ -92,6 +85,11 @@ def build_tf_dataset():
         )
         tf_subband = np.squeeze(pressure_field, axis=(1, 2, 3))  # (nf, nr)
 
+        if first_iter:
+            nf = len(f)
+            nr = tf_subband.shape[1]
+            h_grid = np.zeros((nf, nr), dtype=complex)
+            first_iter = False
         h_grid += np.pad(tf_subband, ((pad_before, pad_after), (0, 0)))
 
         # Update frequency subband
@@ -126,15 +124,20 @@ def build_tf_dataset():
     library_zhang.to_netcdf(fpath)
 
 
-def grid_dataset():
-    """Step 2 : Associate each grid pixel to the corresponding broadband transfert function caracterized by the range to the receiver."""
+def grid_dataset(debug=False):
+    """Step 2 : Associate each grid pixel to the corresponding broadband transfert function caracterized by the range to the receiver.
+
+    -   Kraken tf : H(f, r)
+    -   Grid : r(x, y)
+    -   Gridded tf : H(f, x, y) = H(f, r(x, y))
+    """
 
     # Load dataset
     fpath = os.path.join(ROOT_DATA, "tf_zhang_dataset.nc")
     ds = xr.open_dataset(fpath)
 
     # Load param
-    depth, receivers, source, grid, frequency, _ = params()
+    depth, receivers, source, grid, frequency, _ = params(debug=debug)
 
     # Create new dataset
     ds_grid = xr.Dataset(
@@ -172,7 +175,10 @@ def grid_dataset():
     )
 
     gridded_tf = []
-    grid_shape = (ds_grid.sizes["f"], ds_grid.sizes["x"], ds_grid.sizes["y"])
+    # grid_shape = (ds_grid.sizes["f"], ds_grid.sizes["x"], ds_grid.sizes["y"])
+    grid_shape = (ds_grid.sizes["f"],) + grid["r"].shape[
+        1:
+    ]  # Try to fix search grid issues 11/02/202
     for i_rcv in range(len(receivers["x"])):
         r_grid = grid["r"][i_rcv].flatten()
         tf_ircv = tf_grid_ds.tf.sel(r=r_grid, method="nearest")
@@ -182,7 +188,8 @@ def grid_dataset():
 
     gridded_tf = np.array(gridded_tf)
     # Add to dataset
-    grid_coords = ["idx_rcv", "f", "x", "y"]
+    # grid_coords = ["idx_rcv", "f", "x", "y"]
+    grid_coords = ["idx_rcv", "f", "y", "x"]  # Try to fix search grid issues 11/02/2025
     ds_grid["tf_real"] = (grid_coords, np.real(gridded_tf))
     ds_grid["tf_imag"] = (grid_coords, np.imag(gridded_tf))
 
@@ -193,11 +200,18 @@ def grid_dataset():
     ds_grid.close()
 
 
-def build_signal():
-    """Step 3 : derive signal received from each grid pixel using the library source spectrum."""
+def build_signal(debug=False):
+    """Step 3 : derive signal received from each grid pixel using the library source spectrum.
+
+    -   Gridded tf : H(x, y, f)
+    -   Source spectrum : S(f)
+    -   Gridded spectrum : Y(x, y, f) = S(f) H(x, y, f)
+    -   Gridded signal : y(x, y, t) = FFT_inv(Y(x, y, f))
+
+    """
 
     # Load params
-    depth, receivers, source, grid, frequency, _ = params()
+    depth, receivers, source, grid, frequency, _ = params(debug=debug)
 
     # Load gridded dataset
     fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
@@ -227,13 +241,20 @@ def build_signal():
     for i_rcv in range(len(receivers["x"])):
         r_grid = grid["r"][i_rcv].flatten()
         tau_rcv = r_grid / C0
-        tau_rcv = tau_rcv.reshape((ds.sizes["x"], ds.sizes["y"]))
+        # tau_rcv = tau_rcv.reshape((ds.sizes["x"], ds.sizes["y"]))
+        tau_rcv = tau_rcv.reshape(
+            (ds.sizes["y"], ds.sizes["x"])
+        )  # Try to fix search grid issues 11/02/2025
         delay_rcv.append(tau_rcv)
 
     delay_rcv = np.array(delay_rcv)
 
     # Add delay to dataset
-    ds["delay_rcv"] = (["idx_rcv", "x", "y"], delay_rcv)
+    # ds["delay_rcv"] = (["idx_rcv", "x", "y"], delay_rcv)
+    ds["delay_rcv"] = (
+        ["idx_rcv", "y", "x"],
+        delay_rcv,
+    )  # Try to fix search grid issues 11/02/2025
 
     # Same delay is applied to each receiver : the receiver with the minimum delay is taken as the time reference
     # (we are only interested on relative time difference)
@@ -288,7 +309,11 @@ def build_signal():
     # Add to dataset
     t = np.arange(0, library_props["T"], 1 / library_props["fs"])
     ds.coords["t"] = t
-    ds["s_l"] = (["idx_rcv", "t", "x", "y"], y_t_library)
+    # ds["s_l"] = (["idx_rcv", "t", "x", "y"], y_t_library)
+    ds["s_l"] = (
+        ["idx_rcv", "t", "y", "x"],
+        y_t_library,
+    )  # Try to fix search grid issues 11/02/2025
     ds["s_e"] = (["idx_rcv", "t"], y_t_event)
 
     # Drop vars to reduce size
@@ -353,6 +378,12 @@ def derive_received_noise(
 def estimate_rtf(
     ds_sig, noise_da, i_ref, source, library_props, nperseg=2**11, noverlap=2**10
 ):
+    """
+    Estimate the RTF vector using Covariance Substraction method (CS).
+
+    10/02/2025 : Dummy implementation looping over x and y axis.
+
+    """
     # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
     ds_sig_rtf = ds_sig.copy(deep=True)
     idx_pos_ref = np.argmin(np.abs(ds_sig_rtf.idx_rcv.values - i_ref))
@@ -421,6 +452,9 @@ def estimate_rtf(
     # Reshape to the required shape
     # First step : reshape to (nx, ny, nf, n_rcv)
     shape = (len(ds_sig.x), len(ds_sig.y)) + rtf_cs_l.shape[1:]
+    # shape = (len(ds_sig.y), len(ds_sig.x)) + rtf_cs_l.shape[
+    #     1:
+    # ]  # Try to fix search grid issues 11/02/2025
     rtf_cs_l = rtf_cs_l.reshape(shape)
 
     # Step 2 : permute to (nf, nx, ny, n_rcv)
@@ -546,13 +580,13 @@ def estimate_dcf_gcc(
     return fxx
 
 
-def build_features_from_time_signal(snr_dB=0):
+def build_features_from_time_signal(snr_dB=0, debug=False):
     """Step 4.2 : build localisation features for DCF GCC and RTF MFP from syntethic time signal."""
 
     t_start = time()
 
     # Load params
-    _, receivers, source, grid, _, _ = params()
+    _, receivers, source, grid, _, _ = params(debug=debug)
     dx = grid["dx"]
     dy = grid["dy"]
 
@@ -664,27 +698,51 @@ def build_features_from_time_signal(snr_dB=0):
         ds_res_from_sig.sizes["idx_rcv"],
         ds_res_from_sig.sizes["f"],
     )
+    # shape_library = (
+    #     ds_res_from_sig.sizes["idx_rcv_ref"],
+    #     ds_res_from_sig.sizes["idx_rcv"],
+    #     ds_res_from_sig.sizes["f"],
+    #     ds_res_from_sig.sizes["x"],
+    #     ds_res_from_sig.sizes["y"],
+    # )
+    # Try to fix search grid issues 11/02/2025
     shape_library = (
         ds_res_from_sig.sizes["idx_rcv_ref"],
         ds_res_from_sig.sizes["idx_rcv"],
         ds_res_from_sig.sizes["f"],
-        ds_res_from_sig.sizes["x"],
         ds_res_from_sig.sizes["y"],
+        ds_res_from_sig.sizes["x"],
     )
 
     # GCC SCOT (idx_rcv_ref, f, x, y, idx_rcv)
     gcc_event = np.array(gcc_event).reshape(shape_event)  # (idx_rcv_ref, f, idx_rcv)
     gcc_event = np.moveaxis(gcc_event, 1, -1)
     gcc_library = np.array(gcc_library).reshape(shape_library)
-    gcc_library = np.moveaxis(gcc_library, 1, -1)  # (idx_rcv_ref, f, x, y, idx_rcv)
+    gcc_library = np.moveaxis(gcc_library, 1, -1)  # (idx_rcv_ref, f, y, x, idx_rcv)
+    # Reshape to order x, y
+    gcc_library = np.moveaxis(gcc_library, 2, 3)  # (idx_rcv_ref, f, x, y, idx_rcv)
 
     # Add gcc-scot to dataset
     ds_res_from_sig["gcc_real"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+        # [
+        #     "idx_rcv_ref",
+        #     "f",
+        #     "y",
+        #     "x",
+        #     "idx_rcv",
+        # ],  # Try to fix search grid issues 11/02/2025
         gcc_library.real,
     )
     ds_res_from_sig["gcc_imag"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+        # [
+        #     "idx_rcv_ref",
+        #     "f",
+        #     "y",
+        #     "x",
+        #     "idx_rcv",
+        # ],  # Try to fix search grid issues 11/02/2025
         gcc_library.imag,
     )
     ds_res_from_sig["gcc_event_real"] = (
@@ -703,10 +761,24 @@ def build_features_from_time_signal(snr_dB=0):
     # Add rft to dataset
     ds_res_from_sig["rtf_real"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+        # [
+        #     "idx_rcv_ref",
+        #     "f",
+        #     "y",
+        #     "x",
+        #     "idx_rcv",
+        # ],  # Try to fix search grid issues 11/02/2025
         rtf_library.real,
     )
     ds_res_from_sig["rtf_imag"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+        # [
+        #     "idx_rcv_ref",
+        #     "f",
+        #     "y",
+        #     "x",
+        #     "idx_rcv",
+        # ],  # Try to fix search grid issues 11/02/2025
         rtf_library.imag,
     )
     ds_res_from_sig["rtf_event_real"] = (
@@ -733,12 +805,12 @@ def build_features_from_time_signal(snr_dB=0):
     print(f"Features derived from time signal in {time() - t_start:.2f} s")
 
 
-def build_features_fullsimu():
+def build_features_fullsimu(debug=False):
     """Step 4.1 : build localisation features for DCF GCC and RTF methods.
     Full simulation approach : DCF and RTF are build directly from transfer functions"""
 
     # Load params
-    depth, receivers, source, grid, frequency, _ = params()
+    depth, receivers, source, grid, frequency, _ = params(debug=debug)
     dx = grid["dx"]
     dy = grid["dy"]
 
@@ -862,33 +934,59 @@ def build_features_fullsimu():
         ds_res_full_simu.sizes["idx_rcv"],
         ds_res_full_simu.sizes["f"],
     )
+    # shape_library = (
+    #     ds_res_full_simu.sizes["idx_rcv_ref"],
+    #     ds_res_full_simu.sizes["idx_rcv"],
+    #     ds_res_full_simu.sizes["f"],
+    #     ds_res_full_simu.sizes["x"],
+    #     ds_res_full_simu.sizes["y"],
+    # )
+    # Try to fix search grid issues 11/02/2025
     shape_library = (
         ds_res_full_simu.sizes["idx_rcv_ref"],
         ds_res_full_simu.sizes["idx_rcv"],
         ds_res_full_simu.sizes["f"],
-        ds_res_full_simu.sizes["x"],
         ds_res_full_simu.sizes["y"],
+        ds_res_full_simu.sizes["x"],
     )
 
     # RTF
     rtf_event = np.array(rtf_event).reshape(shape_event)
     rtf_event = np.moveaxis(rtf_event, 1, -1)  # (idx_rcv_ref, f, idx_rcv)
     rtf_library = np.array(rtf_library).reshape(shape_library)
-    rtf_library = np.moveaxis(rtf_library, 1, -1)  # (idx_rcv_ref, f, x, y, idx_rcv)
+    rtf_library = np.moveaxis(rtf_library, 1, -1)  # (idx_rcv_ref, f, y, x, idx_rcv)
+    # Reshape to order x, y
+    rtf_library = np.moveaxis(rtf_library, 2, 3)  # (idx_rcv_ref, f, x, y, idx_rcv)
 
     # GCC SCOT (idx_rcv_ref, f, x, y, idx_rcv)
     gcc_event = np.array(gcc_event).reshape(shape_event)  # (idx_rcv_ref, f, idx_rcv)
     gcc_event = np.moveaxis(gcc_event, 1, -1)
     gcc_library = np.array(gcc_library).reshape(shape_library)
-    gcc_library = np.moveaxis(gcc_library, 1, -1)  # (idx_rcv_ref, f, x, y, idx_rcv)
+    gcc_library = np.moveaxis(gcc_library, 1, -1)  # (idx_rcv_ref, f, y, x, idx_rcv)
+    # Reshape to order x, y
+    gcc_library = np.moveaxis(gcc_library, 2, 3)  # (idx_rcv_ref, f, y, x, idx_rcv)
 
     # Add rft to dataset
     ds_res_full_simu["rtf_real"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+        # [
+        #     "idx_rcv_ref",
+        #     "f",
+        #     "y",
+        #     "x",
+        #     "idx_rcv",
+        # ],  # Try to fix search grid issues 11/02/2025
         rtf_library.real,
     )
     ds_res_full_simu["rtf_imag"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+        # [
+        #     "idx_rcv_ref",
+        #     "f",
+        #     "y",
+        #     "x",
+        #     "idx_rcv",
+        # ],  # Try to fix search grid issues 11/02/2025
         rtf_library.imag,
     )
     ds_res_full_simu["rtf_event_real"] = (
@@ -903,10 +1001,24 @@ def build_features_fullsimu():
     # Add gcc-scot to dataset
     ds_res_full_simu["gcc_real"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+        # [
+        #     "idx_rcv_ref",
+        #     "f",
+        #     "y",
+        #     "x",
+        #     "idx_rcv",
+        # ],  # Try to fix search grid issues 11/02/2025
         gcc_library.real,
     )
     ds_res_full_simu["gcc_imag"] = (
         ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+        # [
+        #     "idx_rcv_ref",
+        #     "f",
+        #     "y",
+        #     "x",
+        #     "idx_rcv",
+        # ],  # Try to fix search grid issues 11/02/2025
         gcc_library.imag,
     )
     ds_res_full_simu["gcc_event_real"] = (
@@ -954,12 +1066,37 @@ def build_features_fullsimu():
 
 
 if __name__ == "__main__":
+    debug = False
+
     ## Step 1
     # build_tf_dataset()
-    ## Step 2
-    # grid_dataset()
-    ## Step 3
-    # build_signal()
-    ## Step 4
-    build_features_fullsimu()
-    # build_features_from_time_signal(snr_dB=-40)
+    # Step 2
+    grid_dataset(debug=debug)
+    # Step 3
+    build_signal(debug=debug)
+    # Step 4
+    build_features_fullsimu(debug=debug)
+    build_features_from_time_signal(snr_dB=0, debug=debug)
+
+    # Step 5 : analysis
+    nf = 100
+    dx = dy = 20
+    from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_process_testcase import (
+        process_localisation_zhang2023,
+        plot_study_zhang2023,
+    )
+
+    fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr0dB.nc")
+    ds = xr.open_dataset(fpath)
+
+    folder = os.path.join(f"from_signal_dx{dx}m_dy{dy}m", "snr_0dB")
+    process_localisation_zhang2023(ds, folder, nf=nf, freq_draw_method="equally_spaced")
+    plot_study_zhang2023(folder)
+
+    # Full simu
+    fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
+    ds = xr.open_dataset(fpath)
+
+    folder = f"fullsimu_dx{dx}m_dy{dy}m"
+    process_localisation_zhang2023(ds, folder, nf=nf)
+    plot_study_zhang2023(folder)

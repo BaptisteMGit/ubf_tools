@@ -87,6 +87,10 @@ def process_localisation_zhang2023(
 
         # Add theta to dataset
         ds_cpl_rtf["theta"] = (["x", "y"], theta)
+        # ds_cpl_rtf["theta"] = (
+        #     ["y", "x"],
+        #     theta,
+        # )  # Try to fix search grid area issue 11/02/2025
 
         # Normalize
         d_rtf = normalize_metric_contrast(-ds_cpl_rtf.theta)
@@ -96,6 +100,10 @@ def process_localisation_zhang2023(
         d_rtf[d_rtf == 0] = MIN_VAL_LOG
         d_rtf = 10 * np.log10(d_rtf)
         ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf)
+        # ds_cpl_rtf["d_rtf"] = (
+        #     ["y", "x"],
+        #     d_rtf,
+        # )  # Try to fix search grid area issue 11/02/2025
 
         ## GCC ##
         ds_cpl_gcc = ds.sel(idx_rcv_ref=rcv_cpl[0], idx_rcv=rcv_cpl[1])
@@ -127,6 +135,7 @@ def process_localisation_zhang2023(
 
         # Add d to dataset
         ds_cpl_gcc["d_gcc"] = (["x", "y"], d_gcc)
+        # ds_cpl_gcc["d_gcc"] = (["y", "x"], d_gcc)
 
         # Store d_gcc for full array incoherent processing
         # d_gcc_fullarray.append(d_gcc)
@@ -137,6 +146,9 @@ def process_localisation_zhang2023(
                 theta_rtf=(["x", "y"], ds_cpl_rtf.theta.values),
                 d_rtf=(["x", "y"], ds_cpl_rtf.d_rtf.values),
                 d_gcc=(["x", "y"], ds_cpl_gcc.d_gcc.values),
+                # theta_rtf=(["y", "x"], ds_cpl_rtf.theta.values),
+                # d_rtf=(["y", "x"], ds_cpl_rtf.d_rtf.values),
+                # d_gcc=(["y", "x"], ds_cpl_gcc.d_gcc.values),
             ),
             coords={
                 "x": ds.x.values,
@@ -214,6 +226,11 @@ def process_localisation_zhang2023(
 
     # Add theta to dataset
     ds_cpl_rtf["theta"] = (["x", "y"], theta)
+    # ds_cpl_rtf["theta"] = (
+    #     ["y", "x"],
+    #     theta,
+    # )  # Try to fix search grid area issue 11/02/2025
+
     # # Convert theta to a metric between -1 and 1
     # theta_inv = (
     #     theta_max - ds_cpl_rtf.theta
@@ -227,6 +244,10 @@ def process_localisation_zhang2023(
     d_rtf[d_rtf == 0] = MIN_VAL_LOG
     d_rtf = 10 * np.log10(d_rtf)  # Convert to dB
     ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf)
+    # ds_cpl_rtf["d_rtf"] = (
+    #     ["y", "x"],
+    #     d_rtf,
+    # )  # Try to fix search grid area issue 11/02/2025
 
     ## GCC ##
     d_gcc_fullarray = np.array(d_gcc_fullarray)
@@ -255,6 +276,12 @@ def process_localisation_zhang2023(
             theta_rtf=(["x", "y"], ds_cpl_rtf.theta.values),
             d_rtf=(["x", "y"], ds_cpl_rtf.d_rtf.values),
             d_gcc=(["x", "y"], d_gcc_fullarray),
+            # theta_rtf=(
+            #     ["y", "x"],
+            #     ds_cpl_rtf.theta.values,
+            # ),  # Try to fix search grid area issue 11/02/2025
+            # d_rtf=(["y", "x"], ds_cpl_rtf.d_rtf.values),
+            # d_gcc=(["y", "x"], d_gcc_fullarray),
         ),
         coords={
             "x": ds.x.values,
@@ -645,7 +672,7 @@ def study_msr_vs_snr():
 
 if __name__ == "__main__":
 
-    nf = 20
+    nf = 100
     dx, dy = 20, 20
     # # Load rtf data
     # fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
@@ -655,14 +682,15 @@ if __name__ == "__main__":
     # process_localisation_zhang2023(ds, folder, nf=nf)
     # plot_study_zhang2023(folder)
 
+    # Check noise component
     fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data\zhang_output_from_signal_dx20m_dy20m_snr0dB.nc"
     ds = xr.open_dataset(fpath)
 
     fs = 1 / ds.t.diff("t").values[0]
-    s = ds.s_e.sel(idx_rcv=0)
+    # s = ds.s_e.sel(idx_rcv=0)
     xs = 3900
     ys = 6800
-    # s = ds.s_l.sel(x=xs, y=ys, method="nearest").sel(idx_rcv=0)
+    s = ds.s_l.sel(x=xs, y=ys, method="nearest").sel(idx_rcv=0)
     ff, tt, stft = sp.stft(s.values, fs=fs, nperseg=2**8, noverlap=2**7)
     plt.figure()
     # ds.s_e.sel(idx_rcv=0).plot(x="t")
@@ -673,11 +701,11 @@ if __name__ == "__main__":
     plt.show()
     plt.savefig("test")
 
-    # fpath = os.path.join(ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
-    # fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr-40dB.nc")
+    # # fpath = os.path.join(ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
+    # fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr0dB.nc")
     # ds = xr.open_dataset(fpath)
 
-    # folder = f"from_signal_dx{dx}m_dy{dy}m"
+    # folder = os.path.join(f"from_signal_dx{dx}m_dy{dy}m", "snr_0dB")
     # process_localisation_zhang2023(ds, folder, nf=nf, freq_draw_method="equally_spaced")
     # plot_study_zhang2023(folder)
 
@@ -699,15 +727,15 @@ if __name__ == "__main__":
     # snrs = [10]
     # n_monte_carlo = 10
     # i_mc_offset = 0  # TO start numbering simulations results at 10
-    process_all_snr(
-        snrs,
-        n_monte_carlo,
-        dx=20,
-        dy=20,
-        nf=100,
-        freq_draw_method="equally_spaced",
-        i_mc_offset=i_mc_offset,
-    )
+    # process_all_snr(
+    #     snrs,
+    #     n_monte_carlo,
+    #     dx=20,
+    #     dy=20,
+    #     nf=100,
+    #     freq_draw_method="equally_spaced",
+    #     i_mc_offset=i_mc_offset,
+    # )
 
     # snrs = np.arange(-40, 15, 5)
     # # snrs = np.arange(-20, 15, 5)

@@ -91,10 +91,18 @@ def params():
     }
 
     # Detection area
-    l_detection_area = 1e3  # Length of the detection area
-    d_rcv1_bott_left_corner = (
-        8 * 1e3
-    )  # Range from rcv_1 to the left bottom corner of the detection area
+
+    # Test with non square area
+    l_detection_area_x = 1.2e3  # Length of the detection area along x axis
+    l_detection_area_y = 1.4e3  # Length of the detection area along y axis
+    d_rcv1_bott_left_corner = 7.5 * 1e3
+
+    # # Usual case
+    # l_detection_area = 1e3  # Length of the detection area
+    # l_detection_area_x = l_detection_area_y = l_detection_area
+    # d_rcv1_bott_left_corner = (
+    #     8 * 1e3
+    # )  # Range from rcv_1 to the left bottom corner of the detection area
 
     # Derive grid pixels range from the origin
     bearing_degree = 60  # Bearing from the receiver 1 to the left bottom corner of the detection area
@@ -112,20 +120,20 @@ def params():
     # y_bott_left_corner += y_offset
 
     # Manual def (ugly)
-    x_bott_left_corner = 3500
-    y_bott_left_corner = 6400
+    # x_bott_left_corner = 3500
+    # y_bott_left_corner = 6400
 
     # Grid
     dx = 20
     dy = 20
     x_detection_area = np.arange(
-        x_bott_left_corner, x_bott_left_corner + l_detection_area, dx
+        x_bott_left_corner, x_bott_left_corner + l_detection_area_x + dx, dx
     )
     y_detection_area = np.arange(
-        y_bott_left_corner, y_bott_left_corner + l_detection_area, dy
+        y_bott_left_corner, y_bott_left_corner + l_detection_area_y + dy, dy
     )
     x_grid, y_grid = np.meshgrid(x_detection_area, y_detection_area)
-    r_grid = np.zeros((len(x_rcv), len(x_grid), len(y_grid)))
+    r_grid = np.zeros((len(x_rcv),) + x_grid.shape)
     for i in range(len(x_rcv)):
         r_grid[i] = np.sqrt((x_grid - x_rcv[i]) ** 2 + (y_grid - y_rcv[i]) ** 2)
 
@@ -567,9 +575,10 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
     if plot:
         # Save figure
         fpath = os.path.join(root_img, "loc_zhang2023_fig5_nomainlobe.png")
-        plt.savefig(fpath, dpi=300, bbox_inches="tight")
-        plt.close("all")
+        plt.savefig(fpath, dpi=300)
         # plt.show()
+
+    plt.close("all")
 
     return msr, pos_hat
 

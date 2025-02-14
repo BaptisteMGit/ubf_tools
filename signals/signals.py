@@ -402,52 +402,159 @@ def F_fresnel(z):
     return F
 
 
+def psd_to_timeserie(psd, df):
+    """
+    Generate randome a time serie according to its PSD
+    """
+    v = psd * df / 4  # Variance for quadratures
+    N = len(psd)
+    vi = np.random.randn(N)  # Variance 1
+    vq = np.random.randn(N)
+    w = (vi + 1j * vq) * np.sqrt(v)
+
+    # Length of returned time sequence
+    N_return = 2 * (len(w) + 1)
+    # Sampling time of returned time sequence
+    Ts = 1 / (N_return * df)
+    # Compute time vector
+    x = np.fft.irfft(np.concatenate(([0], w, [0])), N_return)
+    # Add 0 amplitude at 0 frequency
+    # Add 0 amplitude at Exact Nyquist frequency
+
+    # Correct for inverse fft factor
+    x = x * N_return
+
+    # Time vector
+    t = np.linspace(0, Ts * (N_return - 1), N_return)
+
+    return t, x
+
+
+def colored_noise(T, fs, noise_color="white"):
+
+    nt = T * fs
+    f = np.fft.rfftfreq(nt, 1 / fs)[1:-1]
+    if noise_color == "white":
+        psd = np.ones(f.shape)
+    elif noise_color == "pink":
+        psd = 1 / f
+    elif noise_color == "brown":
+        psd = 1 / f**2
+    elif noise_color == "blue":
+        psd = f
+    elif noise_color == "purple":
+        psd = f**2
+    else:
+        raise ValueError("Unknown noise color")
+
+    df = 1 / T
+    t, x = psd_to_timeserie(psd, df)
+
+    return t, x
+
+
 if __name__ == "__main__":
 
     import scipy.signal as sp
     import matplotlib.pyplot as plt
 
-    ### LFM Chirp ###
-    f0 = 100
-    f1 = 500
-    fs = 2000
-    T = 500
-    phi = 0
+    ## Generate gaussian white noise
+    fs = 1200
+    T = 10
+    # nt = T * fs
+    # psd = np.ones((nt - 1) // 2)
+    # f = np.fft.rfftfreq(nt, 1 / fs)[1:-1]
 
-    # Signal
-    s, t = lfm_chirp(f0, f1, fs, T, phi)
-    s = sp.chirp(t, f0, T, f1, method="logarithmic")
+    # # f = np.fft.rfftfreq(nt, 1 / fs)[1:]
+    # # psd = 10 ** (-1 / (10 * f))
+    # # psd = 1 / f
+    # df = fs / nt
 
-    # Add zeros before and after pulse
-    nz = 0
-    s = np.pad(s, nz)
-    ns = len(s)
-    t = np.arange(0, ns * 1 / fs, 1 / fs)
+    # # Plot input psd
+    # plt.figure()
+    # plt.plot(f, 10 * np.log10(psd))
+    # plt.xscale("log")
+    # plt.xlabel("Frequency (Hz)")
+    # plt.ylabel("PSD")
+
+    # t, x = psd_to_timeserie(psd, df)
+    # print(len(t))
+    t, x = colored_noise(T, fs, noise_color="white")
 
     plt.figure()
-    plt.plot(t, s)
+    plt.plot(t, x)
     plt.xlabel("Time (s)")
     plt.ylabel("Amplitude")
     # plt.show()
 
-    # Spectrum
-    alpha = 2 * np.pi * f1 / T
-    f = np.fft.rfftfreq(ns, 1 / fs)
-    # print(f)
-    # f, S_f = lfm_chirp_analytic_spectrum(alpha, f)
-    f, S_f = pulse_lfm_chirp_analytic_spectrum(alpha, f, T)
-
-    # Compute the spectrum using the FFT
-    # s_win = s * sp.windows.hann(len(s))
-    S_f_fft = np.fft.rfft(s, n=ns)
+    # Derive and plot psd
+    f, psd = sp.welch(x, fs, nperseg=1024, noverlap=512)
 
     plt.figure()
-    plt.plot(f, np.abs(S_f_fft) / np.max(np.abs(S_f_fft)), label="FFT")
-    plt.plot(f, np.abs(S_f) / np.max(np.abs(S_f)), label="Analytic")
+    plt.plot(f, 10 * np.log10(psd))
+    plt.xscale("log")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("PSD")
+    # plt.show()
+
+    # Compute fft and plot
+    f = np.fft.rfftfreq(len(x), 1 / fs)
+    X = np.fft.rfft(x)
+    plt.figure()
+    plt.plot(f, np.abs(X))
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Amplitude")
-    plt.legend()
+    # plt.show()
+
+    # Compute inverse fft
+    x_recon = np.fft.irfft(X)
+    plt.figure()
+    plt.plot(t, x_recon)
+    plt.xlabel("Time (s)")
+    plt.ylabel("Amplitude")
     plt.show()
+
+    # ### LFM Chirp ###
+    # f0 = 100
+    # f1 = 500
+    # fs = 2000
+    # T = 500
+    # phi = 0
+
+    # # Signal
+    # s, t = lfm_chirp(f0, f1, fs, T, phi)
+    # s = sp.chirp(t, f0, T, f1, method="logarithmic")
+
+    # # Add zeros before and after pulse
+    # nz = 0
+    # s = np.pad(s, nz)
+    # ns = len(s)
+    # t = np.arange(0, ns * 1 / fs, 1 / fs)
+
+    # plt.figure()
+    # plt.plot(t, s)
+    # plt.xlabel("Time (s)")
+    # plt.ylabel("Amplitude")
+    # # plt.show()
+
+    # # Spectrum
+    # alpha = 2 * np.pi * f1 / T
+    # f = np.fft.rfftfreq(ns, 1 / fs)
+    # # print(f)
+    # # f, S_f = lfm_chirp_analytic_spectrum(alpha, f)
+    # f, S_f = pulse_lfm_chirp_analytic_spectrum(alpha, f, T)
+
+    # # Compute the spectrum using the FFT
+    # # s_win = s * sp.windows.hann(len(s))
+    # S_f_fft = np.fft.rfft(s, n=ns)
+
+    # plt.figure()
+    # plt.plot(f, np.abs(S_f_fft) / np.max(np.abs(S_f_fft)), label="FFT")
+    # plt.plot(f, np.abs(S_f) / np.max(np.abs(S_f)), label="Analytic")
+    # plt.xlabel("Frequency (Hz)")
+    # plt.ylabel("Amplitude")
+    # plt.legend()
+    # plt.show()
 
     # s, t = ricker_pulse(fc=200, T=0.05, fs=20 * 200, center=True)
     # plt.figure()

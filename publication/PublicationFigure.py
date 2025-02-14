@@ -78,6 +78,7 @@ class PubFigure:
             "axes.labelpad": self.labelpad,
             "text.usetex": self.use_tex,
             "font.family": "serif",
+            "backend": "Agg",  # Use Agg backend to avoid GUI (quicker and safer)
         }
         plt.rcParams.update(params)
 

@@ -6,7 +6,7 @@
 @Author  :   Menetrier Baptiste 
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   None
+@Desc    :   Run Kraken executables.
 """
 
 # ======================================================================================================================
@@ -364,12 +364,15 @@ def runkraken_broadband_range_dependent(
         # Run Fortran version of Kraken
         run_kraken_exec(env.filename, parallel, worker_pid)
         # Run Fortran version of Field
-        run_field_exec(env.filename, parallel, worker_pid)
+        try:
+            run_field_exec(env.filename, parallel, worker_pid)
 
         # Read pressure field for the current frequency
-        _, _, _, _, read_freq, _, field_pos, pressure = readshd(
-            filename=env.filename + ".shd", freq=frequencies[ifreq]
-        )
+            _, _, _, _, read_freq, _, field_pos, pressure = readshd(
+                filename=env.filename + ".shd", freq=frequencies[ifreq]
+            )
+        except:
+            print("error")
 
         # Initialize broadband pressure field array
         if ifreq == 0:

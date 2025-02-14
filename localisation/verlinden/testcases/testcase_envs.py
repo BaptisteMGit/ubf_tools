@@ -1,4 +1,6 @@
 import os
+import socket
+import numpy as np
 import scipy.io as sio
 import matplotlib.pyplot as plt
 
@@ -23,7 +25,11 @@ from localisation.verlinden.testcases.testcase_bathy import (
     mmdpm_profile,
     extract_2D_bathy_profile,
 )
-from localisation.verlinden.params import TC_WORKING_DIR, PROJECT_ROOT, BATHY_FILENAME
+from localisation.verlinden.misc.params import (
+    TC_WORKING_DIR,
+    PROJECT_ROOT,
+    BATHY_FILENAME,
+)
 
 ##########################################################################################
 # Useful constants
@@ -76,7 +82,9 @@ class TestCase:
     def __init__(
         self, name, testcase_varin={}, title="Default testcase", desc="", mode="prod"
     ):
-        self.name = name
+        self.name = f"{name}_{socket.gethostname()}"
+        # self.name = name
+
         self.testcase_varin = testcase_varin
         self.title = title
         self.desc = desc
@@ -97,6 +105,10 @@ class TestCase:
         self.plot_bottom = False
         self.plot_bathy = False
         self.plot_env = False
+        self.bottom_boundary_condition = None
+        self.nmedia = None
+        self.phase_speed_limits = None
+
         # Ssp
         self.z_ssp = None
         self.cp_ssp = None
@@ -115,6 +127,8 @@ class TestCase:
         self.flp_n_rcv_z = None
         self.flp_rcv_z_min = None
         self.flp_rcv_z_max = None
+        self.mode_theory = None
+        self.mode_addition = None
 
         # Environment directory
         self.env_dir = ""
@@ -125,21 +139,31 @@ class TestCase:
         # Flag for range-dependence and isotropic/anisotropic
         self.range_dependence = False
         self.isotropic = True
-
+        self.run_parallel = True
         self.called_by_subprocess = False
 
         # Default values
         self.default_varin = {
             "freq": [20],
+            "nmedia": 2,
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "azimuth": 0,
             "rcv_lon": -4.87,
             "rcv_lat": 52.22,
-            "dr_flp": 10,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
             "called_by_subprocess": False,
+            "mode_theory": "coupled",
+            "mode_addition": "coherent",
+            "src_depth": None,
+            "flp_n_rcv_z": None,
+            "flp_rcv_z_min": None,
+            "flp_rcv_z_max": None,
+            "phase_speed_limits": None,
+            "bottom_boundary_condition": "acousto_elastic",
+            "bott_hs_properties": None,
         }
 
         # Set env directory
@@ -151,7 +175,7 @@ class TestCase:
             "c_p": 1650,  # P-wave celerity (m/s)
             "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
             "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
-            "a_s": 2.5,  # Shear wave attenuation (dB/wavelength)
+            "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
             "z": None,
         }
 
@@ -191,6 +215,11 @@ class TestCase:
         for key_plot in ["bathy", "medium", "bottom", "env"]:
             setattr(self, f"plot_{key_plot}", plot_bool)
 
+        if self.isotropic and not self.range_dependence:
+            self.run_parallel = True
+        else:
+            self.run_parallel = False
+
     def plot_testcase_env(self):
         plot_env_properties(
             self.env,
@@ -209,9 +238,11 @@ class TestCase:
         self.set_top_hs()
         self.set_medium()
         self.set_att()
-        self.set_field()
         self.set_bott_hs()
+        self.set_field()
         self.set_env()
+        # Write env to set dependent to true
+        self.env.write_env()
         self.set_flp()
 
     def load_ssp(self):
@@ -225,8 +256,10 @@ class TestCase:
 
     def set_bott_hs(self):
         self.bott_hs = KrakenBottomHalfspace(
-            halfspace_properties=self.bott_hs_properties
+            boundary_condition=self.bottom_boundary_condition,
+            halfspace_properties=self.bott_hs_properties,
         )
+        self.bott_hs.derive_sedim_layer_max_depth(z_max=self.max_depth)
 
     def set_att(self):
         self.att = KrakenAttenuation(
@@ -234,11 +267,25 @@ class TestCase:
         )
 
     def set_field(self):
-        n_rcv_z = default_nb_rcv_z(max(self.freq), self.max_depth, n_per_l=15)
+        z_max = np.ceil(self.bott_hs.sedim_layer_max_depth + 5)
+        n_rcv_z = default_nb_rcv_z(max(self.freq), z_max, n_per_l=12)
+
+        if self.phase_speed_limits is None:
+            c_offset = 200
+            c_low = min(
+                np.min(self.cp_ssp), np.min(self.bott_hs_properties["c_p"])
+            )  # Minimum p-wave speed in the problem as recommanded by Kraken manual to exclude interfacial waves
+            c_low = np.max(c_low - c_offset, 0)
+            c_high = (
+                np.max(self.bott_hs_properties["c_p"]) + c_offset
+            )  # Maximum p-wave speed in the bottom to limit the number of modes computed
+            self.phase_speed_limits = [c_low, c_high]
+
         self.field = KrakenField(
             n_rcv_z=n_rcv_z,
             src_depth=self.src_depth,
-            rcv_z_max=self.max_depth,
+            rcv_z_max=z_max,
+            phase_speed_limits=self.phase_speed_limits,
         )
 
     def set_medium(self):
@@ -254,6 +301,7 @@ class TestCase:
             max_range=self.max_range_m * 1e-3,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
     def get_bathy_path(self):
@@ -288,18 +336,25 @@ class TestCase:
             kraken_bottom_hs=self.bott_hs,
             kraken_field=self.field,
             kraken_bathy=self.bathy,
+            nmedia=self.nmedia,
         )
 
     def set_flp(self):
         self.flp_n_rcv_r = self.max_range_m / self.dr_flp + 1
 
-        # Source = ship radiating sound at 5m depth
+        # # Source = ship radiating sound at 5m depth
         if self.flp_n_rcv_z is None:
             self.flp_n_rcv_z = 1
         if self.flp_rcv_z_min is None:
             self.flp_rcv_z_min = 5
         if self.flp_rcv_z_max is None:
             self.flp_rcv_z_max = 5
+
+        # self.flp_n_rcv_z = default_nb_rcv_z(
+        #     max(self.freq), self.bott_hs.sedim_layer_max_depth, n_per_l=12
+        # )
+        # self.flp_rcv_z_min = 0
+        # self.flp_rcv_z_max = self.bott_hs.sedim_layer_max_depth
 
         self.flp = KrakenFlp(
             env=self.env,
@@ -310,7 +365,8 @@ class TestCase:
             rcv_r_max=self.max_range_m * 1e-3,
             n_rcv_r=self.flp_n_rcv_r,
             nb_modes=self.nb_modes,
-            mode_addition="coherent",
+            mode_addition=self.mode_addition,
+            mode_theory=self.mode_theory,
         )
 
     def write_kraken_files(self):
@@ -344,13 +400,17 @@ class TestCase1_0(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
+
         # Flat bottom
         self.range_dependence = False
 
@@ -369,14 +429,18 @@ class TestCase1_1(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
+
         # Flat bottom
         self.range_dependence = True
 
@@ -394,6 +458,7 @@ class TestCase1_1(TestCase1):
             range_periodicity=6,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
 
@@ -408,14 +473,18 @@ class TestCase1_2(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
+
         # Flat bottom
         self.range_dependence = True
 
@@ -432,6 +501,7 @@ class TestCase1_2(TestCase1):
             seamount_width=6,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
 
@@ -446,14 +516,17 @@ class TestCase1_3(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = True
 
@@ -469,6 +542,7 @@ class TestCase1_3(TestCase1):
             max_range_km=self.max_range_m * 1e-3,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
 
@@ -483,13 +557,16 @@ class TestCase1_4(TestCase1):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = True
 
@@ -505,6 +582,7 @@ class TestCase1_4(TestCase1):
             max_range_km=self.max_range_m * 1e-3,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy"),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
     def load_ssp(self):
@@ -544,14 +622,17 @@ class TestCase2_0(TestCase2):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = False
 
@@ -570,15 +651,18 @@ class TestCase2_1(TestCase2):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [25],
             "max_range_m": 50 * 1e3,
             "min_depth": 100,
             "azimuth": 0,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = True
 
@@ -596,6 +680,7 @@ class TestCase2_1(TestCase2):
             dr=self.dr_bathy,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
 
@@ -610,16 +695,19 @@ class TestCase2_2(TestCase2):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
             "azimuth": 0,
             "rcv_lon": -4.87,
             "rcv_lat": 52.22,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 500,
             "nb_modes": 100,
+            "mode_theory": "coupled",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
         # Flat bottom
         self.range_dependence = True
 
@@ -627,10 +715,10 @@ class TestCase2_2(TestCase2):
         self.process()
 
     def write_bathy(self):
-        fname = "GEBCO_2021_lon_-5.87_-2.87_lat_51.02_54.02.nc"
         bathy_nc_path = os.path.join(
-            PROJECT_ROOT, "data", "bathy", "shallow_water", fname
+            PROJECT_ROOT, "data", "bathy", "mmdpm", "PVA_RR48", BATHY_FILENAME
         )
+
         # Load real profile around OBS RR48
         extract_2D_bathy_profile(
             bathy_nc_path=bathy_nc_path,
@@ -642,6 +730,7 @@ class TestCase2_2(TestCase2):
             range_resolution=self.dr_bathy,
             plot=self.plot_bathy,
             bathy_path=get_img_path(self.name, type="bathy", azimuth=self.azimuth),
+            called_by_subprocess=self.called_by_subprocess,
         )
 
     def load_ssp(self):
@@ -687,17 +776,21 @@ class TestCase3_1(TestCase3):
         )
 
         # Update default values with values testcase specific values
-        self.default_varin = {
+        tc_default_varin = {
             "freq": [20],
             "max_range_m": 50 * 1e3,
             "azimuth": 0,
             "rcv_lon": 65.94,
             "rcv_lat": -27.58,
-            "dr_flp": 5,
+            "dr_flp": 50,
             "dr_bathy": 1000,
             "nb_modes": 100,
             "called_by_subprocess": False,
+            "mode_theory": "coupled",
+            # "mode_theory": "adiabatic",
         }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
 
         # Flat bottom
         self.range_dependence = True
@@ -737,114 +830,24 @@ class TestCase3_1(TestCase3):
 if __name__ == "__main__":
 
     # Test class
-    tc1_0 = TestCase1_0(mode="show")
+    # tc1_0 = TestCase1_0(mode="show")
     # tc1_1 = TestCase1_1(mode="show")
     # tc1_2 = TestCase1_2(mode="show")
     # tc1_3 = TestCase1_3(mode="show")
-    # tc1_4 = TestCase1_4(mode="show")
+    tc1_4 = TestCase1_4(mode="show")
     # tc2_0 = TestCase2_0(mode="show")
 
-    tc_varin = {
-        "freq": [20, 30, 40],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-    }
-    tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
-
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        tc2_1.update(tc_varin)
-
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-    }
-    tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
-
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        tc2_2.update(tc_varin)
-
-    tc_varin = {
-        "freq": [20],
-        "max_range_m": 15 * 1e3,
-        "azimuth": 0,
-        "rcv_lon": 65.943,
-        "rcv_lat": -27.5792,
-    }
-    tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
-
-    for az in range(0, 360, 30):
-        tc_varin["azimuth"] = az
-        tc3_1.update(tc_varin)
-
-    # # Test case 1.0
-    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    # env, flp = testcase1_0(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 1.1
-    # tc_varin = {"freq": [20], "min_depth": 150}
-    # env, flp = testcase1_1(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 1.2
-    # tc_varin = {"freq": [20], "min_depth": 100}
-    # env, flp = testcase1_2(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 1.3
-    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    # env, flp = testcase1_3(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 1.4
-    # tc_varin = {"freq": [20], "max_range_m": 50 * 1e3}
-    # env, flp = testcase1_4(
-    #     tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    # )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 2.0
-    # tc_varin = {
-    #     "freq": [20],
-    #     "max_range_m": 15 * 1e3,
-    # }
-    # for az in range(0, 360, 30):
-    #     tc_varin["azimuth"] = az
-    #     env, flp = testcase2_0(
-    #         tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    #     )
-    # env.write_env()
-    # flp.write_flp()
-
-    # # Test case 2.1
     # tc_varin = {
     #     "freq": [20],
     #     "max_range_m": 15 * 1e3,
     #     "azimuth": 0,
+    #     "rcv_lon": 65.943,
+    #     "rcv_lat": -27.5792,
+    #     "mode_theory": "coupled",
     # }
-    # for az in range(0, 360, 30):
-    #     tc_varin["azimuth"] = az
-    #     env, flp = testcase2_1(
-    #         tc_varin, plot_bathy=True, plot_medium=True, plot_bottom=True, plot_env=True
-    #     )
-    # env.write_env()
-    # flp.write_flp()
+    # tc2_1 = TestCase2_1(mode="show", testcase_varin=tc_varin)
+    # tc2_2 = TestCase2_2(mode="show", testcase_varin=tc_varin)
+    # tc3_1 = TestCase3_1(mode="show", testcase_varin=tc_varin)
 
     # # Test case 2.2
     # tc_varin = {

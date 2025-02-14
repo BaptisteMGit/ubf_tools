@@ -4,7 +4,7 @@ import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
 
-from signals import ricker_pulse
+from signals.signals import ricker_pulse
 from propa.kraken_toolbox.kraken_env import (
     KrakenTopHalfspace,
     KrakenMedium,
@@ -16,7 +16,7 @@ from propa.kraken_toolbox.kraken_env import (
     Bathymetry,
 )
 from propa.kraken_toolbox.utils import default_nb_rcv_z
-from localisation.verlinden.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 
 from cst import SAND_PROPERTIES, TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 from propa.kraken_toolbox.run_kraken import runkraken

@@ -16,22 +16,26 @@ import os
 import numpy as np
 import xarray as xr
 import pandas as pd
+import dask.array as da
 
 from cst import C0
 from misc import mult_along_axis
+from dask.distributed import Client
 from localisation.verlinden.plateform.utils import (
     init_event_dataset,
     init_ambiguity_surface,
-    init_corr_library,
-    init_corr_event,
+    init_feature_library,
+    init_feature_event,
     add_noise_to_library,
-    add_correlation_library,
+    add_feature_library,
     add_noise_to_event,
-    add_correlation_event,
+    add_feature_event,
     build_process_output_path,
     add_ambiguity_surf,
+    get_region_number,
+    get_lonlat_sub_regions,
 )
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     init_event_src_traj,
     init_grid_around_event_src_traj,
     load_rhumrum_obs_pos,
@@ -46,7 +50,10 @@ from localisation.verlinden.plateform.analysis_loc import analysis
 # ======================================================================================================================
 
 
-def add_event(ds, src_info, apply_delay):
+def add_event(ds, src_info, rcv_info, apply_delay, feature, verbose=True):
+
+    if verbose:
+        print(f"Add event received signal to dataset: \n\t{src_info}")
 
     pos_src_info = src_info["pos"]
     src = src_info["sig"]["src"]
@@ -57,9 +64,10 @@ def add_event(ds, src_info, apply_delay):
     k0 = 2 * np.pi * propagating_freq / C0
     norm_factor = np.exp(1j * k0) / (4 * np.pi)
 
-    nfft_inv = (
-        4 * src.nfft
-    )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    # nfft_inv = (
+    #     4 * src.nfft
+    # )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
+    nfft_inv = src.nfft
     T_tot = 1 / src.df
     dt = T_tot / nfft_inv
     time_vector = np.arange(0, T_tot, dt, dtype=np.float32)
@@ -68,8 +76,10 @@ def add_event(ds, src_info, apply_delay):
 
     ds["event_signal_time"] = time_vector
     signal_event_dim = ["idx_rcv", "src_trajectory_time", "event_signal_time"]
-    rcv_signal_event = np.empty(
-        tuple(ds.sizes[d] for d in signal_event_dim), dtype=np.float32
+
+    chunks = (1, 1, len(time_vector))
+    rcv_signal_event = da.empty(
+        tuple(ds.sizes[d] for d in signal_event_dim), chunks=chunks, dtype=np.float32
     )
     ds["rcv_signal_event"] = (signal_event_dim, rcv_signal_event)
 
@@ -80,32 +90,47 @@ def add_event(ds, src_info, apply_delay):
             lat=pos_src_info["lats"][i_pos],
             method="nearest",
         )
-        transmited_sig_f = mult_along_axis(
+        transmitted_sig_f = mult_along_axis(
             tf, propagating_spectrum * norm_factor, axis=-1
         )
         if apply_delay:
             # Delay to apply to the signal to take into account the propagation time
-            tau = ds.delay_src_rcv.min(dim="idx_rcv").isel(src_trajectory_time=i_pos)
+            tau = (
+                ds.delay_src_rcv.min(dim="idx_rcv")
+                .isel(src_trajectory_time=i_pos)
+                .values
+            )
+            # tau = ds.delay_rcv.isel(idx_rcv=0).sel(lat=pos_src_info["lats"][i_pos], lon=pos_src_info["lons"][i_pos], method="nearest").values
 
             # Derive delay factor
-            tau_vec = tau.values * propagating_freq
+            tau_vec = tau * propagating_freq
             delay_f = np.exp(1j * 2 * np.pi * tau_vec)
             # Apply delay
-            transmited_sig_f *= delay_f
+            transmitted_sig_f *= delay_f
 
-        transmited_sig_t = np.fft.irfft(transmited_sig_f, n=nfft_inv, axis=-1)
-        ds.rcv_signal_event[dict(src_trajectory_time=i_pos)] = transmited_sig_t
+        transmitted_sig_t = np.fft.irfft(transmitted_sig_f, n=nfft_inv, axis=-1)
+        ds.rcv_signal_event[dict(src_trajectory_time=i_pos)] = transmitted_sig_t
 
-    # Init corr for event signal
-    ds = init_corr_event(ds)
+    # Init feature for event signal
+    ds = init_feature_event(ds, feature)
+
+    # Expand rcv_signal_library to snr dims
+    ds["rcv_signal_event"] = ds["rcv_signal_event"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
+
+    ds["event_feature"] = ds["event_feature"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
 
     return ds
 
 
-def load_subset(fpath, pos_src_info, grid_info, dt):
+def load_subset(fpath, pos_src_info, grid_info, dt, rcv_id, verbose=True):
     """
     Load a subset of the dataset around the source to be localized.
     """
+
     # Load the dataset
     ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
@@ -113,11 +138,35 @@ def load_subset(fpath, pos_src_info, grid_info, dt):
     init_event_src_traj(pos_src_info, dt)
     init_grid_around_event_src_traj(pos_src_info, grid_info)
 
+    if verbose:
+        print(
+            f"Load dataset subset: \n\tlon ({grid_info['min_lon']}, {grid_info['max_lon']}) \n\tlat ({grid_info['min_lat']}, {grid_info['max_lat']})"
+        )
+
     # Extract area around the source
     ds_subset = ds.sel(
         lon=slice(grid_info["min_lon"], grid_info["max_lon"]),
         lat=slice(grid_info["min_lat"], grid_info["max_lat"]),
     )
+
+    # Keep desired receivers
+    desired_idx = [
+        idx
+        for idx in ds_subset.idx_rcv.values
+        if ds_subset.rcv_id.isel(idx_rcv=idx) in rcv_id
+    ]
+    ds_subset = ds_subset.sel(idx_rcv=desired_idx)
+
+    # Get rid of useless pairs
+    idx_rcv_pairs_to_keep = []
+    for id_p in ds_subset.idx_rcv_pairs:
+        p = ds_subset.rcv_pairs.isel(idx_rcv_pairs=id_p)
+        id_in_p_0 = p.isel(idx_rcv_in_pair=0).values
+        id_in_p_1 = p.isel(idx_rcv_in_pair=1).values
+        if id_in_p_0 in ds_subset.idx_rcv and id_in_p_1 in ds_subset.idx_rcv:
+            idx_rcv_pairs_to_keep.append(id_p.values)
+
+    ds_subset = ds_subset.isel(idx_rcv_pairs=idx_rcv_pairs_to_keep)
 
     return ds_subset
 
@@ -126,15 +175,25 @@ def init_dataset(
     main_ds_path,
     src_info,
     grid_info,
+    rcv_info,
     dt,
     similarity_metrics,
     snrs_dB,
     n_noise_realisations=100,
+    feature="corr",
+    verbose=True,
 ):
     # Load subset of the main dataset
     ds = load_subset(
-        main_ds_path, pos_src_info=src_info["pos"], grid_info=grid_info, dt=dt
+        main_ds_path,
+        pos_src_info=src_info["pos"],
+        grid_info=grid_info,
+        dt=dt,
+        rcv_id=rcv_info["id"],
     )
+
+    if verbose:
+        print(f"Initialise dataset")
 
     # Initialisation time
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
@@ -157,11 +216,56 @@ def init_dataset(
     # Output path
     build_process_output_path(ds, src_info, grid_info)
 
+    # Expand rcv_signal_library to snr dims
+    ds["rcv_signal_library"] = ds["rcv_signal_library"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
+
+    # Chunk rcv_signal_library according to lon/lat regions
+    max_size = 0.4 * 1e9
+    var = ds.rcv_signal_library
+    nregion_lon = get_region_number(
+        nregion_max=ds.sizes["lon"],
+        var=var,
+        max_size_bytes=max_size,
+    )
+    nregion_lat = get_region_number(
+        nregion_max=ds.sizes["lat"],
+        var=var,
+        max_size_bytes=max_size,
+    )
+    # Save nregions
+    ds.attrs["nregion_lon"] = nregion_lon
+    ds.attrs["nregion_lat"] = nregion_lat
+
+    chunksize = dict(ds.rcv_signal_library.chunksizes)
+    lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
+    lon_chunksize = int(ds.sizes["lon"] // nregion_lon)
+    chunksize = {
+        "snr": ds.sizes["snr"],
+        "idx_rcv": ds.sizes["idx_rcv"],
+        "lat": lat_chunksize,
+        "lon": lon_chunksize,
+        "library_signal_time": ds.sizes["library_signal_time"],
+    }
+    ds["rcv_signal_library"] = ds.rcv_signal_library.chunk(chunksize)
+    ds.rcv_signal_library.encoding["chunks"] = tuple(chunksize.values())
+    ds.rcv_signal_library.encoding["preferred_chunks"] = tuple(chunksize.values())
+
+    # Rechunk to ensure dask chunks are aligned with the encoding chunks
+    for v in list(ds):
+        if ds[v].chunks is not None:  # if var is a dask array
+            ds[v] = ds[v].chunk(ds[v].encoding["preferred_chunks"])
+
     # Save previously computed data
     ds.to_zarr(ds.output_path, mode="w", compute=True)
 
     # Init corr for library signal
-    ds = init_corr_library(ds)
+    ds = init_feature_library(ds, feature=feature)
+    # Expand library_feature to snr dims
+    ds["library_feature"] = ds["library_feature"].expand_dims(
+        {"snr": ds.sizes["snr"]}, axis=0
+    )
 
     return ds
 
@@ -169,26 +273,43 @@ def init_dataset(
 def process(
     main_ds_path,
     src_info,
+    rcv_info,
     grid_info,
     dt,
     similarity_metrics,
     snrs_dB,
     n_noise_realisations=100,
+    verbose=False,
 ):
 
     # Load subset and init usefull vars
+    feature = "corr"
     ds = init_dataset(
         main_ds_path=main_ds_path,
         src_info=src_info,
         grid_info=grid_info,
+        rcv_info=rcv_info,
         dt=dt,
         similarity_metrics=similarity_metrics,
         snrs_dB=snrs_dB,
         n_noise_realisations=n_noise_realisations,
+        feature=feature,
+        verbose=True,
     )
 
+    # # Quick fix for received signal at rcv position : for r = 0 -> sig = 0
+    # rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    # rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
+
+    # for i in range(len(rcv_grid_lon)):
+    #     ds["rcv_signal_library"].loc[dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])] = (
+    #         np.nan
+    #     )
+
     # Add event to the dataset
-    ds = add_event(ds, src_info, apply_delay=True)
+    ds = add_event(
+        ds, src_info, rcv_info, apply_delay=True, feature=feature, verbose=verbose
+    )
 
     # Init ambiguity surface
     ds = init_ambiguity_surface(ds)
@@ -197,48 +318,74 @@ def process(
     # Save to zarr without computing
     ds_no_noise.to_zarr(ds_no_noise.output_path, mode="a", compute=False)
 
+    no_noise_lib = ds_no_noise.rcv_signal_library.isel(snr=0).data
+    no_noise_event = ds_no_noise.rcv_signal_event.isel(snr=0).data
+
     # Loop over the snr values
     for idx_snr, snr_dB_i in enumerate(snrs_dB):
-        # snr_tag = get_snr_tag(snr_dB_i)
 
         # Add noise to library signal
-        ds = ds_no_noise.copy(
-            deep=True
-        )  # Copy to avoid overwriting the original dataset
-        ds = add_noise_to_library(ds, snr_dB=snr_dB_i)
-        # Derive correlation vector for the entire grid
-        ds = add_correlation_library(ds)
+        ds = ds_no_noise.isel(snr=idx_snr)
+
+        # ds["rcv_signal_library"].values = np.copy(
+        #     no_noise_lib
+        # )  # Reset to the original signal
+
+        ds["rcv_signal_library"].values = (
+            no_noise_lib.copy()
+        )  # Reset to the original signal
+        ds = add_noise_to_library(ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose)
+        # Derive feature vector for the entire grid
+        ds = add_feature_library(ds, idx_snr=idx_snr, feature=feature, verbose=verbose)
 
         # Loop over different realisation of noise for a given SNR
         for i in range(n_noise_realisations):
             print(f"## Monte Carlo iteration {i+1}/{n_noise_realisations} ##")
 
-            # Add event to dataset
-            ds = add_noise_to_event(ds, snr_dB=snr_dB_i)
-            # Derive cross-correlation vector for each source position
-            ds = add_correlation_event(ds)
-            # ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
+            # Reset to the original signal
+            ds["rcv_signal_event"].values = no_noise_event.copy()
+            # ds["rcv_signal_event"].values = np.copy(no_noise_event)
+            ds = add_noise_to_event(
+                ds, idx_snr=idx_snr, snr_dB=snr_dB_i, verbose=verbose
+            )
+            # Derive feature vector for each source position
+            ds = add_feature_event(
+                ds, idx_snr=idx_snr, feature=feature, verbose=verbose
+            )
 
             for i_sim_metric in range(len(similarity_metrics)):
-                # Compute.a ambiguity surface
+                # Compute ambiguity surface
                 ds = add_ambiguity_surf(
                     ds,
                     idx_snr=idx_snr,
                     idx_similarity_metric=i_sim_metric,
                     i_noise=i,
+                    verbose=verbose,
                 )
+
+    # Reload full dataset
+    ds = xr.open_dataset(ds.output_path, engine="zarr", chunks={})
+
     return ds
 
 
 if __name__ == "__main__":
 
-    from signals import pulse, generate_ship_signal
-    from localisation.verlinden.AcousticComponent import AcousticSource
+    from signals.signals import pulse, generate_ship_signal
+    from signals.AcousticComponent import AcousticSource
+    from localisation.verlinden.misc.params import ROOT_DATASET
 
-    fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa_grid_src\propa_grid_src_65.5973_65.8993_-27.6673_-27.3979_100_100_ship.zarr"
+    testcase = "testcase3_1"
+    root_dir = os.path.join(
+        ROOT_DATASET,
+        testcase,
+    )
+    root_propa = os.path.join(root_dir, "propa")
+    root_propa_grid = os.path.join(root_dir, "propa_grid")
+    root_propa_grid_src = os.path.join(root_dir, "propa_grid_src")
 
-    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1\propa\propa_65.5973_65.8993_-27.6673_-27.3979.zarr"
-    ds = xr.open_dataset(fpath, engine="zarr", chunks={})
+    fname = "propa_grid_src_65.5523_65.9926_-27.7023_-27.4882_100_100_ship.zarr"
+    fpath = os.path.join(root_propa_grid_src, fname)
 
     dt = 7
     v_knots = 20  # 20 knots
@@ -249,13 +396,13 @@ if __name__ == "__main__":
 
     fs = 100
     duration = 200  # 1000 s
-    nmax_ship = 5
+    nmax_ship = 1
     src_stype = "ship"
 
     rcv_info = {
-        # "id": ["RR45", "RR48", "RR44"],
+        "id": ["RR45", "RR48", "RR44"],
         # "id": ["RRpftim0", "RRpftim1", "RRpftim2"],
-        "id": ["RRdebug0", "RRdebug1"],
+        # "id": ["RRdebug0", "RRdebug1"],
         "lons": [],
         "lats": [],
     }
@@ -281,7 +428,7 @@ if __name__ == "__main__":
         "initial_pos": initial_ship_pos,
     }
     # Event
-    f0_event = 1.5  # Fundamental frequency of the ship signal
+    f0_event = 5  # Fundamental frequency of the ship signal
     event_sig_info = {
         "sig_type": "ship",
         "f0": f0_event,
@@ -299,7 +446,7 @@ if __name__ == "__main__":
     )
 
     src_sig *= np.hanning(len(src_sig))
-    nfft = 2**3
+    nfft = None
     min_waveguide_depth = 5000
     src = AcousticSource(
         signal=src_sig,
@@ -317,7 +464,7 @@ if __name__ == "__main__":
     lon, lat = rcv_info["lons"][0], rcv_info["lats"][0]
     dlon, dlat = get_bathy_grid_size(lon, lat)
 
-    grid_offset_cells = 35
+    grid_offset_cells = 40
 
     grid_info = dict(
         offset_cells_lon=grid_offset_cells,
@@ -328,14 +475,19 @@ if __name__ == "__main__":
         dlon_bathy=dlon,
     )
 
+    n_noise_realisations = 1
+    # snr = np.arange(-10, 5, 1)
+    # n_noise_realisations = 1
+    snr = [200]
     ds = process(
         main_ds_path=fpath,
         src_info=src_info,
+        rcv_info=rcv_info,
         grid_info=grid_info,
         dt=dt,
         similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
-        snrs_dB=[0, 5],
-        n_noise_realisations=3,
+        snrs_dB=snr,
+        n_noise_realisations=n_noise_realisations,
     )
 
     snrs = ds.snr.values

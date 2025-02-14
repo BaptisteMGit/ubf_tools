@@ -17,7 +17,7 @@ import numpy as np
 from pyproj import Geod
 from localisation.verlinden.verlinden_process import verlinden_main
 from localisation.verlinden.verlinden_analysis import analysis_main, compare_perf_src
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     load_rhumrum_obs_pos,
     get_bathy_grid_size,
 )

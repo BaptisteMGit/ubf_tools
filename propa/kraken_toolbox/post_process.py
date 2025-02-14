@@ -1,15 +1,23 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+'''
+@File    :   post_process.py
+@Time    :   2024/07/08 09:07:49
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Post processor for KRAKEN runs using shd files to produce time series.
+'''
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
 import numpy as np
-import time
 
 from cst import C0, RHO_W
 from misc import mult_along_axis
-from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
-from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.read_shd import readshd
-from scipy.interpolate import interp1d
-
-""" Post processor for KRAKEN runs using shd files. """
-
+from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
 
 def postprocess_ir(shd_fpath, source, rcv_range, rcv_depth):
     """Read kraken results to get the transfert function."""
@@ -22,7 +30,7 @@ def postprocess_ir(shd_fpath, source, rcv_range, rcv_depth):
     pressure_field = np.squeeze(pressure, axis=(1, 2))  # 3D array (nfreq, nz, nr)
 
     # No need to process the entire grid :  extract pressure field at desired positions
-    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath, rcv_depth, rcv_range)
+    rr, zz, field_pos = get_rcv_pos_idx(shd_fpath=shd_fpath, rcv_depth=rcv_depth, rcv_range=rcv_range)
     pressure_field = pressure_field[:, zz, rr]
 
     # Get rid of frequencies below the cutoff frequency
@@ -101,8 +109,6 @@ def postprocess_received_signal(
 
 
 """ Post processor for KRAKEN runs pre-loaded broadband pressure field array. Needed for broadband range dependent simulations."""
-
-
 def postprocess_ir_from_broadband_pressure_field(
     broadband_pressure_field,
     frequencies,

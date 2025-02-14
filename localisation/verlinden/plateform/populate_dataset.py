@@ -27,13 +27,14 @@ from localisation.verlinden.plateform.init_dataset import (
     get_range_from_rcv,
 )
 
-from localisation.verlinden.verlinden_utils import get_azimuth_rcv
+from localisation.verlinden.misc.verlinden_utils import get_azimuth_rcv
 from cst import C0
 from localisation.verlinden.plateform.params import N_WORKERS
 
 
 def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
+    print("Grid transfer functions.....")
     # Check if we need to update the grid
     update_grid = not ((ds.dx == dx) & (ds.dy == dy))
     if update_grid:
@@ -103,7 +104,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     # Save existing vars (no need to save tf)
     ds.drop_vars("tf").to_zarr(ds.fullpath_dataset_propa_grid, mode="w")
-
+    # ds = ds.drop_vars("tf")
     tf_gridded_dim = ["idx_rcv", "lat", "lon", "kraken_freq"]
     tf_gridded_shape = [ds.sizes[dim] for dim in tf_gridded_dim]
     # chunk_lon = max(1, ds.sizes["lon"] // 10)
@@ -117,14 +118,28 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     ds["tf_gridded"].attrs["units"] = ""
     ds["tf_gridded"].attrs["long_name"] = "Transfer function gridded"
 
-    nregion = get_region_number(ds.sizes["lon"], ds.tf_gridded)
-    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
+    nregion_lon = get_region_number(
+        ds.sizes["lon"], ds.tf_gridded, max_size_bytes=1 * 1e9
+    )
+    nregion_lat = get_region_number(
+        ds.sizes["lat"], ds.tf_gridded, max_size_bytes=1 * 1e9
+    )
+
+    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
+
+    lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
+    lon_chunksize = int(ds.sizes["lon"] // nregion_lon)
+    idx_rcv_chunksize, freq_chunksize = ds.sizes["idx_rcv"], ds.sizes["kraken_freq"]
+
+    chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, freq_chunksize)
+    # chunksize = tuple([ds.sizes[v] for v in  tf_gridded_dim])
+    ds["tf_gridded"] = ds.tf_gridded.chunk(chunksize)
 
     # Save to zarr without computing
     ds.to_zarr(ds.fullpath_dataset_propa_grid, mode="a", compute=False)
 
-    for lon_s in lon_slices:
-        for lat_s in lat_slices:
+    for lat_s in lat_slices:
+        for lon_s in lon_slices:
             ds_sub = ds.isel(lat=lat_s, lon=lon_s)
 
             tf_sub = np.empty_like(ds_sub.tf_gridded, dtype=np.complex64)
@@ -140,18 +155,23 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
                     tf_az = tf.sel(all_az=az).sel(kraken_range=r_az, method="nearest")
                     tf_sub[i_rcv, az_mask_2d, :] = tf_az.values.T
 
-            ds_sub.tf_gridded[dict(lat=lat_s, lon=lon_s)] = tf_sub
-            sub_region_to_save = ds_sub.tf_gridded[dict(lat=lat_s, lon=lon_s)]
+            # ds_sub.tf_gridded[dict(lat=lat_s, lon=lon_s)] = tf_sub
+            # print(tf_sub)
+            ds.tf_gridded[dict(lat=lat_s, lon=lon_s)] = tf_sub
+            sub_region_to_save = ds.tf_gridded[dict(lat=lat_s, lon=lon_s)]
+            # print(sub_region_to_save)
             sub_region_to_save.to_zarr(
                 ds.fullpath_dataset_propa_grid,
                 mode="r+",
                 region={
-                    "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
+                    "idx_rcv": slice(None),
                     "lat": lat_s,
                     "lon": lon_s,
-                    "kraken_freq": slice(0, ds.sizes["kraken_freq"]),
+                    "kraken_freq": slice(None),
                 },
             )
+
+            # print(f"region processes in {time() - t0}s")
 
     # Open the Zarr store and update attrs
     zarr_store = zarr.open(ds.fullpath_dataset_propa)
@@ -160,9 +180,7 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
 
     ds = ds.drop_vars("tf")
 
-    # Update info in dataset
-    # update_info_status(ds, part_done="propa_grid")
-
+    print("..................Done")
     return ds
 
 
@@ -170,53 +188,86 @@ def grid_synthesis(
     ds,
     src,
     apply_delay=True,
+    random_source=False,
 ):
-    with Client(n_workers=N_WORKERS, threads_per_worker=1) as client:
-        print(client.dashboard_link)
 
-        # Set path to save the dataset and save existing vars
-        ds.attrs["src_label"] = build_src_label(src_name=src.name)
-        set_propa_grid_src_path(ds)
-        ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
+    print("Grid synthesis.....")
 
-        propagating_freq = src.positive_freq
-        propagating_spectrum = src.positive_spectrum
+    # Set path to save the dataset and save existing vars
+    ds.attrs["src_label"] = build_src_label(src_name=src.name)
+    set_propa_grid_src_path(ds)
+    ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="w")
 
-        k0 = 2 * np.pi * propagating_freq / C0
-        norm_factor = np.exp(1j * k0) / (4 * np.pi)
+    propagating_freq = src.positive_freq
+    propagating_spectrum = src.positive_spectrum
 
-        nfft_inv = (
-            4 * src.nfft
-        )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
-        T_tot = 1 / src.df
-        dt = T_tot / nfft_inv
-        time_vector = np.arange(0, T_tot, dt)
+    nfft_inv = src.nfft
+    T_tot = 1 / src.df
 
-        # Loop over sub_regions of the grid
-        nregion = get_region_number(
-            ds.sizes["lon"], ds.tf_gridded, max_size_bytes=0.5 * 1e9
-        )
-        lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion)
+    k0 = 2 * np.pi * propagating_freq / C0
+    norm_factor = np.exp(1j * k0) / (4 * np.pi)
 
-        ds.coords["library_signal_time"] = time_vector
-        ts_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
-        ts_shape = [ds.sizes[dim] for dim in ts_dim]
-        # transmited_field_t = np.empty(ts_shape, dtype=np.float32)
-        transmited_field_t = da.empty(ts_shape, dtype=np.float32)
+    # nfft_inv = (
+    #     4 * src.nfft
+    # )  # according to Jensen et al. (2000) p.616 : dt < 1 / (8 * fmax) for visual inspection of the propagated pulse
 
-        ds["rcv_signal_library"] = (
-            ts_dim,
-            transmited_field_t,
-        )
-        ds.rcv_signal_library.attrs["long_name"] = r"$s_{i}$"
-        # Save to zarr without computing
-        ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="a", compute=False)
+    dt = T_tot / nfft_inv
+    time_vector = np.arange(0, T_tot, dt)
 
-        for lon_s in lon_slices:
-            for lat_s in lat_slices:
-                ds_sub = ds.isel(lat=lat_s, lon=lon_s)
+    ds.coords["library_signal_time"] = time_vector
+    ts_dim = ["idx_rcv", "lat", "lon", "library_signal_time"]
+    ts_shape = [ds.sizes[dim] for dim in ts_dim]
+    transmited_field_t = da.empty(ts_shape, dtype=np.float32)
 
-                # Compute received signal in sub_region
+    ds["rcv_signal_library"] = (
+        ts_dim,
+        transmited_field_t,
+    )
+    ds.rcv_signal_library.attrs["long_name"] = r"$s_{i}$"
+
+    # Loop over sub_regions of the grid
+    nregion_lon = get_region_number(
+        ds.sizes["lon"], ds.rcv_signal_library, max_size_bytes=1 * 1e9
+    )
+    nregion_lat = get_region_number(
+        ds.sizes["lat"], ds.rcv_signal_library, max_size_bytes=1 * 1e9
+    )
+
+    lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
+
+    lat_chunksize = int(ds.sizes["lat"] // nregion_lat)
+    lon_chunksize = int(ds.sizes["lon"] // nregion_lon)
+    idx_rcv_chunksize, time_chunksize = (
+        ds.sizes["idx_rcv"],
+        ds.sizes["library_signal_time"],
+    )
+    chunksize = (idx_rcv_chunksize, lat_chunksize, lon_chunksize, time_chunksize)
+    ds["rcv_signal_library"] = ds.rcv_signal_library.chunk(chunksize)
+
+    # Fix the values at the receiver positions
+    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
+
+    for i in range(len(rcv_grid_lon)):
+        ds["tf_gridded"].loc[
+            dict(lon=rcv_grid_lon[i], lat=rcv_grid_lat[i], idx_rcv=i)
+        ] = 1
+
+    # Save to zarr without computing
+    ds.to_zarr(ds.fullpath_dataset_propa_grid_src, mode="a", compute=False)
+
+    # print(ds.rcv_signal_library)
+    for lon_s in lon_slices:
+        for lat_s in lat_slices:
+            ds_sub = ds.isel(lat=lat_s, lon=lon_s)
+
+            # Compute received signal in sub_region
+            if random_source:
+                transmitted_field_t = compute_received_signal_random_source(
+                    ds_sub,
+                    apply_delay,
+                )
+            else:
                 transmited_field_t = compute_received_signal(
                     ds_sub,
                     propagating_freq,
@@ -226,27 +277,27 @@ def grid_synthesis(
                     apply_delay,
                 )
 
-                ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)] = transmited_field_t
-                sub_region_to_save = ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)]
-
-                # Save to zarr
-                sub_region_to_save.to_zarr(
-                    ds.fullpath_dataset_propa_grid_src,
-                    mode="r+",
-                    region={
-                        "idx_rcv": slice(0, ds.sizes["idx_rcv"]),
-                        "lat": lat_s,
-                        "lon": lon_s,
-                        "library_signal_time": slice(
-                            0, ds.sizes["library_signal_time"]
-                        ),
-                    },
-                )
+            ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)] = transmited_field_t
+            sub_region_to_save = ds.rcv_signal_library[dict(lat=lat_s, lon=lon_s)]
+            # print(sub_region_to_save)
+            # Save to zarr
+            sub_region_to_save.to_zarr(
+                ds.fullpath_dataset_propa_grid_src,
+                mode="r+",
+                region={
+                    "idx_rcv": slice(None),
+                    "lat": lat_s,
+                    "lon": lon_s,
+                    "library_signal_time": slice(None),
+                },
+            )
 
     # Open the Zarr store and update attrs
     zarr_store = zarr.open(ds.fullpath_dataset_propa_grid_src)
-    zarr_store.attrs.update({"propa_done_grid_src": True})
+    zarr_store.attrs.update({"propa_grid_src_done": True})
     zarr.consolidate_metadata(ds.fullpath_dataset_propa_grid_src)
+
+    print("..................Done")
 
     return ds
 
@@ -257,15 +308,16 @@ def populate_dataset(ds, src, **kwargs):
     ds = grid_tf(ds, **grid_tf_kw)
 
     # Grid synthesis
-    grid_synthesis_kw = {key: kwargs[key] for key in kwargs if key in ["apply_delay"]}
+    grid_synthesis_kw = {
+        key: kwargs[key] for key in kwargs if key in ["apply_delay", "random_source"]
+    }
     ds = grid_synthesis(ds, src, **grid_synthesis_kw)
 
     return ds
 
 
 if __name__ == "__main__":
-    # fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3528.zarr"
-    # fname = "propa_dataset_65.4003_66.1446_-27.8377_-27.3528_10000m.zarr"
+
     fname = "propa_dataset_65.5928_65.9521_-27.6662_-27.5711_backup.zarr"
     root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\localisation\verlinden\localisation_dataset\testcase3_1"
     fpath = os.path.join(root, fname)
@@ -274,7 +326,7 @@ if __name__ == "__main__":
 
     ds = xr.open_dataset(fpath, engine="zarr", chunks={})
 
-    from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+    from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
     fname = "propa_dataset_65.5928_65.9521_-27.6662_-27.5711.zarr"
     fpath = os.path.join(root, fname)
@@ -312,8 +364,8 @@ if __name__ == "__main__":
 
     dt = 5
     min_waveguide_depth = 5000
-    from localisation.verlinden.AcousticComponent import AcousticSource
-    from signals import generate_ship_signal
+    from signals.AcousticComponent import AcousticSource
+    from signals.signals import generate_ship_signal
 
     src_sig, t_src_sig = generate_ship_signal(
         Ttot=dt,

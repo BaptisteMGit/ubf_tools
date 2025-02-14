@@ -15,10 +15,10 @@ from cst import (
     LIBRARY_COLOR,
     EVENT_COLOR,
 )
-from misc import confidence_ellipse
+from misc import confidence_ellipse, generate_colors
 
 from pyproj import Geod
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     get_bathy_grid_size,
     load_rhumrum_obs_pos,
 )
@@ -28,11 +28,12 @@ from localisation.verlinden.verlinden_analysis_report import (
     plot_localisation_performance,
 )
 
-from localisation.verlinden.plot_utils import plot_localisation_moviepy
-from localisation.verlinden.params import (
+from localisation.verlinden.misc.plot_utils import plot_localisation_moviepy
+from localisation.verlinden.misc.params import (
     ROOT_PROCESS,
     ROOT_ANALYSIS,
     DATA_ROOT,
+    BATHY_FILEPATH,
 )
 
 from publication.PublicationFigure import PubFigure
@@ -41,8 +42,10 @@ PFIG = PubFigure(
     label_fontsize=40,
     title_fontsize=40,
     ticks_fontsize=40,
-    legend_fontsize=14,
+    legend_fontsize=20,
 )
+
+RCV_COLORS = ["lime", "deeppink", "yellow", "aqua"]
 
 
 def plot_emmited_signal(xr_dataset, img_root):
@@ -277,15 +280,24 @@ def plot_received_signal(xr_dataset, img_root, n_instant_to_plot=None):
 def get_ambiguity_surface(ds):
     # Avoid singularity for S = 0
     amb_surf_not_0 = ds.ambiguity_surface.values[ds.ambiguity_surface > 0]
-    ds.ambiguity_surface.values[ds.ambiguity_surface == 0] = amb_surf_not_0.min()
+    min_val = min(amb_surf_not_0.min(), 1e-6)
+    ds["ambiguity_surface"] = xr.where(
+        ds["ambiguity_surface"] == 0, min_val, ds["ambiguity_surface"]
+    )
+
+    # Convert to dB
     amb_surf = 10 * np.log10(ds.ambiguity_surface)  # dB scale
 
     amb_surf_combined_not_0 = ds.ambiguity_surface_combined.values[
         ds.ambiguity_surface_combined > 0
     ]
-    ds.ambiguity_surface_combined.values[ds.ambiguity_surface_combined == 0] = (
-        amb_surf_combined_not_0.min()
+    min_val = min(amb_surf_combined_not_0.min(), 1e-6)
+    ds["ambiguity_surface_combined"] = xr.where(
+        ds["ambiguity_surface_combined"] == 0,
+        min_val,
+        ds["ambiguity_surface_combined"],
     )
+
     amb_surf_combined = 10 * np.log10(ds.ambiguity_surface_combined)  # dB scale
 
     return amb_surf, amb_surf_combined
@@ -302,7 +314,7 @@ def init_plot_folders(img_root, var_to_plot, similarity_metric):
 def plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot=1):
     """Plot ambiguity surface distribution."""
     # Init folers
-    img_folder = init_plot_folders(img_root, "amb_s_dist", ds.similarity_metric.values)
+    img_folder = init_plot_folders(img_root, "amb_s_dist", ds.similarity_metrics.values)
 
     amb_surf, __ = get_ambiguity_surface(ds)
 
@@ -317,7 +329,9 @@ def plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot=1):
             amb_surf_i = amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             )
-            bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+            amb_surf_i = xr.where(amb_surf_i < -10, np.nan, amb_surf_i)
+            # bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+            bins = 50
             plt.figure(figsize=(16, 10))
             amb_surf_i.plot.hist(bins=bins)
             plt.axvline(
@@ -341,7 +355,9 @@ def plot_ambiguity_surface_dist(ds, img_root, n_instant_to_plot=1):
             amb_surf_i = amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             )
-            bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+            # bins = int(np.ceil(np.abs(amb_surf_i).max()) * amb_surf_i.size // 100)
+            bins = None
+
             plt.figure(figsize=(16, 10))
             amb_surf_i.plot.hist(bins=bins, cumulative=True, density=True)
             plt.ylabel("Number of points")
@@ -426,24 +442,52 @@ def plot_ambiguity_surface(
     plot_info={},
     zoom=False,
     plot_hyperbol=False,
+    mode="analyis",
 ):
+
+    # Load bathy
+    # bathy_path = (
+    #     r"data/bathy/mmdpm/PVA_RR48/GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
+    # )
+    # ds_bathy = xr.open_dataset(BATHY_FILEPATH)
+
+    # blevels = [
+    #     -6000,
+    #     -5000,
+    #     -4000,
+    #     -3000,
+    #     -2000,
+    #     -1500,
+    # ]
+
     """Plot ambiguity surface for each source position."""
     # Init folders
     sim_metric = str(ds.similarity_metrics.values)[:5]
     img_folder = init_plot_folders(img_root, "amb_s", sim_metric)
 
     amb_surf, amb_surf_combined = get_ambiguity_surface(ds)
+    # Add attrs
+    amb_surf.attrs["unit"] = "dB"
+    amb_surf_combined.attrs["unit"] = "dB"
+    amb_surf.attrs["long_name"] = r"$S_{i, j}$"
+    amb_surf_combined.attrs["long_name"] = r"$S$"
 
+    # Rcv colors
+    # RCV_COLORS = generate_colors(n=ds.sizes["idx_rcv"], colormap_name="Pastel1")
     for i_src_time in range(nb_instant_to_plot):
         for i_rcv_pair in ds["idx_rcv_pairs"].values:
             rcv_pair = ds["rcv_pairs"].sel(idx_rcv_pairs=i_rcv_pair).values
             pair_id = ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values
 
             plt.figure()
+            # ds_bathy.elevation.plot.contour(
+            #     levels=blevels, colors="k", linewidths=3, zorder=1
+            # )
             target_amb_surf = amb_surf.isel(
                 idx_rcv_pairs=i_rcv_pair, src_trajectory_time=i_src_time
             ).load()
-            vmin = target_amb_surf.quantile(0.35).values
+            vmin = target_amb_surf.quantile(0.75).values
+            # vmin= target_amb_surf.min()
             vmax = target_amb_surf.max()
             target_amb_surf.plot(
                 x="lon", y="lat", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
@@ -471,15 +515,15 @@ def plot_ambiguity_surface(
             plt.scatter(
                 ds.lon_src.isel(src_trajectory_time=i_src_time),
                 ds.lat_src.isel(src_trajectory_time=i_src_time),
-                # color="magenta",
+                # color="r",
                 facecolors="none",
-                edgecolors="magenta",
+                edgecolors="white",
                 # fillstyle="none",
-                marker="o",
-                s=130,
-                linewidths=2.5,
+                marker="*",
+                s=500,
+                linewidths=2,
                 label=r"$X_{ship}$",
-                zorder=2,
+                zorder=10,
             )
 
             det_pos_lon = ds.detected_pos_lon.isel(
@@ -496,25 +540,34 @@ def plot_ambiguity_surface(
                 det_pos_lon,
                 det_pos_lat,
                 marker="s",
+                # color="k",
                 facecolors="none",
-                edgecolors="magenta",
-                s=200,
-                linewidths=2.5,
+                edgecolors="black",
+                s=400,
+                linewidths=3.5,
                 label="Estimated position",
                 zorder=3,
             )
 
             for i_rcv in ds["idx_rcv"].values:
                 if i_rcv in rcv_pair:
-                    size = 130
+                    size = 150
                 else:
                     size = 50
                 plt.scatter(
                     ds.lon_rcv.isel(idx_rcv=i_rcv),
                     ds.lat_rcv.isel(idx_rcv=i_rcv),
                     marker="o",
-                    label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                    c=RCV_COLORS[i_rcv],
+                    # label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
                     s=size,
+                )
+                plt.text(
+                    ds.lon_rcv.isel(idx_rcv=i_rcv) + 0.01,
+                    ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
+                    ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                    fontsize=30,
+                    color=RCV_COLORS[i_rcv],
                 )
 
             # Plot line between rcv and display dist between rcv
@@ -532,7 +585,7 @@ def plot_ambiguity_surface(
                 "k",
                 linestyle="--",
                 zorder=1,
-                label=f"L = {dist}m",
+                label=f"L = {np.round(dist*1e-3, 2)}km",
             )
 
             # Plot line between the center of the rcv array and the ship
@@ -553,7 +606,7 @@ def plot_ambiguity_surface(
                 "k",
                 linestyle="-.",
                 zorder=1,
-                label=r"$r_{ship}$" + f" = {dist_center}m",
+                label=r"$r_{ship}$" + f" = {np.round(dist_center*1e-3, 2)}km",
             )
             # Add point at the center of the array
             plt.scatter(
@@ -582,9 +635,13 @@ def plot_ambiguity_surface(
                     ]
                 )
                 zoom_label = ""
-            plt.title(
-                f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair {pair_id})",
-            )
+
+            if mode == "analysis":
+                title = f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair {pair_id})"
+            else:
+                title = ""
+
+            plt.title(title)
             plt.legend(ncol=2)
             img_fpath = os.path.join(
                 img_folder,
@@ -596,28 +653,43 @@ def plot_ambiguity_surface(
     """Combined ambiguity surface """
     for i_src_time in range(nb_instant_to_plot):
         plt.figure()
+        # ds_bathy.elevation.plot.contour(
+        #     levels=blevels, colors="k", linewidths=3, zorder=1
+        # )
 
         target_amb_surf_combined = amb_surf_combined.isel(
             src_trajectory_time=i_src_time
         ).load()
-        vmin = target_amb_surf_combined.quantile(0.35).values
+        vmin = target_amb_surf_combined.quantile(0.95).values
+        # vmin= target_amb_surf.min()
         vmax = target_amb_surf_combined.max()
         target_amb_surf_combined.plot(
             x="lon", y="lat", zorder=0, vmin=vmin, vmax=vmax, cmap="jet"
         )
 
+        # plt.scatter(
+        #     ds.lon_src.isel(src_trajectory_time=i_src_time),
+        #     ds.lat_src.isel(src_trajectory_time=i_src_time),
+        #     # color="magenta",
+        #     facecolors="none",
+        #     edgecolors="magenta",
+        #     # fillstyle="none",
+        #     marker="o",
+        #     s=130,
+        #     linewidths=2.5,
+        #     label=r"$X_{ship}$",
+        #     zorder=2,
+        # )
         plt.scatter(
             ds.lon_src.isel(src_trajectory_time=i_src_time),
             ds.lat_src.isel(src_trajectory_time=i_src_time),
-            # color="magenta",
             facecolors="none",
-            edgecolors="magenta",
-            # fillstyle="none",
-            marker="o",
-            s=130,
-            linewidths=2.5,
+            edgecolors="white",
+            marker="*",
+            s=500,
+            linewidths=2,
             label=r"$X_{ship}$",
-            zorder=2,
+            zorder=10,
         )
 
         det_pos_lon = ds.detected_pos_lon_combined.isel(
@@ -628,14 +700,27 @@ def plot_ambiguity_surface(
             src_trajectory_time=i_src_time,
             idx_noise_realisation=-1,
         )
+        # plt.scatter(
+        #     det_pos_lon,
+        #     det_pos_lat,
+        #     marker="s",
+        #     facecolors="none",
+        #     edgecolors="magenta",
+        #     s=200,
+        #     linewidths=2.5,
+        #     label="Estimated position",
+        #     zorder=3,
+        # )
+
         plt.scatter(
             det_pos_lon,
             det_pos_lat,
             marker="s",
+            # color="k",
             facecolors="none",
-            edgecolors="magenta",
-            s=200,
-            linewidths=2.5,
+            edgecolors="black",
+            s=400,
+            linewidths=4,
             label="Estimated position",
             zorder=3,
         )
@@ -658,7 +743,7 @@ def plot_ambiguity_surface(
             "k",
             linestyle="-.",
             zorder=1,
-            label=r"$r_{ship}$" + f" = {dist_center}m",
+            label=r"$r_{ship}$" + f" = {np.round(dist_center*1e-3, 2)}km",
         )
         # Add point at the center of the array
         plt.scatter(
@@ -674,9 +759,17 @@ def plot_ambiguity_surface(
                 ds.lon_rcv.isel(idx_rcv=i_rcv),
                 ds.lat_rcv.isel(idx_rcv=i_rcv),
                 marker="o",
-                label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                color=RCV_COLORS[i_rcv],
                 s=50,
             )
+            plt.text(
+                ds.lon_rcv.isel(idx_rcv=i_rcv) + 0.01,
+                ds.lat_rcv.isel(idx_rcv=i_rcv) - 0.01,
+                ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                fontsize=30,
+                color=RCV_COLORS[i_rcv],
+            )
+
         if zoom:
             plt.xlim([ds.lon.min(), ds.lon.max()])
             plt.ylim([ds.lat.min(), ds.lat.max()])
@@ -696,9 +789,16 @@ def plot_ambiguity_surface(
             )
             zoom_label = ""
 
-        plt.title(
-            f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time})",
-        )
+        if mode == "analysis":
+            title = f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time}, rcv pair {pair_id})"
+        else:
+            title = ""
+
+        plt.title(title)
+
+        # plt.title(
+        #     f"Ambiguity surface\n(similarity metric: {sim_metric}, src pos n°{i_src_time})",
+        # )
         plt.legend(ncol=2)
         img_fpath = os.path.join(img_folder, f"comb_t{i_src_time}{zoom_label}.png")
         plt.savefig(img_fpath)
@@ -706,41 +806,62 @@ def plot_ambiguity_surface(
 
 
 def plot_ship_trajectory(
-    ds, img_root, plot_info={}, noise_realisation_to_plot=0, zoom=False
+    ds, img_root, plot_info={}, noise_realisation_to_plot=0, zoom=False, mode="analysis"
 ):
     """Plot ship trajectory."""
     # Init folders
     img_folder = init_plot_folders(img_root, "s_traj", ds.similarity_metrics.values)
 
     # List of colors for each rcv pairs
-    rcv_pair_colors = ["blue", "magenta", "green"]
+    rcv_pair_colors = (
+        ["blue", "magenta", "green", "red", "cyan", "purle", "orange", "lime"],
+    )
+
     """ Plot single detection for a single noise realisation """
     for i_noise in range(noise_realisation_to_plot):
-
         for i_rcv_pair in ds.idx_rcv_pairs.values:
             pair_id = ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values
 
             plt.figure()  # figsize=(16, 8)
-            plt.plot(
+            # plt.plot(
+            #     ds.lon_src,
+            #     ds.lat_src,
+            #     marker="o",
+            #     color="red",
+            #     markersize=6,
+            #     zorder=6,
+            #     label=r"$X_{ref}$",
+            # )
+            plt.scatter(
                 ds.lon_src,
                 ds.lat_src,
-                marker="o",
-                color="red",
-                markersize=6,
-                zorder=6,
-                label=r"$X_{ref}$",
+                facecolors="none",
+                edgecolors="red",
+                marker="*",
+                s=450,
+                linewidths=2,
+                label=r"$X_{ship}$",
+                zorder=10,
             )
 
             # Plot rcv positions
-            for i_rcv in range(ds.dims["idx_rcv"]):
+            ic = 0
+            for i_rcv in ds.idx_rcv.values:
                 plt.scatter(
-                    ds.lon_rcv.isel(idx_rcv=i_rcv),
-                    ds.lat_rcv.isel(idx_rcv=i_rcv),
+                    ds.lon_rcv.sel(idx_rcv=i_rcv),
+                    ds.lat_rcv.sel(idx_rcv=i_rcv),
                     marker="o",
-                    s=100,
-                    zorder=2,
-                    label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                    color=RCV_COLORS[i_rcv],
+                    s=50,
                 )
+                plt.text(
+                    ds.lon_rcv.sel(idx_rcv=i_rcv) + 0.01,
+                    ds.lat_rcv.sel(idx_rcv=i_rcv) - 0.01,
+                    ds.rcv_id.sel(idx_rcv=i_rcv).values,
+                    fontsize=30,
+                    color=RCV_COLORS[ic],
+                )
+                ic += 1
 
             det_pos_lon = ds.detected_pos_lon.isel(
                 idx_rcv_pairs=i_rcv_pair,
@@ -754,7 +875,7 @@ def plot_ship_trajectory(
                 det_pos_lon,
                 det_pos_lat,
                 marker="+",
-                color=rcv_pair_colors[i_rcv_pair],
+                # color=rcv_pair_colors[i_rcv_pair],
                 s=200,
                 zorder=1,
                 linewidths=2.2,
@@ -791,30 +912,50 @@ def plot_ship_trajectory(
             plt.close()
 
     """ Plot detected positions for all noise realisations """
+    ic_p = 0
     for i_rcv_pair in ds.idx_rcv_pairs.values:
-        pair_id = str(ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values)
+        pair_id = str(ds.rcv_pair_id.sel(idx_rcv_pairs=i_rcv_pair).values)
 
         plt.figure()  # figsize=(16, 8)
-        plt.plot(
+        # plt.plot(
+        #     ds.lon_src,
+        #     ds.lat_src,
+        #     marker="o",
+        #     color="red",
+        #     markersize=6,
+        #     zorder=6,
+        #     label=r"$X_{ref}$",
+        # )
+        plt.scatter(
             ds.lon_src,
             ds.lat_src,
-            marker="o",
-            color="red",
-            markersize=6,
-            zorder=6,
-            label=r"$X_{ref}$",
+            facecolors="none",
+            edgecolors="red",
+            marker="*",
+            s=450,
+            linewidths=2,
+            label=r"$X_{ship}$",
+            zorder=10,
         )
 
         # Plot rcv positions
-        for i_rcv in range(ds.sizes["idx_rcv"]):
+        ic = 0
+        for i_rcv in ds.idx_rcv.values:
             plt.scatter(
-                ds.lon_rcv.isel(idx_rcv=i_rcv),
-                ds.lat_rcv.isel(idx_rcv=i_rcv),
+                ds.lon_rcv.sel(idx_rcv=i_rcv),
+                ds.lat_rcv.sel(idx_rcv=i_rcv),
                 marker="o",
-                s=100,
-                zorder=4,
-                label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+                color=RCV_COLORS[ic],
+                s=50,
             )
+            plt.text(
+                ds.lon_rcv.sel(idx_rcv=i_rcv) + 0.01,
+                ds.lat_rcv.sel(idx_rcv=i_rcv) - 0.01,
+                ds.rcv_id.sel(idx_rcv=i_rcv).values,
+                fontsize=30,
+                color=RCV_COLORS[ic],
+            )
+            ic += 1
 
         det_pos_lon = ds.detected_pos_lon.isel(
             idx_rcv_pairs=i_rcv_pair, src_trajectory_time=0
@@ -822,27 +963,28 @@ def plot_ship_trajectory(
         det_pos_lat = ds.detected_pos_lat.isel(
             idx_rcv_pairs=i_rcv_pair, src_trajectory_time=0
         )
-        plt.scatter(
-            det_pos_lon,
-            det_pos_lat,
-            marker=".",
-            color=rcv_pair_colors[i_rcv_pair],
-            s=35,
-            alpha=0.3,
-            # linewidths=2.2,
-            zorder=5,
-            label=r"$X_{" + pair_id + r"}$",
-        )
+        if mode == "analysis":
+            plt.scatter(
+                det_pos_lon,
+                det_pos_lat,
+                marker=".",
+                # color=rcv_pair_colors[ic_p],
+                s=35,
+                alpha=0.3,
+                # linewidths=2.2,
+                zorder=5,
+                label=r"$X_{" + pair_id + r"}$",
+            )
 
         plt.scatter(
             det_pos_lon.mean(),
             det_pos_lat.mean(),
             marker="+",
-            color=rcv_pair_colors[i_rcv_pair],
+            # color=rcv_pair_colors[ic_p],
             s=200,
             linewidths=2.2,
             zorder=5,
-            label=r"$\hat{X_{" + pair_id + r"}}$",
+            # label=r"$\hat{X_{" + pair_id + r"}}$",
         )
 
         ax = plt.gca()
@@ -851,11 +993,12 @@ def plot_ship_trajectory(
             det_pos_lat,
             ax,
             n_std=3,
-            edgecolor=rcv_pair_colors[i_rcv_pair],
-            facecolor=rcv_pair_colors[i_rcv_pair],
+            # edgecolor=rcv_pair_colors[ic_p],
+            # facecolor=rcv_pair_colors[ic_p],
             alpha=0.2,
             zorder=2,
-            label=r"$3\sigma$" + " confidence ellipse",
+            # label=r"$3\sigma$" + " confidence ellipse",
+            label=r"$\Sigma_{" + pair_id + r"}$",
         )
 
         if zoom:
@@ -877,6 +1020,8 @@ def plot_ship_trajectory(
             )
             zoom_label = ""
 
+        ic_p += 1
+
         plt.xlabel("Longitude [°]")
         plt.ylabel("Latitude [°]")
         plt.grid(True)
@@ -887,56 +1032,76 @@ def plot_ship_trajectory(
 
     """ Plot detected positions for all noise realisations and all pairs """
     plt.figure()  # figsize=(16, 8)
-    plt.plot(
+    # plt.plot(
+    #     ds.lon_src,
+    #     ds.lat_src,
+    #     marker="o",
+    #     color="red",
+    #     markersize=6,
+    #     zorder=6,
+    #     label=r"$X_{ref}$",
+    # )
+
+    plt.scatter(
         ds.lon_src,
         ds.lat_src,
-        marker="o",
-        color="red",
-        markersize=6,
-        zorder=6,
-        label=r"$X_{ref}$",
+        facecolors="none",
+        edgecolors="red",
+        marker="*",
+        s=450,
+        linewidths=2,
+        label=r"$X_{ship}$",
+        zorder=10,
     )
+
     # Plot rcv positions
-    for i_rcv in range(ds.sizes["idx_rcv"]):
+    for i_rcv in ds.idx_rcv.values:
         plt.scatter(
-            ds.lon_rcv.isel(idx_rcv=i_rcv),
-            ds.lat_rcv.isel(idx_rcv=i_rcv),
+            ds.lon_rcv.sel(idx_rcv=i_rcv),
+            ds.lat_rcv.sel(idx_rcv=i_rcv),
             marker="o",
-            s=100,
-            zorder=4,
-            label=ds.rcv_id.isel(idx_rcv=i_rcv).values,
+            color=RCV_COLORS[i_rcv],
+            s=50,
+        )
+        plt.text(
+            ds.lon_rcv.sel(idx_rcv=i_rcv) + 0.01,
+            ds.lat_rcv.sel(idx_rcv=i_rcv) - 0.01,
+            ds.rcv_id.sel(idx_rcv=i_rcv).values,
+            fontsize=30,
+            color=RCV_COLORS[i_rcv],
         )
 
     for i_rcv_pair in ds.idx_rcv_pairs.values:
-        pair_id = str(ds.rcv_pair_id.isel(idx_rcv_pairs=i_rcv_pair).values)
+        pair_id = str(ds.rcv_pair_id.sel(idx_rcv_pairs=i_rcv_pair).values)
 
-        det_pos_lon = ds.detected_pos_lon.isel(
-            idx_rcv_pairs=i_rcv_pair, src_trajectory_time=0
+        det_pos_lon = ds.detected_pos_lon.sel(idx_rcv_pairs=i_rcv_pair).isel(
+            src_trajectory_time=0
         )
-        det_pos_lat = ds.detected_pos_lat.isel(
-            idx_rcv_pairs=i_rcv_pair, src_trajectory_time=0
+        det_pos_lat = ds.detected_pos_lat.sel(idx_rcv_pairs=i_rcv_pair).isel(
+            src_trajectory_time=0
         )
-        plt.scatter(
-            det_pos_lon,
-            det_pos_lat,
-            marker=".",
-            color=rcv_pair_colors[i_rcv_pair],
-            s=35,
-            alpha=0.3,
-            # linewidths=2.2,
-            zorder=5,
-            label=r"$X_{" + pair_id + r"}$",
-        )
+        if mode == "analysis":
+            plt.scatter(
+                det_pos_lon,
+                det_pos_lat,
+                marker=".",
+                # color=rcv_pair_colors[i_rcv_pair],
+                s=35,
+                alpha=0.3,
+                # linewidths=2.2,
+                zorder=5,
+                label=r"$X_{" + pair_id + r"}$",
+            )
 
         plt.scatter(
             det_pos_lon.mean(),
             det_pos_lat.mean(),
             marker="+",
-            color=rcv_pair_colors[i_rcv_pair],
+            # color=rcv_pair_colors[i_rcv_pair],
             s=200,
             linewidths=2.2,
             zorder=5,
-            label=r"$\hat{X_{" + pair_id + r"}}$",
+            # label=r"$\hat{X_{" + pair_id + r"}}$",
         )
 
         ax = plt.gca()
@@ -945,8 +1110,8 @@ def plot_ship_trajectory(
             det_pos_lat,
             ax,
             n_std=3,
-            edgecolor=rcv_pair_colors[i_rcv_pair],
-            facecolor=rcv_pair_colors[i_rcv_pair],
+            # edgecolor=rcv_pair_colors[i_rcv_pair],
+            # facecolor=rcv_pair_colors[i_rcv_pair],
             # linewidth=5,
             alpha=0.2,
             zorder=2,
@@ -975,16 +1140,18 @@ def plot_ship_trajectory(
     # Add combined detected positions
     det_pos_lon = ds.detected_pos_lon_combined.isel(src_trajectory_time=0)
     det_pos_lat = ds.detected_pos_lat_combined.isel(src_trajectory_time=0)
-    plt.scatter(
-        det_pos_lon,
-        det_pos_lat,
-        marker=".",
-        color="black",
-        s=35,
-        alpha=0.3,
-        zorder=10,
-        label=r"$X_{combined}$",
-    )
+
+    if mode == "analysis":
+        plt.scatter(
+            det_pos_lon,
+            det_pos_lat,
+            marker=".",
+            color="black",
+            s=35,
+            alpha=0.3,
+            zorder=10,
+            label=r"$X_{combined}$",
+        )
 
     plt.scatter(
         det_pos_lon.mean(),
@@ -994,7 +1161,7 @@ def plot_ship_trajectory(
         s=200,
         linewidths=2.2,
         zorder=10,
-        label=r"$\hat{X_{combined}}$",
+        # label=r"$\hat{X_{combined}}$",
     )
 
     ax = plt.gca()
@@ -1046,7 +1213,29 @@ def get_pos_error(ds):
             "idx_noise_realisation": ds.idx_noise_realisation,
         },
     )
-    return pos_error
+
+    # Broadcast real positions to the shape of the estimated positions
+    lat_src = ds.lat_src.broadcast_like(ds.detected_pos_lat_combined)
+    lon_src = ds.lon_src.broadcast_like(ds.detected_pos_lon_combined)
+
+    _, _, pos_error_combined = geod.inv(
+        lats1=lat_src,
+        lons1=lon_src,
+        lats2=ds.detected_pos_lat_combined,
+        lons2=ds.detected_pos_lon_combined,
+    )
+
+    # Convert to xr array
+    pos_error_combined = xr.DataArray(
+        pos_error_combined,
+        dims=["src_trajectory_time", "idx_noise_realisation"],
+        coords={
+            "src_trajectory_time": ds.src_trajectory_time,
+            "idx_noise_realisation": ds.idx_noise_realisation,
+        },
+    )
+
+    return pos_error, pos_error_combined
 
 
 def get_pos_error_metrics(pos_error):
@@ -1150,7 +1339,7 @@ def plot_pos_error(ds, img_root):
     plt.close()
 
 
-def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1):
+def plot_feature(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1):
     """Plot correlation for receiver couple."""
     # Init folders
     img_folder = init_plot_folders(img_root, "corr", ds.similarity_metrics.values)
@@ -1175,10 +1364,10 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
             )  # Ensure 2D axes array in case of single obs pair
 
         for i_rcv_pair in range(ds.sizes["idx_rcv_pairs"]):
-            event_vect = ds.event_corr.isel(
+            event_vect = ds.event_feature.isel(
                 src_trajectory_time=i_ship, idx_rcv_pairs=i_rcv_pair
             )
-            lib_vect = ds.library_corr.sel(
+            lib_vect = ds.library_feature.sel(
                 lon=ds.lon_src.isel(src_trajectory_time=i_ship),
                 lat=ds.lat_src.isel(src_trajectory_time=i_ship),
                 method="nearest",
@@ -1198,6 +1387,11 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
             else:
                 event_zorder = 1
                 lib_zorder = 2
+
+            if event_vect.dtype == np.complex128:
+                event_vect = np.abs(event_vect)
+            if lib_vect.dtype == np.complex128:
+                lib_vect = np.abs(lib_vect)
 
             event_vect.plot(
                 ax=axes[i_rcv_pair],
@@ -1219,11 +1413,13 @@ def plot_correlation(ds, img_root, det_metric="intercorr0", n_instant_to_plot=1)
         for ax, lab in zip(axes, ds.rcv_pair_id.values):
             ax.set_title(lab, loc="right")
 
-        fig.supxlabel(r"$\tau$ [s]")
+        # fig.supxlabel(r"$\tau$ [s]")
+        x_label = rf"{ds['library_feature_idx'].attrs['long_name']} [{ds['library_feature_idx'].attrs['units']}]"
+        fig.supxlabel(x_label)
         fig.supylabel(ylabel)
 
         # plt.tight_layout()
-        img_fpath = os.path.join(img_folder, f"signal_corr_pos{i_ship}.png")
+        img_fpath = os.path.join(img_folder, f"signal_feature_pos{i_ship}.png")
         plt.savefig(img_fpath)
         plt.close()
 
@@ -1237,7 +1433,7 @@ def check_folder_creation(plot_info):
         or plot_info["plot_video"]
         or plot_info["plot_ship_trajectory"]
         or plot_info["plot_pos_error"]
-        or plot_info["plot_correlation"]
+        or plot_info["plot_feature"]
     )
 
 
@@ -1376,11 +1572,13 @@ def analysis(
     similarity_metrics=[],
     plot_info={},
     grid_info={},
+    mode="analysis",
 ):
     """Main function to analyse the localisation performance."""
 
     global_header_log = "Detection metric,SNR,MEDIAN,MEAN,STD,RMSE,MAX,MIN,95_percentile,99_percentile,dynamic_range"
     global_log = [global_header_log]
+    global_log_combined = [global_header_log]
 
     now = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
 
@@ -1468,6 +1666,7 @@ def analysis(
                         nb_instant_to_plot=n_instant_to_plot,
                         plot_info=plot_info,
                         zoom=zoom,
+                        mode=mode,
                     )
 
             # Create video TODO : update
@@ -1491,26 +1690,31 @@ def analysis(
                         plot_info=plot_info,
                         noise_realisation_to_plot=0,
                         zoom=zoom,
+                        mode=mode,
                     )
 
             # Plot detection error
             if plot_info["plot_pos_error"]:
                 plot_pos_error(ds_snr_sim, img_root=img_root)
 
-            # Plot correlation
-            if plot_info["plot_correlation"]:
-                plot_correlation(
+            # Plot feature
+            if plot_info["plot_feature"]:
+                plot_feature(
                     ds_snr_sim,
                     img_root,
                     similarity_metric,
                     n_instant_to_plot=n_rcv_signals_to_plot,
                 )
 
-            pos_error = get_pos_error(ds_snr_sim)
+            pos_error, pos_error_combined = get_pos_error(ds_snr_sim)
             pos_error_metrics = get_pos_error_metrics(pos_error)
+            pos_error_combined_metrics = get_pos_error_metrics(pos_error_combined)
 
-            amb_surf, __ = get_ambiguity_surface(ds_snr_sim)
+            amb_surf, amb_surf_combined = get_ambiguity_surface(ds_snr_sim)
             amb_dynamic_range = (amb_surf.max() - amb_surf.min()).round(2).values
+            amb_dynamic_range_combined = (
+                (amb_surf_combined.max() - amb_surf_combined.min()).round(2).values
+            )
 
             global_line = (
                 f"{similarity_metric}, {snr}, {pos_error_metrics['median']:.1f}, {pos_error_metrics['mean']:.1f},"
@@ -1519,7 +1723,15 @@ def analysis(
                 f"{amb_dynamic_range:.1f}"
             )
 
+            global_line_combined = (
+                f"{similarity_metric}, {snr}, {pos_error_combined_metrics['median']:.1f}, {pos_error_combined_metrics['mean']:.1f},"
+                f"{pos_error_combined_metrics['std']:.1f}, {pos_error_combined_metrics['rmse']:.1f}, {pos_error_combined_metrics['max']:.1f},"
+                f"{pos_error_combined_metrics['min']:.1f}, {pos_error_combined_metrics['95_percentile']:.1f}, {pos_error_combined_metrics['99_percentile']:.1f},"
+                f"{amb_dynamic_range:.1f}"
+            )
+
             global_log.append(global_line)
+            global_log_combined.append(global_line_combined)
 
             # Write report in txt file
             local_log = [
@@ -1544,10 +1756,40 @@ def analysis(
             with open(local_report_fpath, "w") as f:
                 f.writelines("\n".join(local_log))
 
+                # Write report in txt file
+            local_log_combined = [
+                f"Detection metric: {similarity_metric}",
+                f"SNR: {ds_snr_sim.snr.values}dB",
+                f"Number of sensors: {ds_snr_sim.dims['idx_rcv']}",
+                f"Number of sensors pairs: {ds_snr_sim.dims['idx_rcv_pairs']}",
+                # f"Positions of the source: {ds_snr_sim.attrs['source_positions']}",
+                f"Number of source positions analysed: {ds_snr_sim.dims['src_trajectory_time']}",
+                f"Ambiguity surface dynamic (max - min): {amb_dynamic_range_combined:.1f}dB",
+                f"Position error median: {pos_error_combined_metrics['median']:.1f}m",
+                f"Position error mean: {pos_error_combined_metrics['mean']:.1f}m",
+                f"Position error std: {pos_error_combined_metrics['std']:.1f}m",
+                f"Position rmse: {pos_error_combined_metrics['rmse']:.1f}m",
+                f"Position error max: {pos_error_combined_metrics['max']:.1f}m",
+                f"Position error min: {pos_error_combined_metrics['min']:.1f}m",
+                f"Position error 95 percentile: {pos_error_combined_metrics['95_percentile']:.1f}m",
+                f"Position error 99 percentile: {pos_error_combined_metrics['99_percentile']:.1f}m",
+            ]
+
+            local_report_fpath = os.path.join(img_root, "loc_report_combined.txt")
+            with open(local_report_fpath, "w") as f:
+                f.writelines("\n".join(local_log_combined))
+
     # Write global report in txt file
     global_report_fpath = os.path.join(analysis_root, "global_report.txt")
     with open(global_report_fpath, "w") as f:
         f.writelines("\n".join(global_log))
+
+    # Write global report in txt file
+    global_report_fpath_combined = os.path.join(
+        analysis_root, "global_report_combined.txt"
+    )
+    with open(global_report_fpath_combined, "w") as f:
+        f.writelines("\n".join(global_log_combined))
 
     # Analysis global report
     # perf_metrics = ["RMSE", "STD"]
@@ -1567,17 +1809,6 @@ def analysis(
             "dynamic_range": float,
         },
     )
-    # list_perf_metrics = [
-    #     ["95_percentile"],
-    #     ["99_percentile"],
-    #     ["MEDIAN"],
-    #     ["MEAN"],
-    #     ["STD"],
-    #     ["RMSE"],
-    #     ["MAX"],
-    #     ["MIN"],
-    #     ["dynamic_range"],
-    # ]
 
     list_perf_metrics = [
         "95_percentile",
@@ -1591,12 +1822,47 @@ def analysis(
         "dynamic_range",
     ]
     # for perf_metrics in list_perf_metrics:
+    img_path = os.path.join(os.path.dirname(global_report_fpath), "global_report")
+    if not os.path.exists(img_path):
+        os.makedirs(img_path)
+
     plot_localisation_performance(
         data=data,
         testcase_name=testcase_name,
         similarity_metrics=similarity_metrics,
         metrics_to_plot=list_perf_metrics,
-        img_path=os.path.dirname(global_report_fpath),
+        img_path=img_path,
+    )
+
+    data = pd.read_csv(
+        global_report_fpath_combined,
+        sep=",",
+        dtype={
+            "SNR": str,
+            "MEDIAN": float,
+            "MEAN": float,
+            "STD": float,
+            "RMSE": float,
+            "MAX": float,
+            "MIN": float,
+            "95_percentile": float,
+            "99_percentile": float,
+            "dynamic_range": float,
+        },
+    )
+
+    # for perf_metrics in list_perf_metrics:
+    img_path = os.path.join(
+        os.path.dirname(global_report_fpath_combined), "global_report_combined"
+    )
+    if not os.path.exists(img_path):
+        os.makedirs(img_path)
+    plot_localisation_performance(
+        data=data,
+        testcase_name=testcase_name,
+        similarity_metrics=similarity_metrics,
+        metrics_to_plot=list_perf_metrics,
+        img_path=img_path,
     )
 
 
@@ -1619,7 +1885,7 @@ if __name__ == "__main__":
         "plot_ambiguity_surface": True,
         "plot_ship_trajectory": True,
         "plot_pos_error": False,
-        "plot_correlation": True,
+        "plot_feature": True,
         "tl_freq_to_plot": [20],
         "lon_offset": 0.001,
         "lat_offset": 0.001,

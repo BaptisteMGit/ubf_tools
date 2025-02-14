@@ -36,7 +36,7 @@ PubFigure(ticks_fontsize=22)
 
 
 def process_localisation_zhang2023(
-    ds, folder, nf=10, freq_draw_method="random", data_fname=None
+    ds, folder, nf=10, freq_draw_method="random", data_fname=None, rcv_in_fullarray=None
 ):
     # Load params
     depth, receivers, source, grid, frequency, _ = params()
@@ -74,10 +74,36 @@ def process_localisation_zhang2023(
     df_gcc = np.diff(ds.f_gcc.values)[0]
 
     # d_gcc_fullarray = []
+
+    # Restrict the dataset to the receivers of interest
+    if rcv_in_fullarray is None:
+        rcv_in_fullarray = ds.idx_rcv.values
+
+    # Select receivers to build the full array
+    ds_fa = ds.sel(idx_rcv=rcv_in_fullarray).sel(idx_rcv_ref=rcv_in_fullarray)
+
+    # Build full array gcc with all required couples
+    rcv_couples_fa = get_rcv_couples(idx_receivers=ds_fa.idx_rcv.values)
+
+    # rcv_couples_fa = []
+    # for i in ds_fa.idx_rcv.values:
+    #     for j in ds_fa.idx_rcv.values:
+    #         if j > i:
+    #             rcv_couples_fa.append([i, j])
+    # rcv_couples_fa = np.array(rcv_couples_fa)
+
     ###### Two sensor pairs ######
     # Select receivers to build the sub-array
-    rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
-    for rcv_cpl in rcv_couples:
+    if (
+        len(rcv_in_fullarray) < ds.sizes["idx_rcv"]
+    ):  # Not all receivers used in the full array
+        rcv_couples_sa = rcv_couples_fa[0:3]  # First three couples of the full array
+
+    else:
+        # Use couples defined in Zhang et al. 2023
+        rcv_couples_sa = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
+
+    for rcv_cpl in rcv_couples_sa:
         i_ref = rcv_cpl[0]
 
         ## RTF ##
@@ -167,16 +193,7 @@ def process_localisation_zhang2023(
     ###### Full array ######
     d_gcc_fullarray = []
 
-    # Build full array gcc with all couples
-    rcv_couples = []
-    for i in ds.idx_rcv.values:
-        for j in ds.idx_rcv.values:
-            if i > j:
-                rcv_couples.append([i, j])
-    rcv_couples = np.array(rcv_couples)
-
-    # rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
-    for rcv_cpl in rcv_couples:
+    for rcv_cpl in rcv_couples_fa:
         i_ref = rcv_cpl[0]
 
         ## GCC ##
@@ -209,31 +226,31 @@ def process_localisation_zhang2023(
         d_gcc_fullarray.append(d_gcc)
 
     ## RTF ##
-    i_ref = 0
-    # Extract data corresponding to the two-sensor pair rcv_cpl
-    ds_cpl_rtf = ds.sel(idx_rcv_ref=i_ref)
+    # Select reference receiver (by default the first receiver of the array is selected)
+    i_ref = rcv_in_fullarray[0]
+    ds_fa_rtf = ds_fa.sel(idx_rcv_ref=i_ref)
 
-    rtf_grid = ds_cpl_rtf.rtf_real.values + 1j * ds_cpl_rtf.rtf_imag.values
-    rtf_event = ds_cpl_rtf.rtf_event_real.values + 1j * ds_cpl_rtf.rtf_event_imag.values
+    rtf_grid = ds_fa_rtf.rtf_real.values + 1j * ds_fa_rtf.rtf_imag.values
+    rtf_event = ds_fa_rtf.rtf_event_real.values + 1j * ds_fa_rtf.rtf_event_imag.values
 
     theta = dist_func(rtf_event, rtf_grid, **dist_kwargs)
 
     # Add theta to dataset
-    ds_cpl_rtf["theta"] = (["x", "y"], theta)
+    ds_fa_rtf["theta"] = (["x", "y"], theta)
 
     # # Convert theta to a metric between -1 and 1
     # theta_inv = (
-    #     theta_max - ds_cpl_rtf.theta
+    #     theta_max - ds_fa_rtf.theta
     # )  # So that the source position is the maximum value
     # d_rtf = (theta_inv - theta_max / 2) / (theta_max / 2)  # To lie between -1 and 1
 
-    d_rtf = normalize_metric_contrast(-ds_cpl_rtf.theta)  # q in [0, 1]
+    d_rtf = normalize_metric_contrast(-ds_fa_rtf.theta)  # q in [0, 1]
 
     #  Replace 0 by 1e-5 to avoid log(0) in dB conversion
     d_rtf = d_rtf.values
     d_rtf[d_rtf == 0] = MIN_VAL_LOG
     d_rtf = 10 * np.log10(d_rtf)  # Convert to dB
-    ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf)
+    ds_fa_rtf["d_rtf"] = (["x", "y"], d_rtf)
 
     ## GCC ##
     d_gcc_fullarray = np.array(d_gcc_fullarray)
@@ -259,13 +276,16 @@ def process_localisation_zhang2023(
     # Build dataset to be saved as netcdf
     ds_fullarray = xr.Dataset(
         data_vars=dict(
-            theta_rtf=(["x", "y"], ds_cpl_rtf.theta.values),
-            d_rtf=(["x", "y"], ds_cpl_rtf.d_rtf.values),
+            theta_rtf=(["x", "y"], ds_fa_rtf.theta.values),
+            d_rtf=(["x", "y"], ds_fa_rtf.d_rtf.values),
             d_gcc=(["x", "y"], d_gcc_fullarray),
         ),
         coords={
             "x": ds.x.values,
             "y": ds.y.values,
+        },
+        attrs={
+            "idx_rcv": ds_fa.idx_rcv.values,
         },
     )
 

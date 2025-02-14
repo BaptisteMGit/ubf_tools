@@ -95,7 +95,9 @@ def plot_study_zhang2023(folder, data_fname=None):
 
     ###### Two sensor pairs ######
     # Select receivers to build the sub-array
-    rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
+    # rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
+    rcv_couples = get_rcv_couples(ds_fa.idx_rcv)
+
     for rcv_cpl in rcv_couples:
 
         # Load data

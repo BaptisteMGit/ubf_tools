@@ -27,6 +27,9 @@ openpyxl = "*"
 ipympl = "*"
 pyproj = "*"
 nptdms = "*"
+imageio = {extras = ["ffmpeg"], version = "*"}
+pillow = "*"
+numba = "*"
 
 [dev-packages]
 ipykernel = "*"

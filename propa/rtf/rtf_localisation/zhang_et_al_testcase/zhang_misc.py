@@ -676,5 +676,18 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
     return msr, pos_hat
 
 
+def get_rcv_couples(idx_receivers):
+    """
+    Get all possible receiver couples
+    """
+    rcv_couples = []
+    for i in idx_receivers:
+        for j in idx_receivers:
+            if j > i:
+                rcv_couples.append([i, j])
+    rcv_couples = np.array(rcv_couples)
+    return rcv_couples
+
+
 if __name__ == "__main__":
     pass

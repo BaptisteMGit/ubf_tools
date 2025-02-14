@@ -167,8 +167,6 @@ def plot_study_zhang2023(folder, data_fname=None):
         amb_surf=ds_fa.d_gcc, source=source, plot_args=plot_args_gcc, loc_arg="max"
     )
 
-    ###### Figure 4 : Subplot in Zhang et al 2023 ######
-
     # Define plot args for ambiguity surfaces
     xticks_pos_km = [3.6, 4.0, 4.4]
     yticks_pos_km = [6.5, 6.9, 7.3]
@@ -185,6 +183,54 @@ def plot_study_zhang2023(folder, data_fname=None):
 
     x_src = source["x"]
     y_src = source["y"]
+
+    ###### Figure 4 : Subplot in Zhang et al 2023 ######
+    plot_subarrays_ambiguity_surfaces(
+        root_img,
+        rcv_couples,
+        data_fname,
+        root_data,
+        grid,
+        x_src,
+        y_src,
+        vmin,
+        vmax,
+        xticks_pos_m,
+        yticks_pos_m,
+        cmap=cmap,
+    )
+
+    ###### Figure 5 : Subplot in Zhang et al 2023 ######
+    plot_fullarray_ambiguity_surfaces(
+        ds_fa, root_img, x_src, y_src, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap=cmap
+    )
+
+    ###### Figure 5 distribution ######
+    plot_ambiguity_surface_distribution(ds_fa, root_img)
+
+    ###### Figure 5 showing pixels selected as the mainlobe ######
+    plot_ambiguity_surface_mainlobe_contour(
+        ds_fa, root_img, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap=cmap
+    )
+
+    estimate_msr(ds_fa=ds_fa, plot=False, root_img=root_img, verbose=True)
+
+
+def plot_subarrays_ambiguity_surfaces(
+    root_img,
+    rcv_couples,
+    data_fname,
+    root_data,
+    grid,
+    x_src,
+    y_src,
+    vmin,
+    vmax,
+    xticks_pos_m,
+    yticks_pos_m,
+    cmap="jet",
+):
+
     true_pos_label = (
         r"$X_{src} = ( "
         + f"{x_src:.0f}\,"
@@ -279,7 +325,19 @@ def plot_study_zhang2023(folder, data_fname=None):
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
     plt.close("all")
 
-    ###### Figure 5 : Subplot in Zhang et al 2023 ######
+
+def plot_fullarray_ambiguity_surfaces(
+    ds_fa, root_img, x_src, y_src, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap="jet"
+):
+
+    true_pos_label = (
+        r"$X_{src} = ( "
+        + f"{x_src:.0f}\,"
+        + r"\textrm{m},\,"
+        + f"{y_src:.0f}\,"
+        + r"\textrm{m})$"
+    )
+
     f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
 
     # Plot d_gcc and d_rtf
@@ -344,41 +402,10 @@ def plot_study_zhang2023(folder, data_fname=None):
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
     plt.close("all")
 
-    ###### Figure 5 distribution ######
-    f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
 
-    percentile_threshold = 0.995
-    bins = ds_fa["d_gcc"].size // 10
-
-    # Plot d_gcc and d_rtf
-    mainlobe_th = {}
-    for i, dist in enumerate(["d_gcc", "d_rtf"]):
-        ax = axs[i]
-        amb_surf = ds_fa[dist]
-
-        amb_surf.plot.hist(ax=ax, bins=bins, alpha=0.5, color="b")
-
-        # Vertical line representing the percentile threshold
-        percentile = np.percentile(amb_surf.values, percentile_threshold * 100)
-        mainlobe_th[dist] = percentile
-        ax.axvline(
-            percentile,
-            color="r",
-            linestyle="--",
-            label=f"{percentile_threshold*100:.0f}th percentile",
-        )
-
-        ax.set_title(r"$\textrm{Full array}$")
-        ax.set_xlim(-20, 0)
-        ax.set_xlabel(r"$\textrm{[dB]}$")
-
-    # Save figure
-    fpath = os.path.join(root_img, "loc_zhang2023_fig5_dist.png")
-    plt.savefig(fpath, dpi=300, bbox_inches="tight")
-    plt.close("all")
-
-    ###### Figure 5 showing pixels selected as the mainlobe ######
-
+def plot_ambiguity_surface_mainlobe_contour(
+    ds_fa, root_img, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap="jet"
+):
     # Find mainlobe contours
     mainlobe_contours = find_mainlobe(ds_fa)
 
@@ -438,7 +465,42 @@ def plot_study_zhang2023(folder, data_fname=None):
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
     plt.close("all")
 
-    estimate_msr(ds_fa=ds_fa, plot=False, root_img=root_img, verbose=True)
+
+def plot_ambiguity_surface_distribution(ds_fa, root_img):
+    """
+    Plot the distribution of the ambiguity surfaces for d_gcc and d_rtf
+    """
+    f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+
+    percentile_threshold = 0.995
+    bins = {"d_gcc": ds_fa["d_gcc"].size // 10, "d_rtf": ds_fa["d_rtf"].size // 10}
+
+    # Plot d_gcc and d_rtf
+    mainlobe_th = {}
+    for i, dist in enumerate(["d_gcc", "d_rtf"]):
+        ax = axs[i]
+        amb_surf = ds_fa[dist]
+
+        amb_surf.plot.hist(ax=ax, bins=bins[dist], alpha=0.5, color="b")
+
+        # Vertical line representing the percentile threshold
+        percentile = np.percentile(amb_surf.values, percentile_threshold * 100)
+        mainlobe_th[dist] = percentile
+        ax.axvline(
+            percentile,
+            color="r",
+            linestyle="--",
+            label=f"{percentile_threshold*100:.0f}th percentile",
+        )
+
+        ax.set_title(r"$\textrm{Full array}$")
+        ax.set_xlim(-20, 0)
+        ax.set_xlabel(r"$\textrm{[dB]}$")
+
+    # Save figure
+    fpath = os.path.join(root_img, "loc_zhang2023_fig5_dist.png")
+    plt.savefig(fpath, dpi=300, bbox_inches="tight")
+    plt.close("all")
 
 
 def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):

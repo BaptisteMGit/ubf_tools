@@ -14,17 +14,17 @@
 # ======================================================================================================================
 import xarray as xr
 
-from signals import pulse
+from signals.signals import pulse
 from localisation.verlinden.plateform.utils import *
 from localisation.verlinden.plateform.init_dataset import init_grid
-from localisation.verlinden.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 from localisation.verlinden.plateform.build_dataset import build_dataset
 from localisation.verlinden.plateform.populate_dataset import (
     populate_dataset,
     grid_synthesis,
 )
 from localisation.verlinden.testcases.testcase_envs import TestCase3_1
-from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
 
 def run_plateform_test():
@@ -81,14 +81,14 @@ def run_plateform_test():
     ds.attrs["src_label"] = build_src_label(src_name=src.name)
 
     # Populate dataset
-    ds = populate_dataset(ds, src, rcv_info=rcv_info_dw)
+    ds = populate_dataset(ds, src, rcv_info=rcv_info_dw, random_source=True)
 
     print("Done")
 
     return ds
 
 
-def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
+def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src, random_source=False):
 
     for obs_id in rcv_info["id"]:
         pos_obs = load_rhumrum_obs_pos(obs_id)
@@ -102,10 +102,9 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
     root_dir = build_root_dir(testcase.name)
     grid_label = build_grid_label(dx, dy)
     fullpath_dataset_propa_grid = build_propa_grid_path(
-        root_dir,
-        boundaries_label, grid_label
+        root_dir, boundaries_label, grid_label
     )
-    
+
     if not os.path.exists(fullpath_dataset_propa):
         steps = [0, 1]  # All steps required
     else:
@@ -131,7 +130,6 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
             steps = [0, 1]
 
     if 0 in steps:
-        print("Step 0")
         build_dataset(
             rcv_info=rcv_info,
             testcase=testcase,
@@ -142,7 +140,6 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
             fs=src.fs,
         )
     if 1 in steps:
-        print("Step 1")
         ds = xr.open_dataset(fullpath_dataset_propa, engine="zarr", chunks={})
         ds = populate_dataset(
             ds,
@@ -150,16 +147,17 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
             rcv_info=rcv_info,
             dx=dx,
             dy=dy,
+            random_source=random_source,
         )
         fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src
 
     if 2 in steps:
-        print("Step 2")
         ds = xr.open_dataset(fullpath_dataset_propa_grid, engine="zarr", chunks={})
-        ds = grid_synthesis(ds, src)
+        ds = grid_synthesis(ds, src, random_source=random_source)
         fullpath_dataset_propa_grid_src = ds.fullpath_dataset_propa_grid_src
 
     return (
+        ds,
         fullpath_dataset_propa,
         fullpath_dataset_propa_grid,
         fullpath_dataset_propa_grid_src,
@@ -169,47 +167,47 @@ def run_on_plateform(rcv_info, testcase, min_dist, dx, dy, src):
 if __name__ == "__main__":
     import numpy as np
 
-    rcv_info_dw = {
-        # "id": ["RR45", "RR48", "RR44"],
-        # "id": ["RR45", "RR48"],
-        "id": ["RRdebug0", "RRdebug1"],
-        "lons": [],
-        "lats": [],
-    }
-    tc = TestCase3_1()
-    min_dist = 15 * 1e3
-    dx, dy = 100, 100
+    # rcv_info_dw = {
+    #     # "id": ["RR45", "RR48", "RR44"],
+    #     # "id": ["RR45", "RR48"],
+    #     "id": ["RRdebug0", "RRdebug1"],
+    #     "lons": [],
+    #     "lats": [],
+    # }
+    # tc = TestCase3_1()
+    # min_dist = 15 * 1e3
+    # dx, dy = 100, 100
 
-    # Define source signal
-    dt = 1
-    min_waveguide_depth = 5000
-    f0, fs = 5, 10
-    nfft = int(fs * dt)
-    src_sig, t_src_sig = pulse(T=dt, f=f0, fs=fs)
+    # # Define source signal
+    # dt = 1
+    # min_waveguide_depth = 5000
+    # f0, fs = 5, 10
+    # nfft = int(fs * dt)
+    # src_sig, t_src_sig = pulse(T=dt, f=f0, fs=fs)
 
-    src = AcousticSource(
-        signal=src_sig,
-        time=t_src_sig,
-        name="debug_pulse",
-        waveguide_depth=min_waveguide_depth,
-        nfft=nfft,
-    )
+    # src = AcousticSource(
+    #     signal=src_sig,
+    #     time=t_src_sig,
+    #     name="debug_pulse",
+    #     waveguide_depth=min_waveguide_depth,
+    #     nfft=nfft,
+    # )
 
-    # src_sig = src_sig + 10 * np.random.randn(*src_sig.shape)
-    src_sig = np.ones_like(src_sig)
-    src = AcousticSource(
-        signal=src_sig,
-        time=t_src_sig,
-        name="debug_pulse",
-        waveguide_depth=min_waveguide_depth,
-        nfft=nfft,
-    )
-    src.display_source()
+    # # src_sig = src_sig + 10 * np.random.randn(*src_sig.shape)
+    # src_sig = np.ones_like(src_sig)
+    # src = AcousticSource(
+    #     signal=src_sig,
+    #     time=t_src_sig,
+    #     name="debug_pulse",
+    #     waveguide_depth=min_waveguide_depth,
+    #     nfft=nfft,
+    # )
+    # src.display_source()
 
-    run_on_plateform(
-        rcv_info=rcv_info_dw, testcase=tc, min_dist=min_dist, dx=dx, dy=dy, src=src
-    )
-    # ds = run_plateform_test()
+    # run_on_plateform(
+    #     rcv_info=rcv_info_dw, testcase=tc, min_dist=min_dist, dx=dx, dy=dy, src=src
+    # )
+    ds = run_plateform_test()
 
     # import os
     # import numpy as np

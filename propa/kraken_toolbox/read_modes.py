@@ -1,3 +1,17 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+'''
+@File    :   read_modes.py
+@Time    :   2024/07/08 09:09:27
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Read the modes produced by KRAKEN from a '.mod' binary file.
+'''
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
 import os
 import numpy as np
 

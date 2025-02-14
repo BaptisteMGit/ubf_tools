@@ -24,8 +24,10 @@ from localisation.verlinden.plateform.utils import (
     init_simu_info_dataset,
     set_simu_unique_id,
 )
+
+from propa.kraken_toolbox.utils import get_rcv_pos_idx
 from propa.kraken_toolbox.run_kraken import runkraken
-from localisation.verlinden.verlinden_utils import (
+from localisation.verlinden.misc.verlinden_utils import (
     get_range_from_rcv,
     set_azimuths,
     build_rcv_pairs,
@@ -120,12 +122,12 @@ def init_dataset(
         azimuth=0,
         rcv_lon=rcv_info["lons"][0],
         rcv_lat=rcv_info["lats"][0],
-        freq=[1],
+        freq=[5],
     )
     testcase.update(testcase_varin)
 
     # Run kraken
-    _, field_pos = runkraken(
+    pressure_field, field_pos = runkraken(
         env=testcase.env,
         flp=testcase.flp,
         frequencies=testcase.env.freq,
@@ -142,55 +144,26 @@ def init_dataset(
     xr_dataset.coords["kraken_range"] = kraken_range
     xr_dataset.coords["kraken_depth"] = kraken_depth
 
+    # Save dataset before adding tf array
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=True, mode="w")
+
     # Transfert function array
     tf_dims = ["idx_rcv", "all_az", "kraken_freq", "kraken_depth", "kraken_range"]
     tf_shape = [xr_dataset.sizes[dim] for dim in tf_dims]
 
+    # Chunk new variable tf
+    tf_chunksize = {}
+    for d in ["idx_rcv", "all_az"]:
+        tf_chunksize[d] = 1
+    for d in tf_dims[2:]:
+        tf_chunksize[d] = xr_dataset.sizes[d]
+
     tf_arr = da.empty(tf_shape, dtype=np.complex64)
     xr_dataset["tf"] = (tf_dims, tf_arr)
-
-    # Chunk new variable tf
-    chunk_dict = {}
-    for coord in list(xr_dataset.coords):
-        chunk_dict[coord] = xr_dataset.sizes[coord]
-    for coord in ["idx_rcv", "all_az"]:
-        chunk_dict[coord] = 1
-
-    xr_dataset = xr_dataset.chunk(chunk_dict)
+    xr_dataset["tf"] = xr_dataset.tf.chunk(tf_chunksize)
 
     # Store zarr without computing
-    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="w")
-
-    # # Save simu info in netcdf
-    # folder = os.path.dirname(os.path.dirname(xr_dataset.fullpath_dataset_propa))
-    # ds_info_path = os.path.join(folder, "simu_index.nc")
-
-    # if os.path.exists(ds_info_path):
-    #     # Load ds
-    #     ds_info = xr.open_dataset(ds_info_path)
-
-    # else:
-    #     # Create ds
-    #     ds_info = init_simu_info_dataset()
-
-    # # Add new simu
-    # id_to_write_in = (~ds_info.launched).idxmax()
-    # ds_info.launched.loc[id_to_write_in] = True
-    # ds_info.min_dist.loc[id_to_write_in] = minimum_distance_around_rcv
-
-    # nf = xr_dataset.sizes["kraken_freq"]
-    # ds_info.nfreq.loc[id_to_write_in] = nf
-    # ds_info.freq.loc[id_to_write_in][:nf] = xr_dataset.kraken_freq.values
-
-    # nr = xr_dataset.sizes["idx_rcv"]
-    # ds_info.nrcv.loc[id_to_write_in] = nr
-    # ds_info.rcv_id.loc[id_to_write_in][:nr] = xr_dataset.rcv_id.values
-
-    # ds_info.boundaries_label.loc[id_to_write_in] = xr_dataset.attrs["boundaries_label"]
-    # set_simu_unique_id(ds_info, id_to_write_in)
-
-    # # Save ds
-    # ds_info.to_netcdf(ds_info_path)
+    xr_dataset.to_zarr(xr_dataset.fullpath_dataset_propa, compute=False, mode="a")
 
     return xr_dataset
 
@@ -284,7 +257,7 @@ def init_grid(rcv_info, minimum_distance_around_rcv, dx=100, dy=100):
 
 
 if __name__ == "__main__":
-    from localisation.verlinden.verlinden_utils import load_rhumrum_obs_pos
+    from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
     rcv_info_dw = {
         "id": ["RR45", "RR48", "RR44"],

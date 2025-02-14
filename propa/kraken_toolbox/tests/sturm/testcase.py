@@ -14,7 +14,7 @@ from propa.kraken_toolbox.kraken_env import (
     Bathymetry,
 )
 from propa.kraken_toolbox.utils import default_nb_rcv_z
-from localisation.verlinden.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 
 from cst import SAND_PROPERTIES, TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 

@@ -17,10 +17,10 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 
-from signals import pulse
+from signals.signals import pulse
 from propa.kraken_toolbox.plot_utils import plotmode
 from propa.kraken_toolbox.run_kraken import runkraken
-from localisation.verlinden.AcousticComponent import AcousticSource
+from signals.AcousticComponent import AcousticSource
 from localisation.verlinden.testcases.testcase_envs import TestCase
 from propa.kraken_toolbox.post_process import (
     postprocess_received_signal_from_broadband_pressure_field,
@@ -47,6 +47,17 @@ class CalibTestCase(TestCase):
         self.flp_n_rcv_z = 9
         self.flp_rcv_z_min = 10
         self.flp_rcv_z_max = 90
+
+        tc_default_varin = {
+            "freq": [25],
+            "max_range_m": 50 * 1e3,
+            "min_depth": 100,
+            "dr_flp": 5,
+            "nb_modes": 100,
+            "mode_addition": "coupled",
+        }
+        for key, default_value in tc_default_varin.items():
+            self.default_varin[key] = default_value
 
         self.process()
 

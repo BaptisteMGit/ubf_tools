@@ -24,6 +24,7 @@ class PubFigure:
         constrained_layout_w_pad=0.15,
         constrained_layout_hspace=0.1,
         constrained_layout_wspace=0.1,
+        use_tex=True,
     ):
         self.size = size
         self.label_fontsize = label_fontsize
@@ -47,6 +48,7 @@ class PubFigure:
 
         self.dpi = dpi
         self.fmt = fmt
+        self.use_tex = use_tex
         self.set_all_params()
 
     def set_full_screen(self):
@@ -74,5 +76,24 @@ class PubFigure:
             "ytick.labelsize": self.ticks_fontsize,
             "axes.titlepad": self.titlepad,
             "axes.labelpad": self.labelpad,
+            "text.usetex": self.use_tex,
+            "font.family": "serif",
+            "backend": "Agg",  # Use Agg backend to avoid GUI (quicker and safer)
         }
         plt.rcParams.update(params)
+
+    def set_better_axis(axis, fontsize=13):
+        """Remove top and right border of axis, add arrow on left and bottom border and set left and bottom label fontsize
+
+        Args:
+            - axis (Axes): matplotlib axis
+            - fontsize (float, optional): label fontsize . Defaults to 13.
+        """
+        axis.spines["left"].set_position(("data", 0))
+        axis.spines["bottom"].set_position(("data", 0))
+        axis.plot(1, 0, ">k", transform=axis.get_yaxis_transform(), clip_on=False)
+        axis.plot(0, 1, "^k", transform=axis.get_xaxis_transform(), clip_on=False)
+        axis.spines["top"].set_visible(False)
+        axis.spines["right"].set_visible(False)
+        axis.tick_params("x", labelsize=fontsize)
+        axis.tick_params("y", labelsize=fontsize)

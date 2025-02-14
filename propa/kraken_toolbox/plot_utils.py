@@ -6,7 +6,7 @@
 @Author  :   Menetrier Baptiste 
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   None
+@Desc    :   Utility functions to plot kraken outputs
 """
 
 # ======================================================================================================================
@@ -130,9 +130,6 @@ def plotshd(
         Pos["r"]["r"] = Pos["r"]["r"] / 1000.0
         xlab = "Range [km]"
 
-    # Plot the data
-    tej = plt.get_cmap("jet", 256).reversed()
-    plt.pcolor(Pos["r"]["r"], Pos["r"]["z"], tlt, shading="auto", cmap=tej)
     if tl_min is not None:
         tlmin_plot = tl_min
     else:
@@ -142,7 +139,21 @@ def plotshd(
         tlmax_plot = tl_max
     else:
         tlmax_plot = tlmax
-    plt.clim(tlmin_plot, tlmax_plot)
+    # tlmin_plot = 30
+    # tlmax_plot = 80
+    # Plot the data
+    tej = plt.get_cmap("jet", 256).reversed()
+    plt.pcolor(
+        Pos["r"]["r"],
+        Pos["r"]["z"],
+        tlt,
+        shading="auto",
+        cmap=tej,
+        vmin=tlmin_plot,
+        vmax=tlmax_plot,
+    )
+
+    # plt.clim(tlmin_plot, tlmax_plot)
 
     if bathy is not None:
         plt.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k")
@@ -266,6 +277,8 @@ def plotshd_from_pressure_field(
 
 
 """ Plot environment profiles """
+
+
 def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     if ax is None:
         plt.figure(figsize=(10, 8))
@@ -282,7 +295,7 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     else:
         cs = cs_ssp
 
-    # No need to plot the C-wave attenuation if it is 0 and as is not 0
+    # No need to plot the C-wave celerity if it is 0 and cs is not 0
     if np.all(cp == 0) and not np.all(cs == 0):
         cp = np.ones(z.size) * np.nan
         min_cp = np.nan
@@ -293,7 +306,8 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
         max_cp = np.max(cp)
         plot_cp = True
 
-    # No need to plot the S-wave attenuation if it is 0 and ap is not 0
+    # No need to plot the S-wave celerity if it is 0 and cp is not 0
+    cs = 0
     if np.all(cs == 0) and not np.all(cp == 0):
         cs = np.ones(z.size) * np.nan
         min_cs = np.nan
@@ -307,14 +321,14 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     if plot_cp:
         col1 = "red"
         ax.plot(cp, z, color=col1, label="C-wave")
-    ax.set_xlabel("C-wave celerity " + r"[$m.s^{-1}$]")
+    ax.set_xlabel("Celerity " + r"[$m.s^{-1}$]")
 
     if plot_cs:
         col2 = "blue"
         ax.plot(cs, z, color=col2, label="S-wave")
 
     ax.invert_yaxis()
-    ax.legend()
+    ax.legend(loc="upper right")
 
     # Color domains with water and sediment
     min_x = np.nanmin([min_cp, min_cs])
@@ -329,7 +343,7 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
     color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
 
 
-def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
+def plot_attenuation(ap, ash, z, z_bottom=None, ax=None):
     if ax is None:
         plt.figure(figsize=(10, 8))
         ax = plt.gca()
@@ -340,13 +354,13 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
     else:
         pass
 
-    if np.array(as_).size == 1:
-        as_ = np.ones(z.size) * as_
+    if np.array(ash).size == 1:
+        ash = np.ones(z.size) * ash
     else:
         pass
 
     # No need to plot the C-wave attenuation if it is 0 and as is not 0
-    if np.all(ap == 0) and not np.all(as_ == 0):
+    if np.all(ap == 0) and not np.all(ash == 0):
         ap = np.ones(z.size) * np.nan
         min_ap = np.nan
         max_ap = np.nan
@@ -357,24 +371,24 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
         plot_ap = True
 
     # No need to plot the S-wave attenuation if it is 0 and ap is not 0
-    if np.all(as_ == 0) and not np.all(ap == 0):
-        as_ = np.ones(z.size) * np.nan
+    if np.all(ash == 0) and not np.all(ap == 0):
+        ash = np.ones(z.size) * np.nan
         min_as = np.nan
         max_as = np.nan
         plot_as = False
     else:
-        min_as = np.min(as_)
-        max_as = np.max(as_)
+        min_as = np.min(ash)
+        max_as = np.max(ash)
         plot_as = True
 
     if plot_ap:
         col1 = "red"
         ax.plot(ap, z, color=col1, label="C-wave")
-    ax.set_xlabel("Attenuation " + r"[$dB.\lambda^{-1}$]")
+    ax.set_xlabel(r"$\alpha$ " + r"[$dB.\lambda^{-1}$]")
 
     if plot_as:
         col2 = "blue"
-        ax.plot(as_, z, color=col2, label="S-wave")
+        ax.plot(ash, z, color=col2, label="S-wave")
 
     # Color domains with water and sediment
     min_x = np.nanmin([min_ap, min_as])
@@ -389,7 +403,7 @@ def plot_attenuation(ap, as_, z, z_bottom=None, ax=None):
     color_domains(ax, min_x=min_x, max_x=max_x, z=z, z_bottom=z_bottom)
 
     ax.invert_yaxis()
-    ax.legend()
+    ax.legend(loc="upper right")
 
 
 def plot_density(rho, z, z_bottom=None, ax=None):
@@ -403,9 +417,9 @@ def plot_density(rho, z, z_bottom=None, ax=None):
     else:
         pass
 
-    ax.plot(rho, z, label="Density", color="k")
+    ax.plot(rho, z, label=r"$\rho$", color="k")
     ax.invert_yaxis()
-    ax.set_xlabel("Density " + r"[$g.cm^{-3}$]")
+    ax.set_xlabel(r"$\rho$ " + r"[$g.cm^{-3}$]")
 
     # Color domains with water and sediment
     min_x = np.min(rho)
@@ -440,5 +454,5 @@ def color_domains(ax, min_x, max_x, z, z_bottom=None):
         pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pass

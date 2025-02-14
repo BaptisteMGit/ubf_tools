@@ -18,7 +18,9 @@ import xarray as xr
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
+
 from cst import RHO_W, C0
+from signals.signals import colored_noise
 
 # from signals.signals import lfm_chirp
 # from misc import cast_matrix_to_target_shape, mult_along_axis
@@ -45,7 +47,7 @@ MIN_VAL_LOG = 1e-5
 # ======================================================================================================================
 
 
-def params():
+def params(debug=False):
     # General parameters of the test case following Zhang et al. 2023
     depth = 150
 
@@ -67,8 +69,12 @@ def params():
 
     # Source
     # Estimated from figure 4 of Zhang et al. 2023
-    x_src_s1 = 3990
-    y_src_s1 = 6790
+    # x_src_s1 = 3990
+    # y_src_s1 = 6790
+
+    # To fall exactly into a grid pixel
+    x_src_s1 = 3900
+    y_src_s1 = 6800
 
     # x_src_s1 = 4500
     # y_src_s1 = 7400
@@ -92,36 +98,45 @@ def params():
 
     # Detection area
 
-    # Test with non square area
-    l_detection_area_x = 1.2e3  # Length of the detection area along x axis
-    l_detection_area_y = 1.4e3  # Length of the detection area along y axis
-    d_rcv1_bott_left_corner = 7.5 * 1e3
+    if debug:
+        # Test with non square area
+        l_detection_area_x = 0.4e3  # Length of the detection area along x axis
+        l_detection_area_y = 0.5e3  # Length of the detection area along y axis
 
-    # # Usual case
-    # l_detection_area = 1e3  # Length of the detection area
+        # Manual def (ugly)
+        x_bott_left_corner = 3800
+        y_bott_left_corner = 6700
+        # d_rcv1_bott_left_corner = 7.5 * 1e3
+
+    # Usual case
+    else:
+        # # Manual def (ugly)
+        l_detection_area = 1e3  # Length of the detection area
+        l_detection_area_x = l_detection_area_y = l_detection_area
+        x_bott_left_corner = 3500
+        y_bott_left_corner = 6400
+
+    ### Original definition of the area location implies distance and angle from the antenna ###
     # l_detection_area_x = l_detection_area_y = l_detection_area
     # d_rcv1_bott_left_corner = (
     #     8 * 1e3
     # )  # Range from rcv_1 to the left bottom corner of the detection area
 
     # Derive grid pixels range from the origin
-    bearing_degree = 60  # Bearing from the receiver 1 to the left bottom corner of the detection area
-    x_bott_left_corner = (
-        d_rcv1_bott_left_corner * np.cos(np.radians(bearing_degree)) + x_rcv[0]
-    )
-    y_bott_left_corner = (
-        d_rcv1_bott_left_corner * np.sin(np.radians(bearing_degree)) + y_rcv[0]
-    )
+    # bearing_degree = 60  # Bearing from the receiver 1 to the left bottom corner of the detection area
+    # x_bott_left_corner = (
+    #     d_rcv1_bott_left_corner * np.cos(np.radians(bearing_degree)) + x_rcv[0]
+    # )
+    # y_bott_left_corner = (
+    #     d_rcv1_bott_left_corner * np.sin(np.radians(bearing_degree)) + y_rcv[0]
+    # )
 
     # # Assume 8km refers to the center of the detection area
     # x_offset = -l_detection_area / 2
     # y_offset = -l_detection_area / 2
     # x_bott_left_corner += x_offset
     # y_bott_left_corner += y_offset
-
-    # Manual def (ugly)
-    # x_bott_left_corner = 3500
-    # y_bott_left_corner = 6400
+    ### End of the area definition ###
 
     # Grid
     dx = 20
@@ -250,26 +265,85 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
     return library_props, S_f_library, f_library, idx_in_band
 
 
-def event_src_spectrum(T, fs):
+def generate_event_src_signal(T, fs):
+    """
+    Generate event source signal : Zhang et al. 2023 -> Gaussian noise
+
+    The event signal is generated once and saved to a txt file to be used in the simulation
+    """
+    # # The easiest, yet not elegant way to calibrate the event signal is to set the variance of the event signal to the variance of the library signal in the time domain
+    # t = np.arange(0, T, 1 / fs)
+    # nt = len(t)
+    # s_e = np.random.normal(0, 1, nt)  # Unit var signal
+    # # Apply window
+    # s_e *= sp.windows.hann(len(s_e))
+
+    # Create white noise signal
+    t, s_e = colored_noise(T, fs, "white")
+
+    # Normalize to unit variance
+    s_e /= np.std(s_e)
+
+    # Save t, s to txt
+    txt = np.c_[t, s_e]
+    fpath = os.path.join(ROOT_DATA, "event_src_signal.txt")
+    np.savetxt(fpath, txt, fmt="%.6f")
+
+    nt = len(t)
+    S_f_event = np.fft.rfft(s_e)
+    f_event = np.fft.rfftfreq(nt, 1 / fs)
+
+    # Save f, S to txt
+    txt = np.c_[f_event, np.real(S_f_event), np.imag(S_f_event)]
+    fpath = os.path.join(ROOT_DATA, "event_src_spectrum.txt")
+    np.savetxt(fpath, txt, fmt="%.6f")
+
+
+def event_src_spectrum(T, fs, stype="wn"):
     """Event source signal spectrum : Zhang et al. 2023 -> Gaussian noise
     The variance of the signal is set to the variance of the library signal (assuming both signal have same power)
     """
 
-    event_props = {}
-    # Event source is defined as a Gaussian noise
+    # generate_event_src_signal(T, fs)
+    # # Event source is defined as a Gaussian noise
 
-    # The easiest, yet not elegant way to calibrate the event signal is to set the variance of the event signal to the variance of the library signal in the time domain
-    t = np.arange(0, T, 1 / fs)
-    nt = len(t)
-    s_e = np.random.normal(0, 1, nt)  # Unit var signal
+    # # The easiest, yet not elegant way to calibrate the event signal is to set the variance of the event signal to the variance of the library signal in the time domain
+    # t = np.arange(0, T, 1 / fs)
+    # nt = len(t)
+    # s_e = np.random.normal(0, 1, nt)  # Unit var signal
 
-    S_f_event = np.fft.rfft(s_e)
-    f_event = np.fft.rfftfreq(nt, 1 / fs)
+    if stype == "wn":
+        event_props = {}
+        # Load event signal
+        fpath = os.path.join(ROOT_DATA, "event_src_signal.txt")
+        if not os.path.exists(fpath):
+            generate_event_src_signal(T, fs)
+
+        t, s_e = np.loadtxt(fpath, unpack=True)
+
+        # Load event spectrum
+        fpath = os.path.join(ROOT_DATA, "event_src_spectrum.txt")
+        f_event, S_f_event_real, S_f_event_imag = np.loadtxt(fpath, unpack=True)
+        S_f_event = S_f_event_real + 1j * S_f_event_imag
+        stype_name = "Gaussian white noise"
+
+    elif stype == "lfm":
+        event_props, S_f_event, f_event, _ = library_src_spectrum(fs=fs)
+
+        # Derive t, s_e by inverse fourier transform
+        s_e = np.fft.irfft(S_f_event)
+        t = np.arange(0, event_props["T"], 1 / event_props["fs"])
+        stype_name = "LFM Chirp"
+
+    # nt = len(t)
+    # S_f_event = np.fft.rfft(s_e)
+    # f_event = np.fft.rfftfreq(nt, 1 / fs)
 
     plt.figure()
     plt.plot(t, s_e)
     plt.xlabel(r"$\textrm{Time [s]}$")
     plt.ylabel(r"$s(t)$")
+    plt.title(f"Event source signal = {stype_name}")
     fpath = os.path.join(ROOT_IMG, f"event_source_signal.png")
     plt.savefig(fpath)
 
@@ -277,10 +351,31 @@ def event_src_spectrum(T, fs):
     plt.plot(f_event, np.abs(S_f_event))
     plt.xlabel(r"$\textrm{Frequency [Hz]}$")
     plt.ylabel(r"$|S(f)|$")
+    plt.title(f"Event source signal = {stype_name}")
     fpath = os.path.join(ROOT_IMG, f"event_source_spectrum.png")
     plt.savefig(fpath)
-    plt.close("all")
+    # plt.close("all")
+
+    # Compute and plot DSP
+    dsp = sp.welch(s_e, fs, nperseg=1024, noverlap=512, nfft=1024)
+    plt.figure()
+    plt.plot(dsp[0], 10 * np.log10(dsp[1]))
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("PSD [dB/Hz]")
+    plt.title(f"Event source signal = {stype_name}")
+    # plt.yscale("log")
+    plt.savefig(os.path.join(ROOT_IMG, "event_source_dsp.png"))
     # S_f_event = np.ones_like(f)
+
+    # Plot noise signal derived from inverse FFT
+    s_e_ifft = np.fft.irfft(S_f_event)
+    plt.figure()
+    plt.plot(t, s_e_ifft)
+    plt.xlabel("Time [s]")
+    plt.ylabel("s(t)")
+    plt.title(f"Event source signal = {stype_name}")
+    plt.savefig(os.path.join(ROOT_IMG, "event_source_signal_ifft.png"))
+    plt.close("all")
 
     return event_props, S_f_event, f_event
 
@@ -327,17 +422,17 @@ def find_mainlobe(ds_fa):
 
         # Define a discrete colormap with n_clusters colors
         cmap = plt.get_cmap("jet", n_clusters)
-        im = ax.pcolormesh(
-            ds_fa["x"].values * 1e-3,
-            ds_fa["y"].values * 1e-3,
-            labels.T,
-            cmap=cmap,
-        )
+        # im = ax.pcolormesh(
+        #     ds_fa["x"].values * 1e-3,
+        #     ds_fa["y"].values * 1e-3,
+        #     labels.T,
+        #     cmap=cmap,
+        # )
 
-        # Add colorbar with n_clusters ticks
-        cbar = plt.colorbar(
-            im, ax=ax, label=r"$\textrm{Class}$", ticks=range(n_clusters)[::2]
-        )
+        # # Add colorbar with n_clusters ticks
+        # cbar = plt.colorbar(
+        #     im, ax=ax, label=r"$\textrm{Class}$", ticks=range(n_clusters)[::2]
+        # )
         ax.set_title(f"Full array")
         ax.set_xlabel(r"$x \textrm{[km]}$")
         ax.set_ylabel(r"$y \, \textrm{[km]}$")
@@ -371,33 +466,33 @@ def find_mainlobe(ds_fa):
         f, ax = plt.subplots(1, 1, figsize=(5, 5))
 
         # Define a discrete colormap with n_clusters colors
-        im = ax.pcolormesh(
-            ds_fa["x"].values * 1e-3,
-            ds_fa["y"].values * 1e-3,
-            amb_surf.values.T,
-            cmap="jet",
-            vmin=-10,
-            vmax=0,
-        )
+        # im = ax.pcolormesh(
+        #     ds_fa["x"].values * 1e-3,
+        #     ds_fa["y"].values * 1e-3,
+        #     amb_surf.values.T,
+        #     cmap="jet",
+        #     vmin=-10,
+        #     vmax=0,
+        # )
 
-        # # Highligh mainlobe pixels
-        ax.plot(
-            ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
-            ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
-            color="k",
-            linewidth=2,
-        )
-        # Add colorbar
-        cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
-        ax.scatter(
-            x_src_hat * 1e-3,
-            y_src_hat * 1e-3,
-            facecolors="none",
-            edgecolors="k",
-            label="Estimated source position",
-            s=20,
-            linewidths=3,
-        )
+        # # # Highligh mainlobe pixels
+        # ax.plot(
+        #     ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
+        #     ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
+        #     color="k",
+        #     linewidth=2,
+        # )
+        # # Add colorbar
+        # cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
+        # ax.scatter(
+        #     x_src_hat * 1e-3,
+        #     y_src_hat * 1e-3,
+        #     facecolors="none",
+        #     edgecolors="k",
+        #     label="Estimated source position",
+        #     s=20,
+        #     linewidths=3,
+        # )
 
         ax.set_title(f"Full array")
         ax.set_xlabel(r"$x \textrm{[km]}$")
@@ -576,9 +671,7 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
         # Save figure
         fpath = os.path.join(root_img, "loc_zhang2023_fig5_nomainlobe.png")
         plt.savefig(fpath, dpi=300)
-        # plt.show()
-
-    plt.close("all")
+        plt.close("all")
 
     return msr, pos_hat
 

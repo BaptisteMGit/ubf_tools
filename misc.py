@@ -482,6 +482,99 @@ def export_to_dat(df, file_path):
             f.write(f"{int(row['Year'])} {int(row['Number of Publications'])}\n")
 
 
+def compute_hyperbola(receiver1, receiver2, source, num_points=500, tmax=2):
+    """
+        Computes the hyperbola curve given two receiver positions and a given source position.
+
+        Parameters:
+            receiver1 (tuple): Coordinates (x1, y1) of first receiver.
+            receiver2 (tuple): Coordinates (x2, y2) of second receiver.
+            source (tuple): Coordinates (xs, ys) of source.
+            num_points (int): Number of points to plot the hyperbola.
+
+        Returns:
+            x_hyper (numpy array), y_hyper (numpy array): Coordinates of the hyperbola.
+
+
+    # Example usage
+    receiver1 = (0, 0)
+    receiver2 = (250, 0)
+    x_s = 3990
+    y_s = 6790
+    source = (x_s, y_s)
+
+    # Compute hyperbola branches
+    (right_branch, left_branch) = compute_hyperbola(receiver1, receiver2, source)
+
+    # Plot results
+    plt.figure(figsize=(8, 6))
+    plt.plot(right_branch[0], right_branch[1], "r", label="Hyperbola (Right)")
+    # plt.plot(left_branch[0], left_branch[1], "r", label="Hyperbola (Left)")
+
+    # Plot receivers
+    plt.scatter(
+        [receiver1[0], receiver2[0]],
+        [receiver1[1], receiver2[1]],
+        c="g",
+        marker="o",
+        label="Receivers",
+    )
+    # Plot source
+    plt.scatter(x_s, y_s, c="b", marker="x", label="Source")
+
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.title("Hyperbola Defined by Two Receivers")
+    plt.axhline(0, color="black", linewidth=0.5, linestyle="--")
+    plt.axvline(0, color="black", linewidth=0.5, linestyle="--")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+    """
+    x1, y1 = receiver1
+    x2, y2 = receiver2
+    x_s, y_s = source
+
+    # Compute a
+    r_s1 = np.sqrt((x_s - receiver1[0]) ** 2 + (y_s - receiver1[1]) ** 2)
+    r_s2 = np.sqrt((x_s - receiver2[0]) ** 2 + (y_s - receiver2[1]) ** 2)
+    a = 1 / 2 * np.abs(r_s1 - r_s2)
+
+    # Compute the center and distance between receivers
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    d = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)  # Distance between receivers
+
+    if a >= d / 2:
+        raise ValueError(
+            "a must be smaller than half the distance between the receivers"
+        )
+
+    # Compute b using standard hyperbola formula: b^2 = (d/2)^2 - a^2
+    b = np.sqrt((d / 2) ** 2 - a**2)
+
+    # Parametric equations of the hyperbola
+    t = np.linspace(-tmax, tmax, num_points)  # Parameter values for hyperbola branches
+    x_hyper_right = a * np.cosh(t)  # Right branch
+    y_hyper = b * np.sinh(t)
+
+    x_hyper_left = -x_hyper_right  # Left branch
+
+    # Rotate and translate hyperbola to align with the receivers
+    angle = np.arctan2(y2 - y1, x2 - x1)  # Angle of the hyperbola axis
+    cos_theta, sin_theta = np.cos(angle), np.sin(angle)
+
+    # Apply rotation and translation
+    x_right = cx + x_hyper_right * cos_theta - y_hyper * sin_theta
+    y_right = cy + x_hyper_right * sin_theta + y_hyper * cos_theta
+
+    x_left = cx + x_hyper_left * cos_theta - y_hyper * sin_theta
+    y_left = cy + x_hyper_left * sin_theta + y_hyper * cos_theta
+
+    return (x_right, y_right), (x_left, y_left)
+
+
 if __name__ == "__main__":
 
     """Gather acronyms and bibliographies from a manuscript folder"""

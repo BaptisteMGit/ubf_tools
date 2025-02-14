@@ -18,7 +18,7 @@ import xarray as xr
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
-
+from misc import compute_hyperbola
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
 
 # ======================================================================================================================
@@ -28,7 +28,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
 
 def plot_study_zhang2023(folder, data_fname=None):
     # Load params
-    depth, receivers, source, grid, frequency, _ = params()
+    _, _, source, grid, _, _ = params()
 
     # Define folder to store images
     root_img = os.path.join(ROOT_IMG, folder)
@@ -62,6 +62,7 @@ def plot_study_zhang2023(folder, data_fname=None):
         "dist_label": r"$\theta \, \textrm{[°]}$",
         "vmax": 50,
         "vmin": 0,
+        "add_hyperbola": True,
     }
 
     plot_args_d_rtf = {
@@ -75,6 +76,7 @@ def plot_study_zhang2023(folder, data_fname=None):
         # dB scale
         "vmax": 0,
         "vmin": vmin_dB,
+        "add_hyperbola": True,
     }
 
     plot_args_gcc = {
@@ -88,6 +90,7 @@ def plot_study_zhang2023(folder, data_fname=None):
         # dB scale
         "vmax": 0,
         "vmin": vmin_dB,
+        "add_hyperbola": True,
     }
 
     ###### Two sensor pairs ######
@@ -120,7 +123,6 @@ def plot_study_zhang2023(folder, data_fname=None):
             plot_args=plot_args_theta,
             loc_arg="min",
         )
-        plt.close("all")
 
         # d_rtf
         plot_ambiguity_surface(
@@ -129,13 +131,11 @@ def plot_study_zhang2023(folder, data_fname=None):
             plot_args=plot_args_d_rtf,
             loc_arg="max",
         )
-        plt.close("all")
 
         # d_gcc
         plot_ambiguity_surface(
             amb_surf=ds_cpl.d_gcc, source=source, plot_args=plot_args_gcc, loc_arg="max"
         )
-        plt.close("all")
 
     ###### Full array ######
 
@@ -143,6 +143,9 @@ def plot_study_zhang2023(folder, data_fname=None):
     plot_args_theta["sub_array"] = None
     plot_args_d_rtf["sub_array"] = None
     plot_args_gcc["sub_array"] = None
+    plot_args_theta["add_circle"] = True
+    plot_args_d_rtf["add_circle"] = True
+    plot_args_gcc["add_circle"] = True
 
     # Theta
     plot_ambiguity_surface(
@@ -151,19 +154,16 @@ def plot_study_zhang2023(folder, data_fname=None):
         plot_args=plot_args_theta,
         loc_arg="min",
     )
-    plt.close("all")
 
     # d_rtf
     plot_ambiguity_surface(
         amb_surf=ds_fa.d_rtf, source=source, plot_args=plot_args_d_rtf, loc_arg="max"
     )
-    plt.close("all")
 
     # d_gcc
     plot_ambiguity_surface(
         amb_surf=ds_fa.d_gcc, source=source, plot_args=plot_args_gcc, loc_arg="max"
     )
-    plt.close("all")
 
     ###### Figure 4 : Subplot in Zhang et al 2023 ######
 
@@ -386,26 +386,37 @@ def plot_study_zhang2023(folder, data_fname=None):
         ax = axs[i]
         amb_surf = ds_fa[dist]
 
-        im = ax.pcolormesh(
-            ds_fa["x"].values,
-            ds_fa["y"].values,
-            amb_surf.values.T,
+        amb_surf.plot(
+            x="x",
+            y="y",
+            ax=ax,
             cmap=cmap,
             vmin=vmin,
             vmax=vmax,
+            extend="neither",
+            cbar_kwargs={"label": r"$\textrm{[dB]}$"},
         )
+
+        # im = ax.pcolormesh(
+        #     ds_fa["x"].values,
+        #     ds_fa["y"].values,
+        #     amb_surf.values.T,
+        #     cmap=cmap,
+        #     vmin=vmin,
+        #     vmax=vmax,
+        # )
 
         # Add colorbar
-        cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
+        # cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
 
-        contour = mainlobe_contours[dist]
-        ax.plot(
-            ds_fa["x"].values[contour[:, 0].astype(int)],
-            ds_fa["y"].values[contour[:, 1].astype(int)],
-            color="k",
-            linewidth=2,
-            # label="Mainlobe Boundary" if i == 0 else None,
-        )
+        # contour = mainlobe_contours[dist]
+        # ax.plot(
+        #     ds_fa["x"].values[contour[:, 0].astype(int)],
+        #     ds_fa["y"].values[contour[:, 1].astype(int)],
+        #     color="k",
+        #     linewidth=2,
+        #     # label="Mainlobe Boundary" if i == 0 else None,
+        # )
 
         ax.set_title(r"$\textrm{Full array}$")
         ax.set_xlabel(r"$x \textrm{[m]}$")
@@ -425,7 +436,7 @@ def plot_study_zhang2023(folder, data_fname=None):
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
     plt.close("all")
 
-    estimate_msr(ds_fa=ds_fa, plot=True, root_img=root_img, verbose=True)
+    estimate_msr(ds_fa=ds_fa, plot=False, root_img=root_img, verbose=True)
 
 
 def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):
@@ -437,6 +448,11 @@ def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):
     vmax = plot_args["vmax"]
     vmin = plot_args["vmin"]
     sub_array = plot_args["sub_array"]
+
+    # To plot the hyperbola corresponding to TDOA
+    add_hyperbola = plot_args.get("add_hyperbola", False)
+    # To plot the circle centered on the center of the antenna array and passing through the source
+    add_circle = plot_args.get("add_circle", False)
 
     # Source position
     x_src = source["x"]
@@ -555,9 +571,60 @@ def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):
     #     #     fontsize=16,
     #     # )
 
-    # plt.xlim([grid["x"][0, 0], grid["x"][0, -1]])
-    # plt.ylim([grid["y"][0, 0], grid["y"][-1, 0]])
-    plt.axis("equal")
+    # Add hyperbola if required
+    if add_hyperbola:
+        # print("Add hyperbola")
+        src_pos = (x_src, y_src)
+
+        if sub_array is None:
+            # Compute hyperbola for each pair of receivers
+            for i, sa in enumerate([[0, 2], [1, 4], [3, 5]]):
+                receiver1 = (receivers["x"][sa[0]], receivers["y"][sa[0]])
+                receiver2 = (receivers["x"][sa[1]], receivers["y"][sa[1]])
+                (right_branch, left_branch) = compute_hyperbola(
+                    receiver1, receiver2, src_pos
+                )
+
+                # Plot both branches
+                plt.plot(
+                    right_branch[0], right_branch[1], "k", linestyle="--", zorder=10
+                )
+                plt.plot(left_branch[0], left_branch[1], "k", linestyle="--", zorder=10)
+
+        else:
+            receiver1 = (receivers["x"][sub_array[0]], receivers["y"][sub_array[0]])
+            receiver2 = (receivers["x"][sub_array[1]], receivers["y"][sub_array[1]])
+            (right_branch, left_branch) = compute_hyperbola(
+                receiver1, receiver2, src_pos, tmax=5
+            )
+
+            # Plot both branches
+            plt.plot(right_branch[0], right_branch[1], "k", linestyle="--", zorder=10)
+            plt.plot(left_branch[0], left_branch[1], "k", linestyle="--", zorder=10)
+
+    # Add circle if required
+    if add_circle:
+        barycentre_x = np.mean(receivers["x"])
+        barycentre_y = np.mean(receivers["y"])
+        radius = np.sqrt((barycentre_x - x_src) ** 2 + (barycentre_y - y_src) ** 2)
+
+        circle = plt.Circle(
+            (barycentre_x, barycentre_y),
+            radius,
+            color="k",
+            fill=False,
+            linestyle="--",
+            linewidth=2,
+            label=r"$\mathcal{C}((\hat{x_r}, \hat{y_r}), r_{s})$",
+        )
+        plt.gca().add_artist(circle)
+
+    plt.xlim([grid["x"][0, 0], grid["x"][0, -1]])
+    plt.ylim([grid["y"][0, 0], grid["y"][-1, 0]])
+    # plt.ylim([grid["x"][0, 0], grid["x"][0, -1]])
+    # plt.xlim([grid["y"][0, 0], grid["y"][-1, 0]])
+
+    # plt.axis("equal")
     plt.xlabel(r"$x \, \textrm{[m]}$")
     plt.ylabel(r"$y \, \textrm{[m]}$")
     plt.legend()
@@ -573,6 +640,243 @@ def plot_ambiguity_surface(amb_surf, source, plot_args, loc_arg):
     fname = f"{testcase}_ambiguity_surface_{dist}{sa_lab}.png"
     fpath = os.path.join(path, fname)
     plt.savefig(fpath)
+    plt.close("all")
+
+
+def check_signal_noise(ds_sig_noise):
+    """
+    Plot library signal at source position and event signal aswell as associated noise signals to check that the dataset is built as required.
+    """
+    s_l = ds_sig_noise.s_l.sel(x=ds_sig_noise.xs, y=ds_sig_noise.ys, method="nearest")
+    x_l = ds_sig_noise.x_l.sel(x=ds_sig_noise.xs, y=ds_sig_noise.ys, method="nearest")
+    n_l = ds_sig_noise.n_l.sel(x=ds_sig_noise.xs, y=ds_sig_noise.ys, method="nearest")
+    s_e = ds_sig_noise.s_e
+    x_e = ds_sig_noise.x_e
+    n_e = ds_sig_noise.n_e
+
+    img_check_path = os.path.join(ds_sig_noise.root_img, "check")
+    if not os.path.exists(img_check_path):
+        os.makedirs(img_check_path)
+
+    for i_rcv in ds_sig_noise.idx_rcv.values:
+
+        f, axs = plt.subplots(3, 2, figsize=(20, 12), sharex=True, sharey=True)
+
+        # First column -> library
+        s_l.sel(idx_rcv=i_rcv).plot(ax=axs[0, 0])
+        axs[0, 0].set_title("$z(t)$")
+
+        n_l.sel(idx_rcv=i_rcv).plot(ax=axs[1, 0])
+        axs[1, 0].set_title("$v(t)$")
+
+        x_l.sel(idx_rcv=i_rcv).plot(ax=axs[2, 0])
+        axs[2, 0].set_title("$x(t) = z(t) + v(t)$")
+
+        # Second column -> event
+        s_e.sel(idx_rcv=i_rcv).plot(ax=axs[0, 1])
+        axs[0, 1].set_title("$z(t)$")
+
+        n_e.sel(idx_rcv=i_rcv).plot(ax=axs[1, 1])
+        axs[1, 1].set_title("$v(t)$")
+
+        x_e.sel(idx_rcv=i_rcv).plot(ax=axs[2, 1])
+        axs[2, 1].set_title("$x(t) = z(t) + v(t)$")
+
+        # Remove xlabel for row 0 and 1
+        for irow in [0, 1]:
+            for icol in [0, 1]:
+                axs[irow, icol].set_xlabel("")
+
+        plt.suptitle(f"SNR = {ds_sig_noise.snr} dB")
+        fpath = os.path.join(img_check_path, f"sig_noise_ircv{i_rcv}.png")
+        plt.savefig(fpath)
+
+    plt.close("all")
+
+
+def check_rtf_features(ds_rtf_cs, folder):
+
+    # Define folder to store images
+    root_img = os.path.join(ROOT_IMG, folder, "check_rtf")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
+
+    # Load dataset with KRAKEN TF to derive reference RTF
+    _, _, source, grid, frequency, _ = params()
+
+    # Load gridded dataset
+    fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
+    fpath = os.path.join(ROOT_DATA, fname)
+    ds_tf = xr.open_dataset(fpath)
+    # Build complex tf
+    tf = ds_tf.tf_real + 1j * ds_tf.tf_imag
+    # Extract tf between fmin and fmax from ds_rtf_cs
+    tf = tf.sel(f=slice(ds_rtf_cs.f_rtf.min(), ds_rtf_cs.f_rtf.max()))
+
+    # Define reference receiver to use
+    i_rcv_ref = 0
+    ds_rtf_cs = ds_rtf_cs.sel(idx_rcv_ref=i_rcv_ref)
+    rtf_cs = ds_rtf_cs.rtf_real + 1j * ds_rtf_cs.rtf_imag
+
+    # Define tf_ref
+    tf_ref = tf.sel(idx_rcv=i_rcv_ref)
+
+    # List position where we want to compare estimated RTF to ref RTF (KRAKEN)
+    # Source position + the 4 corners of the grid + one position inside the grid
+    x_check = [
+        source["x"],
+        ds_tf.x.min().values,
+        ds_tf.x.min().values,
+        ds_tf.x.max().values,
+        ds_tf.x.max().values,
+        ds_tf.x.values[int(ds_tf.sizes["x"] * 2 / 3)],
+    ]
+
+    y_check = [
+        source["y"],
+        ds_tf.y.min().values,
+        ds_tf.y.max().values,
+        ds_tf.y.max().values,
+        ds_tf.y.min().values,
+        ds_tf.y.values[int(ds_tf.sizes["y"] * 1 / 3)],
+    ]
+
+    # Iterate over receivers
+    for i_rcv in tf.idx_rcv.values:
+
+        # Build "true" RTF
+        rtf_true = tf.sel(idx_rcv=i_rcv) / tf_ref
+
+        # Iterate over positions to check
+        for i_check in range(len(x_check)):
+            x_i = x_check[i_check]
+            y_i = y_check[i_check]
+
+            # Extract data at required position
+            rtf_cs_pos = rtf_cs.sel(idx_rcv=i_rcv).sel(x=x_i, y=y_i, method="nearest")
+            rtf_true_pos = rtf_true.sel(x=x_i, y=y_i, method="nearest")
+
+            abs_cs = np.abs(rtf_cs_pos)
+            abs_true = np.abs(rtf_true_pos)
+            # Compare rtf_true to estimated rtf
+
+            plt.figure()
+            abs_true.plot(
+                label=r"$\Pi_{" + str(i_rcv) + r"}^{(Kraken)}$",
+                linestyle="-",
+                color="k",
+                linewidth=1.5,
+            )
+            abs_cs.plot(
+                # x="f",
+                linestyle="-",
+                label=r"$\Pi_{" + str(i_rcv) + r"}^{(CS)}$",
+                color="r",
+                marker="o",
+                linewidth=0.2,
+                markersize=3,
+            )
+            plt.legend()
+            plt.yscale("log")
+            plt.xlabel(r"$f \, \textrm{[Hz]}$")
+            plt.ylabel(r"$|\Pi(f)|$")
+
+            # Save figure
+            fname = f"check_rtf_rcv{i_rcv}_x{x_i}_y{y_i}.png"
+            fpath = os.path.join(root_img, fname)
+            plt.savefig(fpath)
+            plt.close("all")
+
+    ds_tf.close()
+
+
+def check_gcc_features(ds_gcc, folder):
+
+    # Define folder to store images
+    root_img = os.path.join(ROOT_IMG, folder, "check_gcc")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
+
+    # Load dataset with KRAKEN TF to derive reference RTF
+    _, _, source, grid, frequency, _ = params()
+
+    # Define reference receiver to use
+    i_rcv_ref = 0
+    gcc_ref = ds_gcc.sel(idx_rcv_ref=i_rcv_ref)
+    gcc_library = gcc_ref.gcc_real + 1j * gcc_ref.gcc_imag
+    gcc_event = gcc_ref.gcc_event_real + 1j * gcc_ref.gcc_event_imag
+
+    # List position where we want to compare estimated RTF to ref RTF (KRAKEN)
+    # Source position + the 4 corners of the grid + one random position inside the grid
+    x_check = [
+        source["x"],
+        ds_gcc.x.min().values,
+        ds_gcc.x.min().values,
+        ds_gcc.x.max().values,
+        ds_gcc.x.max().values,
+        ds_gcc.x.values[int(ds_gcc.sizes["x"] * 2 / 3)],
+    ]
+
+    y_check = [
+        source["y"],
+        ds_gcc.y.min().values,
+        ds_gcc.y.max().values,
+        ds_gcc.y.max().values,
+        ds_gcc.y.min().values,
+        ds_gcc.y.values[int(ds_gcc.sizes["y"] * 1 / 3)],
+    ]
+
+    # Iterate over receivers
+    for i_rcv in ds_gcc.idx_rcv.values:
+
+        gcc_l = gcc_library.sel(idx_rcv=i_rcv)
+        gcc_e = gcc_event.sel(idx_rcv=i_rcv)
+
+        # Iterate over positions to check
+        for i_check in range(len(x_check)):
+            x_i = x_check[i_check]
+            y_i = y_check[i_check]
+
+            # Extract data at required position
+            gcc_l_pos = gcc_l.sel(x=x_i, y=y_i, method="nearest")
+
+            # Due to SCOT weights the module is = 1, relevent information is only contained in the phase of the gcc
+            phi_gcc_l = np.unwrap(np.angle(gcc_l_pos))
+            phi_gcc_e = np.unwrap(np.angle(gcc_e))
+
+            # Compare library and event gcc
+            plt.figure()
+            plt.plot(
+                ds_gcc.f_gcc,
+                phi_gcc_l,
+                label=r"$GCC_{" + str(i_rcv) + r"}^{(l)}$",
+                linestyle="-",
+                color="k",
+                linewidth=1.5,
+            )
+
+            plt.plot(
+                ds_gcc.f_gcc,
+                phi_gcc_e,
+                linestyle="-",
+                label=r"$GCC_{" + str(i_rcv) + r"}^{(e)}$",
+                color="r",
+                marker="o",
+                linewidth=0.2,
+                markersize=3,
+            )
+
+            plt.legend()
+            plt.xlabel(r"$f \, \textrm{[Hz]}$")
+            plt.ylabel(r"$\phi(GCC(f))$")
+
+            # Save figure
+            fname = f"check_gcc_rcv{i_rcv}_x{x_i}_y{y_i}.png"
+            fpath = os.path.join(root_img, fname)
+            plt.savefig(fpath)
+            plt.close("all")
+
+    ds_gcc.close()
 
 
 if __name__ == "__main__":

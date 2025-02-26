@@ -1,11 +1,27 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   get_data_from_rhumrum.py
+@Time    :   2025/02/26 10:24:37
+@Author  :   Menetrier Baptiste 
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Module to download data from the RESIF database for the RHUM-RUM network
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
 import os
-import numpy as np
 import pandas as pd
 import scipy.io.wavfile as wavfile
 
 from obspy import UTCDateTime
-from matplotlib import pyplot as plt
 from obspy.clients.fdsn import Client
+
+# ======================================================================================================================
+# Functions
+# ======================================================================================================================
 
 
 def get_rhumrum_data(

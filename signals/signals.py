@@ -404,7 +404,7 @@ def F_fresnel(z):
 
 def psd_to_timeserie(psd, df):
     """
-    Generate randome a time serie according to its PSD
+    Generate a random time serie according to its PSD
     """
     v = psd * df / 4  # Variance for quadratures
     N = len(psd)

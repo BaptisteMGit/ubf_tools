@@ -3,10 +3,10 @@
 """
 @File    :   zhang_utils.py
 @Time    :   2025/01/27 11:57:36
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   Misc functions for Zhang et al 2023 testcase 
+@Desc    :   Misc functions for Zhang et al 2023 testcase
 """
 
 # ======================================================================================================================
@@ -19,35 +19,19 @@ import pandas as pd
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
-from itertools import combinations
-
-
 from cst import RHO_W, C0
-from signals.signals import colored_noise
-
-# from signals.signals import lfm_chirp
-# from misc import cast_matrix_to_target_shape, mult_along_axis
-from matplotlib.path import Path
-from scipy.spatial import ConvexHull
-from publication.PublicationFigure import PubFigure
-
-
 from skimage import measure  # Import for contour detection
-from sklearn.cluster import KMeans
+from matplotlib.path import Path
 from sklearn import preprocessing
+from sklearn.cluster import KMeans
+from itertools import combinations
+from scipy.spatial import ConvexHull
+from signals.signals import colored_noise
+from publication.PublicationFigure import PubFigure
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import *
+
 
 PubFigure(ticks_fontsize=22)
-
-ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase"
-ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data"
-ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\zhang_et_al_2023"
-
-# Minimum value to replace 0 before converting metrics to dB scale
-MIN_VAL_LOG = 1e-5
-
-# =====================================================================================================================
-# Functions
-# ======================================================================================================================
 
 
 def params(debug=False, antenna_type="zhang"):

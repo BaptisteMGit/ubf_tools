@@ -1,4 +1,4 @@
-""" Define classes to handle figures properties for publication purpose """
+"""Define classes to handle figures properties for publication purpose"""
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt

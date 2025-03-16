@@ -3,10 +3,10 @@
 """
 @File    :   zhang_build_datasets.py
 @Time    :   2025/01/27 11:56:49
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   Functions to build useful dataset for the Zhang et al 2023 testcase 
+@Desc    :   Functions to build useful dataset for the Zhang et al 2023 testcase
 """
 
 # ======================================================================================================================
@@ -33,6 +33,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     check_signal_noise,
+    check_signal_noise_stft,
     check_gcc_features,
     check_rtf_features,
 )
@@ -138,7 +139,7 @@ def build_tf_dataset():
     library_zhang.to_netcdf(fpath)
 
 
-def grid_dataset(debug=False):
+def grid_dataset(debug=False, antenna_type="zhang"):
     """Step 2 : Associate each grid pixel to the corresponding broadband transfert function caracterized by the range to the receiver.
 
     -   Kraken tf : H(f, r)
@@ -151,7 +152,9 @@ def grid_dataset(debug=False):
     ds = xr.open_dataset(fpath)
 
     # Load param
-    depth, receivers, source, grid, frequency, _ = params(debug=debug)
+    depth, receivers, source, grid, frequency, _ = params(
+        debug=debug, antenna_type=antenna_type
+    )
 
     # Create new dataset
     ds_grid = xr.Dataset(
@@ -213,8 +216,8 @@ def grid_dataset(debug=False):
     ds_grid.close()
 
 
-def build_signal(debug=False, stype="wn"):
-    """Step 3 : derive signal received from each grid pixel using the library source spectrum.
+def build_signal(debug=False, event_stype="wn", antenna_type="zhang"):
+    """Step 3 : derive signal received from each grid pixel using library source spectrum and gridded transfert functions.
 
     -   Gridded tf : H(x, y, f)
     -   Source spectrum : S(f)
@@ -224,7 +227,9 @@ def build_signal(debug=False, stype="wn"):
     """
 
     # Load params
-    depth, receivers, source, grid, frequency, _ = params(debug=debug)
+    depth, receivers, source, grid, frequency, _ = params(
+        debug=debug, antenna_type=antenna_type
+    )
 
     # Load gridded dataset
     fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
@@ -250,7 +255,7 @@ def build_signal(debug=False, stype="wn"):
         # target_var=library_props["sig_var"],
         T=library_props["T"],
         fs=library_props["fs"],
-        stype=stype,
+        stype=event_stype,
         # target_std=
     )
 
@@ -374,7 +379,8 @@ def derive_received_noise(
     sigma_rcv_ref_event = np.std(s_event_rcv0.values)
     # Normalize to account for the reference signal power to reach required snr at receiver n°0
     sigma_v_event = sigma_rcv_ref_event * np.sqrt(10 ** (-snr_dB / 10))
-    # We assume that the noise is due to ambiant noise (hence it does not depend on the source position within the search grid) and is the same at each receiver position (receiver electronic noise )
+    # We assume that the noise is due to ambiant noise (hence it does not depend on the source position within the search grid)
+    # and is the same at each receiver position (receiver electronic noise negligible)
     noise_sig_event = np.random.normal(loc=0, scale=sigma_v_event, size=s_event.shape)
 
     # Create dataset to store noise signals
@@ -444,8 +450,8 @@ def estimate_rtf(
     )
     s_l = ds_sig_noise_rolled.s_l
     s_e = ds_sig_noise_rolled.s_e
-    n_l = ds_sig_noise_rolled.n_l
-    n_e = ds_sig_noise_rolled.n_e
+    # n_l = ds_sig_noise_rolled.n_l
+    # n_e = ds_sig_noise_rolled.n_e
     t = ds_sig_noise_rolled.t.values
 
     # ds_sig_rtf = ds_sig_rtf.roll(
@@ -737,17 +743,22 @@ def estimate_dcf_gcc(
 
 
 def build_features_from_time_signal(
-    snr_dB=0, debug=False, check=False, use_welch_estimator=False, verbose=False
+    snr_dB=0,
+    debug=False,
+    check=False,
+    use_welch_estimator=False,
+    antenna_type="zhang",
+    verbose=False,
 ):
     """Step 4.2 : build localisation features for DCF GCC and RTF MFP from syntethic time signal."""
 
-    if debug:
-        verbose = True
+    # if debug:
+    #     verbose = True
 
     t_start = time()
 
     # Load params
-    _, receivers, source, grid, _, _ = params(debug=debug)
+    _, receivers, source, grid, _, _ = params(debug=debug, antenna_type=antenna_type)
     dx = grid["dx"]
     dy = grid["dy"]
 
@@ -805,7 +816,7 @@ def build_features_from_time_signal(
             dx=dx,
             dy=dy,
             root_img=os.path.join(
-                ROOT_IMG, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.0f}dB"
+                ROOT_IMG, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
             ),
         ),
     )
@@ -829,6 +840,7 @@ def build_features_from_time_signal(
     # Plot signal and noise at source position -> library
     if check:
         check_signal_noise(ds_sig_noise)
+        check_signal_noise_stft(ds_sig_noise)
 
     # List of potential reference receivers to test
     idx_rcv_refs = range(len(receivers["x"]))  # General case
@@ -985,7 +997,7 @@ def build_features_from_time_signal(
     #     rtf_event.imag,
     # )
 
-    # Create dataset to store full simulation result
+    # Create dataset to store results
     ds_res_from_sig = xr.Dataset(
         data_vars=dict(
             rtf_event_real=(["idx_rcv_ref", "f_rtf", "idx_rcv"], rtf_event.real),
@@ -998,12 +1010,24 @@ def build_features_from_time_signal(
             gcc_imag=(["idx_rcv_ref", "f_gcc", "x", "y", "idx_rcv"], gcc_library.imag),
         ),
         coords=dict(
-            x=ds_sig_noise.x,
-            y=ds_sig_noise.y,
-            idx_rcv=ds_sig_noise.idx_rcv,
-            idx_rcv_ref=idx_rcv_refs,
+            x=ds_sig_noise.x.values,
+            y=ds_sig_noise.y.values,
+            idx_rcv=ds_sig_noise.idx_rcv.values,
+            idx_rcv_ref=ds_sig_noise.idx_rcv.values,
             f_gcc=f_gcc,
             f_rtf=f_rtf,
+        ),
+        attrs=dict(
+            std_ref_event=ds_noise.std_ref_event,
+            std_ref_library=ds_noise.std_ref_library,
+            snr=snr_dB,
+            xs=source["x"],
+            ys=source["y"],
+            dx=dx,
+            dy=dy,
+            root_img=os.path.join(
+                ROOT_IMG, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
+            ),
         ),
     )
 
@@ -1018,7 +1042,7 @@ def build_features_from_time_signal(
     # Save updated dataset
     fpath = os.path.join(
         ROOT_DATA,
-        f"zhang_output_from_signal_dx{grid['dx']}m_dy{grid['dy']}m_snr{snr_dB}dB.nc",
+        f"zhang_output_from_signal_dx{grid['dx']}m_dy{grid['dy']}m_snr{snr_dB:.1f}dB.nc",
     )
     ds_res_from_sig.to_netcdf(fpath)
     ds_res_from_sig.close()
@@ -1026,12 +1050,14 @@ def build_features_from_time_signal(
     print(f"Features derived from time signal in {time() - t_start:.2f} s")
 
 
-def build_features_fullsimu(debug=False, stype="wn"):
+def build_features_fullsimu(debug=False, event_stype="wn", antenna_type="zhang"):
     """Step 4.1 : build localisation features for DCF GCC and RTF methods.
     Full simulation approach : DCF and RTF are build directly from transfer functions"""
 
     # Load params
-    depth, receivers, source, grid, frequency, _ = params(debug=debug)
+    depth, receivers, source, grid, frequency, _ = params(
+        debug=debug, antenna_type=antenna_type
+    )
     dx = grid["dx"]
     dy = grid["dy"]
 
@@ -1054,7 +1080,7 @@ def build_features_fullsimu(debug=False, stype="wn"):
         # target_var=library_props["sig_var"],
         T=library_props["T"],
         fs=library_props["fs"],
-        stype=stype,
+        stype=event_stype,
     )
 
     # Restrict ds_tf, S_flibrary and S_f_event to the signal band [100, 500]
@@ -1146,25 +1172,33 @@ def build_features_fullsimu(debug=False, stype="wn"):
             gcc_event.append(gcc_event_i)
 
     # Create dataset to store full simulation result
-    ds_res_full_simu = ds_tf.copy()
+    # ds_res_full_simu = ds_tf.copy()
 
-    # Add coords
-    ds_res_full_simu.coords["idx_rcv_ref"] = range(len(receivers["x"]))
+    # # Add coords
+    # ds_res_full_simu.coords["idx_rcv_ref"] = range(len(receivers["x"]))
 
-    shape_event = (
-        ds_res_full_simu.sizes["idx_rcv_ref"],
-        ds_res_full_simu.sizes["idx_rcv"],
-        ds_res_full_simu.sizes["f"],
-    )
+    nf = ds_tf.sizes["f"]
+    nx = ds_tf.sizes["x"]
+    ny = ds_tf.sizes["y"]
+    n_rcv_ref = ds_tf.sizes["idx_rcv"]
+    n_rcv = ds_tf.sizes["idx_rcv"]
 
-    # Fix 11/02/2025
-    shape_library = (
-        ds_res_full_simu.sizes["idx_rcv_ref"],
-        ds_res_full_simu.sizes["idx_rcv"],
-        ds_res_full_simu.sizes["f"],
-        ds_res_full_simu.sizes["y"],
-        ds_res_full_simu.sizes["x"],
-    )
+    shape_event = (n_rcv_ref, n_rcv, nf)
+    shape_library = (n_rcv_ref, n_rcv, nf, ny, nx)
+    # shape_event = (
+    #     ds_res_full_simu.sizes["idx_rcv_ref"],
+    #     ds_res_full_simu.sizes["idx_rcv"],
+    #     ds_res_full_simu.sizes["f"],
+    # )
+
+    # # Fix 11/02/2025
+    # shape_library = (
+    #     ds_res_full_simu.sizes["idx_rcv_ref"],
+    #     ds_res_full_simu.sizes["idx_rcv"],
+    #     ds_res_full_simu.sizes["f"],
+    #     ds_res_full_simu.sizes["y"],
+    #     ds_res_full_simu.sizes["x"],
+    # )
 
     # RTF
     rtf_event = np.array(rtf_event).reshape(shape_event)
@@ -1182,41 +1216,71 @@ def build_features_fullsimu(debug=False, stype="wn"):
     # Reshape to order x, y
     gcc_library = np.moveaxis(gcc_library, 2, 3)  # (idx_rcv_ref, f, y, x, idx_rcv)
 
-    # Add rft to dataset
-    ds_res_full_simu["rtf_real"] = (
-        ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-        rtf_library.real,
-    )
-    ds_res_full_simu["rtf_imag"] = (
-        ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-        rtf_library.imag,
-    )
-    ds_res_full_simu["rtf_event_real"] = (
-        ["idx_rcv_ref", "f", "idx_rcv"],
-        rtf_event.real,
-    )
-    ds_res_full_simu["rtf_event_imag"] = (
-        ["idx_rcv_ref", "f", "idx_rcv"],
-        rtf_event.imag,
+    # Create dataset to store results
+    ds_res_full_simu = xr.Dataset(
+        data_vars=dict(
+            rtf_event_real=(["idx_rcv_ref", "f_rtf", "idx_rcv"], rtf_event.real),
+            rtf_event_imag=(["idx_rcv_ref", "f_rtf", "idx_rcv"], rtf_event.imag),
+            gcc_event_real=(["idx_rcv_ref", "f_gcc", "idx_rcv"], gcc_event.real),
+            gcc_event_imag=(["idx_rcv_ref", "f_gcc", "idx_rcv"], gcc_event.imag),
+            rtf_real=(["idx_rcv_ref", "f_rtf", "x", "y", "idx_rcv"], rtf_library.real),
+            rtf_imag=(["idx_rcv_ref", "f_rtf", "x", "y", "idx_rcv"], rtf_library.imag),
+            gcc_real=(["idx_rcv_ref", "f_gcc", "x", "y", "idx_rcv"], gcc_library.real),
+            gcc_imag=(["idx_rcv_ref", "f_gcc", "x", "y", "idx_rcv"], gcc_library.imag),
+        ),
+        coords=dict(
+            x=ds_tf.x.values,
+            y=ds_tf.y.values,
+            idx_rcv=ds_tf.idx_rcv.values,
+            idx_rcv_ref=ds_tf.idx_rcv.values,
+            f_gcc=ds_tf.f.values,
+            f_rtf=ds_tf.f.values,
+        ),
+        attrs=dict(
+            xs=source["x"],
+            ys=source["y"],
+            snr=np.nan,
+            dx=dx,
+            dy=dy,
+            root_img=os.path.join(ROOT_IMG, f"fullsimu_dx{dx}m_dy{dy}m"),
+        ),
     )
 
-    # Add gcc-scot to dataset
-    ds_res_full_simu["gcc_real"] = (
-        ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-        gcc_library.real,
-    )
-    ds_res_full_simu["gcc_imag"] = (
-        ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-        gcc_library.imag,
-    )
-    ds_res_full_simu["gcc_event_real"] = (
-        ["idx_rcv_ref", "f", "idx_rcv"],
-        gcc_event.real,
-    )
-    ds_res_full_simu["gcc_event_imag"] = (
-        ["idx_rcv_ref", "f", "idx_rcv"],
-        gcc_event.imag,
-    )
+    # # Add rft to dataset
+    # ds_res_full_simu["rtf_real"] = (
+    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+    #     rtf_library.real,
+    # )
+    # ds_res_full_simu["rtf_imag"] = (
+    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+    #     rtf_library.imag,
+    # )
+    # ds_res_full_simu["rtf_event_real"] = (
+    #     ["idx_rcv_ref", "f", "idx_rcv"],
+    #     rtf_event.real,
+    # )
+    # ds_res_full_simu["rtf_event_imag"] = (
+    #     ["idx_rcv_ref", "f", "idx_rcv"],
+    #     rtf_event.imag,
+    # )
+
+    # # Add gcc-scot to dataset
+    # ds_res_full_simu["gcc_real"] = (
+    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+    #     gcc_library.real,
+    # )
+    # ds_res_full_simu["gcc_imag"] = (
+    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
+    #     gcc_library.imag,
+    # )
+    # ds_res_full_simu["gcc_event_real"] = (
+    #     ["idx_rcv_ref", "f", "idx_rcv"],
+    #     gcc_event.real,
+    # )
+    # ds_res_full_simu["gcc_event_imag"] = (
+    #     ["idx_rcv_ref", "f", "idx_rcv"],
+    #     gcc_event.imag,
+    # )
 
     # Save updated dataset
     fpath = os.path.join(
@@ -1234,48 +1298,90 @@ if __name__ == "__main__":
         plot_study_zhang2023,
     )
 
-    debug = True
-    check = True
+    # debug = True
+    check = False
     use_welch_estimator = True
-    snr_dB = 0
-    stype = "wn"
+    # snr_dB = 0
+    # rcv_in_fullarray = [0, 1, 4]
+    # event_stype = "wn"
+    # antenna_type = "random"
+
+    antenna_type = "zhang"
+    debug = False
+    event_stype = "wn"
+    freq_draw_method = "equally_spaced"
+
+    plot_args = {
+        "plot_array": False,
+        "plot_single_cpl_surf": False,
+        "plot_fullarray_surf": True,
+        "plot_cpl_surf_comparison": False,
+        "plot_fullarray_surf_comparison": False,
+        "plot_surf_dist_comparison": False,
+        "plot_mainlobe_contour": False,
+        "plot_msr_estimation": False,
+    }
 
     # # # Step 2
-    # grid_dataset(debug=debug)
-    # build_signal(debug=debug, stype=stype)
+    # grid_dataset(debug=debug, antenna_type=antenna_type)
+    # build_signal(debug=debug, event_stype=event_stype, antenna_type=antenna_type)
     # # # Step 4
-    # build_features_fullsimu(debug=debug, stype=stype)
+    # build_features_fullsimu(
+    #     debug=debug, event_stype=event_stype, antenna_type=antenna_type
+    # )
 
-    snrs = [-20, -10, 0, 10, 20]
-    # snrs = np.arange(-30, 32, 2)
-    for snr_dB in snrs:
+    # # Full simu
+    # fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
+    # ds = xr.open_dataset(fpath)
 
-        build_features_from_time_signal(
-            snr_dB=snr_dB,
-            debug=debug,
-            check=check,
-            use_welch_estimator=use_welch_estimator,
-        )
+    folder = f"fullsimu_dx{dx}m_dy{dy}m"
+    # process_localisation_zhang2023(ds, folder, nf=nf, freq_draw_method=freq_draw_method)
+    plot_study_zhang2023(folder, plot_args=plot_args)
 
-        # Step 5 : analysis
+    # # snrs = [-20, -10, 0, 10, 20]
+    # snrs = [-30]
 
-        fpath = os.path.join(
-            ROOT_DATA, f"zhang_output_from_signal_dx20m_dy20m_snr{snr_dB:.0f}dB.nc"
-        )
-        ds = xr.open_dataset(fpath)
+    # # snrs = np.arange(-30, 32, 2)
+    # for snr_dB in snrs:
 
-        folder = os.path.join(f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.0f}dB")
-        process_localisation_zhang2023(
-            ds, folder, nf=nf, freq_draw_method="equally_spaced"
-        )
-        plot_study_zhang2023(folder)
+    #     build_features_from_time_signal(
+    #         snr_dB=snr_dB,
+    #         debug=debug,
+    #         check=check,
+    #         use_welch_estimator=use_welch_estimator,
+    #         antenna_type=antenna_type,
+    #     )
 
-    from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_diag import (
-        diag_hermitian_angle_vs_snr,
-    )
+    #     # Step 5 : analysis
+    #     fpath = os.path.join(
+    #         ROOT_DATA, f"zhang_output_from_signal_dx20m_dy20m_snr{snr_dB:.0f}dB.nc"
+    #     )
+    #     ds = xr.open_dataset(fpath)
 
-    diag_hermitian_angle_vs_snr(ref_to_use="kraken")
-    diag_hermitian_angle_vs_snr(ref_to_use="event")
+    #     folder = os.path.join(f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.0f}dB")
+    #     process_localisation_zhang2023(
+    #         ds,
+    #         folder,
+    #         nf=nf,
+    #         freq_draw_method="equally_spaced",
+    #         rcv_in_fullarray=rcv_in_fullarray,
+    #         antenna_type=antenna_type,
+    #         debug=debug,
+    #     )
+    #     plot_study_zhang2023(
+    #         folder, debug=debug, antenna_type=antenna_type, plot_args=plot_args
+    #     )
+
+    # from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_diag import (
+    #     diag_hermitian_angle_vs_snr,
+    # )
+
+    # diag_hermitian_angle_vs_snr(
+    #     ref_to_use="kraken", debug=debug, antenna_type=antenna_type
+    # )
+    # diag_hermitian_angle_vs_snr(
+    #     ref_to_use="event", debug=debug, antenna_type=antenna_type
+    # )
 
 ## Step 1
 # build_tf_dataset()

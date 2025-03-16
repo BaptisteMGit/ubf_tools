@@ -3,7 +3,7 @@
 """
 @File    :   fiberscope.py
 @Time    :   2024/11/12 17:27:58
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -64,7 +64,13 @@ def process_recording(recording_name, recording_props, processing_props):
     process_single_rec(data, recording_name, recording_props, processing_props)
 
 
-def derive_rtf(recording_name, recording_props, processing_props, verbose=False):
+def derive_rtf(
+    recording_name,
+    recording_props,
+    processing_props,
+    gcc_methods=["blank", "scot", "phat", "ml"],
+    verbose=False,
+):
 
     if verbose:
         print(f"Processing recording {recording_name} - RTF estimation")
@@ -88,14 +94,14 @@ def derive_rtf(recording_name, recording_props, processing_props, verbose=False)
     data = derive_rtf_from_tf(data, ref_hydro)
 
     # Derive GCC for comparison
-    data = derive_gcc(data, processing_props)
+    data = derive_gcc(data, gcc_methods=gcc_methods)
 
     # Save results
     data.to_netcdf(os.path.join(processed_data_path, f"{recording_name}_rtf.nc"))
     data.close()
 
 
-def derive_gcc(data, processing_props):
+def derive_gcc(data, gcc_methods=["blank", "scot", "phat", "ml"]):
 
     # Unpack usefull properties
     ts = data.ts
@@ -121,7 +127,7 @@ def derive_gcc(data, processing_props):
     # Apply gcc weights
     data["f_gcc"] = ff
 
-    for gcc_method in ["blank", "scot", "phat", "ml"]:
+    for gcc_method in gcc_methods:
         if gcc_method == "blank":
             # No normalization
             w = 1
@@ -357,6 +363,7 @@ def split_signal_noise(data, recording_props, processing_props):
     data.only_noise.plot(x="only_noise_time", hue="h_index")
     plt.title("Noise")
     plt.savefig(os.path.join(data.attrs["img_path"], "only_noise.png"))
+    plt.close("all")
 
     return data
 
@@ -390,7 +397,12 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
     # Covariance substraction
     tau_ir = 0.5
     nperseg = int(tau_ir / ts)
-    # print(f"nperseg : {nperseg}")
+    # Get closer upper power of 2
+    nperseg = 2 ** (nperseg - 1).bit_length()
+    print(f"nperseg : {nperseg}")
+    print(
+        f"Number of available segments for sig + noise covariance estimation : {x.shape[0] // nperseg}"
+    )
     # nperseg = 2**12
     noverlap = nperseg // 2
     ff, Rx = get_csdm_from_signal(tx, x, nperseg, noverlap)
@@ -870,9 +882,16 @@ def run_analysis(
     recording_props,
     processing_props,
     plot_rtf_estimation=False,
+    gcc_methods=["blank", "scot", "phat", "ml"],
     verbose=False,
 ):
-    derive_rtf(recording_name, recording_props, processing_props, verbose=verbose)
+    derive_rtf(
+        recording_name,
+        recording_props,
+        processing_props,
+        gcc_methods=gcc_methods,
+        verbose=verbose,
+    )
     if plot_rtf_estimation:
         analyse_rtf_estimation_results(
             recording_name, processing_props, verbose=verbose
@@ -1010,6 +1029,7 @@ def localise(
     processing_props,
     pos_ids=[],
     th_pos=None,
+    gcc_methods=["blank", "scot", "phat", "ml"],
 ):
     # Localize using rtf
     pos_ids, dist, snrs = localise_rtf(
@@ -1028,6 +1048,7 @@ def localise(
         recording_props,
         pos_ids=pos_ids,
         th_pos=th_pos,
+        gcc_methods=gcc_methods,
     )
 
     # Compare rtf and gcc
@@ -1039,7 +1060,7 @@ def localise(
     plt.plot(
         pos_ids, d_rtf, marker="o", linestyle="-", markersize=5, label=r"$\textrm{RTF}$"
     )
-    for gcc_method in ["blank", "scot", "phat", "ml"]:
+    for gcc_method in gcc_methods:
         plt.plot(
             pos_ids,
             dist_gcc["mean_dist"][gcc_method],
@@ -1067,7 +1088,7 @@ def localise(
     plt.plot(
         pos_ids, q_rtf, marker="o", linestyle="-", markersize=5, label=r"$\textrm{RTF}$"
     )
-    for gcc_method in ["blank", "scot", "phat", "ml"]:
+    for gcc_method in gcc_methods:
         plt.plot(
             pos_ids,
             dist_gcc["mean_dist"][gcc_method],
@@ -1096,6 +1117,7 @@ def localise_gcc(
     recording_props,
     pos_ids=[],
     th_pos=None,
+    gcc_methods=["blank", "scot", "phat", "ml"],
 ):
 
     # Unpack usefull props
@@ -1115,7 +1137,7 @@ def localise_gcc(
     # Loop over the different gcc methods
     dist = {}
     dist["mean_dist"] = {}
-    for gcc_method in ["blank", "scot", "phat", "ml"]:
+    for gcc_method in gcc_methods:
 
         gcc_dist = []
         gcc_amp_tag = f"gcc_{gcc_method}_amp"

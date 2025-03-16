@@ -3,11 +3,11 @@
 """
 @File    :   zhang_waveguide.py
 @Time    :   2025/01/15 13:55:32
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Test case following Zhang et al. 2023
-Zhang, T., Zhou, D., Cheng, L., & Xu, W. (2023). Correlation-based passive localization: Linear system modeling and sparsity-aware optimization. 
+Zhang, T., Zhou, D., Cheng, L., & Xu, W. (2023). Correlation-based passive localization: Linear system modeling and sparsity-aware optimization.
 The Journal of the Acoustical Society of America, 154(1), 295–306. https://doi.org/10.1121/10.0020154
 """
 
@@ -25,6 +25,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     plot_study_zhang2023,
+    study_msr_vs_snr,
     check_rtf_features,
     check_gcc_features,
 )
@@ -36,10 +37,17 @@ PubFigure(ticks_fontsize=22)
 
 
 def process_localisation_zhang2023(
-    ds, folder, nf=10, freq_draw_method="random", data_fname=None, rcv_in_fullarray=None
+    ds,
+    folder,
+    nf=10,
+    freq_draw_method="random",
+    data_fname=None,
+    rcv_in_fullarray=None,
+    antenna_type="zhang",
+    debug=False,
 ):
     # Load params
-    depth, receivers, source, grid, frequency, _ = params()
+    _, _, _, grid, _, _ = params(debug=debug, antenna_type=antenna_type)
 
     # Define folder to store data
     root_data = os.path.join(ROOT_DATA, folder)
@@ -85,23 +93,18 @@ def process_localisation_zhang2023(
     # Build full array gcc with all required couples
     rcv_couples_fa = get_rcv_couples(idx_receivers=ds_fa.idx_rcv.values)
 
-    # rcv_couples_fa = []
-    # for i in ds_fa.idx_rcv.values:
-    #     for j in ds_fa.idx_rcv.values:
-    #         if j > i:
-    #             rcv_couples_fa.append([i, j])
-    # rcv_couples_fa = np.array(rcv_couples_fa)
-
     ###### Two sensor pairs ######
-    # Select receivers to build the sub-array
-    if (
-        len(rcv_in_fullarray) < ds.sizes["idx_rcv"]
-    ):  # Not all receivers used in the full array
-        rcv_couples_sa = rcv_couples_fa[0:3]  # First three couples of the full array
+    # # Select receivers to build the sub-array
+    # if (
+    #     len(rcv_in_fullarray) < ds.sizes["idx_rcv"]
+    # ):  # Not all receivers used in the full array
+    #     rcv_couples_sa = rcv_couples_fa[0:3]  # First three couples of the full array
 
-    else:
-        # Use couples defined in Zhang et al. 2023
-        rcv_couples_sa = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
+    # else:
+    #     # Use couples defined in Zhang et al. 2023
+    #     rcv_couples_sa = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
+    # rcv_couples_sa = rcv_couples_fa[0:3]
+    rcv_couples_sa = rcv_couples_fa
 
     for rcv_cpl in rcv_couples_sa:
         i_ref = rcv_cpl[0]
@@ -174,7 +177,16 @@ def process_localisation_zhang2023(
                 "x": ds.x.values,
                 "y": ds.y.values,
             },
+            attrs={
+                "idx_rcv": rcv_cpl,
+                "snr": ds.attrs["snr"],
+            },
         )
+
+        # Add attrs to dataarrays
+        for key in ["theta_rtf", "d_rtf", "d_gcc"]:
+            ds_cpl[key].attrs["snr"] = ds_cpl.attrs["snr"]
+            ds_cpl[key].attrs["idx_rcv"] = ds_cpl.attrs["idx_rcv"]
 
         # Save dataset
         if data_fname is None:
@@ -286,14 +298,23 @@ def process_localisation_zhang2023(
         },
         attrs={
             "idx_rcv": ds_fa.idx_rcv.values,
+            "snr": ds.attrs["snr"],
         },
     )
 
+    # Add attrs to dataarrays
+    for key in ["theta_rtf", "d_rtf", "d_gcc"]:
+        ds_fullarray[key].attrs["snr"] = ds_fullarray.attrs["snr"]
+        ds_fullarray[key].attrs["idx_rcv"] = ds_fullarray.attrs["idx_rcv"]
+
     # Save dataset
+    array_label = get_array_label(rcv_in_fullarray)
     if data_fname is None:
-        data_fname_fa = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc"
+        data_fname_fa = (
+            f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray_{array_label}.nc"
+        )
     else:
-        data_fname_fa = f"{data_fname}_fullarray.nc"
+        data_fname_fa = f"{data_fname}_fullarray_{array_label}.nc"
 
     fpath = os.path.join(
         root_data,
@@ -310,113 +331,163 @@ def process_all_snr(
     dx=20,
     dy=20,
     nf=100,
+    run_mode="a",
+    subarrays_list=None,
     freq_draw_method="equally_spaced",
-    i_mc_offset=0,
+    antenna_type="zhang",
+    debug=False,
+    verbose=False,
+    check=False,
+    plot_args={},
 ):
 
     # Load params
-    depth, receivers, source, grid, frequency, _ = params()
+    _, receivers, source, _, _, _ = params(debug=debug, antenna_type=antenna_type)
+    if subarrays_list is None:
+        subarrays_list = np.arange(len(receivers["x"]))  # Fullarray
 
     folder = f"from_signal_dx{dx}m_dy{dy}m"
 
-    dr_pos_gcc = []
-    dr_pos_rtf = []
-    dr_txt_filepath = os.path.join(ROOT_DATA, folder, "dr_pos_snr.txt")
+    # subarrays_args = {index: {} for index in range(len(subarrays_list))}
+    subarrays_args = build_subarrays_args(subarrays_list)
 
-    if not os.path.exists(dr_txt_filepath):  # To avoid writting over existing file
-        header_line = "snr i_mc dr_gcc dr_rtf\n"
-        with open(dr_txt_filepath, "w") as f:
-            f.write(header_line)
-
-    msr_gcc = []
-    msr_rtf = []
-
-    msr_txt_filepath = os.path.join(ROOT_DATA, folder, "msr_snr.txt")
-
-    if not os.path.exists(msr_txt_filepath):  # To avoid writting over existing file
-        header_line = "snr i_mc d_gcc d_rtf\n"
-        with open(msr_txt_filepath, "w") as f:
-            f.write(header_line)
+    init_dr_file(folder, run_mode, subarrays_args)
+    init_msr_file(folder, run_mode, subarrays_args)
 
     for snr in snrs:
-        subfolder = os.path.join(folder, f"snr_{snr}dB")
-        if not os.path.exists(os.path.join(ROOT_DATA, subfolder)):
-            os.makedirs(os.path.join(ROOT_DATA, subfolder))
+        subfolder = os.path.join(folder, f"snr_{snr:.1f}dB")
+        subfolder_fullpath = os.path.join(ROOT_DATA, subfolder)
+        if not os.path.exists(subfolder_fullpath):
+            os.makedirs(subfolder_fullpath)
 
+        # List existing files in subfolder
+        snr_files = os.listdir(subfolder_fullpath)
+        snr_files = [sfile for sfile in snr_files if "mc" in sfile]
+
+        if run_mode == "a":  # Append mode -> do not overwrite existing values
+            # Keep only fullarray files
+            fa_snr_files = [sfile for sfile in snr_files if "fullarray" in sfile]
+            # Parse i_mc and get max
+            i_mcs = [int(sfile.split("_")[5].split("mc")[1]) for sfile in fa_snr_files]
+            # Set offset
+            i_mc_offset = max(i_mcs) + 1 if i_mcs else 0
+
+        elif run_mode == "w":  # Write mode -> overwrite existing files
+            # Remove file in subfolder
+            for sfile in snr_files:
+                os.remove(os.path.join(subfolder_fullpath, sfile))
+            # Set i_mc_offset to 0
+            i_mc_offset = 0
+
+        if verbose:
+            print(
+                f"Start processing snr = {snr} dB (i_mc from {i_mc_offset} to {n_monte_carlo + i_mc_offset-1})"
+            )
+
+        plot_study = True
         # Run simulation n_monte_carlo times at the same snr to derive the mean MSR
         for i_mc in range(i_mc_offset, n_monte_carlo + i_mc_offset):
+
+            if verbose:
+                print(f"i_mc = {i_mc}")
+
             # Run simulation (one simulation = 1 generation of noise)
-            print(f"Start building loc features for snr = {snr}dB ...")
-            t0 = time()
+            # t0 = time()
             # build_features_from_time_signal(snr)
             build_features_from_time_signal(
                 snr_dB=snr,
-                debug=True,
-                check=False,
+                debug=debug,
+                check=check,
                 use_welch_estimator=True,
+                antenna_type=antenna_type,
             )
 
-            elasped_time = time() - t0
-            print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
+            # elasped_time = time() - t0
+            # print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
 
             # Load results
             fpath = os.path.join(
-                ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr}dB.nc"
+                ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr:.1f}dB.nc"
             )
             ds = xr.open_dataset(fpath)
 
             # Process results
             data_rootname = f"loc_zhang_dx{dx}m_dy{dy}m_snr{snr}dB_mc{i_mc}"
-            process_localisation_zhang2023(
-                ds, subfolder, nf, freq_draw_method, data_fname=data_rootname
-            )
 
-            # Plot results
-            if i_mc == 0:
-                plot_study_zhang2023(subfolder, data_fname=data_rootname)
-                plt.close("all")
+            # Loop over subarrays of interest
+            for sa_idx, sa_item in subarrays_args.items():
+
+                rcv_in_fullarray = sa_item["idx_rcv"]
+                process_localisation_zhang2023(
+                    ds,
+                    subfolder,
+                    nf,
+                    freq_draw_method,
+                    data_fname=data_rootname,
+                    rcv_in_fullarray=rcv_in_fullarray,
+                    antenna_type=antenna_type,
+                    debug=debug,
+                )
+
+                # Plot results
+                if plot_study:
+                    plot_study_zhang2023(
+                        subfolder,
+                        data_fname=data_rootname,
+                        debug=debug,
+                        antenna_type=antenna_type,
+                        rcv_in_fullarray=rcv_in_fullarray,
+                        plot_args=plot_args,
+                    )
+                    plt.close("all")
+
+                # Load processed surface and derive msr
+                # array_label = get_array_label(rcv_in_fullarray)
+                fpath = os.path.join(
+                    subfolder_fullpath,
+                    f"{data_rootname}_fullarray_{sa_item['array_label']}.nc",
+                )
+                ds_fa = xr.open_dataset(fpath)
+
+                msr, pos_hat = estimate_msr(ds_fa, plot=False)
+                ds_fa.close()
+
+                # Store MSR and DR
+                msr_txt_filepath = sa_item["msr_filepath"]
+                dr_txt_filepath = sa_item["dr_pos_filepath"]
+                # MSR
+                # msr_gcc.append(msr["d_gcc"])
+                # msr_rtf.append(msr["d_rtf"])
+
+                # Save to text file for further analysis
+                newline = f"{snr} {i_mc} {msr['d_gcc']:.2f} {msr['d_rtf']:.2f}\n"
+                with open(msr_txt_filepath, "a") as f:
+                    f.write(newline)
+
+                # Position error
+                delta_r_gcc = np.sqrt(
+                    (pos_hat["d_gcc"]["x"] - source["x"]) ** 2
+                    + (pos_hat["d_gcc"]["y"] - source["y"]) ** 2
+                )
+                delta_r_rtf = np.sqrt(
+                    (pos_hat["d_rtf"]["x"] - source["x"]) ** 2
+                    + (pos_hat["d_rtf"]["y"] - source["y"]) ** 2
+                )
+                # dr_pos_gcc.append(delta_r_gcc)
+                # dr_pos_rtf.append(delta_r_rtf)
+
+                # Save to text file for further analysis
+                newline = f"{snr} {i_mc} {delta_r_gcc:.2f} {delta_r_rtf:.2f}\n"
+                with open(dr_txt_filepath, "a") as f:
+                    f.write(newline)
+
+            plot_study = False
 
             # Check RTF estimation at a few grid points
-            check_rtf_features(ds_rtf_cs=ds, folder=subfolder)
+            # check_rtf_features(ds_rtf_cs=ds, folder=subfolder)
             ds.close()
 
-            # Load processed surface and derive msr
-            fpath = os.path.join(
-                os.path.join(ROOT_DATA, subfolder),
-                f"{data_rootname}_fullarray.nc",
-            )
-            ds_fa = xr.open_dataset(fpath)
-
-            msr, pos_hat = estimate_msr(ds_fa, plot=False)
-            ds_fa.close()
-
-            # MSR
-            msr_gcc.append(msr["d_gcc"])
-            msr_rtf.append(msr["d_rtf"])
-
-            # Save to text file for further analysis
-            newline = f"{snr} {i_mc} {msr['d_gcc']:.2f} {msr['d_rtf']:.2f}\n"
-            with open(msr_txt_filepath, "a") as f:
-                f.write(newline)
-
-            # Position error
-            delta_r_gcc = np.sqrt(
-                (pos_hat["d_gcc"]["x"] - source["x"]) ** 2
-                + (pos_hat["d_gcc"]["y"] - source["y"]) ** 2
-            ).values
-            delta_r_rtf = np.sqrt(
-                (pos_hat["d_rtf"]["x"] - source["x"]) ** 2
-                + (pos_hat["d_rtf"]["y"] - source["y"]) ** 2
-            ).values
-            dr_pos_gcc.append(delta_r_gcc)
-            dr_pos_rtf.append(delta_r_rtf)
-
-            # Save to text file for further analysis
-            newline = f"{snr} {i_mc} {delta_r_gcc:.2f} {delta_r_rtf:.2f}\n"
-            with open(dr_txt_filepath, "a") as f:
-                f.write(newline)
-
-        study_msr_vs_snr()
+        study_msr_vs_snr(subarrays_args)
 
 
 def replay_all_snr(
@@ -426,7 +497,7 @@ def replay_all_snr(
 ):
 
     # Load params
-    depth, receivers, source, grid, frequency, _ = params()
+    _, _, source, _, _, _ = params()
 
     folder = f"from_signal_dx{dx}m_dy{dy}m"
 
@@ -493,116 +564,501 @@ def replay_all_snr(
         study_msr_vs_snr()
 
 
-def study_msr_vs_snr():
-    """Plot metrics (MSR, RMSE) vs SNR for both GCC and RTF"""
+def study_perf_vs_subarrays(subarrays_list, snrs, var="std", dx=20, dy=20):
+
+    msr_mu, msr_sig, dr_mu, dr_sig, rmse_ = load_msr_rmse_res_subarrays(
+        subarrays_list, snrs, dx, dy
+    )
 
     folder = "from_signal_dx20m_dy20m"
-    # Load msr results
-    msr_txt_filepath = os.path.join(ROOT_DATA, folder, "msr_snr.txt")
-    msr = pd.read_csv(msr_txt_filepath, sep=" ")
+    root_img = os.path.join(ROOT_IMG, folder, "perf_vs_subarrays")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
 
-    # Compute mean and std of msr for each snr
-    msr_mean = msr.groupby("snr").mean()
-    msr_std = msr.groupby("snr").std()
+    # Build sub arrays labels
+    nr_in_sa = np.arange(2, 7)
+    subarray_sizes = [len(sa) for sa in subarrays_list]
+    subarray_sizes_unique = np.unique(subarray_sizes)
 
-    # Plot results
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-    ax.errorbar(
-        msr_mean.index,
-        msr_mean["d_gcc"],
-        yerr=msr_std["d_gcc"],
-        fmt="o-",
-        label=r"$\textrm{DCF (GCC SCOT)}$",
-    )
-    ax.errorbar(
-        msr_mean.index,
-        msr_mean["d_rtf"],
-        yerr=msr_std["d_rtf"],
-        fmt="o-",
-        label=r"$\textrm{RTF}$",
-    )
-    ax.set_xlabel(r"$\textrm{SNR [dB]}$")
-    ax.set_ylabel(r"$\textrm{MSR [dB]}$")
-    ax.legend()
-    ax.grid()
-    # plt.show()
-    fpath = os.path.join(ROOT_IMG, folder, "msr_snr.png")
-    plt.savefig(fpath)
-    plt.close("all")
+    for snr in snrs:
+        # Plot RMSE vs nr
 
-    # Load position error results
-    dr_txt_filepath = os.path.join(ROOT_DATA, folder, "dr_pos_snr.txt")
-    dr = pd.read_csv(dr_txt_filepath, sep=" ")
+        rmse_rtf = []
+        rmse_gcc = []
+        dr_rtf = []
+        dr_gcc = []
+        msr_rtf = []
+        msr_gcc = []
 
-    # Compute mean and std of position error for each snr
-    dr_mean = dr.groupby("snr").mean()
-    dr_std = dr.groupby("snr").std()
+        # Group by number of receivers in subarray
+        for sa_size in subarray_sizes_unique:
+            idx_required_size_sa = np.where(subarray_sizes == sa_size)[0]
+            # Get rmse, dr and msr for subarrays of size sa_size
+            rmse_for_required_size_sa = [rmse_[idx] for idx in idx_required_size_sa]
+            dr_mu_for_required_size_sa = [dr_mu[idx] for idx in idx_required_size_sa]
+            msr_mu_for_required_size_sa = [msr_mu[idx] for idx in idx_required_size_sa]
 
-    # Plot results
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-    ax.errorbar(
-        dr_mean.index,
-        dr_mean["dr_gcc"],
-        yerr=dr_std["dr_gcc"],
-        fmt="o-",
-        label=r"$\textrm{DCF (GCC SCOT)}$",
-    )
-    ax.errorbar(
-        dr_mean.index,
-        dr_mean["dr_rtf"],
-        yerr=dr_std["dr_rtf"],
-        fmt="o-",
-        label=r"$\textrm{RTF}$",
-    )
-    ax.set_xlabel(r"$\textrm{SNR [dB]}$")
-    ax.set_ylabel(r"$\Delta_r \textrm{[m]}$")
-    ax.legend()
-    ax.grid()
+            # RMSE
+            rmse_gcc_for_required_size_sa = [
+                rmse["dr_gcc"].loc[snr] for rmse in rmse_for_required_size_sa
+            ]
+            rmse_rtf_for_required_size_sa = [
+                rmse["dr_rtf"].loc[snr] for rmse in rmse_for_required_size_sa
+            ]
+            rmse_gcc.append(rmse_gcc_for_required_size_sa)
+            rmse_rtf.append(rmse_rtf_for_required_size_sa)
 
-    fpath = os.path.join(ROOT_IMG, folder, "dr_pos_snr.png")
-    plt.savefig(fpath)
+            # DR
+            dr_gcc_for_required_size_sa = [
+                dr["dr_gcc"].loc[snr] for dr in dr_mu_for_required_size_sa
+            ]
+            dr_rtf_for_required_size_sa = [
+                dr["dr_rtf"].loc[snr] for dr in dr_mu_for_required_size_sa
+            ]
+            dr_gcc.append(dr_gcc_for_required_size_sa)
+            dr_rtf.append(dr_rtf_for_required_size_sa)
 
-    dr["dr_gcc"] = dr["dr_gcc"] ** 2
-    dr["dr_rtf"] = dr["dr_rtf"] ** 2
-    mse = dr.groupby("snr").mean()
-    rmse = np.sqrt(mse)
+            # MSR
+            msr_gcc_for_required_size_sa = [
+                msr["d_gcc"].loc[snr] for msr in msr_mu_for_required_size_sa
+            ]
+            msr_rtf_for_required_size_sa = [
+                msr["d_rtf"].loc[snr] for msr in msr_mu_for_required_size_sa
+            ]
+            msr_gcc.append(msr_gcc_for_required_size_sa)
+            msr_rtf.append(msr_rtf_for_required_size_sa)
 
-    # Plot results
-    fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-    ax.plot(rmse.index, rmse["dr_gcc"], "o-", label=r"$\textrm{DCF (GCC SCOT)}$")
-    ax.plot(rmse.index, rmse["dr_rtf"], "o-", label=r"$\textrm{RTF}$")
-    ax.set_xlabel(r"$\textrm{SNR [dB]}$")
-    ax.set_ylabel(r"$\textrm{RMSE [m]}$")
-    ax.legend()
-    ax.grid()
+        # Derive mean of each metric per subarray size
+        rmse_gcc_mean = np.array([np.mean(rmse) for rmse in rmse_gcc])
+        rmse_rtf_mean = np.array([np.mean(rmse) for rmse in rmse_rtf])
+        dr_gcc_mean = np.array([np.mean(dr) for dr in dr_gcc])
+        dr_rtf_mean = np.array([np.mean(dr) for dr in dr_rtf])
+        msr_gcc_mean = np.array([np.mean(msr) for msr in msr_gcc])
+        msr_rtf_mean = np.array([np.mean(msr) for msr in msr_rtf])
 
-    fpath = os.path.join(ROOT_IMG, folder, "rmse_snr.png")
-    plt.savefig(fpath)
-    plt.close("all")
+        # Derive min and max of each metric per subarray size
+        rmse_gcc_min = np.array([np.min(rmse) for rmse in rmse_gcc])
+        rmse_rtf_min = np.array([np.min(rmse) for rmse in rmse_rtf])
+        dr_gcc_min = np.array([np.min(dr) for dr in dr_gcc])
+        dr_rtf_min = np.array([np.min(dr) for dr in dr_rtf])
+        msr_gcc_min = np.array([np.min(msr) for msr in msr_gcc])
+        msr_rtf_min = np.array([np.min(msr) for msr in msr_rtf])
 
-    # plt.show()
+        rmse_gcc_max = np.array([np.max(rmse) for rmse in rmse_gcc])
+        rmse_rtf_max = np.array([np.max(rmse) for rmse in rmse_rtf])
+        dr_gcc_max = np.array([np.max(dr) for dr in dr_gcc])
+        dr_rtf_max = np.array([np.max(dr) for dr in dr_rtf])
+        msr_gcc_max = np.array([np.max(msr) for msr in msr_gcc])
+        msr_rtf_max = np.array([np.max(msr) for msr in msr_rtf])
+
+        # Derive std for each metric per subarray size
+        rmse_gcc_std = np.array([np.std(rmse) for rmse in rmse_gcc])
+        rmse_rtf_std = np.array([np.std(rmse) for rmse in rmse_rtf])
+        dr_gcc_std = np.array([np.std(dr) for dr in dr_gcc])
+        dr_rtf_std = np.array([np.std(dr) for dr in dr_rtf])
+        msr_gcc_std = np.array([np.std(msr) for msr in msr_gcc])
+        msr_rtf_std = np.array([np.std(msr) for msr in msr_rtf])
+
+        # Plot RMSE vs subarray size
+        plt.figure(figsize=(8, 6))
+        plt.plot(subarray_sizes_unique, rmse_gcc_mean, "o-", label="DCF")
+        if var == "minmax":
+            plt.fill_between(
+                subarray_sizes_unique, rmse_gcc_min, rmse_gcc_max, alpha=0.2
+            )
+        elif var == "std":
+            plt.fill_between(
+                subarray_sizes_unique,
+                rmse_gcc_mean - rmse_gcc_std,
+                rmse_gcc_mean + rmse_gcc_std,
+                alpha=0.2,
+            )
+
+        plt.plot(subarray_sizes_unique, rmse_rtf_mean, "o-", label="RTF")
+        if var == "minmax":
+            plt.fill_between(
+                subarray_sizes_unique, rmse_rtf_min, rmse_rtf_max, alpha=0.2
+            )
+        elif var == "std":
+            plt.fill_between(
+                subarray_sizes_unique,
+                rmse_rtf_mean - rmse_rtf_std,
+                rmse_rtf_mean + rmse_rtf_std,
+                alpha=0.2,
+            )
+        plt.xlabel("Number of receivers in subarray")
+        plt.ylabel("RMSE [m]")
+        plt.title(f"SNR = {snr} dB")
+        plt.legend()
+
+        fpath = os.path.join(root_img, f"rmse_subarrays_snr{snr}_{var}.png")
+        plt.savefig(fpath, dpi=300)
+
+        # Plot DR vs subarray size
+        plt.figure(figsize=(8, 6))
+        plt.plot(subarray_sizes_unique, dr_gcc_mean, "o-", label="DCF")
+        if var == "minmax":
+            plt.fill_between(subarray_sizes_unique, dr_gcc_min, dr_gcc_max, alpha=0.2)
+        elif var == "std":
+            plt.fill_between(
+                subarray_sizes_unique,
+                dr_gcc_mean - dr_gcc_std,
+                dr_gcc_mean + dr_gcc_std,
+                alpha=0.2,
+            )
+
+        plt.plot(subarray_sizes_unique, dr_rtf_mean, "o-", label="RTF")
+        if var == "minmax":
+            plt.fill_between(subarray_sizes_unique, dr_rtf_min, dr_rtf_max, alpha=0.2)
+        elif var == "std":
+            plt.fill_between(
+                subarray_sizes_unique,
+                dr_rtf_mean - dr_rtf_std,
+                dr_rtf_mean + dr_rtf_std,
+                alpha=0.2,
+            )
+
+        plt.xlabel("Number of receivers in subarray")
+        plt.ylabel("DR [m]")
+        plt.title(f"SNR = {snr} dB")
+        plt.legend()
+
+        fpath = os.path.join(root_img, f"dr_subarrays_snr{snr}_{var}.png")
+        plt.savefig(fpath, dpi=300)
+
+        # Plot MSR vs subarray size
+        plt.figure(figsize=(8, 6))
+        plt.plot(subarray_sizes_unique, msr_gcc_mean, "o-", label="DCF")
+        if var == "minmax":
+            plt.fill_between(subarray_sizes_unique, msr_gcc_min, msr_gcc_max, alpha=0.2)
+        elif var == "std":
+            plt.fill_between(
+                subarray_sizes_unique,
+                msr_gcc_mean - msr_gcc_std,
+                msr_gcc_mean + msr_gcc_std,
+                alpha=0.2,
+            )
+
+        plt.plot(subarray_sizes_unique, msr_rtf_mean, "o-", label="RTF")
+        if var == "minmax":
+            plt.fill_between(subarray_sizes_unique, msr_rtf_min, msr_rtf_max, alpha=0.2)
+        elif var == "std":
+            plt.fill_between(
+                subarray_sizes_unique,
+                msr_rtf_mean - msr_rtf_std,
+                msr_rtf_mean + msr_rtf_std,
+                alpha=0.2,
+            )
+
+        plt.xlabel("Number of receivers in subarray")
+        plt.ylabel("MSR [dB]")
+        plt.title(f"SNR = {snr} dB")
+        plt.legend()
+
+        fpath = os.path.join(root_img, f"msr_subarrays_snr{snr}_{var}.png")
+        plt.savefig(fpath, dpi=300)
+
+        # rmse_gcc = [rmse["dr_gcc"].loc[snr] for rmse in rmse_]
+        # rmse_rtf = [rmse["dr_rtf"].loc[snr] for rmse in rmse_]
+        # plt.figure(figsize=(8, 6))
+        # plt.plot(nr_in_sa, rmse_gcc, "o-", label="DCF")
+        # plt.plot(nr_in_sa, rmse_rtf, "o-", label="RTF")
+        # plt.xlabel("Number of receivers")
+        # plt.ylabel("RMSE [m]")
+        # plt.title(f"SNR = {snr} dB")
+        # plt.legend()
+
+        # fpath = os.path.join(root_img, f"rmse_subarrays_snr{snr}.png")
+        # plt.savefig(fpath, dpi=300)
+        # plt.close("all")
+
+        # # Plot DR vs nr_in_sa
+        # dr_gcc = [dr["dr_gcc"].loc[snr] for dr in dr_mu]
+        # dr_rtf = [dr["dr_rtf"].loc[snr] for dr in dr_mu]
+        # plt.figure(figsize=(8, 6))
+        # plt.plot(nr_in_sa, dr_gcc, "o-", label="DCF")
+        # plt.plot(nr_in_sa, dr_rtf, "o-", label="RTF")
+        # plt.xlabel("Number of receivers")
+        # plt.ylabel("DR [m]")
+        # plt.title(f"SNR = {snr} dB")
+        # plt.legend()
+
+        # fpath = os.path.join(root_img, f"dr_subarrays_snr{snr}.png")
+        # plt.savefig(fpath, dpi=300)
+
+        # # Plot MSR vs nr_in_sa
+        # msr_gcc = [msr["d_gcc"].loc[snr] for msr in msr_mu]
+        # msr_rtf = [msr["d_rtf"].loc[snr] for msr in msr_mu]
+        # plt.figure(figsize=(8, 6))
+        # plt.plot(nr_in_sa, msr_gcc, "o-", label="DCF")
+        # plt.plot(nr_in_sa, msr_rtf, "o-", label="RTF")
+        # plt.xlabel("Number of receivers")
+        # plt.ylabel("MSR [dB]")
+        # plt.title(f"SNR = {snr} dB")
+        # plt.legend()
+
+        # fpath = os.path.join(root_img, f"msr_subarrays_snr{snr}.png")
+        # plt.savefig(fpath, dpi=300)
+
+        # # Plot results
+        # fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        # ax.errorbar(
+        #     msr_mean.index,
+        #     msr_mean["d_gcc"],
+        #     yerr=msr_std["d_gcc"],
+        #     fmt="o-",
+        #     label=r"$\textrm{DCF}$",
+        # )
+        # ax.errorbar(
+        #     msr_mean.index,
+        #     msr_mean["d_rtf"],
+        #     yerr=msr_std["d_rtf"],
+        #     fmt="o-",
+        #     label=r"$\textrm{RTF}$",
+        # )
+        # ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+        # ax.set_ylabel(r"$\textrm{MSR [dB]}$")
+        # ax.legend()
+        # ax.grid()
+        # # plt.show()
+        # rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
+        # plt.suptitle(f"Receivers = ({rcv_str})")
+
+        # fpath = os.path.join(root_img, f"msr_snr_{sa_item['array_label']}.png")
+        # plt.savefig(fpath)
+        # plt.close("all")
+
+        # # Plot results
+        # fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        # ax.errorbar(
+        #     dr_mean.index,
+        #     dr_mean["dr_gcc"],
+        #     yerr=dr_std["dr_gcc"],
+        #     fmt="o-",
+        #     label=r"$\textrm{DCF}$",
+        # )
+        # ax.errorbar(
+        #     dr_mean.index,
+        #     dr_mean["dr_rtf"],
+        #     yerr=dr_std["dr_rtf"],
+        #     fmt="o-",
+        #     label=r"$\textrm{RTF}$",
+        # )
+        # ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+        # ax.set_ylabel(r"$\Delta_r \textrm{[m]}$")
+        # ax.legend()
+        # ax.grid()
+
+        # rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
+        # plt.suptitle(f"Receivers = ({rcv_str})")
+
+        # fpath = os.path.join(root_img, f"dr_pos_snr_{sa_item['array_label']}.png")
+        # plt.savefig(fpath)
+
+        # # Plot results
+        # fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        # ax.plot(rmse.index, rmse["dr_gcc"], "o-", label=r"$\textrm{DCF}$")
+        # ax.plot(rmse.index, rmse["dr_rtf"], "o-", label=r"$\textrm{RTF}$")
+        # ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+        # ax.set_ylabel(r"$\textrm{RMSE [m]}$")
+        # ax.legend()
+        # ax.grid()
+
+        # rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
+        # plt.suptitle(f"Receivers = ({rcv_str})")
+
+        # fpath = os.path.join(root_img, f"rmse_snr_{sa_item['array_label']}.png")
+        # plt.savefig(fpath)
+        # plt.close("all")
 
 
 if __name__ == "__main__":
 
     nf = 100
     dx, dy = 20, 20
+    # antenna_type = "random"
+    # debug = True
+    antenna_type = "zhang"
+    debug = False
+    event_stype = "wn"
 
-    snrs = np.arange(-40, 15, 5)
+    # # To run if debug or antenna type changes
+    # from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
+    #     grid_dataset,
+    #     build_signal,
+    # )
+
+    # grid_dataset(debug=debug, antenna_type=antenna_type)
+    # build_signal(debug=debug, event_stype=event_stype, antenna_type=antenna_type)
+
+    # subarrays_list = None   # Only consider full array
+    subarrays_list = [[0, 1, 4]]  # s1 s2 s5
+    # rcv_in_fullarray = [0, 1, 4]      # s1 s2 s5
+
+    # # All possible subarrays with 3, 4, 5 or 6 receivers
+    # subarrays_list = []
+    # for i in [3, 4, 5, 6]:
+    #     subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
+    # subarrays_list = [
+    #     [0, 1],
+    #     [0, 1, 2],
+    #     [0, 1, 2, 3],
+    #     [0, 1, 2, 3, 4],
+    #     [0, 1, 2, 3, 4, 5],
+    # ]
+
+    plot_args = {
+        "plot_array": True,
+        "plot_single_cpl_surf": False,
+        "plot_fullarray_surf": False,
+        "plot_cpl_surf_comparison": True,
+        "plot_fullarray_surf_comparison": True,
+        "plot_surf_dist_comparison": False,
+        "plot_mainlobe_contour": False,
+        "plot_msr_estimation": False,
+    }
+
+    # snrs = np.arange(-40, 25, 2.5)
+    # # snrs = np.arange(-20, 15, 5)
+    # snrs = [15, 20]
+
+    # n_monte_carlo = 1
+    # i_mc_offset = 0
+    # process_all_snr(
+    #     snrs,
+    #     n_monte_carlo,
+    #     dx=20,
+    #     dy=20,
+    #     nf=100,
+    #     freq_draw_method="equally_spaced",
+    #     run_mode="a",
+    #     # i_mc_offset=i_mc_offset,
+    #     rcv_in_fullarray=rcv_in_fullarray,
+    #     antenna_type=antenna_type,
+    #     debug=debug,
+    #     verbose=True,
+    # )
+
+    # snrs = np.arange(-40, 25, 2.5)
+    # # Update figures after appearence modifications
+    # subarrays_args = build_subarrays_args(subarrays_list)
+    # study_msr_vs_snr(subarrays_args=subarrays_args)
+
     # snrs = np.arange(-20, 15, 5)
-    # snrs = [-40, -20]
 
+    """
+    TEST 1a :
+    Jeux de simulations pour la publication JASA EL
+    -> 10 simulations (dans un premier temps)
+    -> Test de toutes les configurations de sous-arrays possibles
+    -> Analyse des résultats :
+        -> MSR, RMSE en fonction du SNR avec les deux méthodes
+        -> Ajout des maximums et minimum pour chaque nombre de récepteurs afin d'étudier la variabilité en fonction de la configuration des capteurs.
+
+    """
+    print("TEST 1a : Study of the performance vs array configuration")
+
+    nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)
+    dx, dy = 20, 20  # Taille des mailles de la grille de recherche
+    antenna_type = "zhang"  # Type d'antenne utilisée pour la simulation : antenne hexagonale (a = 250 m)
+    debug = True  # Calcul sur une zone réduite pour plus de rapidité (TODO changer pour la publication si la figure est ok)
+    event_stype = "wn"  # Signal source à localiser : bruit blanc gaussien
+
+    # Paramètres graphiques pour la génération des figures
+    plot_args = {
+        "plot_array": True,
+        "plot_single_cpl_surf": False,
+        "plot_fullarray_surf": False,
+        "plot_cpl_surf_comparison": False,
+        "plot_fullarray_surf_comparison": True,
+        "plot_surf_dist_comparison": False,
+        "plot_mainlobe_contour": False,
+        "plot_msr_estimation": False,
+    }
+
+    # Liste des sous antennes considérées : toutes les sous antennes possibles pour 2, 3, 4, 5 et 6 récepteurs
+    subarrays_list = []
+    n_rcv = [2, 3, 4, 5, 6]
+    for i in n_rcv:
+        subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
+    print(f"Number of subarrays = {len(subarrays_list)}")
+    print("Subarrays list : ", subarrays_list)
+
+    # Liste des SNR considérés
+    snrs = [-10]
+    print(f"Number of SNRs = {len(snrs)}")
+    print("SNRs : ", snrs)
+
+    # Nombre de simulations à réaliser pour chaque SNR
     n_monte_carlo = 10
-    i_mc_offset = 0
+    print(f"Number of Monte Carlo simulations / snr / array config = {n_monte_carlo}")
+
     process_all_snr(
         snrs,
         n_monte_carlo,
-        dx=20,
-        dy=20,
-        nf=100,
+        dx=dx,
+        dy=dy,
+        nf=nf,
         freq_draw_method="equally_spaced",
-        i_mc_offset=i_mc_offset,
+        run_mode="w",
+        subarrays_list=subarrays_list,
+        antenna_type=antenna_type,
+        debug=debug,
+        verbose=True,
+        check=True,
+        plot_args=plot_args,
     )
+
+    study_perf_vs_subarrays(subarrays_list, snrs)
+
+    print("End of TEST 1a")
+
+    """ Fin du TEST 1a """
+
+    ### STUDY PERF VS ARRAY CONFIG ###
+    # snrs = [-15]
+
+    # n_monte_carlo = 10
+    # process_all_snr(
+    #     snrs,
+    #     n_monte_carlo,
+    #     dx=20,
+    #     dy=20,
+    #     nf=100,
+    #     freq_draw_method="equally_spaced",
+    #     run_mode="w",
+    #     # i_mc_offset=i_mc_offset,
+    #     subarrays_list=subarrays_list,
+    #     antenna_type=antenna_type,
+    #     debug=debug,
+    #     verbose=True,
+    #     plot_args=plot_args,
+    # )
+
+    # if subarrays_list is not None:
+    #     study_perf_vs_subarrays(subarrays_list, snrs)
+
+    # snrs = [-2.5]
+
+    # n_monte_carlo = 20
+    # process_all_snr(
+    #     snrs,
+    #     n_monte_carlo,
+    #     dx=20,
+    #     dy=20,
+    #     nf=100,
+    #     freq_draw_method="equally_spaced",
+    #     run_mode="a",
+    #     # i_mc_offset=i_mc_offset,
+    #     subarrays_list=subarrays_list,
+    #     antenna_type=antenna_type,
+    #     debug=debug,
+    #     verbose=True,
+    #     plot_args=plot_args,
+    # )
+    # study_perf_vs_subarrays(subarrays_list, snrs)
+
+    ### END STUDY ###
 
     # n_monte_carlo = 10
     # i_mc_offset = 10  # TO start numbering simulations results at 10

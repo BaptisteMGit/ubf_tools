@@ -460,8 +460,8 @@ def estimate_rtf(
     # )
     # t = ds_sig_rtf.t.values
 
-    # NOTE : test with a different noise dataset to simulate the fact that in real life the noise CSDM is
-    # estimated from a different segment of the signal than the signal + noise CSDM
+    # NOTE : different noise dataset to simulate the fact that in real life the noise CSDM is
+    # estimated from a different segment of the signal than the signal + noise CSDM (assuming noise is stationnary)
     noise_other_segment = derive_received_noise(
         s_library=s_l,
         s_event=s_e,
@@ -479,35 +479,10 @@ def estimate_rtf(
     n_e = noise_other_segment.n_e
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
-
     ## Derive event RTF ##
     f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
         t, rcv_sig=s_e.T, rcv_noise=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
-
-    # # Noise
-    # rcv_noise = noise_da.sel(x=source["x"], y=source["y"], method="nearest").values
-    # rcv_noise = rcv_noise.T
-    # rcv_sig = ds_sig_rtf.s_e.values
-    # # Transpose to fit rtf estimation required input shape (ns, nrcv)
-    # rcv_sig = rcv_sig.T
-    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
-    #     t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
-    # )
-
-    ## Derive Library RTFs ##
-    # Dummy and dirty way to derive the RTF from the received signal -> loop over each grid pixel
-
-    # Signal
-    # rcv_sig = ds_sig_rtf.s_l.sel(x=source["x"], y=source["y"], method="nearest").values
-
-    # # Transpose to fit rtf estimation required input shape (ns, nrcv)
-    # rcv_sig = rcv_sig.T
-
-    # # Use the first signal slice to set f_cs by running rtf_covariance_substraction once
-    # f_rtf, rtf, _, _, _ = rtf_covariance_substraction(
-    #     t, rcv_sig=x_e.T, rcv_noise=n_e.T, nperseg=nperseg, noverlap=noverlap
-    # )
 
     # # Use Dask delayed and progress bar for tracking
     with ProgressBar():
@@ -515,12 +490,9 @@ def estimate_rtf(
         # results_cw = []
         for x_i in ds_sig_noise.x.values:
             for y_i in ds_sig_noise.y.values:
+                # Transpose to fit rtf estimation required input shape (ns, nrcv)
                 rcv_sig = s_l.sel(x=x_i, y=y_i).T.values
                 rcv_noise = n_l.sel(x=x_i, y=y_i).T.values
-
-                # # Transpose to fit rtf estimation required input shape (ns, nrcv)
-                # rcv_sig = rcv_sig.T
-                # rcv_noise = rcv_noise.T
 
                 # Wrap function call in dask delayed
                 delayed_rtf_cs = da.from_delayed(
@@ -537,17 +509,15 @@ def estimate_rtf(
         # Compute all RTFs
         rtf_cs_l = da.stack(results_cs).compute()
 
-    # Reshape to the required shape
-    # First step : reshape to (nx, ny, nf, n_rcv)
+    ### Reshape to the required shape ###
+    # Step 1 : reshape to (nx, ny, nf, n_rcv)
     shape = (len(ds_sig_noise.x), len(ds_sig_noise.y)) + rtf_cs_l.shape[1:]
-    # shape = (len(ds_sig.y), len(ds_sig.x)) + rtf_cs_l.shape[
-    #     1:
-    # ]  # Try to fix search grid issues 11/02/2025
     rtf_cs_l = rtf_cs_l.reshape(shape)
 
     # Step 2 : permute to (nf, nx, ny, n_rcv)
     axis_permutation = (2, 0, 1, 3)
     rtf_cs_l = np.transpose(rtf_cs_l, axis_permutation)
+    ### End reshape ###
 
     # Restict to the frequency band of interest
     idx_band = (f_rtf >= library_props["f0"]) & (f_rtf <= library_props["f1"])
@@ -559,7 +529,6 @@ def estimate_rtf(
 
 
 def estimate_dcf_gcc(
-    # ds_sig_gcc,
     ds_sig_noise,
     gcc_library,
     gcc_event,
@@ -570,11 +539,14 @@ def estimate_dcf_gcc(
     use_welch_estimator=True,
     verbose=False,
 ):
+    """
+    Estimate the Generalized Cross Correlation in frequency domain.
+
+    """
+
     # To avoid too long notations
     x_l = ds_sig_noise.x_l
     x_e = ds_sig_noise.x_e
-    # n_l = ds_sig_noise.n_l
-    # n_e = ds_sig_noise.n_e
 
     # Choose ref signals for library and event
     x_l_ref = x_l.sel(idx_rcv=i_ref)
@@ -750,7 +722,12 @@ def build_features_from_time_signal(
     antenna_type="zhang",
     verbose=False,
 ):
-    """Step 4.2 : build localisation features for DCF GCC and RTF MFP from syntethic time signal."""
+    """
+    Step 4.2 : build localisation features
+        -> GCC for the DCF method
+        -> RTF for the RTF-MFP method
+
+    """
 
     # if debug:
     #     verbose = True
@@ -771,16 +748,13 @@ def build_features_from_time_signal(
     fs = 1200
     library_props, _, _, _ = library_src_spectrum(fs=fs)
 
-    # # Load event spectrum
-    # event_props, S_f_event, f_event = event_src_spectrum(
-    #     T=library_props["T"], fs=library_props["fs"]
-    # )
-
+    # Init lists to save results
     rtf_event = []  # RFT vector at the source position
     rtf_library = []  # RTF vector evaluated at each grid pixel
     gcc_event = []  # GCC vector evaluated at the source position
     gcc_library = []  # GCC-SCOT vector evaluated at each grid pixel
 
+    # Derive noise dataset
     ds_noise = derive_received_noise(
         s_library=ds_sig.s_l,
         s_event=ds_sig.s_e,
@@ -827,15 +801,10 @@ def build_features_from_time_signal(
 
     # Copy dataset to store gcc signal
     ds_sig_gcc = ds_sig.copy(deep=True)
-    # Add noise
 
+    # Add noise
     ds_sig_gcc["s_l"] += ds_noise.n_l
     ds_sig_gcc["s_e"] += ds_noise.n_e
-
-    # ds_sig_gcc["s_l"] += noise_da.values
-    # ds_sig_gcc["s_e"] += noise_da.sel(
-    #     x=source["x"], y=source["y"], method="nearest"
-    # ).values
 
     # Plot signal and noise at source position -> library
     if check:
@@ -843,7 +812,9 @@ def build_features_from_time_signal(
         check_signal_noise_stft(ds_sig_noise)
 
     # List of potential reference receivers to test
-    idx_rcv_refs = range(len(receivers["x"]))  # General case
+    idx_rcv_refs = range(
+        len(receivers["x"])
+    )  # General case -> all receivers are used as reference to build the ambiguity surface for all couples in array (required for DCF method)
 
     for i_ref in idx_rcv_refs:
 
@@ -882,40 +853,16 @@ def build_features_from_time_signal(
         )
         print(f"GCC cpu time {(time() - t0):.2f}s")
 
-    # ds_res_from_sig = ds_sig.copy()
-
-    # # Add coords
-    # ds_res_from_sig.coords["idx_rcv_ref"] = range(len(receivers["x"]))
-    # ds_res_from_sig.coords["f"] = f_gcc
-
+    # Read arrays sizes
     nf = len(f_gcc)
     nx = ds_sig_noise.sizes["x"]
     ny = ds_sig_noise.sizes["y"]
     n_rcv_ref = len(idx_rcv_refs)
     n_rcv = ds_sig_noise.sizes["idx_rcv"]
 
+    # Set target shapes
     shape_event = (n_rcv_ref, n_rcv, nf)
     shape_library = (n_rcv_ref, n_rcv, nf, ny, nx)
-    # shape_event = (
-    #     len(rcv_refs),
-    #     ds_sig_noise.sizes["idx_rcv"],
-    #     len(f_gcc),
-    # )
-    # shape_library = (
-    #     ds_res_from_sig.sizes["idx_rcv_ref"],
-    #     ds_res_from_sig.sizes["idx_rcv"],
-    #     ds_res_from_sig.sizes["f"],
-    #     ds_res_from_sig.sizes["x"],
-    #     ds_res_from_sig.sizes["y"],
-    # )
-    # # Try to fix search grid issues 11/02/2025
-    # shape_library = (
-    #     ds_res_from_sig.sizes["idx_rcv_ref"],
-    #     ds_res_from_sig.sizes["idx_rcv"],
-    #     ds_res_from_sig.sizes["f"],
-    #     ds_res_from_sig.sizes["y"],
-    #     ds_res_from_sig.sizes["x"],
-    # )
 
     # GCC SCOT (idx_rcv_ref, f, x, y, idx_rcv)
     gcc_event = np.array(gcc_event).reshape(shape_event)  # (idx_rcv_ref, f, idx_rcv)
@@ -928,74 +875,6 @@ def build_features_from_time_signal(
     # RTF
     rtf_event = np.array(rtf_event)
     rtf_library = np.array(rtf_library)
-
-    # # Add gcc-scot to dataset
-    # ds_res_from_sig["gcc_real"] = (
-    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-    #     # [
-    #     #     "idx_rcv_ref",
-    #     #     "f",
-    #     #     "y",
-    #     #     "x",
-    #     #     "idx_rcv",
-    #     # ],  # Try to fix search grid issues 11/02/2025
-    #     gcc_library.real,
-    # )
-    # ds_res_from_sig["gcc_imag"] = (
-    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-    #     # [
-    #     #     "idx_rcv_ref",
-    #     #     "f",
-    #     #     "y",
-    #     #     "x",
-    #     #     "idx_rcv",
-    #     # ],  # Try to fix search grid issues 11/02/2025
-    #     gcc_library.imag,
-    # )
-    # ds_res_from_sig["gcc_event_real"] = (
-    #     ["idx_rcv_ref", "f", "idx_rcv"],
-    #     gcc_event.real,
-    # )
-    # ds_res_from_sig["gcc_event_imag"] = (
-    #     ["idx_rcv_ref", "f", "idx_rcv"],
-    #     gcc_event.imag,
-    # )
-
-    # # RTF
-    # rtf_event = np.array(rtf_event)
-    # rtf_library = np.array(rtf_library)
-
-    # # Add rft to dataset
-    # ds_res_from_sig["rtf_real"] = (
-    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-    #     # [
-    #     #     "idx_rcv_ref",
-    #     #     "f",
-    #     #     "y",
-    #     #     "x",
-    #     #     "idx_rcv",
-    #     # ],  # Try to fix search grid issues 11/02/2025
-    #     rtf_library.real,
-    # )
-    # ds_res_from_sig["rtf_imag"] = (
-    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-    #     # [
-    #     #     "idx_rcv_ref",
-    #     #     "f",
-    #     #     "y",
-    #     #     "x",
-    #     #     "idx_rcv",
-    #     # ],  # Try to fix search grid issues 11/02/2025
-    #     rtf_library.imag,
-    # )
-    # ds_res_from_sig["rtf_event_real"] = (
-    #     ["idx_rcv_ref", "f", "idx_rcv"],
-    #     rtf_event.real,
-    # )
-    # ds_res_from_sig["rtf_event_imag"] = (
-    #     ["idx_rcv_ref", "f", "idx_rcv"],
-    #     rtf_event.imag,
-    # )
 
     # Create dataset to store results
     ds_res_from_sig = xr.Dataset(
@@ -1051,7 +930,8 @@ def build_features_from_time_signal(
 
 
 def build_features_fullsimu(debug=False, event_stype="wn", antenna_type="zhang"):
-    """Step 4.1 : build localisation features for DCF GCC and RTF methods.
+    """
+    Step 4.1 : build localisation features for DCF GCC and RTF methods.
     Full simulation approach : DCF and RTF are build directly from transfer functions"""
 
     # Load params
@@ -1072,12 +952,10 @@ def build_features_fullsimu(debug=False, event_stype="wn", antenna_type="zhang")
     ds_tf = ds_tf.sel(f=slice(0, fmax))
 
     # Load library spectrum
-    # f = ds_tf.f.values
     library_props, S_f_library, f_library, idx_in_band = library_src_spectrum(fs=fs)
 
     # Load event spectrum
     _, S_f_event, _ = event_src_spectrum(
-        # target_var=library_props["sig_var"],
         T=library_props["T"],
         fs=library_props["fs"],
         stype=event_stype,
@@ -1097,6 +975,7 @@ def build_features_fullsimu(debug=False, event_stype="wn", antenna_type="zhang")
 
     ### 1) Full simulation approach : rtf and gcc are derived directly from tfs ###
 
+    # Init lists to save results
     rtf_event = []  # RFT vector at the source position
     rtf_library = []  # RTF vector evaluated at each grid pixel
     gcc_event = []  # GCC vector evaluated at the source position
@@ -1171,34 +1050,16 @@ def build_features_fullsimu(debug=False, event_stype="wn", antenna_type="zhang")
             gcc_event_i = w_src * Sxy_src
             gcc_event.append(gcc_event_i)
 
-    # Create dataset to store full simulation result
-    # ds_res_full_simu = ds_tf.copy()
-
-    # # Add coords
-    # ds_res_full_simu.coords["idx_rcv_ref"] = range(len(receivers["x"]))
-
+    # Read arrays sizes
     nf = ds_tf.sizes["f"]
     nx = ds_tf.sizes["x"]
     ny = ds_tf.sizes["y"]
     n_rcv_ref = ds_tf.sizes["idx_rcv"]
     n_rcv = ds_tf.sizes["idx_rcv"]
 
+    # Set target shapes
     shape_event = (n_rcv_ref, n_rcv, nf)
     shape_library = (n_rcv_ref, n_rcv, nf, ny, nx)
-    # shape_event = (
-    #     ds_res_full_simu.sizes["idx_rcv_ref"],
-    #     ds_res_full_simu.sizes["idx_rcv"],
-    #     ds_res_full_simu.sizes["f"],
-    # )
-
-    # # Fix 11/02/2025
-    # shape_library = (
-    #     ds_res_full_simu.sizes["idx_rcv_ref"],
-    #     ds_res_full_simu.sizes["idx_rcv"],
-    #     ds_res_full_simu.sizes["f"],
-    #     ds_res_full_simu.sizes["y"],
-    #     ds_res_full_simu.sizes["x"],
-    # )
 
     # RTF
     rtf_event = np.array(rtf_event).reshape(shape_event)
@@ -1245,42 +1106,6 @@ def build_features_fullsimu(debug=False, event_stype="wn", antenna_type="zhang")
             root_img=os.path.join(ROOT_IMG, f"fullsimu_dx{dx}m_dy{dy}m"),
         ),
     )
-
-    # # Add rft to dataset
-    # ds_res_full_simu["rtf_real"] = (
-    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-    #     rtf_library.real,
-    # )
-    # ds_res_full_simu["rtf_imag"] = (
-    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-    #     rtf_library.imag,
-    # )
-    # ds_res_full_simu["rtf_event_real"] = (
-    #     ["idx_rcv_ref", "f", "idx_rcv"],
-    #     rtf_event.real,
-    # )
-    # ds_res_full_simu["rtf_event_imag"] = (
-    #     ["idx_rcv_ref", "f", "idx_rcv"],
-    #     rtf_event.imag,
-    # )
-
-    # # Add gcc-scot to dataset
-    # ds_res_full_simu["gcc_real"] = (
-    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-    #     gcc_library.real,
-    # )
-    # ds_res_full_simu["gcc_imag"] = (
-    #     ["idx_rcv_ref", "f", "x", "y", "idx_rcv"],
-    #     gcc_library.imag,
-    # )
-    # ds_res_full_simu["gcc_event_real"] = (
-    #     ["idx_rcv_ref", "f", "idx_rcv"],
-    #     gcc_event.real,
-    # )
-    # ds_res_full_simu["gcc_event_imag"] = (
-    #     ["idx_rcv_ref", "f", "idx_rcv"],
-    #     gcc_event.imag,
-    # )
 
     # Save updated dataset
     fpath = os.path.join(

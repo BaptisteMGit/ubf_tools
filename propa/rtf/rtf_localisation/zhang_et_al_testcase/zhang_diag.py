@@ -24,13 +24,15 @@ ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_locali
 ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\zhang_et_al_2023\diagnostic"
 
 
-def diag_hermitian_angle_vs_snr(ref_to_use="kraken", rtf_to_compare="cs"):
+def diag_hermitian_angle_vs_snr(
+    ref_to_use="kraken", rtf_to_compare="cs", antenna_type="zhang", debug=False
+):
 
     # Ensure img folder exists
     if not os.path.exists(ROOT_IMG):
         os.makedirs(ROOT_IMG)
 
-    _, _, source, grid, _, _ = params(debug=False)
+    _, _, source, grid, _, _ = params(debug=debug, antenna_type=antenna_type)
 
     # Load gridded dataset
     fname = f"zhang_output_fullsimu_dx{grid['dx']}m_dy{grid['dy']}m.nc"

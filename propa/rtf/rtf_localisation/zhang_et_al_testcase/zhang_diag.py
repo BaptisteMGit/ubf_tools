@@ -3,10 +3,10 @@
 """
 @File    :   zhang_diag.py
 @Time    :   2025/02/13 19:51:28
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   Diagnostics to run after zhang testcase 
+@Desc    :   Diagnostics to run after zhang testcase
 """
 
 # ======================================================================================================================
@@ -19,9 +19,7 @@ import matplotlib.pyplot as plt
 
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import params
-
-ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data"
-ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\zhang_et_al_2023\diagnostic"
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import *
 
 
 def diag_hermitian_angle_vs_snr(
@@ -29,8 +27,9 @@ def diag_hermitian_angle_vs_snr(
 ):
 
     # Ensure img folder exists
-    if not os.path.exists(ROOT_IMG):
-        os.makedirs(ROOT_IMG)
+    root_img = os.path.join(ROOT_IMG, "diagnostic")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
 
     _, _, source, grid, _, _ = params(debug=debug, antenna_type=antenna_type)
 
@@ -160,7 +159,7 @@ def diag_hermitian_angle_vs_snr(
                     plt.legend()
 
                     plt.savefig(
-                        os.path.join(ROOT_IMG, f"rtf_interp_ircv{i_rcv}.png"), dpi=300
+                        os.path.join(root_img, f"rtf_interp_ircv{i_rcv}.png"), dpi=300
                     )
             plt.close("all")
 
@@ -280,7 +279,7 @@ def diag_hermitian_angle_vs_snr(
             plt.legend()
             plt.savefig(
                 os.path.join(
-                    ROOT_IMG, f"{metric}_x_{rtf_to_compare}_vs_{ref_to_use}.png"
+                    root_img, f"{metric}_x_{rtf_to_compare}_vs_{ref_to_use}.png"
                 ),
                 dpi=300,
             )
@@ -300,7 +299,7 @@ def diag_hermitian_angle_vs_snr(
             plt.legend()
             plt.savefig(
                 os.path.join(
-                    ROOT_IMG, f"{metric}_y_{rtf_to_compare}_vs_{ref_to_use}.png"
+                    root_img, f"{metric}_y_{rtf_to_compare}_vs_{ref_to_use}.png"
                 ),
                 dpi=300,
             )
@@ -321,7 +320,7 @@ def diag_hermitian_angle_vs_snr(
             plt.title(f"Variation along x-axis")
             plt.savefig(
                 os.path.join(
-                    ROOT_IMG, f"{metric}_x_{rtf_to_compare}_vs_{ref_to_use}.png"
+                    root_img, f"{metric}_x_{rtf_to_compare}_vs_{ref_to_use}.png"
                 ),
                 dpi=300,
             )
@@ -340,7 +339,7 @@ def diag_hermitian_angle_vs_snr(
             plt.title("Variation along y-axis")
             plt.savefig(
                 os.path.join(
-                    ROOT_IMG, f"{metric}_y_{rtf_to_compare}_vs_{ref_to_use}.png"
+                    root_img, f"{metric}_y_{rtf_to_compare}_vs_{ref_to_use}.png"
                 ),
                 dpi=300,
             )
@@ -353,7 +352,7 @@ def diag_hermitian_angle_vs_snr(
         plt.title("Variation at source position")
         plt.savefig(
             os.path.join(
-                ROOT_IMG, f"{metric}_src_{rtf_to_compare}_vs_{ref_to_use}.png"
+                root_img, f"{metric}_src_{rtf_to_compare}_vs_{ref_to_use}.png"
             ),
             dpi=300,
         )

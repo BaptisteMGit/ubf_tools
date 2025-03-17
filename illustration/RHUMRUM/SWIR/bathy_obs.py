@@ -61,18 +61,21 @@ def custom_div_cmap(
     return cmap
 
 
-def plot_swir_bathy():
+def plot_swir_bathy(contour=True):
 
     # bathy_path = (
     #     r"data/bathy/mmdpm/PVA_RR48/GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
     # )
     # bathy_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\GEBCO_2021_lon_64.44_67.44_lat_-29.08_-26.08.nc"
     ds_bathy = xr.open_dataset(BATHY_PATH)
-    attrs = ds_bathy.attrs
     ds_bathy["elevation"] = ds_bathy.elevation * 1e-3  # Convert to km
-    ds_bathy.attrs = attrs
-    ds_bathy.elevation.attrs["long_name"] = "z"
-    ds_bathy.elevation.attrs["unit"] = "km"
+    ds_bathy.elevation.attrs["long_name"] = r"$z$"
+    ds_bathy.elevation.attrs["units"] = r"$\mathrm{km}$"
+
+    ds_bathy.lon.attrs["long_name"] = r"$\mathrm{Longitude}$"
+    ds_bathy.lon.attrs["units"] = r"$^\circ \mathrm{E}$"
+    ds_bathy.lat.attrs["long_name"] = r"$\mathrm{Latitude}$"
+    ds_bathy.lat.attrs["units"] = r"$^\circ \mathrm{N}$"
 
     blevels = [
         -6000,
@@ -99,7 +102,9 @@ def plot_swir_bathy():
     #     },
     # )
     ds_bathy.elevation.plot(cmap="jet")
-    ds_bathy.elevation.plot.contour(levels=blevels, colors="k", linewidths=0.5)
+
+    if contour:
+        ds_bathy.elevation.plot.contour(levels=blevels, colors="k", linewidths=0.5)
 
     return ds_bathy
 
@@ -132,7 +137,7 @@ def plot_swir_obs(ds_bathy, rcv_id, col=None):
 
     rcv_info = get_rcv_info(ds_bathy, rcv_id)
 
-    markers = ["o", "s", "D", "X", "P", "H", "v", "^"]
+    # markers = ["o", "s", "D", "X", "P", "H", "v", "^"]
     if col is None:
         col = ["k"] * len(rcv_info["id"])
     for i_obs, obs_id in enumerate(rcv_info["id"]):

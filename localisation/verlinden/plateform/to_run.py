@@ -26,7 +26,6 @@ from localisation.verlinden.testcases.testcase_envs import (
     TestCase3_1,
 )
 from localisation.verlinden.plateform.run_plateform import run_on_plateform
-from signals.signals import pulse, generate_ship_signal
 from signals.AcousticComponent import AcousticSource
 from localisation.verlinden.misc.params import ROOT_DATASET
 
@@ -173,8 +172,8 @@ def common_process_loc(ds, rcv_id):
     initial_ship_pos = {
         # "lon": rcv_info["lons"][0],
         # "lat": rcv_info["lats"][0] + 0.001,
-        "lon": rcv_info["lons"][0] + 0.05,
-        "lat": rcv_info["lats"][0] + 0.03,
+        "lon": rcv_info["lons"][0] + 0.1,
+        "lat": rcv_info["lats"][0] - 0.03,
         "crs": "WGS84",
     }
 
@@ -215,7 +214,7 @@ def set_event_sig_info(f0):
         "sig_type": "ship",
         "f0": f0,
         "std_fi": f0 * 1 / 100,
-        "tau_corr_fi": 1 / f0,
+        "tau_corr_fi": 0.1 * 1 / f0,
         "fs": fs,
     }
 
@@ -409,8 +408,10 @@ def run_process_loc(ds, rcv_id):
     # process_analysis(ds, grid_info)
 
 
-def run_all_testcases():
+def run_all_testcases(random_source=False):
     # rcv_id = ["R1", "R2", "R3"]
+    # rcv_id = ["RR41", "RR44", "RR45"]
+    rcv_id = ["RR44", "RR45", "RR47"]
     # rcv_id = ["RRdebug0", "RRdebug1", "RRdebug2"]
     rcv_id = ["RR41", "RR44", "RR45", "RR47"]
 
@@ -423,7 +424,7 @@ def run_all_testcases():
         "sig_type": "ship",
         "f0": f0_lib,
         "std_fi": f0_lib * 1 / 100,
-        "tau_corr_fi": 1 / f0_lib,
+        "tau_corr_fi": 0.1 * 1 / f0_lib,
         "fs": fs,
     }
     src_sig, t_src_sig = generate_ship_signal(
@@ -459,7 +460,7 @@ def run_all_testcases():
         tc = tc()
         tc.update(tc_var_in)
 
-        min_dist = 5 * 1e3
+        min_dist = 10 * 1e3
         dx, dy = 100, 100
 
         # Define source signal
@@ -478,7 +479,13 @@ def run_all_testcases():
             fullpath_dataset_propa_grid,
             fullpath_dataset_propa_grid_sr,
         ) = run_on_plateform(
-            rcv_info=rcv_info_dw, testcase=tc, min_dist=min_dist, dx=dx, dy=dy, src=src
+            rcv_info=rcv_info_dw,
+            testcase=tc,
+            min_dist=min_dist,
+            dx=dx,
+            dy=dy,
+            src=src,
+            random_source=random_source,
         )
 
         # Process loc
@@ -494,8 +501,8 @@ def run_all_testcases():
             rcv_info=rcv_info,
             grid_info=grid_info,
             dt=dt,
-            # similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
-            similarity_metrics=["lstsquares"],
+            similarity_metrics=["intercorr0", "hilbert_env_intercorr0"],
+            # similarity_metrics=["lstsquares"],
             snrs_dB=snr,
             n_noise_realisations=n_noise,
             verbose=True,
@@ -510,15 +517,15 @@ def run_all_testcases():
 if __name__ == "__main__":
     import xarray as xr
 
-    # rcv_id = ["R1", "R2", "R3"]
+    rcv_id = ["R1", "R2", "R3"]
 
     # # # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase1_3_AC198EBFF716\65.4656_65.8692_-27.8930_-27.5339_ship\20240628_075448.zarr"
-    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase3_1_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240718_155452.zarr"
+    # fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\loc\localisation_process\testcase3_1_AC198EBFF716\65.4157_65.8190_-27.8330_-27.4739_ship\20240719_115513.zarr"
     # ds = xr.open_dataset(fpath, engine="zarr", chunks={})
     # fpath, event_pos_info, grid_info, rcv_info = common_process_loc(ds, rcv_id)
     # process_analysis(ds, grid_info)
 
-    run_all_testcases()
+    run_all_testcases(random_source=False)
 
     # Build dataset
     # rcv_id = ["R1", "R2", "R3", "R4"]

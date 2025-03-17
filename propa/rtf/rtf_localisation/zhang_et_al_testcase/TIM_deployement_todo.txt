@@ -1,0 +1,5 @@
+Deployement TODO list : 
+
+1) Run zhang_params.py to build folders 
+2) Copy data from propa/rtf/rtf_localisation/zhang_et_al_testcase/data into ROOT_DATA
+3) Copy files from propa/rtf/rtf_localisation/zhang_et_al_testcase/tmp into ROOT_TMP

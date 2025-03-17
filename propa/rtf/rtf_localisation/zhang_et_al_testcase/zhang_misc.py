@@ -19,7 +19,7 @@ import pandas as pd
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
-from cst import RHO_W, C0
+from cst import RHO_W
 from skimage import measure  # Import for contour detection
 from matplotlib.path import Path
 from sklearn import preprocessing
@@ -28,7 +28,11 @@ from itertools import combinations
 from scipy.spatial import ConvexHull
 from signals.signals import colored_noise
 from publication.PublicationFigure import PubFigure
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import *
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    ROOT,
+    ROOT_IMG,
+    ROOT_DATA,
+)
 
 
 PubFigure(ticks_fontsize=22)

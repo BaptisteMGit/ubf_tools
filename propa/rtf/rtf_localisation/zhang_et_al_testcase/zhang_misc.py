@@ -216,24 +216,13 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
         "phi": 0,
     }
 
-    # s, t = lfm_chirp(
-    #     library_props["f0"],
-    #     library_props["f1"],
-    #     library_props["fs"],
-    #     library_props["T"],
-    # )
-
-    # pad_time_s = 1
-    # npad = pad_time_s * library_props["fs"]
     t = np.arange(0, library_props["T"], 1 / library_props["fs"])
     s = sp.chirp(
-        # t[npad:-npad],
         t,
         library_props["f0"],
         library_props["T"],
         library_props["f1"],
         method="linear",
-        # method="hyperbolic",
     )
 
     # Normalise signal to get unit variance
@@ -294,13 +283,6 @@ def generate_event_src_signal(T, fs):
 
     The event signal is generated once and saved to a txt file to be used in the simulation
     """
-    # # The easiest, yet not elegant way to calibrate the event signal is to set the variance of the event signal to the variance of the library signal in the time domain
-    # t = np.arange(0, T, 1 / fs)
-    # nt = len(t)
-    # s_e = np.random.normal(0, 1, nt)  # Unit var signal
-    # # Apply window
-    # s_e *= sp.windows.hann(len(s_e))
-
     # Create white noise signal
     t, s_e = colored_noise(T, fs, "white")
 
@@ -323,8 +305,36 @@ def generate_event_src_signal(T, fs):
 
 
 def event_src_spectrum(T, fs, stype="wn"):
-    """Event source signal spectrum : Zhang et al. 2023 -> Gaussian noise
+    """
+    Event source signal spectrum : Zhang et al. 2023 -> Gaussian noise
     The variance of the signal is set to the variance of the library signal (assuming both signal have same power)
+
+    The event signal is generated once and saved to a txt file to be used in the simulation
+
+    Parameters
+    ----------
+    T : float
+        Duration of the signal
+    fs : int
+        Sampling frequency
+    stype : str
+        Type of event source signal
+        - wn : White noise
+        - lfm : Linear Frequency Modulation
+
+    Returns
+    -------
+    event_props : dict
+        Event source properties
+    S_f_event : np.ndarray
+        Event source signal spectrum
+    f_event : np.ndarray
+        Frequency vector
+
+    Examples
+    --------
+    event_props, S_f_event, f_event = event_src_spectrum(T=10, fs=2000, stype="wn")
+
     """
 
     # generate_event_src_signal(T, fs)

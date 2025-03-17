@@ -19,12 +19,11 @@ import matplotlib.pyplot as plt
 from publication.PublicationFigure import PubFigure
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     params,
-    get_rcv_couples,
     load_random_antenna,
     get_subarrays,
     load_msr_rmse_res_subarrays,
-    ROOT_IMG,
 )
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import ROOT_IMG
 
 pfig = PubFigure()
 

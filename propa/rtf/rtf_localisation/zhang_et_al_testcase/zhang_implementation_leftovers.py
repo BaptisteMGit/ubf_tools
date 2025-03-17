@@ -3,7 +3,7 @@
 """
 @File    :   zhang_implementation_draft.py
 @Time    :   2025/01/27 12:04:42
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -23,7 +23,12 @@ from sklearn.cluster import KMeans
 from misc import cast_matrix_to_target_shape
 from propa.kraken_toolbox.run_kraken import readshd
 from propa.rtf.rtf_utils import D_hermitian_angle_fast
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import params
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    ROOT_TMP,
+    ROOT_DATA,
+    ROOT_IMG,
+)
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     plot_ambiguity_surface,
 )
@@ -292,7 +297,8 @@ def save_simulation_netcdf():
     f = frequency["freqs"]
 
     # Read shd from previously run kraken
-    working_dir = os.path.join(ROOT, "tmp")
+    # working_dir = os.path.join(ROOT, "tmp")
+    working_dir = ROOT_TMP
     os.chdir(working_dir)
     shdfile = r"testcase_zhang2023.shd"
 

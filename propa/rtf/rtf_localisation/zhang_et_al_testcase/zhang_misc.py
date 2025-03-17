@@ -29,7 +29,7 @@ from scipy.spatial import ConvexHull
 from signals.signals import colored_noise
 from publication.PublicationFigure import PubFigure
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT,
+    ROOT_TMP,
     ROOT_IMG,
     ROOT_DATA,
 )
@@ -99,8 +99,12 @@ def params(debug=False, antenna_type="zhang"):
 
     if debug:
         # Test with non square area
-        l_detection_area_x = 0.4e3  # Length of the detection area along x axis
-        l_detection_area_y = 0.5e3  # Length of the detection area along y axis
+        # l_detection_area_x = 0.4e3  # Length of the detection area along x axis
+        # l_detection_area_y = 0.5e3  # Length of the detection area along y axis
+
+        # To debug 17032025
+        l_detection_area_x = 0.3e3  # Length of the detection area along x axis
+        l_detection_area_y = 0.2e3  # Length of the detection area along y axis
 
         # Manual def (ugly)
         x_bott_left_corner = 3800
@@ -270,7 +274,7 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
     # Right frequencies in band in a
     f_in_band = f_library[idx_in_band]
     txt = " ".join([f"{f:.2f}" for f in f_in_band])
-    fpath = os.path.join(ROOT, "tmp", "f_in_band.txt")
+    fpath = os.path.join(ROOT_TMP, "f_in_band.txt")
     with open(fpath, "w") as f:
         f.write(txt)
     # np.savetxt(fpath, f_in_band, fmt="%.2f")

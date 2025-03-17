@@ -410,8 +410,9 @@ def run_process_loc(ds, rcv_id):
 
 
 def run_all_testcases():
-    rcv_id = ["R1", "R2", "R3"]
+    # rcv_id = ["R1", "R2", "R3"]
     # rcv_id = ["RRdebug0", "RRdebug1", "RRdebug2"]
+    rcv_id = ["RR41", "RR44", "RR45", "RR47"]
 
     f0_lib = 5  # Fundamental frequency of the ship signal
     dt, fs, event_sig_info = set_event_sig_info(f0=f0_lib)

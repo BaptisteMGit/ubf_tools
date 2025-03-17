@@ -23,12 +23,14 @@ from time import time
 from dask import delayed
 from dask.diagnostics import ProgressBar
 from misc import cast_matrix_to_target_shape, mult_along_axis
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
-    library_src_spectrum,
-    event_src_spectrum,
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     ROOT,
     ROOT_IMG,
     ROOT_DATA,
+)
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
+    library_src_spectrum,
+    event_src_spectrum,
     params,
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (

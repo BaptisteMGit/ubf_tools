@@ -3,7 +3,7 @@
 """
 @File    :   zhang_figures.py
 @Time    :   2025/02/26 11:37:40
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Create figures for JASA publication
@@ -19,11 +19,14 @@ import xarray as xr
 
 from publication.PublicationFigure import PubFigure
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
-    ROOT_DATA,
-    ROOT_IMG,
     params,
     get_rcv_couples,
 )
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    ROOT_DATA,
+    ROOT_IMG,
+)
+
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     plot_fullarray_ambiguity_surfaces_publi,
     plot_subarrays_ambiguity_surfaces,

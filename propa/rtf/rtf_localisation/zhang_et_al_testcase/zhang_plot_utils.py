@@ -20,7 +20,18 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from misc import compute_hyperbola
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
+from publication.PublicationFigure import PubFigure
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
+    params,
+    get_array_label,
+    get_rcv_couples,
+    estimate_msr,
+    find_mainlobe,
+)
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    ROOT_IMG,
+    ROOT_DATA,
+)
 
 # ======================================================================================================================
 # Functions

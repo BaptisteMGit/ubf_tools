@@ -223,7 +223,7 @@ def init_dataset(
     )
 
     # Chunk rcv_signal_library according to lon/lat regions
-    max_size = 0.4 * 1e9
+    max_size = 0.5 * 1e9
     var = ds.rcv_signal_library
     nregion_lon = get_region_number(
         nregion_max=ds.sizes["lon"],

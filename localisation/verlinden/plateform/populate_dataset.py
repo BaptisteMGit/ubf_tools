@@ -119,10 +119,10 @@ def grid_tf(ds, dx=100, dy=100, rcv_info=None):
     ds["tf_gridded"].attrs["long_name"] = "Transfer function gridded"
 
     nregion_lon = get_region_number(
-        ds.sizes["lon"], ds.tf_gridded, max_size_bytes=1 * 1e9
+        ds.sizes["lon"], ds.tf_gridded, max_size_bytes=0.5 * 1e9
     )
     nregion_lat = get_region_number(
-        ds.sizes["lat"], ds.tf_gridded, max_size_bytes=1 * 1e9
+        ds.sizes["lat"], ds.tf_gridded, max_size_bytes=0.5 * 1e9
     )
 
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)
@@ -224,10 +224,10 @@ def grid_synthesis(
 
     # Loop over sub_regions of the grid
     nregion_lon = get_region_number(
-        ds.sizes["lon"], ds.rcv_signal_library, max_size_bytes=1 * 1e9
+        ds.sizes["lon"], ds.rcv_signal_library, max_size_bytes=0.5 * 1e9
     )
     nregion_lat = get_region_number(
-        ds.sizes["lat"], ds.rcv_signal_library, max_size_bytes=1 * 1e9
+        ds.sizes["lat"], ds.rcv_signal_library, max_size_bytes=0.5 * 1e9
     )
 
     lon_slices, lat_slices = get_lonlat_sub_regions(ds, nregion_lon, nregion_lat)

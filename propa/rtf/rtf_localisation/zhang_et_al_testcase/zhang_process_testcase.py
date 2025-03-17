@@ -964,7 +964,23 @@ if __name__ == "__main__":
     # subarrays_args = build_subarrays_args(subarrays_list)
     # study_msr_vs_snr(subarrays_args=subarrays_args)
 
-    # snrs = np.arange(-20, 15, 5)
+    # # snrs = np.arange(-20, 15, 5)
+    # from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
+    #     grid_dataset,
+    #     build_signal,
+    # )
+
+    # grid_dataset(debug=True)
+    # build_signal(debug=True)
+    # from dask.distributed import Client, LocalCluster
+
+    # # Launch Dask cluster and client
+    # cluster = LocalCluster(
+    #     n_workers=4, threads_per_worker=1, memory_limit="3GB")
+    # client = Client(cluster)
+
+    # # Print dashboard link
+    # print("Dask Dashboard:", client.dashboard_link)
 
     """
     TEST 1a :
@@ -1005,7 +1021,7 @@ if __name__ == "__main__":
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
-    snrs = [-10]
+    snrs = [0.5]
     print(f"Number of SNRs = {len(snrs)}")
     print("SNRs : ", snrs)
 
@@ -1032,6 +1048,10 @@ if __name__ == "__main__":
     study_perf_vs_subarrays(subarrays_list, snrs)
 
     print("End of TEST 1a")
+
+    # Shutdown the client and cluster after computation is done
+    client.close()
+    cluster.close()
 
     """ Fin du TEST 1a """
 

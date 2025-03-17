@@ -19,7 +19,10 @@ import matplotlib.pyplot as plt
 
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import params
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import *
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    ROOT_IMG,
+    ROOT_DATA,
+)
 
 
 def diag_hermitian_angle_vs_snr(

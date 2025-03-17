@@ -17,21 +17,41 @@ The Journal of the Acoustical Society of America, 154(1), 295–306. https://doi
 import os
 import numpy as np
 import xarray as xr
-import pandas as pd
 
-from time import time
+# import pandas as pd
+import matplotlib.pyplot as plt
+
+# from time import time
 from misc import cast_matrix_to_target_shape
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import *
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    ROOT_DATA,
+    ROOT_IMG,
+    MIN_VAL_LOG,
+)
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
+    params,
+    estimate_msr,
+    init_dr_file,
+    get_subarrays,
+    init_msr_file,
+    get_rcv_couples,
+    get_array_label,
+    build_subarrays_args,
+    load_msr_rmse_res_subarrays,
+)
+
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
-    plot_study_zhang2023,
     study_msr_vs_snr,
     check_rtf_features,
     check_gcc_features,
+    plot_study_zhang2023,
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
     build_features_from_time_signal,
 )
+
+from publication.PublicationFigure import PubFigure
 
 PubFigure(ticks_fontsize=22)
 

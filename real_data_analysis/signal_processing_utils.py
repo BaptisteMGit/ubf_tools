@@ -3,7 +3,7 @@
 """
 @File    :   signal_processing_utils.py
 @Time    :   2024/09/13 14:01:31
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -12,7 +12,9 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import os
 import numpy as np
+import xarray as xr
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 from real_data_analysis.real_data_utils import plot_dsp, plot_stft, get_dsp
@@ -333,5 +335,161 @@ def process_plot(data, fmin, fmax, nperseg, save):
     plt.close("all")
 
 
+def get_bifrequency_spectrum(
+    s,
+    fs,
+    fmin=None,
+    fmax=None,
+    nperseg=2**12,
+    noverlap=2**11,
+    plot=False,
+    root_img=None,
+):
+
+    # nperseg = 2**17
+    # noverlap = 2**16
+    ff, tt, stft = sp.stft(
+        s,
+        fs=fs,
+        window="hann",
+        nperseg=nperseg,
+        noverlap=noverlap,
+    )
+
+    if fmin is None:
+        fmin = 0
+    if fmax is None:
+        fmax = fs / 2
+
+    ff_in_band = np.logical_and((ff >= fmin), (ff <= fmax))
+    stft = stft[ff_in_band, :]
+    ff = ff[ff_in_band]
+
+    # Faster implementation with matrix multiplication
+    L = stft.shape[1]
+    S_f1f2 = stft @ np.conj(stft).T
+    S_f1f2 = 1 / L * S_f1f2
+
+    if plot:
+        plot_bi_frequency_spectrum(S_f1f2, ff, root_img)
+
+    return ff, S_f1f2
+
+
+def plot_bi_frequency_spectrum(S_f1f2, ff, root_img=None):
+
+    # Normalize
+    S_f1f2 /= np.max(np.abs(S_f1f2))
+
+    S_f1f2 = xr.DataArray(
+        S_f1f2,
+        dims=["ff1", "ff2"],
+        # coords={"ff1": stft.ff.values, "ff2": stft.ff.values},
+        coords={"ff1": ff, "ff2": ff},
+    )
+
+    S_f1f2_log_magnitude = 20 * np.log10(np.abs(S_f1f2))
+    # Plot
+    fig, ax = plt.subplots()
+    S_f1f2_log_magnitude.plot(
+        ax=ax,
+        x="ff1",
+        y="ff2",
+        vmin=-30,
+        vmax=0,
+        cmap="viridis",
+        add_colorbar=True,
+        cbar_kwargs={"label": "Magnitude [dB]"},
+    )
+
+    ax.set_xlabel("$f_1$" + " [Hz]")
+    ax.set_ylabel("$f_2$" + " [Hz]")
+    ax.set_title("Bi-frequency spectrum")
+    img_filepath = os.path.join(root_img, "bi_frequency_spectrum.png")
+    plt.savefig(img_filepath)
+
+
 if __name__ == "__main__":
-    pass
+
+    from signals.signals import lfm_chirp
+
+    ### LFM Chirp ###
+    f0 = 8 * 1e3
+    f1 = 15 * 1e3
+    fs = 10 * f1
+    T = 0.1
+    phi = 0
+
+    # Signal
+    s, t = lfm_chirp(f0, f1, fs, T, phi)
+
+    # Plot lfm chirp
+    # fig, ax = plt.subplots()
+    # ax.plot(t, s)
+    # ax.set_xlabel("Time [s]")
+    # ax.set_ylabel("Amplitude")
+    # ax.set_title("LFM Chirp")
+    # # plt.show()
+
+    # Plot spectrogram
+    nperseg = 2**10
+    noverlap = 2**9
+
+    ff, tt, stft = sp.stft(
+        s,
+        fs=fs,
+        window="hann",
+        nperseg=nperseg,
+        noverlap=noverlap,
+    )
+    plt.figure()
+    plt.pcolormesh(tt, ff, 20 * np.log10(np.abs(stft)), shading="gouraud")
+    plt.ylim([0, f1 + 2 * 1e3])
+    plt.xlabel("Time [s]")
+    plt.ylabel("Frequency [Hz]")
+    plt.title("Spectrogram")
+    plt.colorbar(label="Magnitude [dB]")
+    # plt.show()
+
+    # Bispectrum from spectrum
+    X = np.fft.rfft(s)
+    freq = np.fft.rfftfreq(len(s), 1 / fs)
+
+    # Plot spectrum
+    plt.figure()
+    plt.plot(freq, np.abs(X))
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Magnitude")
+    plt.title("Spectrum")
+
+    X = np.atleast_2d(X)
+    S_f1f2 = np.conj(X).T @ X
+    # plt.show
+
+    # Plot bispectrum
+    # plot_bi_frequency_spectrum(S_f1f2, freq, root_img=".")
+
+    plt.figure()
+    plt.pcolormesh(freq, freq, np.abs(S_f1f2) / np.max(np.abs(S_f1f2)))
+    plt.xlabel("$f_1$ [Hz]")
+    plt.ylabel("$f_2$ [Hz]")
+    plt.title("Bispectrum")
+    plt.colorbar(label="Magnitude")
+    plt.xlim(f0 * 0.9, f1 * 1.1)
+    plt.ylim(f0 * 0.9, f1 * 1.1)
+    plt.show()
+
+    fmin = f0
+    fmax = f1
+    plot = True
+    root_img = "."
+    get_bifrequency_spectrum(
+        s,
+        fs,
+        fmin=fmin,
+        fmax=fmax,
+        nperseg=nperseg,
+        noverlap=noverlap,
+        plot=plot,
+        root_img=root_img,
+    )

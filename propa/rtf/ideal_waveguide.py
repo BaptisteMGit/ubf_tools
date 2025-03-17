@@ -3,7 +3,7 @@
 """
 @File    :   ideal_waveguide.py
 @Time    :   2024/09/25 10:28:01
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -336,7 +336,7 @@ def image_source_ri(z_src, z_rcv, r, depth, n, t=None):
 
     # Number of terms to include in the sum
     m = np.arange(1, n + 1)
-    # Image source - receiver distance follwoing definitions from Jensen p.104
+    # Image source - receiver distance following definitions from Jensen p.104
     zm1 = 2 * depth * m - z_src + z_rcv
     zm2 = 2 * depth * (m + 1) - z_src - z_rcv
     zm3 = 2 * depth * m + z_src + z_rcv
@@ -530,41 +530,58 @@ if __name__ == "__main__":
     # bottom_bc = "perfectly_rigid"
     # bottom_bc = "pressure_release"
 
-    # test_g_mat_h_mat(bottom_bc=bottom_bc)
-    depth = 1000
-    f = 50
-    k = 2 * np.pi * f / 1500
-    M = nb_propagating_modes(f, 1500, depth, bottom_bc="pressure_release")
-    print(M)
-    kzm = M * np.pi / depth
-    krm = np.sqrt(k**2 - kzm**2)
-    print(f"k_zm : {kzm}")
-    print(f"k_rm : {krm}")
+    # # test_g_mat_h_mat(bottom_bc=bottom_bc)
+    # depth = 1000
+    # f = 50
+    # k = 2 * np.pi * f / 1500
+    # M = nb_propagating_modes(f, 1500, depth, bottom_bc="pressure_release")
+    # print(M)
+    # kzm = M * np.pi / depth
+    # krm = np.sqrt(k**2 - kzm**2)
+    # print(f"k_zm : {kzm}")
+    # print(f"k_rm : {krm}")
 
-    zs = 5
-    z0 = 999
-    print(f"sin(kzm zs) : {np.sin(kzm * zs)}")
-    print(f"Approx term : {kzm * zs  - 1/6 * (kzm * zs)**3}")
+    # zs = 5
+    # z0 = 999
+    # print(f"sin(kzm zs) : {np.sin(kzm * zs)}")
+    # print(f"Approx term : {kzm * zs  - 1/6 * (kzm * zs)**3}")
     # print(f"Approx term : {-1 + 1/6 * (M*np.pi/depth)**3 * (depth-z0)**3}")
     # print_arrivals(z_src=5, z_rcv=999, r=30 * 1e3, depth=1000, n=4)
 
-#     D = 1e3
-#     f = 5
-#     z_src = 5
+    #     D = 1e3
+    #     f = 5
+    #     z_src = 5
 
-#     dz = 1
-#     dr = 1
-#     R = 20 * 1e3
-#     z = np.arange(0, D, dz)
-#     r = np.arange(1, R, dr)
+    #     dz = 1
+    #     dr = 1
+    #     R = 20 * 1e3
+    #     z = np.arange(0, D, dz)
+    #     r = np.arange(1, R, dr)
 
-#     n_rcv = 5
-#     delta_rcv = 100
-#     r_rcv_0 = R - 5 * 1e3
-#     z_rcv_0 = D - 5
-#     r_rcv = np.array([r_rcv_0 + delta_rcv * i for i in range(n_rcv)])
-#     z_rcv = np.array([z_rcv_0] * n_rcv)
+    #     n_rcv = 5
+    #     delta_rcv = 100
+    #     r_rcv_0 = R - 5 * 1e3
+    #     z_rcv_0 = D - 5
+    #     r_rcv = np.array([r_rcv_0 + delta_rcv * i for i in range(n_rcv)])
+    #     z_rcv = np.array([z_rcv_0] * n_rcv)
 
-#     f, rr, zz, p_field = field(f, z_src, r, z, D)
-#     f0 = 10
-#     plot_tl(f, r, z, p_field, f_plot=f0, z_src=z_src, r_rcv=r_rcv, z_rcv=z_rcv)
+    #     f, rr, zz, p_field = field(f, z_src, r, z, D)
+    #     f0 = 10
+    #     plot_tl(f, r, z, p_field, f_plot=f0, z_src=z_src, r_rcv=r_rcv, z_rcv=z_rcv)
+
+    #### FIBERSCOPE CONFIG ####
+    depth = 10
+    z_src = 4
+    z_rcv = depth - 0.40
+    r = 4.5  # P1
+    r = -4.5 + 25  # P4
+    n = 100
+    t, ir = image_source_ri(z_src, z_rcv, r, depth, n, t=None)
+
+    plt.figure()
+    plt.plot(t, ir)
+    plt.xlim(0, 0.1)
+    plt.xlabel(r"$t \, \textrm{[s]}$")
+    plt.ylabel(r"$\textrm{Impulse response}$")
+    plt.savefig("impulse_response.png")
+    # plt.show()

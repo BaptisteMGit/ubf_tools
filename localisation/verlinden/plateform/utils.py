@@ -21,7 +21,7 @@ import scipy.fft as sp_fft
 import scipy.signal as signal
 
 from cst import C0
-from misc import mult_along_axis, fft_convolve_f
+from misc import mult_along_axis, fft_convolve_f, robust_normalization, plot_amb
 from localisation.verlinden.plateform.params import N_WORKERS
 from localisation.verlinden.misc.params import ROOT_DATASET, ROOT_PROCESS
 from localisation.verlinden.misc.verlinden_utils import (
@@ -287,9 +287,80 @@ def get_lonlat_sub_regions(ds, nregion_lon, nregion_lat):
     return lon_slices, lat_slices
 
 
+def compute_received_signal_random_source(ds, apply_delay):
+
+    # Load random source database
+    fpath_rdsrc = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ship_sig\ship_sig_database\ship_sig_database.nc"
+    xr_rdsrc = xr.open_dataset(fpath_rdsrc)
+    nsig = xr_rdsrc.sizes["sig"]
+    idx_sig = np.random.randint(
+        0, nsig, size=ds.tf_gridded.isel(idx_rcv=0, kraken_freq=0).shape
+    )
+
+    propagating_freq = xr_rdsrc.freq.values
+
+    # Build the propagating spectrum matrix (idx_rcv, lat, lon, kraken_freq)
+    propagating_spectrum = np.empty(ds.tf_gridded.shape, dtype=complex)
+    for i_sig in range(nsig):
+        grid_isig = idx_sig == i_sig
+        mod_tf = xr_rdsrc.tf_mod.isel(sig=i_sig).values
+        arg_tf = xr_rdsrc.tf_arg.isel(sig=i_sig).values
+        for i_rcv in range(ds.sizes["idx_rcv"]):
+            propagating_spectrum[i_rcv, grid_isig] = mod_tf * np.exp(
+                1j * arg_tf
+            )  # The source is the same for all receivers
+
+    nfft_inv = xr_rdsrc.nfft
+    df = xr_rdsrc.df
+    T_tot = 1 / df
+
+    k0 = 2 * np.pi * propagating_freq / C0
+    norm_factor = np.exp(1j * k0) / (4 * np.pi)
+
+    # Received signal spectrum resulting from the convolution of the src signal and the impulse response
+    propagating_spectrum = mult_along_axis(propagating_spectrum, norm_factor, axis=-1)
+    transmitted_field_f = ds.tf_gridded * propagating_spectrum
+
+    # Apply corresponding delay to the signal
+    if apply_delay:
+        tau = ds.delay_rcv.min(
+            dim="idx_rcv"
+        )  # Delay to apply to the signal to take into account the propagation time
+
+        # Expand tau to the signal shape
+        tau = tau.expand_dims({"kraken_freq": ds.sizes["kraken_freq"]}, axis=-1)
+        # Derive delay factor
+        tau_vec = mult_along_axis(tau, propagating_freq, axis=-1)
+        delay_f = np.exp(1j * 2 * np.pi * tau_vec)
+        # Expand delay factor to the signal shape
+        delay_f = tau.copy(deep=True, data=delay_f).expand_dims(
+            {"idx_rcv": ds.sizes["idx_rcv"]}, axis=0
+        )
+        # Apply delay
+        transmitted_field_f = transmitted_field_f * delay_f
+
+    # Fourier synthesis of the received signal -> time domain
+    chunk_shape = ds.rcv_signal_library.data.chunksize
+    transmitted_field_f = da.from_array(transmitted_field_f, chunks=chunk_shape)
+    transmitted_field_t = np.fft.irfft(
+        transmitted_field_f, axis=-1, n=nfft_inv
+    ).compute()
+
+    return transmitted_field_t
+
+
 def compute_received_signal(
     ds, propagating_freq, propagating_spectrum, norm_factor, nfft_inv, apply_delay
 ):
+
+    # Quick fix for received signal at rcv position : for r = 0 -> sig = emmited signal
+    rcv_grid_lon = ds.sel(lon=ds.lon_rcv.values, method="nearest").lon.values
+    rcv_grid_lat = ds.sel(lat=ds.lat_rcv.values, method="nearest").lat.values
+
+    for i in range(len(rcv_grid_lon)):
+        ds["tf_gridded"].loc[
+            dict(idx_rcv=i, lon=rcv_grid_lon[i], lat=rcv_grid_lat[i])
+        ] = 1
 
     # Received signal spectrum resulting from the convolution of the src signal and the impulse response
     transmitted_field_f = mult_along_axis(
@@ -700,6 +771,9 @@ def add_feature_library_subset(xr_dataset, feature="corr"):
             # Normalized cross-correlation
             e1 = np.sum(np.abs(s1) ** 2, axis=ax)
             e2 = np.sum(np.abs(s2) ** 2, axis=ax)
+            # e1 = np.var(s1, axis=ax)
+            # e2 = np.var(s2, axis=ax)
+
             c_12 = signal.fftconvolve(s1, s2[..., ::-1], mode="full", axes=-1)
             norm = np.repeat(
                 np.expand_dims(np.sqrt(e1 * e2), axis=ax), c_12.shape[ax], axis=ax
@@ -775,6 +849,9 @@ def add_feature_event(xr_dataset, idx_snr, feature="corr", verbose=True):
                 # Normalized cross-correlation
                 e1 = np.sum(np.abs(s1) ** 2)
                 e2 = np.sum(np.abs(s2) ** 2)
+                # e1 = np.var(s1)
+                # e2 = np.var(s2)
+
                 c_12 = signal.fftconvolve(s1, s2[::-1], mode="full")
                 norm = np.sqrt(e1 * e2)
                 c_12_norm = c_12 / norm
@@ -815,11 +892,6 @@ def add_feature_event(xr_dataset, idx_snr, feature="corr", verbose=True):
                 xr_dataset.event_feature[
                     dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
                 ] = rtf_12.astype(xr_dataset.event_feature)
-
-            # if feature == "tf":
-            # xr_dataset.event_feature[
-            #     dict(idx_rcv_pairs=i_pair, src_trajectory_time=i_ship)
-            # ] = tf.astype(xr_dataset.event_feature)
 
     sub_region_to_save = xr_dataset.event_feature
     sub_region_to_save = sub_region_to_save.expand_dims({"snr": 1}, axis=0)
@@ -1245,17 +1317,37 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
             norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
             amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
             amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
-            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
+            # da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
         elif similarity_metric == "lstsquares":
             # diff = lib_data_array - event_vector_array
-            diff = np.abs(lib_data_array) - np.abs(event_vector_array)
+            diff = np.abs(lib_data_array - event_vector_array)
             amb_surf = np.nansum(diff**2, axis=2)  # Values in [0, max_diff**2]
+
+            # # PB : gamme trop large -> égalisation d'histogramme ?
+            # npix = amb_surf.size
+            # max_amb = np.nanmax(amb_surf)
+            # n_val = 10 ** int(np.log10(npix) - 1)
+            # amb_surf_quant = (amb_surf / max_amb * n_val).astype(int)
+            # hist, bin_edges = np.histogram(amb_surf_quant, bins=n_val)
+            # Hc = np.cumsum(hist)
+
+            # # Ugly loop
+            # Hc_mat = np.empty(amb_surf.shape)
+            # for i in range(amb_surf.shape[0]):
+            #     for j in range(amb_surf.shape[1]):
+            #         if amb_surf_quant[i, j] == n_val:
+            #             Hc_mat[i, j] = Hc[-1]
+            #         else:
+            #             # pix_idx = np.argmin(np.abs(bin_edges - amb_surf[i, j]))
+            #             Hc_mat[i, j] = Hc[amb_surf_quant[i, j]]
+            # amb_surf_ega = n_val * Hc_mat / npix
+
+            # amb_surf_ = amb_surf_ega / max_amb  # Values in [0, 1]
             amb_surf = amb_surf / np.nanmax(amb_surf)  # Values in [0, 1]
             amb_surf = (
                 1 - amb_surf
             )  # Revert order so that diff = 0 correspond to maximum of ambiguity surface
-            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
         elif similarity_metric == "hilbert_env_intercorr0":
             lib_env = np.abs(signal.hilbert(lib_data_array))
@@ -1273,14 +1365,11 @@ def derive_ambiguity(lib_data, event_data, src_traj_times, similarity_metric):
             norm = np.sqrt(autocorr_lib_0 * autocorr_event_0)
             amb_surf = np.sum(amb_surf, axis=2) / norm  # Values in [-1, 1]
             amb_surf = (amb_surf + 1) / 2  # Values in [0, 1]
-            da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
-        # TODO: remove this part
-        # if np.any(np.isnan(amb_surf)):
-        #     print(amb_surf)
-        #     print(autocorr_lib_0)
-        #     print(autocorr_event_0)
-        #     print(norm)
+        # plot_amb(amb_surf)
+        amb_surf = robust_normalization(amb_surf)
+        # plot_amb(amb_surf)
+        da_amb_surf[dict(src_trajectory_time=i_src_time)] = amb_surf
 
     return da_amb_surf
 

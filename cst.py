@@ -17,6 +17,7 @@ from colorama import Fore
 
 """ Usefull constants """
 # Physical properties
+P0 = 1e-6  # Reference pressure in Pa
 C0 = 1500  # Sound celerity in water (m/s)
 RHO_W = 1000  # Water density (kg/m3)
 SAND_PROPERTIES = {

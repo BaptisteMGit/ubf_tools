@@ -6,7 +6,7 @@
 @Author  :   Menetrier Baptiste 
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   None
+@Desc    :   Few usefull tools for ICA
 """
 
 # ======================================================================================================================
@@ -32,7 +32,7 @@ from skimage.metrics import structural_similarity as ssim
 def apply_ica(X, n_components=3, verbose=True):
 
     # Compute ICA
-    ica = FastICA(n_components=n_components, whiten="arbitrary-variance", max_iter=300)
+    ica = FastICA(n_components=n_components, whiten="unit-variance", max_iter=300)
     S_ = ica.fit_transform(X)  # Reconstruct signals
     A_ = ica.mixing_  # Get estimated mixing matrix
 
@@ -64,14 +64,6 @@ def analyse_ica(X, S_, fs, nperseg, noverlap):
     }
 
     for i in range(S_.shape[1]):
-        freq, tt, stft = sp.stft(
-            X[:, i], fs=fs, window="hann", nperseg=nperseg, noverlap=noverlap
-        )
-        mixed_signals["tt"] = tt
-        mixed_signals["freq"] = freq
-        mixed_signals["stft"].append(stft)
-        mixed_signals["signal"].append(X[:, i])
-
         # s_ = S_[:, i] / np.max(
         #     S_[:, i]
         # )  # Normalize reconstructed signal to compare with original
@@ -84,6 +76,15 @@ def analyse_ica(X, S_, fs, nperseg, noverlap):
         reconstructed_signals["stft"].append(stft)
         reconstructed_signals["signal"].append(s_)
 
+    for i in range(X.shape[1]):
+        freq, tt, stft = sp.stft(
+            X[:, i], fs=fs, window="hann", nperseg=nperseg, noverlap=noverlap
+        )
+        mixed_signals["freq"] = freq
+        mixed_signals["tt"] = tt
+        mixed_signals["stft"].append(stft)
+        mixed_signals["signal"].append(X[:, i])
+
     return time, mixed_signals, reconstructed_signals
 
 
@@ -91,49 +92,55 @@ def plot_ica_results(
     time, mixed_signals, reconstructed_signals, separated_data=None, vmin=-80, vmax=0
 ):
     # Plot time series
-    n_src = len(mixed_signals["signal"])
+    n_sig = len(reconstructed_signals["signal"])
     if separated_data is not None:
-        n_col = 3
-    else:
         n_col = 2
+    else:
+        n_col = 1
 
-    f, axs = plt.subplots(n_src, n_col, sharex=True, figsize=(16, 12))
+    f, axs = plt.subplots(n_sig, n_col, sharex=True, sharey=False, figsize=(16, 12))
     f.suptitle("Time series")
-    for i in range(n_src):
-        axs[i, 0].plot(time, mixed_signals["signal"][i])
-        axs[i, 1].plot(time, reconstructed_signals["signal"][i])
+    for i in range(n_sig):
+        k = 0
         if separated_data is not None:
+            axs[i, 0].plot(time, separated_data["signal"][i])
+            axs[0, 0].set_title("Separated signals")
+
+            k = 1
+        else:
             axs[i, 2].plot(time, separated_data["signal"][i])
+            axs[0, 2].set_title("Separated signals")
 
-    axs[0, 0].set_title(mixed_signals["name"])
-    axs[0, 1].set_title(reconstructed_signals["name"])
-    if separated_data is not None:
-        axs[0, 2].set_title("Separated signals")
+        # axs[i, 0 + k].plot(time, mixed_signals["signal"][i])
+        axs[i, 0 + k].plot(time, reconstructed_signals["signal"][i])
 
-    plt.tight_layout()
+    # axs[0, 0 + k].set_title(mixed_signals["name"])
+    axs[0, 0 + k].set_title(reconstructed_signals["name"])
+
+    f.supxlabel("Time [s]")
+    f.supylabel("Normalized amplitude")
+
+    # plt.tight_layout()
     plt.show()
 
     # Plot spectrograms
-    f, axs = plt.subplots(n_src, n_col, sharex=True, sharey=True, figsize=(16, 12))
+    f, axs = plt.subplots(n_sig, n_col, sharex=True, sharey=True, figsize=(16, 12))
     f.suptitle("Spectrogram")
-    for i in range(n_src):
-        axs[i, 0].pcolormesh(
-            mixed_signals["tt"],
-            mixed_signals["freq"],
-            20 * np.log10(abs(mixed_signals["stft"][i])),
-            # shading="gouraud",
-            vmin=vmin,
-            vmax=vmax,
-        )
-        axs[i, 1].pcolormesh(
-            reconstructed_signals["tt"],
-            reconstructed_signals["freq"],
-            20 * np.log10(abs(reconstructed_signals["stft"][i])),
-            # shading="gouraud",
-            vmin=vmin,
-            vmax=vmax,
-        )
+    for i in range(n_sig):
+        k = 0
         if separated_data is not None:
+            axs[i, 0].pcolormesh(
+                separated_data["tt"],
+                separated_data["freq"],
+                20 * np.log10(abs(separated_data["stft"][i])),
+                # shading="gouraud",
+                vmin=vmin,
+                vmax=vmax,
+            )
+            axs[0, 0].set_title("Separated signals")
+
+            k = 1
+        else:
             axs[i, 2].pcolormesh(
                 separated_data["tt"],
                 separated_data["freq"],
@@ -142,13 +149,51 @@ def plot_ica_results(
                 vmin=vmin,
                 vmax=vmax,
             )
+            axs[0, 2].set_title("Separated signals")
 
-    axs[0, 0].set_title(mixed_signals["name"])
-    axs[0, 1].set_title(reconstructed_signals["name"])
-    if separated_data is not None:
-        axs[0, 2].set_title("Separated signals")
+        # axs[i, 0 + k].pcolormesh(
+        #     mixed_signals["tt"],
+        #     mixed_signals["freq"],
+        #     20 * np.log10(abs(mixed_signals["stft"][i])),
+        #     # shading="gouraud",
+        #     vmin=vmin,
+        #     vmax=vmax,
+        # )
+        axs[i, 0 + k].pcolormesh(
+            reconstructed_signals["tt"],
+            reconstructed_signals["freq"],
+            20 * np.log10(abs(reconstructed_signals["stft"][i])),
+            # shading="gouraud",
+            vmin=vmin,
+            vmax=vmax,
+        )
+    # axs[0, 0 + k].set_title(mixed_signals["name"])
+    axs[0, 0 + k].set_title(reconstructed_signals["name"])
 
-    plt.tight_layout()
+    f.supxlabel("Time [s]")
+    f.supylabel("Frequency [Hz]")
+    # plt.tight_layout()
+    plt.show()
+
+    # Plot input signals and spectrograms
+    n_input_sig = len(mixed_signals["signal"])
+    fig, axs = plt.subplots(2, n_input_sig, figsize=(16, 10), sharex=True, sharey="row")
+    for i in range(n_input_sig):
+        axs[0, i].plot(time, mixed_signals["signal"][i])
+        axs[0, i].set_title(f"Input signal {i}")
+        axs[1, i].pcolormesh(
+            mixed_signals["tt"],
+            mixed_signals["freq"],
+            20 * np.log10(abs(mixed_signals["stft"][i])),
+            # shading="gouraud",
+            vmin=vmin,
+            vmax=vmax,
+        )
+    axs[0, 0].set_ylabel("Normalized amplitude")
+    axs[1, 0].set_ylabel("Frequency [Hz]")
+    fig.supxlabel("Time [s]")
+
+    # plt.tight_layout()
     plt.show()
 
 
@@ -183,9 +228,11 @@ def ica_perf_analysis(reconstructed_signals, separated_data, verbose=False):
 # ======================================================================================================================
 
 
-def load_synthetic_data(fs, nperseg, noverlap, snr=10):
+def load_synthetic_data(fs, nperseg, noverlap, snr=10, root=None):
     # Load synthetic data
-    root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\signaux_ica_jl"
+    if root is None:
+        root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\signaux_ica_jl"
+
     vars = ["ondeT", "navire", "Zcall"]
 
     data = {
@@ -220,6 +267,9 @@ def load_synthetic_data(fs, nperseg, noverlap, snr=10):
 
         # Normalize data
         s = s / np.max(abs(s))
+
+        # Add minimal noise to avoid log(0) occuring in stft
+        s += 1e-6 * np.random.normal(0, 1, len(s))
 
         # Derive sigma noise
         if snr is not None:
@@ -287,8 +337,12 @@ def load_real_data(nperseg, noverlap):
 
 
 def mix_synthetic_signals(
-    data, snr, mixing_noise_level=0.01, verbose=True, a0=1, a1=1, a2=1, n_rcv=3
+    data, mixing_noise_level=0.01, verbose=True, a0=1, a1=1, a2=1, n_rcv=3, snr=10
 ):
+    """
+    Mix synthetic signal.
+
+    """
     v_tuple = tuple([data["signal"][iv] for iv in range(len(data["vars"]))])
     S = np.c_[v_tuple]
 
@@ -301,14 +355,12 @@ def mix_synthetic_signals(
     X = np.dot(S, A.T)  # Observations
 
     # Add noise
-    for i in range(X.shape[1]):
-        X[:, i] += 0.1 * np.random.normal(0, 1, X[:, i].shape)
-
-    # if snr is not None:
-    #     for i in range(X.shape[1]):
-    #         P_sig = np.mean(X[:, i] ** 2)
-    #         sigma_noise = np.sqrt(P_sig / (10 ** (snr / 10)))
-    #         X[:, i] += np.random.normal(0, sigma_noise, X[:, i].shape)
+    if snr is not None:
+        for i in range(X.shape[1]):
+            P_sig = np.mean(X[:, i] ** 2)
+            sigma_noise = np.sqrt(P_sig / (10 ** (snr / 10)))
+            noise = sigma_noise * np.random.normal(0, 1, X[:, i].shape)
+            X[:, i] += noise
 
     if verbose:
         print(f"Mixing matrix : {A}")
@@ -324,7 +376,7 @@ def mix_synthetic_signals(
 
 def plot_input_signals(data, vmin=-80, vmax=0):
     # Plot time series
-    f, axs = plt.subplots(len(data["signal"]), 1, sharex=True)
+    f, axs = plt.subplots(len(data["signal"]), 1, sharex=True, figsize=(16, 10))
     for iv, v in enumerate(data["signal"]):
         axs[iv].plot(data["time"], data["signal"][iv])
 
@@ -338,7 +390,7 @@ def plot_input_signals(data, vmin=-80, vmax=0):
     plt.tight_layout()
 
     # Plot spectrograms
-    f, axs = plt.subplots(len(data["stft"]), 1, sharex=True)
+    f, axs = plt.subplots(len(data["stft"]), 1, sharex=True, figsize=(16, 10))
     for iv, v in enumerate(data["stft"]):
         im = axs[iv].pcolormesh(
             data["tt"],
@@ -360,9 +412,12 @@ def plot_input_signals(data, vmin=-80, vmax=0):
     plt.show()
 
 
-def plot_ica_perf(inter_corr_mat, ssim_mat, vars=None):
+def plot_ica_perf(inter_corr_mat, ssim_mat, vars=None, noise_mixing_mat=0):
     inter_corr_mat = np.abs(inter_corr_mat)
     f, axs = plt.subplots(1, 2, sharex=True)
+    f.suptitle(
+        f"Performance analysis (mixing noise level = {np.round(noise_mixing_mat, 1)}"
+    )
     axs[0].imshow(inter_corr_mat, cmap="gray")
     axs[0].set_title("Inter-correlation matrix")
     axs[1].imshow(ssim_mat, cmap="gray")
@@ -390,5 +445,20 @@ def plot_ica_perf(inter_corr_mat, ssim_mat, vars=None):
         axs[1].set_yticklabels(vars)
         axs[1].set_xticklabels(separated_labels)
 
-    plt.tight_layout()
+    # plt.tight_layout()
     plt.show()
+
+
+if __name__ == "__main__":
+    nperseg = 512
+    noverlap = 256
+    fs = 100
+
+    # Noise
+    np.random.seed(0)
+    snr = 5  # dB
+
+    data = load_synthetic_data(fs, nperseg, noverlap, snr=None)
+    X, S, A = mix_synthetic_signals(
+        data, mixing_noise_level=0, verbose=True, a0=2, n_rcv=4
+    )

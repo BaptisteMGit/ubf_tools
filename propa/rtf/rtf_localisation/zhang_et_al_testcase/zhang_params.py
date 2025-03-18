@@ -18,6 +18,8 @@ import numpy as np
 # ======================================================================================================================
 # Global params
 # ======================================================================================================================
+# Use tex with matplotlib 
+USE_TEX = True 
 
 # Minimum value to replace 0 before converting metrics to dB scale
 MIN_VAL_LOG = 1e-5

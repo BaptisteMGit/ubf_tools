@@ -421,6 +421,7 @@ def process_all_snr(
                 check=check,
                 use_welch_estimator=True,
                 antenna_type=antenna_type,
+                verbose=verbose,
             )
 
             # elasped_time = time() - t0

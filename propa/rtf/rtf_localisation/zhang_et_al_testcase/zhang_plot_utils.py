@@ -91,7 +91,7 @@ def plot_study_zhang2023(
 
     # Define plot args for ambiguity surfaces
     plot_args_theta = {
-        "dist": "hermitian_angle",
+        "dist": "theta_rtf",
         "root_img": root_img,
         "testcase": "zhang_et_al_2023",
         "dist_label": r"$\theta$" + " [°]",
@@ -101,7 +101,7 @@ def plot_study_zhang2023(
     }
 
     plot_args_d_rtf = {
-        "dist": "normalized_metric",
+        "dist": "q_rtf",
         "root_img": root_img,
         "testcase": "zhang_et_al_2023",
         # "dist_label": r"$d_{rtf}$",
@@ -115,7 +115,7 @@ def plot_study_zhang2023(
     }
 
     plot_args_gcc = {
-        "dist": "gcc_scot",
+        "dist": "q_dcf",
         "root_img": root_img,
         "testcase": "zhang_et_al_2023",
         # "dist_label": r"$d_{gcc}$",

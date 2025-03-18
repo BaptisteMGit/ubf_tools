@@ -23,13 +23,14 @@ from cst import C0
 from time import time
 from dask import delayed, compute
 
-# from dask.diagnostics import ProgressBar
+from dask.diagnostics import ProgressBar
 from misc import cast_matrix_to_target_shape, mult_along_axis
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     ROOT_TMP,
     ROOT_IMG,
     ROOT_DATA,
     DASK_SIZES,
+    N_WORKERS,
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     library_src_spectrum,
@@ -427,10 +428,48 @@ def derive_received_noise(
     return ds_noise
 
 
+def estimate_rtf_block(
+    ds_sn_block,
+    nperseg=2**11,
+    noverlap=2**10,
+    verbose=False,
+):
+    """
+    Estimate the RTF vector using Covariance Substraction method (CS).
+
+    10/02/2025 : Dummy implementation looping over x and y axis.
+
+    """
+
+    t = ds_sn_block.t.values
+
+    # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
+    ## Derive event RTF ##
+    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
+        t, rcv_sig=ds_sn_block.s_e.T, rcv_noise=ds_sn_block.n_e.T, nperseg=nperseg, noverlap=noverlap
+    )
+
+    results_cs = []
+    for x_i in ds_sn_block.x:
+        for y_i in ds_sn_block.y:
+            # Transpose to fit rtf estimation required input shape (ns, nrcv)
+            rcv_sig = ds_sn_block.s_l.sel(x=x_i, y=y_i).T
+            rcv_noise = ds_sn_block.n_l.sel(x=x_i, y=y_i).T
+
+            # Derive rtf
+            _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
+                t, rcv_sig, rcv_noise, nperseg, noverlap
+            )
+
+            # Store
+            results_cs.append(rtf_cs_l)
+
+    return results_cs
+    
+
 def estimate_rtf(
     ds_sig_noise,
     i_ref,
-    source,
     library_props,
     nperseg=2**11,
     noverlap=2**10,
@@ -443,10 +482,6 @@ def estimate_rtf(
 
     """
 
-    # Create xarray dataste to store rtf
-    # ds_sig_rtf = ds_sig.copy(deep=True)
-    # ds_rtf = xr.Dataset()
-
     # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
     idx_pos_ref = np.argmin(np.abs(ds_sig_noise.idx_rcv.values - i_ref))
     npos_to_roll = ds_sig_noise.sizes["idx_rcv"] - idx_pos_ref
@@ -458,23 +493,10 @@ def estimate_rtf(
     s_e = ds_sig_noise_rolled.s_e
     t = ds_sig_noise_rolled.t.values
 
-    # NOTE : different noise dataset to simulate the fact that in real life the noise CSDM is
-    # estimated from a different segment of the signal than the signal + noise CSDM (assuming noise is stationnary)
-    noise_other_segment = derive_received_noise(
-        s_library=s_l,
-        s_event=s_e,
-        event_source=source,
-        snr_dB=ds_sig_noise.snr,
-        verbose=verbose,
-    )
-    # Roll to match the receiver order
-    noise_other_segment = noise_other_segment.roll(
-        idx_rcv=npos_to_roll,
-        roll_coords=True,
-    )
     # Extract noise signals
-    n_l = noise_other_segment.n_l
-    n_e = noise_other_segment.n_e
+    n_l = ds_sig_noise_rolled.n_l
+    n_e = ds_sig_noise_rolled.n_e
+
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
@@ -482,37 +504,35 @@ def estimate_rtf(
         t, rcv_sig=s_e.T, rcv_noise=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
 
-    # # Use Dask delayed and progress bar for tracking
     # t0 = time()
     # with ProgressBar():
     #     results_cs = []
     #     # results_cw = []
-    #     for x_i in ds_sig_noise.x.values:
-    #         for y_i in ds_sig_noise.y.values:
+    #     for x_i in ds_sig_noise.x:
+    #         for y_i in ds_sig_noise.y:
     #             # Transpose to fit rtf estimation required input shape (ns, nrcv)
-    #             rcv_sig = s_l.sel(x=x_i, y=y_i).T.values
-    #             rcv_noise = n_l.sel(x=x_i, y=y_i).T.values
+    #             rcv_sig = s_l.sel(x=x_i, y=y_i).T
+    #             rcv_noise = n_l.sel(x=x_i, y=y_i).T
 
     #             # Wrap function call in dask delayed with client resources
-    #             # delayed_rtf_cs = dask.delayed(rtf_covariance_substraction)(
-    #             #     t, rcv_sig, rcv_noise, nperseg, noverlap
-    #             # )
     #             delayed_rtf_cs = dask.delayed(
     #                 lambda *args: rtf_covariance_substraction(*args)[1]
     #             )(t, rcv_sig, rcv_noise, nperseg, noverlap)
     #             results_cs.append(delayed_rtf_cs)
 
+    # print(f"Ellapsed time to build delayed list : {time()-t0}")
     # # Compute all RTFs using Dask client
-    # rtf_cs_l = dask.compute(*results_cs, scheduler="distributed")
+    # t0 = time()
+    # rtf_cs_l = dask.compute(*results_cs)
+    # print(f"Actual time to compute: {time()- t0}")
     # rtf_cs_l = np.array(rtf_cs_l)
-    # print(f"Ellapsed time : {time()-t0}")
 
     # Dask used at higher level to parallelize the computation
 
     results_cs = []
     # results_cw = []
-    for x_i in ds_sig_noise.x.values:
-        for y_i in ds_sig_noise.y.values:
+    for x_i in ds_sig_noise.x:
+        for y_i in ds_sig_noise.y:
             # Transpose to fit rtf estimation required input shape (ns, nrcv)
             # rcv_sig = s_l.sel(x=x_i, y=y_i).T.values
             # rcv_noise = n_l.sel(x=x_i, y=y_i).T.values
@@ -780,52 +800,55 @@ def build_features_from_time_signal(
         snr_dB=snr_dB,
         verbose=verbose,
     )
+    # NOTE : different noise dataset to simulate the fact that in real life the noise CSDM is
+    # estimated from a different segment of the signal than the signal + noise CSDM (assuming noise is stationnary)
+    noise_bis = derive_received_noise(
+        s_library=ds_sig.s_l,
+        s_event=ds_sig.s_e,
+        event_source=source,
+        snr_dB=snr_dB,
+        verbose=verbose,
+    )
 
     # Build another dataset to store noise + signal to avoid confusions
     sig_noise_library = ds_sig.s_l + ds_noise.n_l
     sig_noise_event = ds_sig.s_e + ds_noise.n_e
-    ds_sig_noise = xr.Dataset(
-        data_vars=dict(
-            x_l=(["idx_rcv", "t", "y", "x"], sig_noise_library.values),
-            n_l=(["idx_rcv", "t", "y", "x"], ds_noise.n_l.values),
-            s_l=(["idx_rcv", "t", "y", "x"], ds_sig.s_l.values),
-            x_e=(["idx_rcv", "t"], sig_noise_event.values),
-            n_e=(["idx_rcv", "t"], ds_noise.n_e.values),
-            s_e=(["idx_rcv", "t"], ds_sig.s_e.values),
-        ),
-        coords=dict(
-            t=ds_sig.t,
-            x=ds_sig.x,
-            y=ds_sig.y,
-            idx_rcv=ds_sig.idx_rcv,
-        ),
-        attrs=dict(
-            std_ref_event=ds_noise.std_ref_event,
-            std_ref_library=ds_noise.std_ref_library,
-            snr=snr_dB,
-            xs=source["x"],
-            ys=source["y"],
-            dx=dx,
-            dy=dy,
-            root_img=os.path.join(
-                ROOT_IMG, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
-            ),
-        ),
-    )
 
     # We don't need all datasets anymore
     ds_noise.close()
     ds_sig.close()
 
-    # Copy dataset to store gcc signal
-    ds_sig_gcc = ds_sig.copy(deep=True)
-
-    # Add noise
-    ds_sig_gcc["s_l"] += ds_noise.n_l
-    ds_sig_gcc["s_e"] += ds_noise.n_e
-
     # Plot signal and noise at source position -> library
     if check:
+        ds_sig_noise = xr.Dataset(
+            data_vars=dict(
+                x_l=(["idx_rcv", "t", "y", "x"], sig_noise_library.values),
+                n_l=(["idx_rcv", "t", "y", "x"], ds_noise.n_l.values),
+                s_l=(["idx_rcv", "t", "y", "x"], ds_sig.s_l.values),
+                x_e=(["idx_rcv", "t"], sig_noise_event.values),
+                n_e=(["idx_rcv", "t"], ds_noise.n_e.values),
+                s_e=(["idx_rcv", "t"], ds_sig.s_e.values),
+            ),
+            coords=dict(
+                t=ds_sig.t,
+                x=ds_sig.x,
+                y=ds_sig.y,
+                idx_rcv=ds_sig.idx_rcv,
+            ),
+            attrs=dict(
+                std_ref_event=ds_noise.std_ref_event,
+                std_ref_library=ds_noise.std_ref_library,
+                snr=snr_dB,
+                xs=source["x"],
+                ys=source["y"],
+                dx=dx,
+                dy=dy,
+                root_img=os.path.join(
+                    ROOT_IMG, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
+                ),
+            ),
+        )
+            
         check_signal_noise(ds_sig_noise)
         check_signal_noise_stft(ds_sig_noise)
 
@@ -835,9 +858,9 @@ def build_features_from_time_signal(
     )  # General case -> all receivers are used as reference to build the ambiguity surface for all couples in array (required for DCF method)
 
     nperseg = 2**11
-    # nperseg = 256
     noverlap = nperseg // 2
 
+    
     # # Init lists to save results
     # rtf_event = []  # RFT vector at the source position
     # rtf_library = []  # RTF vector evaluated at each grid pixel
@@ -848,11 +871,9 @@ def build_features_from_time_signal(
 
     #     ## RTF ##
     #     f_rtf, rtf_cs_l, rtf_cs_e = estimate_rtf(
-    #         # ds_sig=ds_sig,
-    #         # noise_da=noise_da,
-    #         ds_sig_noise=ds_sig_noise,
+    #         ds_sig_noise=ds_sig_noise_light_rtf,
     #         i_ref=i_ref,
-    #         source=source,
+    #         # source=source,
     #         library_props=library_props,
     #         nperseg=nperseg,
     #         noverlap=noverlap,
@@ -863,11 +884,8 @@ def build_features_from_time_signal(
     #     rtf_event.append(rtf_cs_e)
 
     #     ## GCC SCOT ##
-    #     # t0 = time()
     #     f_gcc, gcc_l, gcc_e = estimate_dcf_gcc(
-    #         ds_sig_noise=ds_sig_noise,
-    #         # gcc_library=gcc_library,
-    #         # gcc_event=gcc_event,
+    #         ds_sig_noise=ds_sig_noise_light_dcf,
     #         i_ref=i_ref,
     #         library_props=library_props,
     #         nperseg=nperseg,
@@ -878,7 +896,7 @@ def build_features_from_time_signal(
     #     gcc_event.append(gcc_e)
     #     gcc_library.append(gcc_l)
 
-    #     # print(f"GCC cpu time {(time() - t0):.2f}s")
+        # print(f"GCC cpu time {(time() - t0):.2f}s")
 
     # gcc_library_no_dask = gcc_library
     # gcc_event_no_dask = gcc_event
@@ -887,14 +905,36 @@ def build_features_from_time_signal(
 
     ### Parallelize the loop with Dask ###
 
-    # Convert to dask array
-    ds_sig_noise_dask = ds_sig_noise.chunk(
-        {
-            "t": DASK_SIZES["t"],
-            "x": DASK_SIZES["x"],
-            "y": DASK_SIZES["y"],
-            "idx_rcv": DASK_SIZES["idx_rcv"],
-        }
+    # Avoid sending too large arrays to dedicated functions 
+    # RTF
+
+    ds_sig_noise_light_rtf = xr.Dataset(
+        data_vars=dict(
+            n_l=(["idx_rcv", "t", "y", "x"], noise_bis.n_l.values),
+            s_l=(["idx_rcv", "t", "y", "x"], ds_sig.s_l.values),
+            n_e=(["idx_rcv", "t"], noise_bis.n_e.values),
+            s_e=(["idx_rcv", "t"], ds_sig.s_e.values),
+        ),
+        coords=dict(
+            t=ds_sig.t,
+            x=ds_sig.x,
+            y=ds_sig.y,
+            idx_rcv=ds_sig.idx_rcv,
+        ),
+    )
+
+    # DCF
+    ds_sig_noise_light_dcf = xr.Dataset(
+        data_vars=dict(
+            x_l=(["idx_rcv", "t", "y", "x"], sig_noise_library.values),
+            x_e=(["idx_rcv", "t"], sig_noise_event.values),
+        ),
+        coords=dict(
+            t=ds_sig.t,
+            x=ds_sig.x,
+            y=ds_sig.y,
+            idx_rcv=ds_sig.idx_rcv,
+        ),
     )
 
     # List to store delayed tasks
@@ -904,9 +944,8 @@ def build_features_from_time_signal(
     for i_ref in idx_rcv_refs:
         # Delayed RTF estimation
         delayed_rtf = delayed(estimate_rtf)(
-            ds_sig_noise=ds_sig_noise_dask,
+            ds_sig_noise=ds_sig_noise_light_rtf,
             i_ref=i_ref,
-            source=source,
             library_props=library_props,
             nperseg=nperseg,
             noverlap=noverlap,
@@ -916,9 +955,8 @@ def build_features_from_time_signal(
 
         # Delayed GCC SCOT estimation
         delayed_gcc = delayed(estimate_dcf_gcc)(
-            ds_sig_noise=ds_sig_noise,
-            # gcc_library=gcc_library,
-            # gcc_event=gcc_event,
+            # ds_sig_noise=ds_sig_noise_dask,
+            ds_sig_noise=ds_sig_noise_light_dcf,
             i_ref=i_ref,
             library_props=library_props,
             nperseg=nperseg,
@@ -926,12 +964,12 @@ def build_features_from_time_signal(
             use_welch_estimator=use_welch_estimator,
             verbose=verbose,
         )
-
         delayed_gcc_results.append(delayed_gcc)
 
     # Trigger parallel execution
     rtf_outputs = compute(delayed_rtf_results)
     gcc_outputs = compute(delayed_gcc_results)
+
     # Unpack the results
     rtf_outputs = rtf_outputs[0]
     gcc_outputs = gcc_outputs[0]
@@ -1306,10 +1344,10 @@ if __name__ == "__main__":
 
     # # ## Step 1
     # build_tf_dataset()
-    # # # Step 2
-    grid_dataset(debug=False)
-    # # # Step 3
-    build_signal(debug=False)
+    # # # # Step 2
+    # grid_dataset(debug=False)
+    # # # # Step 3
+    # build_signal(debug=False)
     # # # Step 4
     # build_features_fullsimu(debug=debug)
 # build_features_from_time_signal(snr_dB=snr_dB, debug=debug)

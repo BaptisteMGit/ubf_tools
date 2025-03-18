@@ -63,8 +63,8 @@ if os.name == "nt":
     }
 else:
     # Linux
-    N_WORKERS = 80
-    max_ram_gb = 90
+    N_WORKERS = 6
+    max_ram_gb = 108
     MAX_RAM_PER_WORKER_GB = np.ceil(max_ram_gb / N_WORKERS)
     DASK_SIZES = {
         "t": -1,

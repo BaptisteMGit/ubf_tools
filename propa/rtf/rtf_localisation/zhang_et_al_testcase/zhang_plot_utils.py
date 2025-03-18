@@ -94,7 +94,7 @@ def plot_study_zhang2023(
         "dist": "hermitian_angle",
         "root_img": root_img,
         "testcase": "zhang_et_al_2023",
-        "dist_label": r"$\theta \, \textrm{[°]}$",
+        "dist_label": r"$\theta$" + " [°]",
         "vmax": 50,
         "vmin": 0,
         "add_hyperbola": True,
@@ -105,7 +105,7 @@ def plot_study_zhang2023(
         "root_img": root_img,
         "testcase": "zhang_et_al_2023",
         # "dist_label": r"$d_{rtf}$",
-        "dist_label": r"$\textrm{[dB]}$",
+        "dist_label": "[dB]",
         # "vmax": 1,
         # "vmin": 0,
         # dB scale
@@ -119,7 +119,7 @@ def plot_study_zhang2023(
         "root_img": root_img,
         "testcase": "zhang_et_al_2023",
         # "dist_label": r"$d_{gcc}$",
-        "dist_label": r"$\textrm{[dB]}$",
+        "dist_label": "[dB]",
         # "vmax": 1,
         # "vmin": 0,
         # dB scale
@@ -503,11 +503,11 @@ def plot_subarrays_ambiguity_surfaces(
                 r"$s_{" + str(rcv_cpl[0] + 1) + "} - s_{" + str(rcv_cpl[1] + 1) + r"}$"
             )
             if i == 1:
-                ax.set_xlabel(r"$x \, \textrm{[m]}$")
+                ax.set_xlabel(r"$x$" + " [m]")
             else:
                 ax.set_xlabel("")
             if i_cpl == 0:
-                ax.set_ylabel(r"$y \, \textrm{[m]}$")
+                ax.set_ylabel(r"$y$" + " [m]")
             else:
                 ax.set_ylabel("")
 
@@ -592,9 +592,9 @@ def plot_fullarray_ambiguity_surfaces(
         )
 
         ax.set_title(titles[dist])
-        ax.set_xlabel(r"$x \,\textrm{[m]}$")
+        ax.set_xlabel(r"$x$" + " [m]")
         if i == 0:
-            ax.set_ylabel(r"$y \, \textrm{[m]}$")
+            ax.set_ylabel(r"$y$" + " [m]")
         else:
             ax.set_ylabel("")
 
@@ -702,7 +702,7 @@ def plot_ambiguity_surface_mainlobe_contour(
             vmin=vmin,
             vmax=vmax,
             extend="neither",
-            cbar_kwargs={"label": r"$\textrm{[dB]}$"},
+            cbar_kwargs={"label": "[dB]"},
         )
 
         # im = ax.pcolormesh(
@@ -727,9 +727,9 @@ def plot_ambiguity_surface_mainlobe_contour(
         # )
 
         ax.set_title(r"$\textrm{Full array}$")
-        ax.set_xlabel(r"$x \textrm{[m]}$")
+        ax.set_xlabel(r"$x$" + " [m]")
         if i == 0:
-            ax.set_ylabel(r"$y \, \textrm{[m]}$")
+            ax.set_ylabel(r"$y$" + " [m]")
         else:
             ax.set_ylabel("")
 
@@ -776,9 +776,9 @@ def plot_ambiguity_surface_distribution(ds_fa, root_img):
             label=f"{percentile_threshold*100:.0f}th percentile",
         )
 
-        ax.set_title(r"$\textrm{Full array}$")
+        ax.set_title("Full array")
         ax.set_xlim(-20, 0)
-        ax.set_xlabel(r"$\textrm{[dB]}$")
+        ax.set_xlabel("[dB]")
 
     # Save figure
     root_dist = os.path.join(root_img, "ambiguity_surf_distribution")
@@ -989,8 +989,8 @@ def plot_ambiguity_surface(
     sub_array = amb_surf.idx_rcv
     rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sub_array]) + "$"
     plt.title(f"SNR = {amb_surf.attrs['snr']} dB, Receivers = ({rcv_str})")
-    plt.xlabel(r"$x \, \textrm{[m]}$")
-    plt.ylabel(r"$y \, \textrm{[m]}$")
+    plt.xlabel(r"$x$" + " [m]")
+    plt.ylabel(r"$y$" + " [m]")
     plt.legend()
 
     # Save figure
@@ -1260,7 +1260,7 @@ def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang"):
             )
             plt.legend()
             plt.yscale("log")
-            plt.xlabel(r"$f \, \textrm{[Hz]}$")
+            plt.xlabel(r"$f$" + " [Hz]")
             plt.ylabel(r"$|\Pi(f)|$")
 
             # Save figure
@@ -1349,7 +1349,7 @@ def check_gcc_features(ds_gcc, folder):
             )
 
             plt.legend()
-            plt.xlabel(r"$f \, \textrm{[Hz]}$")
+            plt.xlabel(r"$f$" + " [Hz]")
             plt.ylabel(r"$\phi(GCC(f))$")
 
             # Save figure
@@ -1388,17 +1388,17 @@ def study_msr_vs_snr(subarrays_args):
             msr_mean["d_gcc"],
             yerr=msr_std["d_gcc"],
             fmt="o-",
-            label=r"$\textrm{DCF}$",
+            label="DCF",
         )
         ax.errorbar(
             msr_mean.index,
             msr_mean["d_rtf"],
             yerr=msr_std["d_rtf"],
             fmt="o-",
-            label=r"$\textrm{RTF}$",
+            label="RTF",
         )
-        ax.set_xlabel(r"$\textrm{SNR [dB]}$")
-        ax.set_ylabel(r"$\textrm{MSR [dB]}$")
+        ax.set_xlabel("NR [dB]")
+        ax.set_ylabel("SR [dB]")
         ax.legend()
         ax.grid()
         # plt.show()
@@ -1424,17 +1424,17 @@ def study_msr_vs_snr(subarrays_args):
             dr_mean["dr_gcc"],
             yerr=dr_std["dr_gcc"],
             fmt="o-",
-            label=r"$\textrm{DCF}$",
+            label="DCF",
         )
         ax.errorbar(
             dr_mean.index,
             dr_mean["dr_rtf"],
             yerr=dr_std["dr_rtf"],
             fmt="o-",
-            label=r"$\textrm{RTF}$",
+            label="RTF",
         )
-        ax.set_xlabel(r"$\textrm{SNR [dB]}$")
-        ax.set_ylabel(r"$\Delta_r \textrm{[m]}$")
+        ax.set_xlabel("SNR [dB]")
+        ax.set_ylabel(r"$\Delta_r$" + " [m]")
         ax.legend()
         ax.grid()
 
@@ -1451,10 +1451,10 @@ def study_msr_vs_snr(subarrays_args):
 
         # Plot results
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-        ax.plot(rmse.index, rmse["dr_gcc"], "o-", label=r"$\textrm{DCF}$")
-        ax.plot(rmse.index, rmse["dr_rtf"], "o-", label=r"$\textrm{RTF}$")
-        ax.set_xlabel(r"$\textrm{SNR [dB]}$")
-        ax.set_ylabel(r"$\textrm{RMSE [m]}$")
+        ax.plot(rmse.index, rmse["dr_gcc"], "o-", label="DCF")
+        ax.plot(rmse.index, rmse["dr_rtf"], "o-", label="RTF")
+        ax.set_xlabel("SNR [dB]")
+        ax.set_ylabel("RMSE [m]")
         ax.legend()
         ax.grid()
 

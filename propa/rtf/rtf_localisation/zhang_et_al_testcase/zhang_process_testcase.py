@@ -27,6 +27,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     ROOT_DATA,
     ROOT_IMG,
     MIN_VAL_LOG,
+    USE_TEX,
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     params,
@@ -53,7 +54,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import
 
 from publication.PublicationFigure import PubFigure
 
-PubFigure(ticks_fontsize=22)
+PubFigure(ticks_fontsize=22, use_tex=USE_TEX)
 
 
 def process_localisation_zhang2023(
@@ -965,13 +966,13 @@ if __name__ == "__main__":
     # study_msr_vs_snr(subarrays_args=subarrays_args)
 
     # # snrs = np.arange(-20, 15, 5)
-    # from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
-    #     grid_dataset,
-    #     build_signal,
-    # )
+    from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
+        grid_dataset,
+        build_signal,
+    )
 
-    # grid_dataset(debug=True)
-    # build_signal(debug=True)
+    grid_dataset(debug=True)
+    build_signal(debug=True)
     # from dask.distributed import Client, LocalCluster
 
     # # Launch Dask cluster and client
@@ -1049,9 +1050,9 @@ if __name__ == "__main__":
 
     print("End of TEST 1a")
 
-    # Shutdown the client and cluster after computation is done
-    client.close()
-    cluster.close()
+    # # Shutdown the client and cluster after computation is done
+    # client.close()
+    # cluster.close()
 
     """ Fin du TEST 1a """
 

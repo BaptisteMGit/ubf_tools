@@ -23,9 +23,9 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     get_subarrays,
     load_msr_rmse_res_subarrays,
 )
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import ROOT_IMG
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import ROOT_IMG, USE_TEX
 
-pfig = PubFigure()
+pfig = PubFigure(use_tex=USE_TEX)
 
 
 def random_array(rmax, nr):

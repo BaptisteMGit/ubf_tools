@@ -32,10 +32,11 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     ROOT_TMP,
     ROOT_IMG,
     ROOT_DATA,
+    USE_TEX,
 )
 
 
-PubFigure(ticks_fontsize=22)
+PubFigure(ticks_fontsize=22, use_tex=USE_TEX)
 
 
 def params(debug=False, antenna_type="zhang"):

@@ -251,14 +251,14 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
     # Plot signal and spectrum
     plt.figure()
     plt.plot(t, s)
-    plt.xlabel(r"$\textrm{Time [s]}$")
+    plt.xlabel("Time [s]")
     plt.ylabel(r"$s(t)$")
     fpath = os.path.join(ROOT_IMG, f"library_source_signal.png")
     plt.savefig(fpath)
 
     plt.figure()
     plt.plot(f_library, np.abs(S_f_library))
-    plt.xlabel(r"$\textrm{Frequency [Hz]}$")
+    plt.xlabel("Frequency [Hz]")
     plt.ylabel(r"$|S(f)|$")
     fpath = os.path.join(ROOT_IMG, f"library_source_spectrum.png")
     plt.savefig(fpath)
@@ -382,7 +382,7 @@ def event_src_spectrum(T, fs, stype="wn"):
 
     plt.figure()
     plt.plot(t, s_e)
-    plt.xlabel(r"$\textrm{Time [s]}$")
+    plt.xlabel("Time [s]")
     plt.ylabel(r"$s(t)$")
     plt.title(f"Event source signal = {stype_name}")
     fpath = os.path.join(ROOT_IMG, f"event_source_signal.png")
@@ -390,7 +390,7 @@ def event_src_spectrum(T, fs, stype="wn"):
 
     plt.figure()
     plt.plot(f_event, np.abs(S_f_event))
-    plt.xlabel(r"$\textrm{Frequency [Hz]}$")
+    plt.xlabel("Frequency [Hz]")
     plt.ylabel(r"$|S(f)|$")
     plt.title(f"Event source signal = {stype_name}")
     fpath = os.path.join(ROOT_IMG, f"event_source_spectrum.png")
@@ -472,11 +472,11 @@ def find_mainlobe(ds_fa):
 
         # # Add colorbar with n_clusters ticks
         # cbar = plt.colorbar(
-        #     im, ax=ax, label=r"$\textrm{Class}$", ticks=range(n_clusters)[::2]
+        #     im, ax=ax, label=r"$Class$", ticks=range(n_clusters)[::2]
         # )
         ax.set_title(f"Full array")
-        ax.set_xlabel(r"$x \textrm{[km]}$")
-        ax.set_ylabel(r"$y \, \textrm{[km]}$")
+        ax.set_xlabel(r"$x$" + " [km]")
+        ax.set_ylabel(r"$y$" + " [km]")
         ax.set_xticks([3.500, 4.000, 4.500])
         ax.set_yticks([6.400, 6.900, 7.400])
 
@@ -524,7 +524,7 @@ def find_mainlobe(ds_fa):
         #     linewidth=2,
         # )
         # # Add colorbar
-        # cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
+        # cbar = plt.colorbar(im, ax=ax, label=r"$[dB]$")
         # ax.scatter(
         #     x_src_hat * 1e-3,
         #     y_src_hat * 1e-3,
@@ -536,8 +536,8 @@ def find_mainlobe(ds_fa):
         # )
 
         ax.set_title(f"Full array")
-        ax.set_xlabel(r"$x \textrm{[km]}$")
-        ax.set_ylabel(r"$y \, \textrm{[km]}$")
+        ax.set_xlabel(r"$x$" + " [km]")
+        ax.set_ylabel(r"$y$" + " [km]")
         ax.set_xticks([3.500, 4.000, 4.500])
         ax.set_yticks([6.400, 6.900, 7.400])
 
@@ -689,9 +689,9 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
             )
 
             ax.set_title(f"Full array")
-            ax.set_xlabel(r"$x \textrm{[m]}$")
+            ax.set_xlabel(r"$x$" + " [m]")
             if i == 0:
-                ax.set_ylabel(r"$y \, \textrm{[m]}$")
+                ax.set_ylabel(r"$y$" + " [m]")
             else:
                 ax.set_ylabel("")
 

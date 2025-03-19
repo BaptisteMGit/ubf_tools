@@ -29,7 +29,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
 
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     plot_fullarray_ambiguity_surfaces_publi,
-    plot_subarrays_ambiguity_surfaces,
+    plot_performance_vs_number_of_rcv_in_subarray_publi,
 )
 
 pfig = PubFigure()
@@ -47,9 +47,6 @@ def no_noise_amb_surf():
     dy = grid["dy"]
 
     # Full simu
-    fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
-    ds = xr.open_dataset(fpath)
-
     folder = f"fullsimu_dx{dx}m_dy{dy}m"
     root_data = os.path.join(ROOT_DATA, folder)
 
@@ -57,58 +54,38 @@ def no_noise_amb_surf():
     data_fname_fa = f"loc_zhang_dx{dx}m_dy{dy}m_fullarray_{array_label}.nc"
     fpath = os.path.join(root_data, data_fname_fa)
     ds_fa = xr.open_dataset(fpath)
-
-    xticks_pos_km = [3.6, 4.0, 4.4]
-    yticks_pos_km = [6.5, 6.9, 7.3]
-    xticks_pos_m = [xt * 1e3 for xt in xticks_pos_km]
-    yticks_pos_m = [yt * 1e3 for yt in yticks_pos_km]
-
     vmax = 0
     vmin = -8
-    # vmin = np.round(np.max([ds_fa[dist].median() for dist in ["d_gcc", "d_rtf"]]), 0)
-    # # Define vmin as percentile instead of median
-    # perc = 99
-    # vmin = np.round(
-    #     np.percentile(
-    #         np.concatenate(
-    #             [ds_fa["d_gcc"].values.flatten(), ds_fa["d_rtf"].values.flatten()]
-    #         ),
-    #         perc,
-    #     ),
-    #     0,
-    # )
-
     x_src = source["x"]
     y_src = source["y"]
 
-    # plot_fullarray_ambiguity_surfaces_publi(
-    #     ds_fa,
-    #     ROOT_IMG_PUBLI,
-    #     x_src,
-    #     y_src,
-    #     vmin,
-    #     vmax,
-    #     xticks_pos_m,
-    #     yticks_pos_m,
-    #     cmap="jet",
-    # )
-    data_fname = f"loc_zhang_dx{dx}m_dy{dy}m"
-    rcv_couples = get_rcv_couples(ds_fa.idx_rcv)
-    plot_subarrays_ambiguity_surfaces(
-        ROOT_IMG_PUBLI,
-        rcv_couples,
-        data_fname,
-        root_data,
-        grid,
+    # Root img
+    root_img = os.path.join(ROOT_IMG_PUBLI, "hexagonal_array_noise_free")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
+
+    plot_fullarray_ambiguity_surfaces_publi(
+        ds_fa,
+        root_img,
         x_src,
         y_src,
         vmin,
         vmax,
-        xticks_pos_m,
-        yticks_pos_m,
         cmap="jet",
     )
 
 
+def perf_vs_nb_rcv():
+    # Root img
+    root_img = os.path.join(ROOT_IMG_PUBLI, "performance_against_number_of_receivers")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
+
+    plot_performance_vs_number_of_rcv_in_subarray_publi(
+        root_img=root_img, snrs=[-15], dx=20, dy=20
+    )
+
+
 if __name__ == "__main__":
-    no_noise_amb_surf()
+    # no_noise_amb_surf()
+    perf_vs_nb_rcv()

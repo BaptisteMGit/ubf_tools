@@ -27,6 +27,8 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     get_rcv_couples,
     estimate_msr,
     find_mainlobe,
+    get_subarrays,
+    load_msr_rmse_res_subarrays,
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     ROOT_IMG,
@@ -615,71 +617,6 @@ def plot_fullarray_ambiguity_surfaces(
     )
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
     plt.close("all")
-
-
-def plot_fullarray_ambiguity_surfaces_publi(
-    ds_fa,
-    root_img,
-    x_src,
-    y_src,
-    vmin,
-    vmax,
-    xticks_pos_m,
-    yticks_pos_m,
-    cmap="jet",
-):
-
-    true_pos_label = (
-        r"$X_{src} = ( "
-        + f"{x_src:.0f}\,"
-        + r"\textrm{m},\,"
-        + f"{y_src:.0f}\,"
-        + r"\textrm{m})$"
-    )
-
-    # Plot d_gcc and d_rtf
-    pfig = PubFigure(label_fontsize=40, ticks_fontsize=40, labelpad=25)
-
-    for i, dist in enumerate(["d_gcc", "d_rtf"]):
-
-        f, ax = plt.subplots(1, 1, figsize=(16, 12), sharey=True)
-        amb_surf = ds_fa[dist]
-
-        im = amb_surf.plot(
-            x="x",
-            y="y",
-            cmap=cmap,
-            vmin=vmin,
-            vmax=vmax,
-            ax=ax,
-            extend="neither",
-            cbar_kwargs={"label": "q [dB]"},
-            rasterized=True,
-        )
-
-        # Add colorbar
-        ax.scatter(
-            x_src,
-            y_src,
-            color="k",
-            label=true_pos_label,
-            marker="o",
-            facecolors="none",
-            s=900,
-            linewidths=5,
-        )
-
-        ax.set_xlabel(r"$x \,\textrm{[m]}$")
-        ax.set_ylabel(r"$y \, \textrm{[m]}$")
-
-        # Set xticks
-        # ax.set_xticks(xticks_pos_m)
-        # ax.set_yticks(yticks_pos_m)
-
-        # Save figure
-        fpath = os.path.join(root_img, f"amb_surf_{dist}")
-        plt.savefig(f"{fpath}.eps", dpi=300)
-        plt.savefig(f"{fpath}.png", dpi=300)
 
 
 def plot_ambiguity_surface_mainlobe_contour(
@@ -1444,6 +1381,7 @@ def study_msr_vs_snr(subarrays_args):
         fpath = os.path.join(root_img, f"dr_pos_snr_{sa_item['array_label']}.png")
         plt.savefig(fpath)
 
+        # TODO : check if ok
         dr["dr_gcc"] = dr["dr_gcc"] ** 2
         dr["dr_rtf"] = dr["dr_rtf"] ** 2
         mse = dr.groupby("snr").mean()
@@ -1466,6 +1404,237 @@ def study_msr_vs_snr(subarrays_args):
         plt.close("all")
 
     # plt.show()
+
+
+# ======================================================================================================================
+# Plot functions dedicated to JASA El article
+# ======================================================================================================================
+
+
+def plot_fullarray_ambiguity_surfaces_publi(
+    ds_fa,
+    root_img,
+    x_src,
+    y_src,
+    vmin,
+    vmax,
+    cmap="jet",
+):
+
+    true_pos_label = (
+        r"$X_{src} = ( "
+        + f"{x_src:.0f}\,"
+        + r"\textrm{m},\,"
+        + f"{y_src:.0f}\,"
+        + r"\textrm{m})$"
+    )
+
+    # Plot d_gcc and d_rtf
+    pfig = PubFigure(label_fontsize=40, ticks_fontsize=40, labelpad=25)
+
+    for i, dist in enumerate(["d_gcc", "d_rtf"]):
+
+        f, ax = plt.subplots(1, 1, figsize=(16, 12), sharey=True)
+        amb_surf = ds_fa[dist]
+
+        im = amb_surf.plot(
+            x="x",
+            y="y",
+            cmap=cmap,
+            vmin=vmin,
+            vmax=vmax,
+            ax=ax,
+            extend="neither",
+            cbar_kwargs={"label": "q [dB]"},
+            rasterized=True,
+        )
+
+        # Add colorbar
+        ax.scatter(
+            x_src,
+            y_src,
+            color="k",
+            label=true_pos_label,
+            marker="o",
+            facecolors="none",
+            s=900,
+            linewidths=5,
+        )
+
+        ax.set_xlabel(r"$x$" + " [m]")
+        ax.set_ylabel(r"$y$" + " [m]")
+
+        # Save figure
+        fpath = os.path.join(root_img, f"amb_surf_{dist}")
+        plt.savefig(f"{fpath}.eps", dpi=300)
+        plt.savefig(f"{fpath}.png", dpi=300)
+
+
+def plot_performance_vs_number_of_rcv_in_subarray_publi(
+    root_img, snrs=[-15], dx=20, dy=20
+):
+    # Build sub arrays
+    # Here we consider all the potential subarrays containing from 2 to 6 receivers
+    subarrays_list = []
+    n_rcv = [2, 3, 4, 5, 6]
+    for i in n_rcv:
+        subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
+    # Build associated labels
+    subarray_sizes = [len(sa) for sa in subarrays_list]
+    subarray_sizes_unique = np.unique(subarray_sizes)
+
+    msr_mu, msr_sig, dr_mu, dr_sig, rmse_ = load_msr_rmse_res_subarrays(
+        subarrays_list, snrs, dx, dy
+    )
+
+    for snr in snrs:
+        # Plot RMSE vs nr
+
+        rmse_rtf = []
+        rmse_gcc = []
+        dr_rtf = []
+        dr_gcc = []
+        msr_rtf = []
+        msr_gcc = []
+
+        # Group by number of receivers in subarray
+        for sa_size in subarray_sizes_unique:
+            idx_required_size_sa = np.where(subarray_sizes == sa_size)[0]
+            # Get rmse, dr and msr for subarrays of size sa_size
+            rmse_for_required_size_sa = [rmse_[idx] for idx in idx_required_size_sa]
+            dr_mu_for_required_size_sa = [dr_mu[idx] for idx in idx_required_size_sa]
+            msr_mu_for_required_size_sa = [msr_mu[idx] for idx in idx_required_size_sa]
+
+            # RMSE
+            rmse_gcc_for_required_size_sa = [
+                rmse["d_gcc"].loc[snr] for rmse in rmse_for_required_size_sa
+            ]
+            rmse_rtf_for_required_size_sa = [
+                rmse["d_rtf"].loc[snr] for rmse in rmse_for_required_size_sa
+            ]
+            rmse_gcc.append(rmse_gcc_for_required_size_sa)
+            rmse_rtf.append(rmse_rtf_for_required_size_sa)
+
+            # DR
+            dr_gcc_for_required_size_sa = [
+                dr["dr_gcc"].loc[snr] for dr in dr_mu_for_required_size_sa
+            ]
+            dr_rtf_for_required_size_sa = [
+                dr["dr_rtf"].loc[snr] for dr in dr_mu_for_required_size_sa
+            ]
+            dr_gcc.append(dr_gcc_for_required_size_sa)
+            dr_rtf.append(dr_rtf_for_required_size_sa)
+
+            # MSR
+            msr_gcc_for_required_size_sa = [
+                msr["d_gcc"].loc[snr] for msr in msr_mu_for_required_size_sa
+            ]
+            msr_rtf_for_required_size_sa = [
+                msr["d_rtf"].loc[snr] for msr in msr_mu_for_required_size_sa
+            ]
+            msr_gcc.append(msr_gcc_for_required_size_sa)
+            msr_rtf.append(msr_rtf_for_required_size_sa)
+
+        # Derive mean of each metric per subarray size
+        rmse_gcc_mean = np.array([np.mean(rmse) for rmse in rmse_gcc])
+        rmse_rtf_mean = np.array([np.mean(rmse) for rmse in rmse_rtf])
+        dr_gcc_mean = np.array([np.mean(dr) for dr in dr_gcc])
+        dr_rtf_mean = np.array([np.mean(dr) for dr in dr_rtf])
+        msr_gcc_mean = np.array([np.mean(msr) for msr in msr_gcc])
+        msr_rtf_mean = np.array([np.mean(msr) for msr in msr_rtf])
+
+        # Derive std for each metric per subarray size
+        rmse_gcc_std = np.array([np.std(rmse) for rmse in rmse_gcc])
+        rmse_rtf_std = np.array([np.std(rmse) for rmse in rmse_rtf])
+        dr_gcc_std = np.array([np.std(dr) for dr in dr_gcc])
+        dr_rtf_std = np.array([np.std(dr) for dr in dr_rtf])
+        msr_gcc_std = np.array([np.std(msr) for msr in msr_gcc])
+        msr_rtf_std = np.array([np.std(msr) for msr in msr_rtf])
+
+        # Plot RMSE vs subarray size
+        plt.figure(figsize=(8, 6))
+        plt.plot(subarray_sizes_unique, rmse_gcc_mean, "o-", label="DCF")
+        plt.fill_between(
+            subarray_sizes_unique,
+            rmse_gcc_mean - rmse_gcc_std,
+            rmse_gcc_mean + rmse_gcc_std,
+            alpha=0.2,
+        )
+
+        plt.plot(subarray_sizes_unique, rmse_rtf_mean, "o-", label="RTF")
+
+        plt.fill_between(
+            subarray_sizes_unique,
+            rmse_rtf_mean - rmse_rtf_std,
+            rmse_rtf_mean + rmse_rtf_std,
+            alpha=0.2,
+        )
+        plt.xlabel("Number of receivers in subarray")
+        plt.ylabel("RMSE [m]")
+        plt.title(f"SNR = {snr} dB")
+        plt.legend()
+
+        fpath = os.path.join(root_img, f"rmse_subarrays_snr{snr}")
+        # plt.savefig(fpath, dpi=300)
+        plt.savefig(f"{fpath}.eps", dpi=300)
+        plt.savefig(f"{fpath}.png", dpi=300)
+
+        # Plot DR vs subarray size
+        plt.figure(figsize=(8, 6))
+        plt.plot(subarray_sizes_unique, dr_gcc_mean, "o-", label="DCF")
+        plt.fill_between(
+            subarray_sizes_unique,
+            dr_gcc_mean - dr_gcc_std,
+            dr_gcc_mean + dr_gcc_std,
+            alpha=0.2,
+        )
+
+        plt.plot(subarray_sizes_unique, dr_rtf_mean, "o-", label="RTF")
+
+        plt.fill_between(
+            subarray_sizes_unique,
+            dr_rtf_mean - dr_rtf_std,
+            dr_rtf_mean + dr_rtf_std,
+            alpha=0.2,
+        )
+
+        plt.xlabel("Number of receivers in subarray")
+        plt.ylabel("DR [m]")
+        plt.title(f"SNR = {snr} dB")
+        plt.legend()
+
+        fpath = os.path.join(root_img, f"dr_subarrays_snr{snr}")
+        # plt.savefig(fpath, dpi=300)
+        plt.savefig(f"{fpath}.eps", dpi=300)
+        plt.savefig(f"{fpath}.png", dpi=300)
+
+        # Plot MSR vs subarray size
+        plt.figure(figsize=(8, 6))
+        plt.plot(subarray_sizes_unique, msr_gcc_mean, "o-", label="DCF")
+
+        plt.fill_between(
+            subarray_sizes_unique,
+            msr_gcc_mean - msr_gcc_std,
+            msr_gcc_mean + msr_gcc_std,
+            alpha=0.2,
+        )
+
+        plt.plot(subarray_sizes_unique, msr_rtf_mean, "o-", label="RTF")
+        plt.fill_between(
+            subarray_sizes_unique,
+            msr_rtf_mean - msr_rtf_std,
+            msr_rtf_mean + msr_rtf_std,
+            alpha=0.2,
+        )
+        plt.xlabel("Number of receivers in subarray")
+        plt.ylabel("MSR [dB]")
+        plt.title(f"SNR = {snr} dB")
+        plt.legend()
+
+        fpath = os.path.join(root_img, f"msr_subarrays_snr{snr}")
+        # plt.savefig(fpath, dpi=300)
+        plt.savefig(f"{fpath}.eps", dpi=300)
+        plt.savefig(f"{fpath}.png", dpi=300)
 
 
 if __name__ == "__main__":

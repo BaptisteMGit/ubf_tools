@@ -65,7 +65,7 @@ def run_test_1():
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
-    snr_min = -30
+    snr_min = 0
     snr_max = 20
     snr_step = 2.5
     n_snr = int((snr_max - snr_min) / snr_step + 1)
@@ -106,7 +106,7 @@ def run_test_1():
         subarrays_list=subarrays_list,
         antenna_type=antenna_type,
         debug=debug,
-        verbose=True,
+        verbose=False,
         check=True,
         plot_args=plot_args,
     )
@@ -138,6 +138,11 @@ def run_test_2():
 
     # Nombre de simulations à réaliser pour chaque SNR
     n_monte_carlo = 100
+
+    # Derive expected cpu time for information 
+    avg_cpu_t_per_iter = 200
+    total_expected_cpu_time = 1 * n_monte_carlo * avg_cpu_t_per_iter
+    print(f"Expected cpu time = {np.round(total_expected_cpu_time, 0)} s = {np.round(total_expected_cpu_time/3600, 2)} h")
 
     # Paramètres graphiques pour la génération des figures
     plot_args = {

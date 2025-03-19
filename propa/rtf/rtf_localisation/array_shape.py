@@ -23,7 +23,10 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     get_subarrays,
     load_msr_rmse_res_subarrays,
 )
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import ROOT_IMG, USE_TEX
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    ROOT_IMG,
+    USE_TEX,
+)
 
 pfig = PubFigure(use_tex=USE_TEX)
 
@@ -295,14 +298,16 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
         plt.savefig(fpath, dpi=300)
 
     # Load msr and rmse results to plot them vs gamma
-    msr_mu, msr_sig, dr_mu, dr_sig, rmse_ = load_msr_rmse_res_subarrays(
-        subarrays_list, snrs, dx, dy
-    )
+    # msr_mu, msr_sig, dr_mu, dr_sig, rmse_ = load_msr_rmse_res_subarrays(
+    #     subarrays_list, snrs, dx, dy
+    # )
+
+    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list, snrs, dx, dy)
 
     for snr in snrs:
         # Plot RMSE vs nr_in_sa
-        rmse_gcc = [rmse["dr_gcc"].loc[snr] for rmse in rmse_]
-        rmse_rtf = [rmse["dr_rtf"].loc[snr] for rmse in rmse_]
+        rmse_gcc = [rmse[key]["dcf"].loc[snr] for key in list(rmse.keys())]
+        rmse_rtf = [rmse[key]["rtf"].loc[snr] for key in list(rmse.keys())]
         # Order by gamma
         rmse_gcc = np.array(rmse_gcc)[gamma_order]
         rmse_rtf = np.array(rmse_rtf)[gamma_order]
@@ -320,8 +325,11 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
         plt.close("all")
 
         # Plot DR vs nr_in_sa
-        dr_gcc = [dr["dr_gcc"].loc[snr] for dr in dr_mu]
-        dr_rtf = [dr["dr_rtf"].loc[snr] for dr in dr_mu]
+        dr_gcc = [dr[key]["dcf_mean"].loc[snr] for key in list(dr.keys())]
+        dr_rtf = [dr[key]["rtf_mean"].loc[snr] for key in list(dr.keys())]
+
+        # dr_gcc = [dr["dr_gcc"].loc[snr] for dr in dr_mu]
+        # dr_rtf = [dr["dr_rtf"].loc[snr] for dr in dr_mu]
         # Order by gamma
         dr_gcc = np.array(dr_gcc)[gamma_order]
         dr_rtf = np.array(dr_rtf)[gamma_order]
@@ -338,8 +346,11 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
         plt.savefig(fpath, dpi=300)
 
         # Plot MSR vs nr_in_sa
-        msr_gcc = [msr["d_gcc"].loc[snr] for msr in msr_mu]
-        msr_rtf = [msr["d_rtf"].loc[snr] for msr in msr_mu]
+        msr_gcc = [msr[key]["dcf_mean"].loc[snr] for key in list(msr.keys())]
+        msr_rtf = [msr[key]["rtf_mean"].loc[snr] for key in list(msr.keys())]
+
+        # msr_gcc = [msr["d_gcc"].loc[snr] for msr in msr_mu]
+        # msr_rtf = [msr["d_rtf"].loc[snr] for msr in msr_mu]
         # Order by gamma
         msr_gcc = np.array(msr_gcc)[gamma_order]
         msr_rtf = np.array(msr_rtf)[gamma_order]

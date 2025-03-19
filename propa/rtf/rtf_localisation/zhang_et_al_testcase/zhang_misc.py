@@ -806,20 +806,34 @@ def init_dr_file(folder, run_mode, subarrays_args):
         sa_item["dr_pos_filepath"] = dr_txt_filepath
 
 
-def load_msr_rmse_res_subarrays(subarrays_list, snrs, dx, dy):
+def load_msr_rmse_res_subarrays(subarrays_list, snrs=None, dx=20, dy=20):
     folder = f"from_signal_dx{dx}m_dy{dy}m"
     subarrays_args = build_subarrays_args(subarrays_list)
 
     init_dr_file(folder, run_mode="a", subarrays_args=subarrays_args)
     init_msr_file(folder, run_mode="a", subarrays_args=subarrays_args)
 
-    msr_mu = []
-    msr_sig = []
-    dr_mu = []
-    dr_sig = []
-    rmse_ = []
+    sa_labels = [sa["array_label"] for sa in list(subarrays_args.values())]
+
+    msr_pd = {
+        label: pd.DataFrame(
+            [], index=None, columns=["rtf_mean", "dcf_mean", "rtf_std", "dcf_std"]
+        )
+        for label in sa_labels
+    }
+    dr_pd = {
+        label: pd.DataFrame(
+            [], index=None, columns=["rtf_mean", "dcf_mean", "rtf_std", "dcf_std"]
+        )
+        for label in sa_labels
+    }
+    rmse_pd = {
+        label: pd.DataFrame([], index=None, columns=["rtf", "dcf"])
+        for label in sa_labels
+    }
 
     for sa_idx, sa_item in subarrays_args.items():
+        sa_label = sa_item["array_label"]
         msr_txt_filepath = sa_item["msr_filepath"]
         dr_txt_filepath = sa_item["dr_pos_filepath"]
 
@@ -827,29 +841,55 @@ def load_msr_rmse_res_subarrays(subarrays_list, snrs, dx, dy):
         msr = pd.read_csv(msr_txt_filepath, sep=" ")
         dr = pd.read_csv(dr_txt_filepath, sep=" ")
 
+        if snrs is None:
+            snrs_to_keep = np.unique(dr.snr.values)
+        else:
+            snrs_to_keep = snrs
+
         # Keep only snrs of interest
-        msr = msr[msr["snr"].isin(snrs)]
-        dr = dr[dr["snr"].isin(snrs)]
+        msr = msr[msr["snr"].isin(snrs_to_keep)]
+        dr = dr[dr["snr"].isin(snrs_to_keep)]
 
         # Compute mean and std of msr for each snr
         msr_mean = msr.groupby("snr").mean()
         msr_std = msr.groupby("snr").std()
-        msr_mu.append(msr_mean)
-        msr_sig.append(msr_std)
+
+        msr_pd[sa_label]["rtf_std"] = msr_std[f"d_rtf"].values
+        msr_pd[sa_label]["dcf_std"] = msr_std[f"d_gcc"].values
+        msr_pd[sa_label]["rtf_mean"] = msr_mean[f"d_rtf"].values
+        msr_pd[sa_label]["dcf_mean"] = msr_mean[f"d_gcc"].values
+        msr_pd[sa_label].set_index(msr_std.index, inplace=True)
+
+        # msr_mu.append(msr_mean)
+        # msr_sig.append(msr_std)
 
         # Compute mean and std of position error for each snr
         dr_mean = dr.groupby("snr").mean()
         dr_std = dr.groupby("snr").std()
-        dr_mu.append(dr_mean)
-        dr_sig.append(dr_std)
+
+        dr_pd[sa_label]["rtf_std"] = dr_std[f"dr_rtf"].values
+        dr_pd[sa_label]["dcf_std"] = dr_std[f"dr_gcc"].values
+        dr_pd[sa_label]["rtf_mean"] = dr_mean[f"dr_rtf"].values
+        dr_pd[sa_label]["dcf_mean"] = dr_mean[f"dr_gcc"].values
+        dr_pd[sa_label].set_index(dr_std.index, inplace=True)
+
+        # dr_mu.append(dr_mean)
+        # dr_sig.append(dr_std)
 
         dr["d_gcc"] = dr["dr_gcc"] ** 2
         dr["d_rtf"] = dr["dr_rtf"] ** 2
         mse = dr.groupby("snr").mean()
         rmse = np.sqrt(mse)
-        rmse_.append(rmse)
 
-    return msr_mu, msr_sig, dr_mu, dr_sig, rmse_
+        rmse_pd[sa_label]["rtf"] = rmse[f"d_rtf"].values
+        rmse_pd[sa_label]["dcf"] = rmse[f"d_gcc"].values
+        rmse_pd[sa_label].set_index(rmse.index, inplace=True)
+
+        # rmse_.append(rmse)
+
+    # return msr_mu, msr_sig, dr_mu, dr_sig, rmse_
+
+    return msr_pd, dr_pd, rmse_pd
 
 
 if __name__ == "__main__":

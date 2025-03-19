@@ -43,7 +43,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
 
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
-    study_msr_vs_snr,
+    study_perf_vs_snr,
     check_rtf_features,
     check_gcc_features,
     plot_study_zhang2023,
@@ -509,7 +509,7 @@ def process_all_snr(
             # check_rtf_features(ds_rtf_cs=ds, folder=subfolder)
             ds.close()
 
-        study_msr_vs_snr(subarrays_args)
+        study_perf_vs_snr(subarrays_list=subarrays_list)
 
 
 def replay_all_snr(
@@ -583,14 +583,10 @@ def replay_all_snr(
             with open(dr_txt_filepath, "a") as f:
                 f.write(newline)
 
-        study_msr_vs_snr()
+        study_perf_vs_snr()
 
 
 def study_perf_vs_subarrays(subarrays_list, snrs, var="std", dx=20, dy=20):
-
-    msr_mu, msr_sig, dr_mu, dr_sig, rmse_ = load_msr_rmse_res_subarrays(
-        subarrays_list, snrs, dx, dy
-    )
 
     folder = "from_signal_dx20m_dy20m"
     root_img = os.path.join(ROOT_IMG, folder, "perf_vs_subarrays")
@@ -600,6 +596,8 @@ def study_perf_vs_subarrays(subarrays_list, snrs, var="std", dx=20, dy=20):
     # Build sub arrays labels
     subarray_sizes = [len(sa) for sa in subarrays_list]
     subarray_sizes_unique = np.unique(subarray_sizes)
+
+    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list)
 
     for snr in snrs:
         # Plot RMSE vs nr
@@ -614,37 +612,55 @@ def study_perf_vs_subarrays(subarrays_list, snrs, var="std", dx=20, dy=20):
         # Group by number of receivers in subarray
         for sa_size in subarray_sizes_unique:
             idx_required_size_sa = np.where(subarray_sizes == sa_size)[0]
+            key_required_size_sa = [
+                list(msr.keys())[idx] for idx in idx_required_size_sa
+            ]
             # Get rmse, dr and msr for subarrays of size sa_size
-            rmse_for_required_size_sa = [rmse_[idx] for idx in idx_required_size_sa]
-            dr_mu_for_required_size_sa = [dr_mu[idx] for idx in idx_required_size_sa]
-            msr_mu_for_required_size_sa = [msr_mu[idx] for idx in idx_required_size_sa]
+            rmse_for_required_size_sa = [
+                rmse[key].loc[snr] for key in key_required_size_sa
+            ]
+            dr_mu_for_required_size_sa = [
+                dr[key].loc[snr][["rtf_mean", "dcf_mean"]]
+                for key in key_required_size_sa
+            ]
+            msr_mu_for_required_size_sa = [
+                msr[key].loc[snr][["rtf_mean", "dcf_mean"]]
+                for key in key_required_size_sa
+            ]
 
             # RMSE
             rmse_gcc_for_required_size_sa = [
-                rmse["d_gcc"].loc[snr] for rmse in rmse_for_required_size_sa
+                rmse_for_required_size_sa[i]["dcf"]
+                for i in range(len(rmse_for_required_size_sa))
             ]
             rmse_rtf_for_required_size_sa = [
-                rmse["d_rtf"].loc[snr] for rmse in rmse_for_required_size_sa
+                rmse_for_required_size_sa[i]["rtf"]
+                for i in range(len(rmse_for_required_size_sa))
             ]
             rmse_gcc.append(rmse_gcc_for_required_size_sa)
             rmse_rtf.append(rmse_rtf_for_required_size_sa)
 
             # DR
             dr_gcc_for_required_size_sa = [
-                dr["dr_gcc"].loc[snr] for dr in dr_mu_for_required_size_sa
+                # dr["dr_gcc"].loc[snr] for dr in dr_mu_for_required_size_sa
+                dr_mu_for_required_size_sa[i]["dcf_mean"]
+                for i in range(len(dr_mu_for_required_size_sa))
             ]
             dr_rtf_for_required_size_sa = [
-                dr["dr_rtf"].loc[snr] for dr in dr_mu_for_required_size_sa
+                dr_mu_for_required_size_sa[i]["rtf_mean"]
+                for i in range(len(dr_mu_for_required_size_sa))
             ]
             dr_gcc.append(dr_gcc_for_required_size_sa)
             dr_rtf.append(dr_rtf_for_required_size_sa)
 
             # MSR
             msr_gcc_for_required_size_sa = [
-                msr["d_gcc"].loc[snr] for msr in msr_mu_for_required_size_sa
+                msr_mu_for_required_size_sa[i]["dcf_mean"]
+                for i in range(len(msr_mu_for_required_size_sa))
             ]
             msr_rtf_for_required_size_sa = [
-                msr["d_rtf"].loc[snr] for msr in msr_mu_for_required_size_sa
+                msr_mu_for_required_size_sa[i]["rtf_mean"]
+                for i in range(len(msr_mu_for_required_size_sa))
             ]
             msr_gcc.append(msr_gcc_for_required_size_sa)
             msr_rtf.append(msr_rtf_for_required_size_sa)
@@ -850,7 +866,7 @@ if __name__ == "__main__":
     # snrs = np.arange(-40, 25, 2.5)
     # # Update figures after appearence modifications
     # subarrays_args = build_subarrays_args(subarrays_list)
-    # study_msr_vs_snr(subarrays_args=subarrays_args)
+    # study_perf_vs_snr(subarrays_args=subarrays_args)
 
     # # snrs = np.arange(-20, 15, 5)
     # from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
@@ -1001,7 +1017,7 @@ if __name__ == "__main__":
     # )
 
     # replay_all_snr(snrs=snrs, dx=dx, dy=dy)
-    # study_msr_vs_snr()
+    # study_perf_vs_snr()
 
 
 ## Left overs ##

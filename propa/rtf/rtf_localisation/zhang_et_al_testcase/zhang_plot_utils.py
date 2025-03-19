@@ -1298,108 +1298,88 @@ def check_gcc_features(ds_gcc, folder):
     ds_gcc.close()
 
 
-def study_msr_vs_snr(subarrays_args):
-    """Plot metrics (MSR, RMSE) vs SNR for both GCC and RTF"""
+def study_perf_vs_snr(subarrays_list):
+    """Plot metrics (MSR, RMSE) vs SNR for both DCF and RTF"""
 
     folder = "from_signal_dx20m_dy20m"
     root_img = os.path.join(ROOT_IMG, folder, "perf_vs_snr")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
-    for sa_idx, sa_item in subarrays_args.items():
-        msr_txt_filepath = sa_item["msr_filepath"]
-        dr_txt_filepath = sa_item["dr_pos_filepath"]
+    # Load results (all available snrs)
+    # msr_mu, msr_sig, dr_mu, dr_sig, rmse_ = load_msr_rmse_res_subarrays(subarrays_list)
+    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list)
 
-        # Load msr results
-        # msr_txt_filepath = os.path.join(ROOT_DATA, folder, "msr_snr.txt")
-        msr = pd.read_csv(msr_txt_filepath, sep=" ")
+    for sa_key in msr.keys():
 
-        # Compute mean and std of msr for each snr
-        msr_mean = msr.groupby("snr").mean()
-        msr_std = msr.groupby("snr").std()
+        # Extract info dataframes for current subarray
+        rcv_ids = [f"{id[0]}_{id[1]}" for id in sa_key.split("_")]
+        rcv_str = "$" + ", \,".join(rcv_ids) + "$"
+        dr_sa = dr[sa_key]
+        msr_sa = msr[sa_key]
+        rmse_sa = rmse[sa_key]
 
-        # Plot results
+        # Plot msr
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
         ax.errorbar(
-            msr_mean.index,
-            msr_mean["d_gcc"],
-            yerr=msr_std["d_gcc"],
+            msr_sa.index,
+            msr_sa.dcf_mean,
+            yerr=msr_sa.dcf_std,
             fmt="o-",
             label="DCF",
         )
         ax.errorbar(
-            msr_mean.index,
-            msr_mean["d_rtf"],
-            yerr=msr_std["d_rtf"],
-            fmt="o-",
-            label="RTF",
-        )
-        ax.set_xlabel("NR [dB]")
-        ax.set_ylabel("SR [dB]")
-        ax.legend()
-        ax.grid()
-        # plt.show()
-        rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
-        plt.suptitle(f"Receivers = ({rcv_str})")
-
-        fpath = os.path.join(root_img, f"msr_snr_{sa_item['array_label']}.png")
-        plt.savefig(fpath)
-        plt.close("all")
-
-        # Load position error results
-        # dr_txt_filepath = os.path.join(ROOT_DATA, folder, "dr_pos_snr.txt")
-        dr = pd.read_csv(dr_txt_filepath, sep=" ")
-
-        # Compute mean and std of position error for each snr
-        dr_mean = dr.groupby("snr").mean()
-        dr_std = dr.groupby("snr").std()
-
-        # Plot results
-        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-        ax.errorbar(
-            dr_mean.index,
-            dr_mean["dr_gcc"],
-            yerr=dr_std["dr_gcc"],
-            fmt="o-",
-            label="DCF",
-        )
-        ax.errorbar(
-            dr_mean.index,
-            dr_mean["dr_rtf"],
-            yerr=dr_std["dr_rtf"],
+            msr_sa.index,
+            msr_sa.rtf_mean,
+            yerr=msr_sa.rtf_std,
             fmt="o-",
             label="RTF",
         )
         ax.set_xlabel("SNR [dB]")
-        ax.set_ylabel(r"$\Delta_r$" + " [m]")
+        ax.set_ylabel("MSR [dB]")
         ax.legend()
         ax.grid()
 
-        rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
         plt.suptitle(f"Receivers = ({rcv_str})")
 
-        fpath = os.path.join(root_img, f"dr_pos_snr_{sa_item['array_label']}.png")
+        fpath = os.path.join(root_img, f"msr_snr_{sa_key}.png")
+        plt.savefig(fpath)
+        plt.close("all")
+
+        # Plot dr
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        ax.errorbar(
+            dr_sa.index,
+            dr_sa.dcf_mean,
+            yerr=dr_sa.dcf_std,
+            fmt="o-",
+            label="DCF",
+        )
+        ax.errorbar(
+            dr_sa.index,
+            dr_sa.rtf_mean,
+            yerr=dr_sa.rtf_std,
+            fmt="o-",
+            label="RTF",
+        )
+        plt.suptitle(f"Receivers = ({rcv_str})")
+        ax.set_ylabel(r"$\Delta_r$" + " [m]")
+        ax.set_xlabel("SNR [dB]")
+        ax.legend()
+        ax.grid()
+        fpath = os.path.join(root_img, f"dr_pos_snr_{sa_key}.png")
         plt.savefig(fpath)
 
-        # TODO : check if ok
-        dr["dr_gcc"] = dr["dr_gcc"] ** 2
-        dr["dr_rtf"] = dr["dr_rtf"] ** 2
-        mse = dr.groupby("snr").mean()
-        rmse = np.sqrt(mse)
-
-        # Plot results
+        # Plot rmse
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-        ax.plot(rmse.index, rmse["dr_gcc"], "o-", label="DCF")
-        ax.plot(rmse.index, rmse["dr_rtf"], "o-", label="RTF")
+        ax.plot(rmse_sa.index, rmse_sa["dcf"], "o-", label="DCF")
+        ax.plot(rmse_sa.index, rmse_sa["rtf"], "o-", label="RTF")
+        plt.suptitle(f"Receivers = ({rcv_str})")
         ax.set_xlabel("SNR [dB]")
         ax.set_ylabel("RMSE [m]")
         ax.legend()
         ax.grid()
-
-        rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
-        plt.suptitle(f"Receivers = ({rcv_str})")
-
-        fpath = os.path.join(root_img, f"rmse_snr_{sa_item['array_label']}.png")
+        fpath = os.path.join(root_img, f"rmse_snr_{sa_key}.png")
         plt.savefig(fpath)
         plt.close("all")
 
@@ -1483,9 +1463,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
     subarray_sizes = [len(sa) for sa in subarrays_list]
     subarray_sizes_unique = np.unique(subarray_sizes)
 
-    msr_mu, msr_sig, dr_mu, dr_sig, rmse_ = load_msr_rmse_res_subarrays(
-        subarrays_list, snrs, dx, dy
-    )
+    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list)
 
     for snr in snrs:
         # Plot RMSE vs nr
@@ -1500,37 +1478,55 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
         # Group by number of receivers in subarray
         for sa_size in subarray_sizes_unique:
             idx_required_size_sa = np.where(subarray_sizes == sa_size)[0]
+            key_required_size_sa = [
+                list(msr.keys())[idx] for idx in idx_required_size_sa
+            ]
             # Get rmse, dr and msr for subarrays of size sa_size
-            rmse_for_required_size_sa = [rmse_[idx] for idx in idx_required_size_sa]
-            dr_mu_for_required_size_sa = [dr_mu[idx] for idx in idx_required_size_sa]
-            msr_mu_for_required_size_sa = [msr_mu[idx] for idx in idx_required_size_sa]
+            rmse_for_required_size_sa = [
+                rmse[key].loc[snr] for key in key_required_size_sa
+            ]
+            dr_mu_for_required_size_sa = [
+                dr[key].loc[snr][["rtf_mean", "dcf_mean"]]
+                for key in key_required_size_sa
+            ]
+            msr_mu_for_required_size_sa = [
+                msr[key].loc[snr][["rtf_mean", "dcf_mean"]]
+                for key in key_required_size_sa
+            ]
 
             # RMSE
             rmse_gcc_for_required_size_sa = [
-                rmse["d_gcc"].loc[snr] for rmse in rmse_for_required_size_sa
+                rmse_for_required_size_sa[i]["dcf"]
+                for i in range(len(rmse_for_required_size_sa))
             ]
             rmse_rtf_for_required_size_sa = [
-                rmse["d_rtf"].loc[snr] for rmse in rmse_for_required_size_sa
+                rmse_for_required_size_sa[i]["rtf"]
+                for i in range(len(rmse_for_required_size_sa))
             ]
             rmse_gcc.append(rmse_gcc_for_required_size_sa)
             rmse_rtf.append(rmse_rtf_for_required_size_sa)
 
             # DR
             dr_gcc_for_required_size_sa = [
-                dr["dr_gcc"].loc[snr] for dr in dr_mu_for_required_size_sa
+                # dr["dr_gcc"].loc[snr] for dr in dr_mu_for_required_size_sa
+                dr_mu_for_required_size_sa[i]["dcf_mean"]
+                for i in range(len(dr_mu_for_required_size_sa))
             ]
             dr_rtf_for_required_size_sa = [
-                dr["dr_rtf"].loc[snr] for dr in dr_mu_for_required_size_sa
+                dr_mu_for_required_size_sa[i]["rtf_mean"]
+                for i in range(len(dr_mu_for_required_size_sa))
             ]
             dr_gcc.append(dr_gcc_for_required_size_sa)
             dr_rtf.append(dr_rtf_for_required_size_sa)
 
             # MSR
             msr_gcc_for_required_size_sa = [
-                msr["d_gcc"].loc[snr] for msr in msr_mu_for_required_size_sa
+                msr_mu_for_required_size_sa[i]["dcf_mean"]
+                for i in range(len(msr_mu_for_required_size_sa))
             ]
             msr_rtf_for_required_size_sa = [
-                msr["d_rtf"].loc[snr] for msr in msr_mu_for_required_size_sa
+                msr_mu_for_required_size_sa[i]["rtf_mean"]
+                for i in range(len(msr_mu_for_required_size_sa))
             ]
             msr_gcc.append(msr_gcc_for_required_size_sa)
             msr_rtf.append(msr_rtf_for_required_size_sa)
@@ -1553,21 +1549,21 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
 
         # Plot RMSE vs subarray size
         plt.figure(figsize=(8, 6))
-        plt.plot(subarray_sizes_unique, rmse_gcc_mean, "o-", label="DCF")
-        plt.fill_between(
+        plt.errorbar(
             subarray_sizes_unique,
-            rmse_gcc_mean - rmse_gcc_std,
-            rmse_gcc_mean + rmse_gcc_std,
-            alpha=0.2,
+            rmse_gcc_mean,
+            yerr=rmse_gcc_std,
+            capsize=8,
+            fmt="o-",
+            label="DCF",
         )
-
-        plt.plot(subarray_sizes_unique, rmse_rtf_mean, "o-", label="RTF")
-
-        plt.fill_between(
+        plt.errorbar(
             subarray_sizes_unique,
-            rmse_rtf_mean - rmse_rtf_std,
-            rmse_rtf_mean + rmse_rtf_std,
-            alpha=0.2,
+            rmse_rtf_mean,
+            yerr=rmse_rtf_std,
+            capsize=8,
+            fmt="o-",
+            label="RTF",
         )
         plt.xlabel("Number of receivers in subarray")
         plt.ylabel("RMSE [m]")
@@ -1575,27 +1571,26 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
         plt.legend()
 
         fpath = os.path.join(root_img, f"rmse_subarrays_snr{snr}")
-        # plt.savefig(fpath, dpi=300)
         plt.savefig(f"{fpath}.eps", dpi=300)
         plt.savefig(f"{fpath}.png", dpi=300)
 
         # Plot DR vs subarray size
         plt.figure(figsize=(8, 6))
-        plt.plot(subarray_sizes_unique, dr_gcc_mean, "o-", label="DCF")
-        plt.fill_between(
+        plt.errorbar(
             subarray_sizes_unique,
-            dr_gcc_mean - dr_gcc_std,
-            dr_gcc_mean + dr_gcc_std,
-            alpha=0.2,
+            dr_gcc_mean,
+            yerr=dr_gcc_std,
+            capsize=8,
+            fmt="o-",
+            label="DCF",
         )
-
-        plt.plot(subarray_sizes_unique, dr_rtf_mean, "o-", label="RTF")
-
-        plt.fill_between(
+        plt.errorbar(
             subarray_sizes_unique,
-            dr_rtf_mean - dr_rtf_std,
-            dr_rtf_mean + dr_rtf_std,
-            alpha=0.2,
+            dr_rtf_mean,
+            yerr=dr_rtf_std,
+            capsize=8,
+            fmt="o-",
+            label="RTF",
         )
 
         plt.xlabel("Number of receivers in subarray")
@@ -1604,38 +1599,53 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
         plt.legend()
 
         fpath = os.path.join(root_img, f"dr_subarrays_snr{snr}")
-        # plt.savefig(fpath, dpi=300)
         plt.savefig(f"{fpath}.eps", dpi=300)
         plt.savefig(f"{fpath}.png", dpi=300)
 
         # Plot MSR vs subarray size
         plt.figure(figsize=(8, 6))
-        plt.plot(subarray_sizes_unique, msr_gcc_mean, "o-", label="DCF")
+        # plt.plot(subarray_sizes_unique, msr_gcc_mean, "o-", label="DCF")
 
-        plt.fill_between(
+        # plt.fill_between(
+        #     subarray_sizes_unique,
+        #     msr_gcc_mean - msr_gcc_std,
+        #     msr_gcc_mean + msr_gcc_std,
+        #     alpha=0.2,
+        # )
+        # plt.plot(subarray_sizes_unique, msr_rtf_mean, "o-", label="RTF")
+        # plt.fill_between(
+        #     subarray_sizes_unique,
+        #     msr_rtf_mean - msr_rtf_std,
+        #     msr_rtf_mean + msr_rtf_std,
+        #     alpha=0.2,
+        # )
+        plt.errorbar(
             subarray_sizes_unique,
-            msr_gcc_mean - msr_gcc_std,
-            msr_gcc_mean + msr_gcc_std,
-            alpha=0.2,
+            msr_gcc_mean,
+            yerr=msr_gcc_std,
+            capsize=8,
+            fmt="o-",
+            label="DCF",
+        )
+        plt.errorbar(
+            subarray_sizes_unique,
+            msr_rtf_mean,
+            yerr=msr_rtf_std,
+            capsize=8,
+            fmt="o-",
+            label="RTF",
         )
 
-        plt.plot(subarray_sizes_unique, msr_rtf_mean, "o-", label="RTF")
-        plt.fill_between(
-            subarray_sizes_unique,
-            msr_rtf_mean - msr_rtf_std,
-            msr_rtf_mean + msr_rtf_std,
-            alpha=0.2,
-        )
         plt.xlabel("Number of receivers in subarray")
         plt.ylabel("MSR [dB]")
         plt.title(f"SNR = {snr} dB")
         plt.legend()
 
         fpath = os.path.join(root_img, f"msr_subarrays_snr{snr}")
-        # plt.savefig(fpath, dpi=300)
         plt.savefig(f"{fpath}.eps", dpi=300)
         plt.savefig(f"{fpath}.png", dpi=300)
 
 
 if __name__ == "__main__":
-    pass
+    subarrays_list = [[1, 2, 3]]
+    study_perf_vs_snr(subarrays_list)

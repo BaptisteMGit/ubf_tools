@@ -329,5 +329,119 @@ def save_simulation_netcdf():
     tf_zhang.close()
 
 
+# Perf vs subarrays (ie nb of rcv in subarrays)
+# rmse_gcc = [rmse["dr_gcc"].loc[snr] for rmse in rmse_]
+# rmse_rtf = [rmse["dr_rtf"].loc[snr] for rmse in rmse_]
+# plt.figure(figsize=(8, 6))
+# plt.plot(nr_in_sa, rmse_gcc, "o-", label="DCF")
+# plt.plot(nr_in_sa, rmse_rtf, "o-", label="RTF")
+# plt.xlabel("Number of receivers")
+# plt.ylabel("RMSE [m]")
+# plt.title(f"SNR = {snr} dB")
+# plt.legend()
+
+# fpath = os.path.join(root_img, f"rmse_subarrays_snr{snr}.png")
+# plt.savefig(fpath, dpi=300)
+# plt.close("all")
+
+# # Plot DR vs nr_in_sa
+# dr_gcc = [dr["dr_gcc"].loc[snr] for dr in dr_mu]
+# dr_rtf = [dr["dr_rtf"].loc[snr] for dr in dr_mu]
+# plt.figure(figsize=(8, 6))
+# plt.plot(nr_in_sa, dr_gcc, "o-", label="DCF")
+# plt.plot(nr_in_sa, dr_rtf, "o-", label="RTF")
+# plt.xlabel("Number of receivers")
+# plt.ylabel("DR [m]")
+# plt.title(f"SNR = {snr} dB")
+# plt.legend()
+
+# fpath = os.path.join(root_img, f"dr_subarrays_snr{snr}.png")
+# plt.savefig(fpath, dpi=300)
+
+# # Plot MSR vs nr_in_sa
+# msr_gcc = [msr["d_gcc"].loc[snr] for msr in msr_mu]
+# msr_rtf = [msr["d_rtf"].loc[snr] for msr in msr_mu]
+# plt.figure(figsize=(8, 6))
+# plt.plot(nr_in_sa, msr_gcc, "o-", label="DCF")
+# plt.plot(nr_in_sa, msr_rtf, "o-", label="RTF")
+# plt.xlabel("Number of receivers")
+# plt.ylabel("MSR [dB]")
+# plt.title(f"SNR = {snr} dB")
+# plt.legend()
+
+# fpath = os.path.join(root_img, f"msr_subarrays_snr{snr}.png")
+# plt.savefig(fpath, dpi=300)
+
+# # Plot results
+# fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+# ax.errorbar(
+#     msr_mean.index,
+#     msr_mean["d_gcc"],
+#     yerr=msr_std["d_gcc"],
+#     fmt="o-",
+#     label=r"$\textrm{DCF}$",
+# )
+# ax.errorbar(
+#     msr_mean.index,
+#     msr_mean["d_rtf"],
+#     yerr=msr_std["d_rtf"],
+#     fmt="o-",
+#     label=r"$\textrm{RTF}$",
+# )
+# ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+# ax.set_ylabel(r"$\textrm{MSR [dB]}$")
+# ax.legend()
+# ax.grid()
+# # plt.show()
+# rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
+# plt.suptitle(f"Receivers = ({rcv_str})")
+
+# fpath = os.path.join(root_img, f"msr_snr_{sa_item['array_label']}.png")
+# plt.savefig(fpath)
+# plt.close("all")
+
+# # Plot results
+# fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+# ax.errorbar(
+#     dr_mean.index,
+#     dr_mean["dr_gcc"],
+#     yerr=dr_std["dr_gcc"],
+#     fmt="o-",
+#     label=r"$\textrm{DCF}$",
+# )
+# ax.errorbar(
+#     dr_mean.index,
+#     dr_mean["dr_rtf"],
+#     yerr=dr_std["dr_rtf"],
+#     fmt="o-",
+#     label=r"$\textrm{RTF}$",
+# )
+# ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+# ax.set_ylabel(r"$\Delta_r \textrm{[m]}$")
+# ax.legend()
+# ax.grid()
+
+# rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
+# plt.suptitle(f"Receivers = ({rcv_str})")
+
+# fpath = os.path.join(root_img, f"dr_pos_snr_{sa_item['array_label']}.png")
+# plt.savefig(fpath)
+
+# # Plot results
+# fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+# ax.plot(rmse.index, rmse["dr_gcc"], "o-", label=r"$\textrm{DCF}$")
+# ax.plot(rmse.index, rmse["dr_rtf"], "o-", label=r"$\textrm{RTF}$")
+# ax.set_xlabel(r"$\textrm{SNR [dB]}$")
+# ax.set_ylabel(r"$\textrm{RMSE [m]}$")
+# ax.legend()
+# ax.grid()
+
+# rcv_str = "$" + ", \,".join([f"s_{id+1}" for id in sa_item["idx_rcv"]]) + "$"
+# plt.suptitle(f"Receivers = ({rcv_str})")
+
+# fpath = os.path.join(root_img, f"rmse_snr_{sa_item['array_label']}.png")
+# plt.savefig(fpath)
+# plt.close("all")
+
 if __name__ == "__main__":
     pass

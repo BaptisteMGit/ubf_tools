@@ -28,11 +28,12 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
 )
 
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
+    study_perf_vs_snr_publi,
     plot_fullarray_ambiguity_surfaces_publi,
     plot_performance_vs_number_of_rcv_in_subarray_publi,
 )
 
-pfig = PubFigure()
+# pfig = PubFigure()
 
 ROOT_IMG_PUBLI = os.path.join(ROOT_IMG, "publication_rtf")
 if not os.path.exists(ROOT_IMG_PUBLI):
@@ -81,11 +82,23 @@ def perf_vs_nb_rcv():
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
-    plot_performance_vs_number_of_rcv_in_subarray_publi(
-        root_img=root_img, snrs=[-15], dx=20, dy=20
-    )
+    plot_performance_vs_number_of_rcv_in_subarray_publi(root_img=root_img, snrs=[-15])
+
+
+def perf_vs_snr():
+    # Root img
+    root_img = os.path.join(ROOT_IMG_PUBLI, "performance_against_snr")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
+
+    best_subarray = [0, 2, 5]
+    worst_subarray = [2, 3, 5]
+    subarrays_list = [best_subarray, worst_subarray]
+
+    study_perf_vs_snr_publi(subarrays_list, root_img)
 
 
 if __name__ == "__main__":
     # no_noise_amb_surf()
-    perf_vs_nb_rcv()
+    # perf_vs_nb_rcv()
+    perf_vs_snr()

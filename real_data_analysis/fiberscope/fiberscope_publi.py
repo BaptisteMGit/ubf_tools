@@ -581,7 +581,7 @@ if __name__ == "__main__":
         t = np.arange(0, d.shape[1]) * processing_props["time_step"]
         p = list(dict_th_pos.keys())
 
-        axis_norm = None
+        axis_norm = 1
         if axis_norm is None:
             d_max = np.max(d, axis=axis_norm) * np.ones_like(d)
             d_min = np.min(d, axis=axis_norm) * np.ones_like(d)

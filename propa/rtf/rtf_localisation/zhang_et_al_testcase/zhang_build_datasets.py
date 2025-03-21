@@ -513,13 +513,13 @@ def estimate_rtf(
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
-    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
-    #     t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
-    # )
-
-    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_whitening(
+    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
         t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
+
+    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_whitening(
+    #     t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
+    # )
     # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
     #     t, rcv_sig=s_e.T, rcv_noise=n_e.T, nperseg=nperseg, noverlap=noverlap
     # )
@@ -562,12 +562,12 @@ def estimate_rtf(
             noise_only = n_l.sel(x=x_i, y=y_i).T
 
             # Derive rtf
-            # _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
-            #     t, noisy_sig, noise_only, nperseg, noverlap
-            # )
-            _, rtf_cs_l, _, _, _ = rtf_covariance_whitening(
+            _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
                 t, noisy_sig, noise_only, nperseg, noverlap
             )
+            # _, rtf_cs_l, _, _, _ = rtf_covariance_whitening(
+            #     t, noisy_sig, noise_only, nperseg, noverlap
+            # )
 
 
             # Store

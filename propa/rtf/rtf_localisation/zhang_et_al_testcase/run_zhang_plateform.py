@@ -65,8 +65,8 @@ def run_test_1():
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
-    snr_min = 0
-    snr_max = 20
+    snr_min = -10
+    snr_max = 10
     snr_step = 2.5
     n_snr = int((snr_max - snr_min) / snr_step + 1)
     snrs = np.linspace(snr_min, snr_max, n_snr)
@@ -74,7 +74,7 @@ def run_test_1():
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 100
+    n_monte_carlo = 10
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information 
@@ -179,12 +179,12 @@ def run_test_2():
 
 
 if __name__ == "__main__":
-    import time
-    t_per_iter = 170
-    nb_snr_to_run = 2.5
-    n_mc = 100
-    belay_before_exec =  nb_snr_to_run * n_mc * t_per_iter
-    time.sleep(belay_before_exec)
+    # import time
+    # t_per_iter = 170
+    # nb_snr_to_run = 2.5
+    # n_mc = 100
+    # belay_before_exec =  nb_snr_to_run * n_mc * t_per_iter
+    # time.sleep(belay_before_exec)
 
     ### 
     # Etape 0 : définition des paramètres de l'étude 
@@ -237,6 +237,6 @@ if __name__ == "__main__":
         print("Dask Dashboard:", client.dashboard_link)
 
         # Uncomment target test 
-        # run_test_1()
-        run_test_2()
+        run_test_1()
+        # run_test_2()
 

@@ -3,7 +3,7 @@
 """
 @File    :   classical_mfp.py
 @Time    :   2024/11/05 15:44:06
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -299,8 +299,9 @@ def mfp_measured_replicas(testcase, snr_dB):
     # Use the first signal slice to set f_cs by running rtf_covariance_substraction once
     rcv_sig = ds_rcv_sig.sel(r=r_src, z=z_src).values
     rcv_noise = ds_noise.sel(r=r_src, z=z_src).values
+    noisy_signal = rcv_sig + rcv_noise
     f_rtf, rtf, _, _, _ = rtf_covariance_substraction(
-        t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
+        t, noisy_signal, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
 
     # Use Dask delayed and progress bar for tracking
@@ -311,26 +312,27 @@ def mfp_measured_replicas(testcase, snr_dB):
             for r_i in ds_rcv_sig.r.values:
                 rcv_sig = ds_rcv_sig.sel(r=r_i, z=z_i).values
                 rcv_noise = ds_noise.sel(r=r_i, z=z_i).values
+                noisy_signal = rcv_sig + rcv_noise
 
                 # Wrap function call in dask delayed
                 delayed_rtf_cs = da.from_delayed(
                     delayed(
-                        lambda t, sig, noise: rtf_covariance_substraction(
-                            t, sig, noise, nperseg, noverlap
+                        lambda t, noisy_sig, noise: rtf_covariance_substraction(
+                            t, noisy_sig, noise, nperseg, noverlap
                         )[1]
-                    )(t, rcv_sig, rcv_noise),
-                    shape=(len(f_rtf), rcv_sig.shape[1]),
+                    )(t, noisy_signal, rcv_noise),
+                    shape=(len(f_rtf), noisy_signal.shape[1]),
                     dtype=complex,
                 )
                 results_cs.append(delayed_rtf_cs)
 
                 delayed_rtf_cw = da.from_delayed(
                     delayed(
-                        lambda t, sig, noise: rtf_covariance_whitening(
-                            t, sig, noise, nperseg, noverlap
+                        lambda t, noisy_sig, noise: rtf_covariance_whitening(
+                            t, noisy_sig, noise, nperseg, noverlap
                         )[1]
-                    )(t, rcv_sig, rcv_noise),
-                    shape=(len(f_rtf), rcv_sig.shape[1]),
+                    )(t, noisy_signal, rcv_noise),
+                    shape=(len(f_rtf), noisy_signal.shape[1]),
                     dtype=complex,
                 )
                 results_cw.append(delayed_rtf_cw)

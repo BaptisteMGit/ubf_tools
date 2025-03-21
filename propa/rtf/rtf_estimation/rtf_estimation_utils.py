@@ -3,7 +3,7 @@
 """
 @File    :   rtf_estimation_utils.py
 @Time    :   2024/10/17 10:11:34
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -27,20 +27,28 @@ from real_data_analysis.real_data_utils import (
 )
 
 
-def rtf_covariance_whitening(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
+def rtf_covariance_whitening(
+    t, noisy_signal, noise_only, nperseg=2**12, noverlap=2**11
+):
     """
     Derive the RTF using covariance whitening method described in  Markovich-Golan, S., & Gannot, S. (2015).
     """
     # Derive usefull params
-    x = rcv_sig + rcv_noise
-    n_rcv = x.shape[1]
+    n_rcv = noisy_signal.shape[1]
     ts = t[1] - t[0]
     fs = 1 / ts
 
-    f, Rx, Rs, Rv = get_csdm(t, rcv_sig, rcv_noise, nperseg, noverlap)
-
-    ff, tt, stft_x = get_stft_array(x, fs, nperseg, noverlap)
-
+    # Derive CSDM
+    f, Rx, Rs, Rv = get_csdm(
+        t,
+        noisy_signal=noisy_signal,
+        noise_only=noise_only,
+        nperseg=nperseg,
+        noverlap=noverlap,
+    )
+    # Derive noisy_signal STFT
+    ff, tt, stft_x = get_stft_array(noisy_signal, fs, nperseg, noverlap)
+    # Estimate RTF
     f, rtf = rtf_cw(f, n_rcv, stft_x, Rv)
 
     return f, rtf, Rx, Rs, Rv
@@ -93,26 +101,36 @@ def rtf_cw(f, n_rcv, stft_x, Rv):
     return f, rtf
 
 
-def rtf_covariance_substraction(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
+def rtf_covariance_substraction(
+    t, noisy_signal, noise_only, nperseg=2**12, noverlap=2**11
+):
     """
     Derive the RTF using covariance substraction method described in Markovich-Golan, S., & Gannot, S. (2015).
     Reference receiver is assumed to be the first one.
     """
+
     # Derive usefull params
-    x = rcv_sig + rcv_noise
-    n_rcv = x.shape[1]
-    ts = t[1] - t[0]
-    fs = 1 / ts
+    n_rcv = noisy_signal.shape[1]
+    # Derive CSDM
+    f, Rx, Rs, Rv = get_csdm(
+        t,
+        noisy_signal=noisy_signal,
+        noise_only=noise_only,
+        nperseg=nperseg,
+        noverlap=noverlap,
+    )
+    # Estimate RTF
+    f, rtf = rtf_cs(f, n_rcv, Rx, Rv)
 
     # x = rcv_sig + rcv_noise
-    f, Rx, Rs, Rv = get_csdm(t, rcv_sig, rcv_noise, nperseg, noverlap)
+    # n_rcv = x.shape[1]
+    # ts = t[1] - t[0]
+    # fs = 1 / ts
 
     # Check that Rs is of rank 1
     # for i in range(len(f)):
     #     rank = np.linalg.matrix_rank(Rs[i])
     #     print(f"Rank of Rs at f = {f[i]} Hz : {rank}")
-
-    f, rtf = rtf_cs(f, n_rcv, Rx, Rv)
 
     return f, rtf, Rx, Rs, Rv
 
@@ -155,15 +173,26 @@ def rtf_cs(f, n_rcv, Rx, Rv):
     return f, rtf
 
 
-def get_csdm(t, rcv_sig, rcv_noise, nperseg=2**12, noverlap=2**11):
+def get_csdm(
+    t,
+    noisy_signal,
+    noise_only,
+    signal_only=None,
+    nperseg=2**12,
+    noverlap=2**11,
+):
     """
     Derive the CSDM of the received signal and noise.
     Shape of received signal and noise must be (ns, nrcv) where ns is the number of samples and nrcv is the number of receivers
     """
-    x = rcv_sig + rcv_noise
-    ff, csdm_x = get_csdm_from_signal(t, x, nperseg, noverlap)
-    ff, csdm_sig = get_csdm_from_signal(t, rcv_sig, nperseg, noverlap)
-    ff, csdm_noise = get_csdm_from_signal(t, rcv_noise, nperseg, noverlap)
+
+    ff, csdm_x = get_csdm_from_signal(t, noisy_signal, nperseg, noverlap)
+    ff, csdm_noise = get_csdm_from_signal(t, noise_only, nperseg, noverlap)
+
+    if signal_only is not None:
+        ff, csdm_sig = get_csdm_from_signal(t, signal_only, nperseg, noverlap)
+    else:
+        csdm_sig = None
 
     return ff, csdm_x, csdm_sig, csdm_noise
 

@@ -603,6 +603,7 @@ def estimate_rtf(
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
+    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
     f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
         t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     )

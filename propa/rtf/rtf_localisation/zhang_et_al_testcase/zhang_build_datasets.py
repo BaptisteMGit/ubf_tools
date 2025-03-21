@@ -44,7 +44,10 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     check_rtf_features,
 )
 from propa.kraken_toolbox.run_kraken import readshd, run_kraken_exec, run_field_exec
-from propa.rtf.rtf_estimation.rtf_estimation_utils import rtf_covariance_substraction
+from propa.rtf.rtf_estimation.rtf_estimation_utils import (
+    rtf_covariance_substraction,
+    rtf_covariance_whitening,
+)
 
 # ======================================================================================================================
 # Functions
@@ -510,7 +513,11 @@ def estimate_rtf(
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
-    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
+    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
+    #     t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
+    # )
+
+    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_whitening(
         t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
     # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
@@ -555,9 +562,13 @@ def estimate_rtf(
             noise_only = n_l.sel(x=x_i, y=y_i).T
 
             # Derive rtf
-            _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
+            # _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
+            #     t, noisy_sig, noise_only, nperseg, noverlap
+            # )
+            _, rtf_cs_l, _, _, _ = rtf_covariance_whitening(
                 t, noisy_sig, noise_only, nperseg, noverlap
             )
+
 
             # Store
             results_cs.append(rtf_cs_l)

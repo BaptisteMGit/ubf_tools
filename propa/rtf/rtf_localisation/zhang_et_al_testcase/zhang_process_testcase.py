@@ -918,19 +918,19 @@ if __name__ == "__main__":
 
     # Liste des sous antennes considérées : toutes les sous antennes possibles pour 2, 3, 4, 5 et 6 récepteurs
     subarrays_list = []
-    n_rcv = [2, 3, 4, 5, 6]
+    n_rcv = [6, 2, 3, 4, 5]
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
     print(f"Number of subarrays = {len(subarrays_list)}")
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
-    snrs = [0.5]
+    snrs = [0.2]
     print(f"Number of SNRs = {len(snrs)}")
     print("SNRs : ", snrs)
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 10
+    n_monte_carlo = 1
     print(f"Number of Monte Carlo simulations / snr / array config = {n_monte_carlo}")
 
     process_all_snr(

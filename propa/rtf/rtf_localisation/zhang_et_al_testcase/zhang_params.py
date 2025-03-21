@@ -18,8 +18,8 @@ import numpy as np
 # ======================================================================================================================
 # Global params
 # ======================================================================================================================
-# Use tex with matplotlib 
-USE_TEX = True 
+# Use tex with matplotlib
+USE_TEX = True
 
 # Minimum value to replace 0 before converting metrics to dB scale
 MIN_VAL_LOG = 1e-5
@@ -55,18 +55,18 @@ if os.name == "nt":
     N_WORKERS = 8
     max_ram_gb = 14
     MAX_RAM_PER_WORKER_GB = np.ceil(max_ram_gb / N_WORKERS)
-    DASK_SIZES = {
+    BLOCK_SIZES = {
         "t": -1,
         "idx_rcv": -1,
-        "x": 10,
-        "y": 10,
+        "x": 2,
+        "y": 2,
     }
 else:
     # Linux
     N_WORKERS = 6
     max_ram_gb = 108
     MAX_RAM_PER_WORKER_GB = np.ceil(max_ram_gb / N_WORKERS)
-    DASK_SIZES = {
+    BLOCK_SIZES = {
         "t": -1,
         "idx_rcv": -1,
         "x": 10,

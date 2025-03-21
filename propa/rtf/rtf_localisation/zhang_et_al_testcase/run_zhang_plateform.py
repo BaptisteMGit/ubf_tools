@@ -231,12 +231,15 @@ if __name__ == "__main__":
     ## Step 4 : Calcul des vecteurs de RTF "théorique" directement à partir des fonctions de transfert
     # Principalement pour comparaison avec les vecteurs de RTF estimés par la méthode CS 
 
-    ### Open Dask client to manage ressources ###
-    with Client(n_workers=N_WORKERS, threads_per_worker=1, memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB") as client:
-        # Print dashboard link
-        print("Dask Dashboard:", client.dashboard_link)
+    run_test_1()
 
-        # Uncomment target test 
-        run_test_1()
-        # run_test_2()
+
+    # ### Open Dask client to manage ressources ###
+    # with Client(n_workers=N_WORKERS, threads_per_worker=1, memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB") as client:
+    #     # Print dashboard link
+    #     print("Dask Dashboard:", client.dashboard_link)
+
+    #     # Uncomment target test 
+    #     run_test_1()
+    #     # run_test_2()
 

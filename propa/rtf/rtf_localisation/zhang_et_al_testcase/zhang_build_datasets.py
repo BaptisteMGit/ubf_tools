@@ -376,9 +376,7 @@ def derive_received_noise(
     # Normalize to account for the reference signal power to reach required snr at receiver n°0
     sigma_v_library = sigma_rcv_ref_library * np.sqrt(10 ** (-snr_dB / 10))
     # We assume that the noise is due to ambiant noise (hence it does not depend on the source position within the search grid) and is the same at each receiver position (receiver electronic noise )
-    noise_sig_library = np.random.normal(
-        loc=0, scale=sigma_v_library, size=s_library.shape
-    )
+    noise_library = np.random.normal(loc=0, scale=sigma_v_library, size=s_library.shape)
 
     ## Event ##
     s_event_rcv0 = s_event.sel(idx_rcv=0)
@@ -388,13 +386,13 @@ def derive_received_noise(
     sigma_v_event = sigma_rcv_ref_event * np.sqrt(10 ** (-snr_dB / 10))
     # We assume that the noise is due to ambiant noise (hence it does not depend on the source position within the search grid)
     # and is the same at each receiver position (receiver electronic noise negligible)
-    noise_sig_event = np.random.normal(loc=0, scale=sigma_v_event, size=s_event.shape)
+    noise_event = np.random.normal(loc=0, scale=sigma_v_event, size=s_event.shape)
 
     # Create dataset to store noise signals
     ds_noise = xr.Dataset(
         data_vars=dict(
-            n_l=(["idx_rcv", "t", "y", "x"], noise_sig_library),
-            n_e=(["idx_rcv", "t"], noise_sig_event),
+            n_l=(["idx_rcv", "t", "y", "x"], noise_library),
+            n_e=(["idx_rcv", "t"], noise_event),
         ),
         coords=dict(
             t=s_library.t,
@@ -441,31 +439,43 @@ def estimate_rtf_block(
 
     """
 
+    # Extract useful noisy signals
+    x_l = ds_sn_block.x_l  # Noisy library signals
+    x_e = ds_sn_block.x_e  # Noisy event signals
+    t = ds_sn_block.t.values  # Time vector
+
+    # Extract noise signals (different noise realisation than the one use to pollute the signals)
+    n_l = ds_sn_block.n_l_bis  # Library noise
+    n_e = ds_sn_block.n_e_bis  # Event noise
     t = ds_sn_block.t.values
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
     f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
-        t, rcv_sig=ds_sn_block.s_e.T, rcv_noise=ds_sn_block.n_e.T, nperseg=nperseg, noverlap=noverlap
+        t,
+        noisy_signal=x_e.T,
+        noise_only=n_e.T,
+        nperseg=nperseg,
+        noverlap=noverlap,
     )
 
     results_cs = []
     for x_i in ds_sn_block.x:
         for y_i in ds_sn_block.y:
             # Transpose to fit rtf estimation required input shape (ns, nrcv)
-            rcv_sig = ds_sn_block.s_l.sel(x=x_i, y=y_i).T
-            rcv_noise = ds_sn_block.n_l.sel(x=x_i, y=y_i).T
+            noisy_sig = x_l.sel(x=x_i, y=y_i).T
+            noise_only = n_l.sel(x=x_i, y=y_i).T
 
             # Derive rtf
             _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
-                t, rcv_sig, rcv_noise, nperseg, noverlap
+                t, noisy_sig, noise_only, nperseg, noverlap
             )
 
             # Store
             results_cs.append(rtf_cs_l)
 
     return results_cs
-    
+
 
 def estimate_rtf(
     ds_sig_noise,
@@ -489,20 +499,23 @@ def estimate_rtf(
         idx_rcv=npos_to_roll,
         roll_coords=True,
     )
-    s_l = ds_sig_noise_rolled.s_l
-    s_e = ds_sig_noise_rolled.s_e
-    t = ds_sig_noise_rolled.t.values
+    # Extract useful noisy signals
+    x_l = ds_sig_noise_rolled.x_l  # Noisy library signals
+    x_e = ds_sig_noise_rolled.x_e  # Noisy event signals
+    t = ds_sig_noise_rolled.t.values  # Time vector
 
-    # Extract noise signals
-    n_l = ds_sig_noise_rolled.n_l
-    n_e = ds_sig_noise_rolled.n_e
-
+    # Extract noise signals (different noise realisation than the one use to pollute the signals)
+    n_l = ds_sig_noise_rolled.n_l_bis  # Library noise
+    n_e = ds_sig_noise_rolled.n_e_bis  # Event noise
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
     f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
-        t, rcv_sig=s_e.T, rcv_noise=n_e.T, nperseg=nperseg, noverlap=noverlap
+        t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
+    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
+    #     t, rcv_sig=s_e.T, rcv_noise=n_e.T, nperseg=nperseg, noverlap=noverlap
+    # )
 
     # t0 = time()
     # with ProgressBar():
@@ -538,12 +551,12 @@ def estimate_rtf(
             # rcv_noise = n_l.sel(x=x_i, y=y_i).T.values
 
             # Avoid converting to numpy array to keep dask array
-            rcv_sig = s_l.sel(x=x_i, y=y_i).T
-            rcv_noise = n_l.sel(x=x_i, y=y_i).T
+            noisy_sig = x_l.sel(x=x_i, y=y_i).T
+            noise_only = n_l.sel(x=x_i, y=y_i).T
 
             # Derive rtf
             _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
-                t, rcv_sig, rcv_noise, nperseg, noverlap
+                t, noisy_sig, noise_only, nperseg, noverlap
             )
 
             # Store
@@ -802,7 +815,7 @@ def build_features_from_time_signal(
     )
     # NOTE : different noise dataset to simulate the fact that in real life the noise CSDM is
     # estimated from a different segment of the signal than the signal + noise CSDM (assuming noise is stationnary)
-    noise_bis = derive_received_noise(
+    ds_noise_bis = derive_received_noise(
         s_library=ds_sig.s_l,
         s_event=ds_sig.s_e,
         event_source=source,
@@ -811,8 +824,8 @@ def build_features_from_time_signal(
     )
 
     # Build another dataset to store noise + signal to avoid confusions
-    sig_noise_library = ds_sig.s_l + ds_noise.n_l
-    sig_noise_event = ds_sig.s_e + ds_noise.n_e
+    noisy_signal_library = ds_sig.s_l + ds_noise.n_l
+    noisy_signal_event = ds_sig.s_e + ds_noise.n_e
 
     # We don't need all datasets anymore
     ds_noise.close()
@@ -822,10 +835,10 @@ def build_features_from_time_signal(
     if check:
         ds_sig_noise = xr.Dataset(
             data_vars=dict(
-                x_l=(["idx_rcv", "t", "y", "x"], sig_noise_library.values),
+                x_l=(["idx_rcv", "t", "y", "x"], noisy_signal_library.values),
                 n_l=(["idx_rcv", "t", "y", "x"], ds_noise.n_l.values),
                 s_l=(["idx_rcv", "t", "y", "x"], ds_sig.s_l.values),
-                x_e=(["idx_rcv", "t"], sig_noise_event.values),
+                x_e=(["idx_rcv", "t"], noisy_signal_event.values),
                 n_e=(["idx_rcv", "t"], ds_noise.n_e.values),
                 s_e=(["idx_rcv", "t"], ds_sig.s_e.values),
             ),
@@ -848,7 +861,7 @@ def build_features_from_time_signal(
                 ),
             ),
         )
-            
+
         check_signal_noise(ds_sig_noise)
         check_signal_noise_stft(ds_sig_noise)
 
@@ -860,7 +873,6 @@ def build_features_from_time_signal(
     nperseg = 2**11
     noverlap = nperseg // 2
 
-    
     # # Init lists to save results
     # rtf_event = []  # RFT vector at the source position
     # rtf_library = []  # RTF vector evaluated at each grid pixel
@@ -896,7 +908,7 @@ def build_features_from_time_signal(
     #     gcc_event.append(gcc_e)
     #     gcc_library.append(gcc_l)
 
-        # print(f"GCC cpu time {(time() - t0):.2f}s")
+    # print(f"GCC cpu time {(time() - t0):.2f}s")
 
     # gcc_library_no_dask = gcc_library
     # gcc_event_no_dask = gcc_event
@@ -905,15 +917,15 @@ def build_features_from_time_signal(
 
     ### Parallelize the loop with Dask ###
 
-    # Avoid sending too large arrays to dedicated functions 
+    # Avoid sending too large arrays to dedicated functions
     # RTF
 
     ds_sig_noise_light_rtf = xr.Dataset(
         data_vars=dict(
-            n_l=(["idx_rcv", "t", "y", "x"], noise_bis.n_l.values),
-            s_l=(["idx_rcv", "t", "y", "x"], ds_sig.s_l.values),
-            n_e=(["idx_rcv", "t"], noise_bis.n_e.values),
-            s_e=(["idx_rcv", "t"], ds_sig.s_e.values),
+            x_l=(["idx_rcv", "t", "y", "x"], noisy_signal_library.values),
+            n_l_bis=(["idx_rcv", "t", "y", "x"], ds_noise_bis.n_l.values),
+            x_e=(["idx_rcv", "t"], noisy_signal_event.values),
+            n_e_bis=(["idx_rcv", "t"], ds_noise_bis.n_e.values),
         ),
         coords=dict(
             t=ds_sig.t,
@@ -923,11 +935,16 @@ def build_features_from_time_signal(
         ),
     )
 
+    # x_ = ds_sig.s_l + ds_noise.n_l
+    # print(np.all(x_ == ds_sig_noise_light_rtf.x_l))
+    # x_bis = ds_sig.s_l + ds_noise_bis.n_l
+    # print(np.all(x_bis == ds_sig_noise_light_rtf.x_l))
+
     # DCF
     ds_sig_noise_light_dcf = xr.Dataset(
         data_vars=dict(
-            x_l=(["idx_rcv", "t", "y", "x"], sig_noise_library.values),
-            x_e=(["idx_rcv", "t"], sig_noise_event.values),
+            x_l=(["idx_rcv", "t", "y", "x"], noisy_signal_library.values),
+            x_e=(["idx_rcv", "t"], noisy_signal_event.values),
         ),
         coords=dict(
             t=ds_sig.t,

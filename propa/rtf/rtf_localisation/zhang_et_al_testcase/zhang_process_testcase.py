@@ -925,12 +925,12 @@ if __name__ == "__main__":
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
-    snrs = [0.5]
+    snrs = [-20.2]
     print(f"Number of SNRs = {len(snrs)}")
     print("SNRs : ", snrs)
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 10
+    n_monte_carlo = 1
     print(f"Number of Monte Carlo simulations / snr / array config = {n_monte_carlo}")
 
     process_all_snr(

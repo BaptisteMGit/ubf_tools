@@ -485,23 +485,26 @@ def estimate_rtf_parallel(
     return f_rtf, rtf_l, rtf_e
 
 
-def regions_slices(ds):
+def regions_slices(ds, nx=None, ny=None):
+    if nx is None:
+        nx = ds.sizes["x"] // BLOCK_SIZES["x"]
+    if ny is None:
+        ny = ds.sizes["y"] // BLOCK_SIZES["y"]
+
     # X slices
-    nx = ds.sizes["x"] // BLOCK_SIZES["x"]
     x_slice_lims = np.linspace(0, ds.sizes["x"], nx + 1, dtype=int)
     x_slices = [slice(x_slice_lims[i], x_slice_lims[i + 1]) for i in range(nx)]
     # Y slices
-    ny = ds.sizes["y"] // BLOCK_SIZES["y"]
     y_slice_lims = np.linspace(0, ds.sizes["y"], ny + 1, dtype=int)
     y_slices = [slice(y_slice_lims[i], y_slice_lims[i + 1]) for i in range(ny)]
 
     return x_slices, y_slices
 
 
-def build_ds_block(ds):
+def build_ds_block(ds, nx=None, ny=None):
 
     # Define region slices
-    x_slices, y_slices = regions_slices(ds)
+    x_slices, y_slices = regions_slices(ds, nx=nx, ny=ny)
 
     # Define blocks
     blocks = []
@@ -978,6 +981,39 @@ def build_features_from_time_signal(
     gcc_library = []  # GCC-SCOT vector evaluated at each grid pixel
 
     # Parallelize estimation
+    n_ref = len(idx_rcv_refs)
+    nx = ny = int(np.sqrt(N_WORKERS / n_ref))
+
+    ## RTF ##
+    # Split dataset in blocks to parallelize computation
+    ds_sn_rtf_blocks = build_ds_block(ds_sig_noise_light_rtf, nx=nx, ny=ny)
+    iterable_args_rtf = []
+    for i_ref in idx_rcv_refs:
+        for ds_block in ds_sn_rtf_blocks:
+            iterable_args_rtf.append((ds_block, i_ref, library_props, nperseg, verbose))
+
+    ## DCF ##
+    # Split dataset in blocks to parallelize computation
+    ds_sn_dcf_blocks = build_ds_block(ds_sig_noise_light_dcf, nx=nx, ny=ny)
+    iterable_args_dcf = []
+    for i_ref in idx_rcv_refs:
+        for ds_block in ds_sn_dcf_blocks:
+            iterable_args_dcf.append((ds_block, i_ref, library_props, nperseg, verbose))
+
+    # # Create multiprocessing Pool of workers
+    # with Pool(N_WORKERS) as pool:
+    #     res_rtf = pool.starmap(func=estimate_rtf, iterable=iterable_args_rtf)
+
+    # # Gather results
+    # print("Gather results")
+
+    # Create multiprocessing Pool of workers
+    with Pool(N_WORKERS) as pool:
+        res_rtf = pool.starmap(func=estimate_rtf, iterable=iterable_args_rtf)
+        res_dcf = pool.starmap(func=estimate_dcf_gcc, iterable=iterable_args_rtf)
+
+    # Gather results
+    print("Gather results")
 
     for i_ref in idx_rcv_refs:
 

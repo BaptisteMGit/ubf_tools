@@ -516,9 +516,9 @@ def build_ds_block(ds, nx=None, ny=None):
     return blocks
 
 
-def gather_res_blocks(res_blocks, ds_sig_noise, f_rtf):
+def gather_res_blocks(res_blocks, ds_sig_noise, f_rtf, nx=None, ny=None):
     # Res is a list of np.array of shape (nf, nx, ny, n_rcv)
-    x_slices, y_slices = regions_slices(ds_sig_noise)
+    x_slices, y_slices = regions_slices(ds_sig_noise, nx=nx, ny=ny)
     rtf = np.zeros(
         (
             len(f_rtf),
@@ -1010,24 +1010,49 @@ def build_features_from_time_signal(
     # Create multiprocessing Pool of workers
     with Pool(N_WORKERS) as pool:
         res_rtf = pool.starmap(func=estimate_rtf, iterable=iterable_args_rtf)
-        res_dcf = pool.starmap(func=estimate_dcf_gcc, iterable=iterable_args_rtf)
+        res_dcf = pool.starmap(func=estimate_dcf_gcc, iterable=iterable_args_dcf)
 
     # Gather results
+    f_rtf = res_rtf[0][0]
+    n_spatial_blocks = len(ds_sn_rtf_blocks)
+    for i_ref in idx_rcv_refs:
+        res_rtf_iref = res_rtf[
+            i_ref * n_spatial_blocks : (i_ref + 1) * n_spatial_blocks
+        ]
+        rtf_iref_l = [res[1] for res in res_rtf_iref]
+        rtf_cs_l = gather_res_blocks(
+            res_blocks=rtf_iref_l,
+            ds_sig_noise=ds_sig_noise_light_rtf,
+            f_rtf=f_rtf,
+            nx=nx,
+            ny=ny,
+        )
+        rtf_cs_e = res_rtf_iref[0][2]
+        rtf_library.append(rtf_cs_l)
+        rtf_event.append(rtf_cs_e)
+
+    rtf_library_full_para = rtf_library
+    rtf_event_full_para = rtf_event
     print("Gather results")
+
+    rtf_event = []  # RFT vector at the source position
+    rtf_library = []  # RTF vector evaluated at each grid pixel
+    gcc_event = []  # GCC vector evaluated at the source position
+    gcc_library = []  # GCC-SCOT vector evaluated at each grid pixel
 
     for i_ref in idx_rcv_refs:
 
         ## RTF ##
-        t0 = time()
-        f_rtf, rtf_cs_l_parra, rtf_cs_e_parra = estimate_rtf_parallel(
-            ds_sig_noise=ds_sig_noise_light_rtf,
-            i_ref=i_ref,
-            library_props=library_props,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            verbose=verbose,
-        )
-        print(f"RTF parallel {(time() - t0):.2f}s")
+        # t0 = time()
+        # f_rtf, rtf_cs_l_parra, rtf_cs_e_parra = estimate_rtf_parallel(
+        #     ds_sig_noise=ds_sig_noise_light_rtf,
+        #     i_ref=i_ref,
+        #     library_props=library_props,
+        #     nperseg=nperseg,
+        #     noverlap=noverlap,
+        #     verbose=verbose,
+        # )
+        # print(f"RTF parallel {(time() - t0):.2f}s")
 
         t0 = time()
         f_rtf, rtf_cs_l, rtf_cs_e = estimate_rtf(
@@ -1040,14 +1065,15 @@ def build_features_from_time_signal(
         )
         print(f"RTF serie {(time() - t0):.2f}s")
 
-        print(
-            f"RTF parallel and serie are equal : {np.allclose(rtf_cs_l_parra, rtf_cs_l)}"
-        )
+        # print(
+        #     f"RTF parallel and serie are equal : {np.allclose(rtf_cs_l_parra, rtf_cs_l)}"
+        # )
 
         rtf_library.append(rtf_cs_l)
         rtf_event.append(rtf_cs_e)
 
         ## GCC SCOT ##
+        t0 = time()
         f_gcc, gcc_l, gcc_e = estimate_dcf_gcc(
             ds_sig_noise=ds_sig_noise_light_dcf,
             i_ref=i_ref,
@@ -1060,8 +1086,13 @@ def build_features_from_time_signal(
         gcc_event.append(gcc_e)
         gcc_library.append(gcc_l)
 
-    print(f"GCC cpu time {(time() - t0):.2f}s")
+        print(f"GCC cpu time {(time() - t0):.2f}s")
 
+    # Check results
+    for i_ref in idx_rcv_refs:
+        print(
+            f"RTF and RTF full para results are equal : {np.allclose(rtf_library[i_ref], rtf_library_full_para[i_ref])}"
+        )
     ### Parallelize the loop with Dask ###
     # Avoid sending too large arrays to dedicated functions
     # RTF

@@ -610,33 +610,6 @@ def estimate_rtf(
     # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_whitening(
     #     t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     # )
-    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
-    #     t, rcv_sig=s_e.T, rcv_noise=n_e.T, nperseg=nperseg, noverlap=noverlap
-    # )
-
-    # t0 = time()
-    # with ProgressBar():
-    #     results_cs = []
-    #     # results_cw = []
-    #     for x_i in ds_sig_noise.x:
-    #         for y_i in ds_sig_noise.y:
-    #             # Transpose to fit rtf estimation required input shape (ns, nrcv)
-    #             rcv_sig = s_l.sel(x=x_i, y=y_i).T
-    #             rcv_noise = n_l.sel(x=x_i, y=y_i).T
-
-    #             # Wrap function call in dask delayed with client resources
-    #             delayed_rtf_cs = dask.delayed(
-    #                 lambda *args: rtf_covariance_substraction(*args)[1]
-    #             )(t, rcv_sig, rcv_noise, nperseg, noverlap)
-    #             results_cs.append(delayed_rtf_cs)
-
-    # print(f"Ellapsed time to build delayed list : {time()-t0}")
-    # # Compute all RTFs using Dask client
-    # t0 = time()
-    # rtf_cs_l = dask.compute(*results_cs)
-    # print(f"Actual time to compute: {time()- t0}")
-    # rtf_cs_l = np.array(rtf_cs_l)
-
     # Dask used at higher level to parallelize the computation
 
     results_cs = []
@@ -644,10 +617,6 @@ def estimate_rtf(
     for x_i in ds_sig_noise.x:
         for y_i in ds_sig_noise.y:
             # Transpose to fit rtf estimation required input shape (ns, nrcv)
-            # rcv_sig = s_l.sel(x=x_i, y=y_i).T.values
-            # rcv_noise = n_l.sel(x=x_i, y=y_i).T.values
-
-            # Avoid converting to numpy array to keep dask array
             noisy_sig = x_l.sel(x=x_i, y=y_i).T
             noise_only = n_l.sel(x=x_i, y=y_i).T
 
@@ -1007,6 +976,8 @@ def build_features_from_time_signal(
     rtf_library = []  # RTF vector evaluated at each grid pixel
     gcc_event = []  # GCC vector evaluated at the source position
     gcc_library = []  # GCC-SCOT vector evaluated at each grid pixel
+
+    # Parallelize estimation
 
     for i_ref in idx_rcv_refs:
 

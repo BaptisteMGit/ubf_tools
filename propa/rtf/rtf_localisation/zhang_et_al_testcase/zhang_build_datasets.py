@@ -1013,9 +1013,11 @@ def build_features_from_time_signal(
     # print("Gather results")
 
     # Create multiprocessing Pool of workers
+    t0 = time()
     with Pool(N_WORKERS) as pool:
         res_rtf = pool.starmap(func=estimate_rtf, iterable=iterable_args_rtf)
         res_dcf = pool.starmap(func=estimate_dcf_gcc, iterable=iterable_args_rtf)
+    print(f"Full parallel {(time() - t0):.2f}s")
 
     # Gather results
     print("Gather results")
@@ -1065,7 +1067,7 @@ def build_features_from_time_signal(
         gcc_event.append(gcc_e)
         gcc_library.append(gcc_l)
 
-    print(f"GCC cpu time {(time() - t0):.2f}s")
+        print(f"GCC cpu time {(time() - t0):.2f}s")
 
     ### Parallelize the loop with Dask ###
     # Avoid sending too large arrays to dedicated functions

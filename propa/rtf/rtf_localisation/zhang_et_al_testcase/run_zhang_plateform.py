@@ -58,15 +58,27 @@ def run_test_1():
     """
 
     # Liste des sous antennes considérées 
-    best_subarray = [0, 2, 5]
-    worste_subarray = [2, 3, 5]
-    subarrays_list = [best_subarray, worste_subarray]
+    # best_subarray = [0, 2, 5]
+    # worste_subarray = [2, 3, 5]
+    # subarrays_list = [best_subarray, worste_subarray]
+    subarrays_list = []
+    n_rcv = [2, 3, 4, 5, 6]
+    for i in n_rcv:
+        subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
     print(f"Number of subarrays = {len(subarrays_list)}")
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
-    snr_min = -10
-    snr_max = 10
+    # # Docker 1 
+    # snr_min = -15
+    # snr_max = -7.5
+    # Docker 2 
+    snr_min = -5
+    snr_max = 2.5
+    # # Docker 3
+    # snr_min = 5
+    # snr_max = 15
+
     snr_step = 2.5
     n_snr = int((snr_max - snr_min) / snr_step + 1)
     snrs = np.linspace(snr_min, snr_max, n_snr)
@@ -74,7 +86,7 @@ def run_test_1():
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 10
+    n_monte_carlo = 100
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information 

@@ -62,9 +62,11 @@ def run_test_1():
     # worste_subarray = [2, 3, 5]
     # subarrays_list = [best_subarray, worste_subarray]
     subarrays_list = []
-    n_rcv = [2, 3, 4, 5, 6]
+    # subarrays_list = [[0, 1, 2, 3, 4, 5]]
+    n_rcv = [3, 4, 5, 6]
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
+
     print(f"Number of subarrays = {len(subarrays_list)}")
     print("Subarrays list : ", subarrays_list)
 
@@ -78,7 +80,7 @@ def run_test_1():
     # # Docker 2 
     # snr_min = -5
     # snr_max = 2.5
-    # # Docker 3
+    # Docker 3
     snr_min = 5
     snr_max = 15
 
@@ -89,7 +91,7 @@ def run_test_1():
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 20
+    n_monte_carlo = 100
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information 
@@ -122,7 +124,7 @@ def run_test_1():
         antenna_type=antenna_type,
         debug=debug,
         verbose=False,
-        check=True,
+        check=False,
         plot_args=plot_args,
     )
 
@@ -220,7 +222,7 @@ if __name__ == "__main__":
     """
     antenna_type = "zhang"
     event_stype = "wn"
-    debug = True
+    debug = False
 
     freq_draw_method = "equally_spaced"
     nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)
@@ -246,15 +248,15 @@ if __name__ == "__main__":
     ## Step 4 : Calcul des vecteurs de RTF "théorique" directement à partir des fonctions de transfert
     # Principalement pour comparaison avec les vecteurs de RTF estimés par la méthode CS 
 
-    run_test_1()
+    # run_test_1()
 
 
-    # ### Open Dask client to manage ressources ###
-    # with Client(n_workers=N_WORKERS, threads_per_worker=1, memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB") as client:
-    #     # Print dashboard link
-    #     print("Dask Dashboard:", client.dashboard_link)
+    # # ### Open Dask client to manage ressources ###
+    with Client(n_workers=N_WORKERS, threads_per_worker=1, memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB") as client:
+        # Print dashboard link
+        print("Dask Dashboard:", client.dashboard_link)
 
-    #     # Uncomment target test 
-    #     run_test_1()
+        # Uncomment target test 
+        run_test_1()
     #     # run_test_2()
 

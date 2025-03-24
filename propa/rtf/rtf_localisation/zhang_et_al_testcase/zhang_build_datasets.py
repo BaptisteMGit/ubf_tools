@@ -15,9 +15,9 @@
 import os
 import dask
 import numpy as np
+import scipy.signal as sp
 import xarray as xr
 import dask.array as da
-import scipy.signal as sp
 
 from cst import C0
 from time import time
@@ -32,6 +32,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     ROOT_DATA,
     BLOCK_SIZES,
     N_WORKERS,
+    MAX_RAM_PER_WORKER_GB
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     library_src_spectrum,
@@ -49,6 +50,7 @@ from propa.rtf.rtf_estimation.rtf_estimation_utils import (
     rtf_covariance_substraction,
     rtf_covariance_whitening,
 )
+
 
 # ======================================================================================================================
 # Functions
@@ -572,7 +574,7 @@ def estimate_rtf_parallel_process_block(ds_block, nperseg, noverlap):
 
     return rtf_cs_l
 
-
+@dask.delayed
 def estimate_rtf_arrays(
     t,
     x_l,
@@ -725,7 +727,7 @@ def estimate_rtf(
 
     return f_rtf, rtf_cs_l, rtf_cs_e
 
-
+@dask.delayed
 def estimate_dcf_gcc_arrays(
     x_l,
     x_e,
@@ -1246,11 +1248,15 @@ def build_features_from_time_signal(
 
     first_iter = True 
     for i_ref in idx_rcv_refs:
+        res_rtf_iref = []
+        res_dcf_iref = []
+
         iterable_args_rtf = []
         iterable_args_dcf = []
         for i_ds_block in range(n_spatial_blocks):
 
             ### RTF ###
+            # t0 = time()
             ds_block = ds_sn_rtf_blocks[i_ds_block]
             # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
             idx_pos_ref = np.argmin(np.abs(ds_block.idx_rcv.values - i_ref))
@@ -1259,7 +1265,10 @@ def build_features_from_time_signal(
                 idx_rcv=npos_to_roll,
                 roll_coords=True,
             )
+            # print(f"Roll : {time()-t0}")
+
             # Builds inputs array (convert to numpy arrays to avoid passing views of xarray data -> duplicated dataset causing large memory consumption)
+            # t0 = time()
             inputs = (
                 ds_block.t.values,
                 ds_block.x_l.values,
@@ -1273,9 +1282,12 @@ def build_features_from_time_signal(
                 noverlap,
                 verbose,
             )
-            iterable_args_rtf.append(inputs)
+            # iterable_args_rtf.append(inputs)
+            res_rtf_iref.append(estimate_rtf_arrays(*inputs))
+            # print(f"Def inputs rtf : {time()-t0}")
 
             ### DCF ###
+            # t0 = time()
             ds_block = ds_sn_dcf_blocks[i_ds_block]
             inputs = (
                 ds_block.x_l.values,
@@ -1288,11 +1300,23 @@ def build_features_from_time_signal(
                 noverlap,
                 verbose,
             )
-            iterable_args_dcf.append(inputs)
+            # iterable_args_dcf.append(inputs)
+            res_dcf_iref.append(estimate_dcf_gcc_arrays(*inputs))
+            # print(f"Def inputs dcf : {time()-t0}")
 
-        with Pool(N_WORKERS) as pool:
-            res_rtf_iref = pool.starmap(func=estimate_rtf_arrays, iterable=iterable_args_rtf)
-            res_dcf_iref = pool.starmap(func=estimate_dcf_gcc_arrays, iterable=iterable_args_dcf)
+
+        # with Pool(N_WORKERS) as pool:
+        #     res_rtf_iref = pool.starmap(func=estimate_rtf_arrays, iterable=iterable_args_rtf)
+        #     res_dcf_iref = pool.starmap(func=estimate_dcf_gcc_arrays, iterable=iterable_args_dcf)
+        res_rtf_iref = dask.compute(res_rtf_iref)
+        res_dcf_iref = dask.compute(res_dcf_iref)
+        res_rtf_iref = res_rtf_iref[0]
+        res_dcf_iref = res_dcf_iref[0]
+
+        # future_rtf_iref = client.map(estimate_rtf_arrays, iterable_args_rtf)
+        # future_dcf_iref = client.map(estimate_dcf_gcc_arrays, iterable_args_dcf)
+        # res_rtf_iref = client.gather(future_rtf_iref)
+        # res_dcf_iref = client.gather(future_dcf_iref)
 
         # NOTE : both res_iref are a list of output from func. i.e each element of the list if a three elements tuple (f, feature_l, feature_e)
 
@@ -1302,13 +1326,14 @@ def build_features_from_time_signal(
             # Set tmp dataset used by the gather_ fct
             ds_tmp = xr.Dataset(
                 data_vars={},
-                coords={"x": ds_sig_noise.x.values, 
-                        "y": ds_sig_noise.y.values, 
-                        "idx_rcv": ds_sig_noise.idx_rcv.values}
+                coords={"x": ds_sig_noise_light_rtf.x.values, 
+                        "y": ds_sig_noise_light_rtf.y.values, 
+                        "idx_rcv": ds_sig_noise_light_rtf.idx_rcv.values}
                 )
             first_iter = False
 
         # Save DCF 
+        # t0 = time()
         dcf_iref_l = [res[1] for res in res_dcf_iref]
         gcc_l = gather_res_blocks(
             res_blocks=dcf_iref_l,
@@ -1321,8 +1346,10 @@ def build_features_from_time_signal(
         gcc_e = res_dcf_iref[0][2]
         gcc_library.append(gcc_l)
         gcc_event.append(gcc_e)
+        # print(f"Gather dcf : {time()-t0}s")
 
         # Save RTF
+        # t0 = time()
         rtf_iref_l = [res[1] for res in res_rtf_iref]
         rtf_cs_l = gather_res_blocks(
             res_blocks=rtf_iref_l,
@@ -1332,8 +1359,16 @@ def build_features_from_time_signal(
             ny=ny,
         )
         rtf_cs_e = res_rtf_iref[0][2]
+
+        # We need to roll back results to the initial rcv order 
+        i_ref_inital_pos = np.argmin(np.abs(ds_tmp.idx_rcv.values - i_ref))
+        rtf_cs_l = np.roll(rtf_cs_l, shift=i_ref_inital_pos, axis=0)        # i_ref was in first place -> move it back to intial pos 
+        rtf_cs_e = np.roll(rtf_cs_e, shift=i_ref_inital_pos, axis=0)
+
         rtf_library.append(rtf_cs_l)
         rtf_event.append(rtf_cs_e)
+        # print(f"Gather rtf : {time()-t0}s")
+
 
 
     # Delete useless vars

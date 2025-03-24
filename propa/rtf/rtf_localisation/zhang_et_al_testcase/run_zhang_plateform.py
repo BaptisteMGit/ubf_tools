@@ -70,8 +70,8 @@ def run_test_1():
 
     # Liste des SNR considérés
     # Docker 1 
-    snr_min = -15
-    snr_max = 15
+    # snr_min = -15
+    # snr_max = 15
     # # Docker 1 
     # snr_min = -15
     # snr_max = -7.5
@@ -79,8 +79,8 @@ def run_test_1():
     # snr_min = -5
     # snr_max = 2.5
     # # Docker 3
-    # snr_min = 5
-    # snr_max = 15
+    snr_min = 5
+    snr_max = 15
 
     snr_step = 2.5
     n_snr = int((snr_max - snr_min) / snr_step + 1)
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     """
     antenna_type = "zhang"
     event_stype = "wn"
-    debug = False
+    debug = True
 
     freq_draw_method = "equally_spaced"
     nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)

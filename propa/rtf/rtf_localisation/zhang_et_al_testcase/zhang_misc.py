@@ -100,12 +100,12 @@ def params(debug=False, antenna_type="zhang"):
 
     if debug:
         # Test with non square area
-        # l_detection_area_x = 0.4e3  # Length of the detection area along x axis
-        # l_detection_area_y = 0.5e3  # Length of the detection area along y axis
+        l_detection_area_x = 0.4e3  # Length of the detection area along x axis
+        l_detection_area_y = 0.5e3  # Length of the detection area along y axis
 
-        # To debug 17032025
-        l_detection_area_x = 0.3e3  # Length of the detection area along x axis
-        l_detection_area_y = 0.2e3  # Length of the detection area along y axis
+        # # To debug 17032025
+        # l_detection_area_x = 0.3e3  # Length of the detection area along x axis
+        # l_detection_area_y = 0.2e3  # Length of the detection area along y axis
 
         # Manual def (ugly)
         x_bott_left_corner = 3800

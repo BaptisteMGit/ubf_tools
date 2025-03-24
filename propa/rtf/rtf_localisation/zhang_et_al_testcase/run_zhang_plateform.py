@@ -69,12 +69,15 @@ def run_test_1():
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
+    # Docker 1 
+    snr_min = -15
+    snr_max = 15
     # # Docker 1 
     # snr_min = -15
     # snr_max = -7.5
-    # Docker 2 
-    snr_min = -5
-    snr_max = 2.5
+    # # Docker 2 
+    # snr_min = -5
+    # snr_max = 2.5
     # # Docker 3
     # snr_min = 5
     # snr_max = 15
@@ -86,7 +89,7 @@ def run_test_1():
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 100
+    n_monte_carlo = 20
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information 

@@ -136,6 +136,12 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
     apply_median = kwargs.get("apply_median", False)
     apply_sum = kwargs.get("apply_sum", False)
     ax_rcv = kwargs.get("ax_rcv", 3 if rtf.ndim == 4 else 1)
+    f_axis = kwargs.get("f_axis", 1)
+
+    if f_axis != 0:
+        rtf = np.moveaxis(rtf, f_axis, 0)
+        rtf_ref = np.moveaxis(rtf_ref, f_axis, 0)
+        ax_rcv = 1
 
     # Case: 4D input for variation
     if rtf.ndim == 4:

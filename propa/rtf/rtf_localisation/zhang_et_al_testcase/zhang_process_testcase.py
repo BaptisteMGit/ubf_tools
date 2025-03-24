@@ -79,9 +79,10 @@ def process_localisation_zhang2023(
     # Match field processing #
     dist_func = D_hermitian_angle_fast
     dist_kwargs = {
-        "ax_rcv": 3,
+        "ax_rcv": 0,
         "unit": "deg",
         "apply_mean": True,
+        "f_axis": 1,
     }
 
     # Select a few frequencies
@@ -142,7 +143,9 @@ def process_localisation_zhang2023(
         theta = dist_func(rtf_event, rtf_grid, **dist_kwargs)
 
         # Add theta to dataset
-        ds_cpl_rtf["theta"] = (["x", "y"], theta)
+        # ds_cpl_rtf["theta"] = (["x", "y"], theta)
+        ds_cpl_rtf["theta"] = (["y", "x"], theta)
+
 
         # Normalize
         d_rtf = normalize_metric_contrast(-ds_cpl_rtf.theta)
@@ -151,7 +154,9 @@ def process_localisation_zhang2023(
         d_rtf = d_rtf.values
         d_rtf[d_rtf == 0] = MIN_VAL_LOG
         d_rtf = 10 * np.log10(d_rtf)
-        ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf)
+        # ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf)
+        ds_cpl_rtf["d_rtf"] = (["y", "x"], d_rtf)
+
 
         ## GCC ##
         ds_cpl_gcc = ds.sel(idx_rcv_ref=rcv_cpl[0], idx_rcv=rcv_cpl[1])
@@ -182,7 +187,9 @@ def process_localisation_zhang2023(
         d_gcc = 10 * np.log10(d_gcc)  # Convert to dB
 
         # Add d to dataset
-        ds_cpl_gcc["d_gcc"] = (["x", "y"], d_gcc)
+        # ds_cpl_gcc["d_gcc"] = (["x", "y"], d_gcc)
+        ds_cpl_gcc["d_gcc"] = (["y", "x"], d_gcc)
+
 
         # Store d_gcc for full array incoherent processing
         # d_gcc_fullarray.append(d_gcc)
@@ -190,9 +197,12 @@ def process_localisation_zhang2023(
         # Build dataset to be saved as netcdf
         ds_cpl = xr.Dataset(
             data_vars=dict(
-                theta_rtf=(["x", "y"], ds_cpl_rtf.theta.values),
-                d_rtf=(["x", "y"], ds_cpl_rtf.d_rtf.values),
-                d_gcc=(["x", "y"], ds_cpl_gcc.d_gcc.values),
+                # theta_rtf=(["x", "y"], ds_cpl_rtf.theta.values),
+                # d_rtf=(["x", "y"], ds_cpl_rtf.d_rtf.values),
+                # d_gcc=(["x", "y"], ds_cpl_gcc.d_gcc.values),
+                theta_rtf=(["y", "x"], ds_cpl_rtf.theta.values),
+                d_rtf=(["y", "x"], ds_cpl_rtf.d_rtf.values),
+                d_gcc=(["y", "x"], ds_cpl_gcc.d_gcc.values),
             ),
             coords={
                 "x": ds.x.values,
@@ -269,7 +279,9 @@ def process_localisation_zhang2023(
     theta = dist_func(rtf_event, rtf_grid, **dist_kwargs)
 
     # Add theta to dataset
-    ds_fa_rtf["theta"] = (["x", "y"], theta)
+    # ds_fa_rtf["theta"] = (["x", "y"], theta)
+    ds_fa_rtf["theta"] = (["y", "x"], theta)
+
 
     # # Convert theta to a metric between -1 and 1
     # theta_inv = (
@@ -283,7 +295,9 @@ def process_localisation_zhang2023(
     d_rtf = d_rtf.values
     d_rtf[d_rtf == 0] = MIN_VAL_LOG
     d_rtf = 10 * np.log10(d_rtf)  # Convert to dB
-    ds_fa_rtf["d_rtf"] = (["x", "y"], d_rtf)
+    # ds_fa_rtf["d_rtf"] = (["x", "y"], d_rtf)
+    ds_fa_rtf["d_rtf"] = (["y", "x"], d_rtf)
+
 
     ## GCC ##
     d_gcc_fullarray = np.array(d_gcc_fullarray)
@@ -309,9 +323,12 @@ def process_localisation_zhang2023(
     # Build dataset to be saved as netcdf
     ds_fullarray = xr.Dataset(
         data_vars=dict(
-            theta_rtf=(["x", "y"], ds_fa_rtf.theta.values),
-            d_rtf=(["x", "y"], ds_fa_rtf.d_rtf.values),
-            d_gcc=(["x", "y"], d_gcc_fullarray),
+            # theta_rtf=(["x", "y"], ds_fa_rtf.theta.values),
+            # d_rtf=(["x", "y"], ds_fa_rtf.d_rtf.values),
+            # d_gcc=(["x", "y"], d_gcc_fullarray),
+            theta_rtf=(["y", "x"], ds_fa_rtf.theta.values),
+            d_rtf=(["y", "x"], ds_fa_rtf.d_rtf.values),
+            d_gcc=(["y", "x"], d_gcc_fullarray),
         ),
         coords={
             "x": ds.x.values,

@@ -63,7 +63,7 @@ if os.name == "nt":
     }
 else:
     # Linux
-    N_WORKERS = 80
+    N_WORKERS = 10
     max_ram_gb = 108
     MAX_RAM_PER_WORKER_GB = np.ceil(max_ram_gb / N_WORKERS)
     BLOCK_SIZES = {

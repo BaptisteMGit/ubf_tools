@@ -29,6 +29,9 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     find_mainlobe,
     get_subarrays,
     load_msr_rmse_res_subarrays,
+    get_estimated_src_pos,
+    get_axis_order,
+    get_hull_points,
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     ROOT_IMG,
@@ -302,7 +305,7 @@ def plot_study_zhang2023(
             ds_fa, root_img, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap=cmap
         )
 
-    estimate_msr(ds_fa=ds_fa, plot=plot_msr_estimation, root_img=root_img, verbose=True)
+    estimate_msr(ds_fa=ds_fa, verbose=True)
 
 
 def plot_antenna_and_search_area(
@@ -631,6 +634,8 @@ def plot_ambiguity_surface_mainlobe_contour(
         ax = axs[i]
         amb_surf = ds_fa[dist]
 
+        ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+
         amb_surf.plot(
             x="x",
             y="y",
@@ -642,28 +647,27 @@ def plot_ambiguity_surface_mainlobe_contour(
             cbar_kwargs={"label": "[dB]"},
         )
 
-        # im = ax.pcolormesh(
-        #     ds_fa["x"].values,
-        #     ds_fa["y"].values,
-        #     amb_surf.values.T,
-        #     cmap=cmap,
-        #     vmin=vmin,
-        #     vmax=vmax,
-        # )
+        contour = mainlobe_contours[dist]
+        hull_points = get_hull_points(da_amb_surf=amb_surf, contour=contour)
 
-        # Add colorbar
-        # cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
+        ax.plot(
+            ds_fa["x"].values[contour[:, ax_order["x"]].astype(int)],
+            ds_fa["y"].values[contour[:, ax_order["y"]].astype(int)],
+            color="k",
+            linewidth=2,
+            label="Contour",
+        )
 
-        # contour = mainlobe_contours[dist]
-        # ax.plot(
-        #     ds_fa["x"].values[contour[:, 0].astype(int)],
-        #     ds_fa["y"].values[contour[:, 1].astype(int)],
-        #     color="k",
-        #     linewidth=2,
-        #     # label="Mainlobe Boundary" if i == 0 else None,
-        # )
+        ax.plot(
+            hull_points[:, 0],
+            hull_points[:, 1],
+            "r-",
+            linewidth=2,
+            label="Convex Hull",
+        )
 
-        ax.set_title(r"$\textrm{Full array}$")
+        title = "DCF" if dist == "d_gcc" else "RTF"
+        ax.set_title(title)
         ax.set_xlabel(r"$x$" + " [m]")
         if i == 0:
             ax.set_ylabel(r"$y$" + " [m]")
@@ -673,15 +677,17 @@ def plot_ambiguity_surface_mainlobe_contour(
         # Set xticks
         ax.set_xticks(xticks_pos_m)
         ax.set_yticks(yticks_pos_m)
-        # ax.set_xticklabels(xticks_label_km, fontsize=22)
-        # ax.set_yticklabels(yticks_label_km, fontsize=22)
 
     # Save figure
     root_mainlobe = os.path.join(root_img, "mainlobe")
     if not os.path.exists(root_mainlobe):
         os.makedirs(root_mainlobe)
 
-    fpath = os.path.join(root_mainlobe, "loc_zhang2023_fig5_mainlobe.png")
+    rcv_lab = "_".join([f"s{id+1}" for id in ds_fa.idx_rcv])
+    fpath = os.path.join(
+        root_mainlobe, f"loc_zhang2023_mainlobe__snr{ds_fa.snr}dB_rcvs_{rcv_lab}.png"
+    )
+    plt.legend()
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
     plt.close("all")
 
@@ -727,6 +733,14 @@ def plot_ambiguity_surface_distribution(ds_fa, root_img):
     plt.close("all")
 
 
+def get_amb_surf_cmap(loc_arg):
+    if loc_arg == "max":
+        cmap = "jet"
+    elif loc_arg == "min":
+        cmap = "jet_r"
+    return cmap
+
+
 def plot_ambiguity_surface(
     amb_surf, source, plot_args, loc_arg, antenna_type="zhang", folder_name=""
 ):
@@ -750,21 +764,16 @@ def plot_ambiguity_surface(
     y_src = source["y"]
     print("True source position: ", x_src, y_src)
 
-    # Estimated source position defined as one of the extremum of the ambiguity surface
-    if loc_arg == "max":
-        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
-        cmap = "jet"
-    elif loc_arg == "min":
-        x_idx, y_idx = np.unravel_index(np.argmin(amb_surf.values), amb_surf.shape)
-        cmap = "jet_r"
+    # get estimated source position
+    _, _, x_src_hat, y_src_hat = get_estimated_src_pos(amb_surf=amb_surf, loc_arg="max")
 
-    x_src_hat = amb_surf.x[x_idx]
-    y_src_hat = amb_surf.y[y_idx]
     print(
         "Estimated source position: ",
         np.round(x_src_hat.values, 1),
         np.round(y_src_hat.values, 1),
     )
+
+    cmap = get_amb_surf_cmap(loc_arg)
 
     plt.figure(figsize=(14, 12))
     amb_surf.plot(
@@ -919,8 +928,6 @@ def plot_ambiguity_surface(
 
     plt.xlim([grid["x"][0, 0], grid["x"][0, -1]])
     plt.ylim([grid["y"][0, 0], grid["y"][-1, 0]])
-    # plt.ylim([grid["x"][0, 0], grid["x"][0, -1]])
-    # plt.xlim([grid["y"][0, 0], grid["y"][-1, 0]])
 
     # plt.axis("equal")
     sub_array = amb_surf.idx_rcv
@@ -1172,8 +1179,8 @@ def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang"):
             y_i = y_check[i_check]
 
             # Extract data at required position
-            rtf_cs_pos = rtf_cs.sel(idx_rcv=i_rcv).sel(x=x_i, y=y_i, method="nearest")
-            rtf_true_pos = rtf_true.sel(x=x_i, y=y_i, method="nearest")
+            rtf_cs_pos = rtf_cs.sel(idx_rcv=i_rcv).sel(y=y_i, x=x_i, method="nearest")
+            rtf_true_pos = rtf_true.sel(y=y_i, x=x_i, method="nearest")
 
             abs_cs = np.abs(rtf_cs_pos)
             abs_true = np.abs(rtf_true_pos)
@@ -1257,7 +1264,7 @@ def check_gcc_features(ds_gcc, folder):
             y_i = y_check[i_check]
 
             # Extract data at required position
-            gcc_l_pos = gcc_l.sel(x=x_i, y=y_i, method="nearest")
+            gcc_l_pos = gcc_l.sel(y=y_i, x=x_i, method="nearest")
 
             # Due to SCOT weights the module is = 1, relevent information is only contained in the phase of the gcc
             phi_gcc_l = np.unwrap(np.angle(gcc_l_pos))

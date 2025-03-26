@@ -25,7 +25,9 @@ from matplotlib.path import Path
 from sklearn import preprocessing
 from sklearn.cluster import KMeans
 from itertools import combinations
+from skimage.filters import sobel
 from scipy.spatial import ConvexHull
+from scipy.ndimage import gaussian_filter
 from signals.signals import colored_noise
 from publication.PublicationFigure import PubFigure
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
@@ -151,8 +153,10 @@ def params(debug=False, antenna_type="zhang"):
     y_detection_area = np.arange(
         y_bott_left_corner, y_bott_left_corner + l_detection_area_y + dy, dy
     )
-    x_grid, y_grid = np.meshgrid(x_detection_area, y_detection_area)
-    r_grid = np.zeros((len(x_rcv),) + x_grid.shape)
+    x_grid, y_grid = np.meshgrid(
+        x_detection_area, y_detection_area
+    )  # x_grid = (ny, nx)
+    r_grid = np.zeros((len(x_rcv),) + x_grid.shape)  # (nr, ny, nx)
     for i in range(len(x_rcv)):
         r_grid[i] = np.sqrt((x_grid - x_rcv[i]) ** 2 + (y_grid - y_rcv[i]) ** 2)
 
@@ -430,182 +434,190 @@ def find_mainlobe(ds_fa):
 
         amb_surf = ds_fa[dist]
 
+        # ### Skimage ###
+        # from skimage.exposure import histogram
+        # from skimage.segmentation import watershed
+
+        # elevation_map = sobel(amb_surf)
+        # amb_surf_gray = 10 ** (amb_surf / 10)
+        # hist, hist_centers = histogram(amb_surf_gray.values)
+        # plt.figure()
+        # plt.plot(hist_centers, hist)
+        # plt.savefig("test_his")
+
+        # markers = np.zeros_like(amb_surf)
+        # markers[amb_surf_gray > 0.9] = 1
+        # markers[amb_surf_gray < 0.25] = 2
+        # segmentation = watershed(elevation_map, markers)
+
+        # plt.figure()
+        # plt.pcolormesh(elevation_map)
+        # plt.savefig("test.png")
+
+        # plt.figure()
+        # amb_surf.plot(x="x", y="y")
+        # plt.savefig("test2")
+
         ### 1) K-means approach ###
 
         # Reshape ambiguity surface to 1D array
-        amb_surf_1d = amb_surf.values.flatten()
+        img = gaussian_filter(amb_surf.values, sigma=1)
+        img = img.flatten()
+
+        grad = sobel(amb_surf)
+        grad = gaussian_filter(grad, sigma=3)
+        grad = grad.flatten()
 
         # Apply K-means clustering
-        n_clusters = 7
+        # n_clusters = 7
+        n_clusters = 4
         x_coord, y_coord = np.meshgrid(ds_fa.x.values, ds_fa.y.values)
         X = np.vstack(
-            [x_coord.flatten(), y_coord.flatten(), amb_surf_1d]
+            [x_coord.flatten(), y_coord.flatten(), img, grad]
         )  # 3 Columns x, y, S(x, y)
         # X = amb_surf_1d.reshape(-1, 1)
         X_norm = preprocessing.normalize(X).T
-        X_norm[:, 0:2] *= 1  # Increase the weight of the spatial coordinates
+        X_norm[:, 0:2] *= 2  # Increase the weight of the spatial coordinates
+        X_norm[:, 3] *= 0.5  # Increase the weight of the spatial coordinates
+
         # X_norm = X.T
         kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto")
         kmeans.fit(X_norm)
-
-        # # K means using only the ambiguity surface
-        # n_clusters = 7
-        # X = amb_surf_1d.reshape(-1, 1)
-        # X_norm = preprocessing.normalize(X)
-        # kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto")
-        # kmeans.fit(X_norm)
 
         # 1.2) Segmentation
         # Reshape labels to 2D array
         labels = kmeans.labels_.reshape(amb_surf.shape)
 
-        # 1.3) Plot
-        f, ax = plt.subplots(1, 1, figsize=(5, 5))
+        # # 1.3) Plot
+        # f, ax = plt.subplots(1, 1, figsize=(5, 5))
 
-        # Define a discrete colormap with n_clusters colors
-        cmap = plt.get_cmap("jet", n_clusters)
+        # # Define a discrete colormap with n_clusters colors
+        # cmap = plt.get_cmap("jet", n_clusters)
         # im = ax.pcolormesh(
-        #     ds_fa["x"].values * 1e-3,
-        #     ds_fa["y"].values * 1e-3,
-        #     labels.T,
+        #     ds_fa["x"].values,
+        #     ds_fa["y"].values,
+        #     labels,
         #     cmap=cmap,
+        #     shading="auto",
         # )
 
-        # # Add colorbar with n_clusters ticks
-        # cbar = plt.colorbar(
-        #     im, ax=ax, label=r"$Class$", ticks=range(n_clusters)[::2]
-        # )
-        ax.set_title(f"Full array")
-        ax.set_xlabel(r"$x$" + " [km]")
-        ax.set_ylabel(r"$y$" + " [km]")
-        ax.set_xticks([3.500, 4.000, 4.500])
-        ax.set_yticks([6.400, 6.900, 7.400])
+        # # # Add colorbar with n_clusters ticks
+        # # cbar = plt.colorbar(
+        # #     im, ax=ax, label=r"$Class$", ticks=range(n_clusters)[::2]
+        # # )
+        # ax.set_title(f"Full array")
+        # ax.set_xlabel(r"$x$" + " [m]")
+        # ax.set_ylabel(r"$y$" + " [m]")
 
-        # Save figure
-        fpath = os.path.join(ROOT_IMG, f"loc_zhang2023_fig5_segmentation_{dist}.png")
-        plt.savefig(fpath, dpi=300, bbox_inches="tight")
+        # # Save figure
+        # fpath = os.path.join(root_img, f"loc_zhang2023_fig5_segmentation_{dist}.png")
+        # plt.savefig(fpath, dpi=300)
 
         # 1.4) Select the class corresponding to the estimated position defined by the maximum of the ambiguity surface
-        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
-        x_src_hat = amb_surf.x[x_idx]
-        y_src_hat = amb_surf.y[y_idx]
-        src_hat_class = labels[x_idx, y_idx]
+        x_idx, y_idx, _, _ = get_estimated_src_pos(amb_surf=amb_surf, loc_arg="max")
+        ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+        idx_tuple = (y_idx, x_idx) if (ax_order["y"] == 0) else (x_idx, y_idx)
+        src_hat_class = labels[idx_tuple]
 
         # Find contours of src_hat_class and select the contour corresponding to the estimated position
         contours = measure.find_contours(labels == src_hat_class, level=0.5)
         for contour in contours:
             # Check if src_hat is within the contour
-            idx_x_min = np.min(contour[:, 0].astype(int))
-            idx_x_max = np.max(contour[:, 0].astype(int))
-            idx_y_min = np.min(contour[:, 1].astype(int))
-            idx_y_max = np.max(contour[:, 1].astype(int))
+            idx_x_min = np.min(contour[:, ax_order["x"]].astype(int))
+            idx_x_max = np.max(contour[:, ax_order["x"]].astype(int))
+            idx_y_min = np.min(contour[:, ax_order["y"]].astype(int))
+            idx_y_max = np.max(contour[:, ax_order["y"]].astype(int))
             if (idx_x_min <= x_idx <= idx_x_max) and (idx_y_min <= y_idx <= idx_y_max):
                 break
 
         mainlobe_contours[dist] = contour
 
-        # 1.5) Plot ambiguity surface and highligh pixels falling into the src_hat_class
-        f, ax = plt.subplots(1, 1, figsize=(5, 5))
-
-        # Define a discrete colormap with n_clusters colors
-        # im = ax.pcolormesh(
-        #     ds_fa["x"].values * 1e-3,
-        #     ds_fa["y"].values * 1e-3,
-        #     amb_surf.values.T,
-        #     cmap="jet",
-        #     vmin=-10,
-        #     vmax=0,
-        # )
-
-        # # # Highligh mainlobe pixels
-        # ax.plot(
-        #     ds_fa["x"].values[contour[:, 0].astype(int)] * 1e-3,
-        #     ds_fa["y"].values[contour[:, 1].astype(int)] * 1e-3,
-        #     color="k",
-        #     linewidth=2,
-        # )
-        # # Add colorbar
-        # cbar = plt.colorbar(im, ax=ax, label=r"$[dB]$")
-        # ax.scatter(
-        #     x_src_hat * 1e-3,
-        #     y_src_hat * 1e-3,
-        #     facecolors="none",
-        #     edgecolors="k",
-        #     label="Estimated source position",
-        #     s=20,
-        #     linewidths=3,
-        # )
-
-        ax.set_title(f"Full array")
-        ax.set_xlabel(r"$x$" + " [km]")
-        ax.set_ylabel(r"$y$" + " [km]")
-        ax.set_xticks([3.500, 4.000, 4.500])
-        ax.set_yticks([6.400, 6.900, 7.400])
-
-        # Save figure
-        fpath = os.path.join(
-            ROOT_IMG, f"loc_zhang2023_fig5_segmentation_highlight_{dist}.png"
-        )
-        plt.savefig(fpath, dpi=300, bbox_inches="tight")
-        plt.close("all")
-
     return mainlobe_contours
 
 
-def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
+def get_axis_order(da, ax_names):
+    # Get dims order to avoid potential confusions between axis
+    ax_order = {}
+    for name in ax_names:
+        ax_order[name] = da.dims.index(name) if name in da.dims else None
+
+    return ax_order
+
+
+def get_estimated_src_pos(amb_surf, loc_arg):
+
+    ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+
+    # Estimated source position defined as one of the extremum of the ambiguity surface
+    if loc_arg == "max":
+        idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
+    elif loc_arg == "min":
+        idx = np.unravel_index(np.argmin(amb_surf.values), amb_surf.shape)
+
+    # Make sure we take coords in the right order
+    x_idx = idx[ax_order["x"]]
+    y_idx = idx[ax_order["y"]]
+
+    # Extract estimated source pos
+    x_src_hat = amb_surf.x[x_idx]
+    y_src_hat = amb_surf.y[y_idx]
+
+    return x_idx, y_idx, x_src_hat, y_src_hat
+
+
+def get_hull_points(da_amb_surf, contour):
+    # Convert contour indices to integers
+    ax_order = get_axis_order(da=da_amb_surf, ax_names=["x", "y"])
+
+    contour_x_idx = np.round(contour[:, ax_order["x"]]).astype(int)
+    contour_y_idx = np.round(contour[:, ax_order["y"]]).astype(int)
+
+    # Ensure indices stay within valid bounds
+    contour_x_idx = np.clip(contour_x_idx, 0, da_amb_surf["x"].size - 1)
+    contour_y_idx = np.clip(contour_y_idx, 0, da_amb_surf["y"].size - 1)
+
+    contour_points = np.c_[
+        da_amb_surf["x"].values[contour_x_idx], da_amb_surf["y"].values[contour_y_idx]
+    ]
+
+    hull = ConvexHull(contour_points)
+    hull_points = contour_points[hull.vertices]  # Get convex hull vertices
+
+    hull_points = np.vstack(
+        [hull_points, hull_points[0]]
+    )  # Close polygon by adding last vertice at the end
+
+    return hull_points
+
+
+def estimate_msr(ds_fa, verbose=False):
     # Derive mainlobe to side lobe ratio
-
-    if plot:
-        f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
-        cmap = "jet"
-        vmin = -10
-        vmax = 0
-
-        xticks_pos_km = [3.5, 4.0, 4.5]
-        yticks_pos_km = [6.4, 6.9, 7.4]
-        xticks_pos_m = [xt * 1e3 for xt in xticks_pos_km]
-        yticks_pos_m = [yt * 1e3 for yt in yticks_pos_km]
-        # xticks_label_km = [xt for xt in xticks_pos_km]
-        # yticks_label_km = [yt for yt in yticks_pos_km]
-        # xticks_label_km = [f"${xt:.1f}$" for xt in xticks_pos_km]
-        # yticks_label_km = [f"${yt:.1f}$" for yt in yticks_pos_km]
 
     # Find mainlobe contours
     mainlobe_contours = find_mainlobe(ds_fa)
+
     msr = {}
     pos_hat = {}
     for i, dist in enumerate(["d_gcc", "d_rtf"]):
-        if plot:
-            ax = axs[i]
 
         amb_surf = ds_fa[dist]
+        ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
 
         # Source pos
-        x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
-        x_src_hat = amb_surf.x[x_idx]
-        y_src_hat = amb_surf.y[y_idx]
+        x_idx, y_idx, x_src_hat, y_src_hat = get_estimated_src_pos(
+            amb_surf=amb_surf, loc_arg="max"
+        )
+
         pos_hat[dist] = {"x": x_src_hat.values, "y": y_src_hat.values}
 
         mainlobe_mask = np.zeros_like(amb_surf.values, dtype=bool)
 
         contour = mainlobe_contours[dist]
 
-        # Convert contour indices to integers
-        contour_x_idx = np.round(contour[:, 0]).astype(int)
-        contour_y_idx = np.round(contour[:, 1]).astype(int)
-
-        # Ensure indices stay within valid bounds
-        contour_x_idx = np.clip(contour_x_idx, 0, ds_fa["x"].size - 1)
-        contour_y_idx = np.clip(contour_y_idx, 0, ds_fa["y"].size - 1)
-
-        contour_points = np.c_[
-            ds_fa["x"].values[contour_x_idx], ds_fa["y"].values[contour_y_idx]
-        ]
-
         # Step 3: Compute convex hull
         try:
-            hull = ConvexHull(contour_points)
-            hull_points = contour_points[hull.vertices]  # Get convex hull vertices
+
+            hull_points = get_hull_points(da_amb_surf=amb_surf, contour=contour)
 
             # Step 4: Convert convex hull to a polygon
             poly_path = Path(hull_points)
@@ -616,7 +628,7 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
             # )
 
             # Step 3: Create a grid of coordinates
-            X, Y = np.meshgrid(ds_fa["x"].values, ds_fa["y"].values, indexing="ij")
+            X, Y = np.meshgrid(ds_fa["x"].values, ds_fa["y"].values)
 
             # Step 4: Flatten the grid and check which points are inside the polygon
             points = np.c_[X.ravel(), Y.ravel()]  # Flatten grid coordinates
@@ -626,12 +638,19 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
             mainlobe_mask |= inside.reshape(
                 X.shape
             )  # Use logical OR to combine multiple contours
-            # mainlobe_mask = mainlobe_mask.T
+
             plot_hull = True
 
         except:
             # Handle case where it impossible to define a contour
-            mainlobe_mask[x_idx, y_idx] = 1  # Mainlobe = single pixel
+
+            # Get dims order to avoid potential confusions between axis x and y
+            ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+            if ax_order["y"] < ax_order["x"]:
+                mainlobe_mask[y_idx, x_idx] = 1  # Mainlobe = single pixel
+            else:
+                mainlobe_mask[x_idx, y_idx] = 1  # Mainlobe = single pixel
+
             plot_hull = False
 
         # Compute mainlobe to side lobe ratio
@@ -639,81 +658,12 @@ def estimate_msr(ds_fa, plot=False, root_img=None, verbose=False):
         side_lobe = np.max(amb_surf.values[~mainlobe_mask])
         # print(f"Mainlobe lvl = {main_lobe:.2f} dB")
         # print(f"Side lobe lvl = {side_lobe:.2f} dB")
-        msr[dist] = -(main_lobe - side_lobe)  # MSR = mainlobe_dB - side_lobe_dB
+        msr[dist] = -(
+            main_lobe - side_lobe
+        )  # MSR = mainlobe_dB - side_lobe_dB  (- to fit with negative results presented by Zhang et al 2023)
 
         if verbose:
             print(f"MSR {dist} : {msr[dist]:.2f} dB")
-
-        if plot:
-            # Plot ambiguity surface without mainlobe pixels
-            amb_surf_without_mainlobe = amb_surf.copy(deep=True)
-            amb_surf_without_mainlobe = amb_surf_without_mainlobe.values
-            amb_surf_without_mainlobe[mainlobe_mask] = np.nan
-
-            im = ax.pcolormesh(
-                ds_fa["x"].values,
-                ds_fa["y"].values,
-                amb_surf_without_mainlobe.T,
-                cmap=cmap,
-                vmin=vmin,
-                vmax=vmax,
-            )
-
-            ax.plot(
-                ds_fa["x"].values[contour[:, 0].astype(int)],
-                ds_fa["y"].values[contour[:, 1].astype(int)],
-                color="k",
-                linewidth=2,
-                # label="Mainlobe Boundary" if i == 0 else None,
-            )
-
-            # Add convex hull to the plot
-            if plot_hull:
-                hull_points = np.vstack([hull_points, hull_points[0]])
-
-                ax.plot(
-                    hull_points[:, 0],
-                    hull_points[:, 1],
-                    "r-",
-                    linewidth=2,
-                    label="Mainlobe Convex Hull",
-                )
-
-            ax.scatter(
-                x_src_hat,
-                y_src_hat,
-                facecolors="none",
-                edgecolors="k",
-                label="Estimated source position",
-                s=20,
-                linewidths=3,
-            )
-
-            ax.set_title(f"Full array")
-            ax.set_xlabel(r"$x$" + " [m]")
-            if i == 0:
-                ax.set_ylabel(r"$y$" + " [m]")
-            else:
-                ax.set_ylabel("")
-
-            # # Set xticks
-            ax.set_xticks(xticks_pos_m)
-            ax.set_yticks(yticks_pos_m)
-            # ax.set_xticklabels(xticks_label_km, fontsize=22)
-            # ax.set_yticklabels(yticks_label_km, fontsize=22)
-
-            # ax.set_xticks(
-            #     [3.500, 4.000, 4.500],
-            # )
-            # ax.set_xticklabels([3.500, 4.000, 4.500], fontsize=22)
-            # ax.set_yticks([6.400, 6.900, 7.400])
-            # ax.set_yticklabels([6.400, 6.900, 7.400], fontsize=22)
-
-    if plot:
-        # Save figure
-        fpath = os.path.join(root_img, "loc_zhang2023_fig5_nomainlobe.png")
-        plt.savefig(fpath, dpi=300)
-        plt.close("all")
 
     return msr, pos_hat
 

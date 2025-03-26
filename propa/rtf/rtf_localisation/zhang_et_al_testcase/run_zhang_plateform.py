@@ -70,6 +70,7 @@ def run_test_1():
 
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
+
     print(f"Number of subarrays = {len(subarrays_list)}")
     print("Subarrays list : ", subarrays_list)
 
@@ -94,7 +95,7 @@ def run_test_1():
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 20
+    n_monte_carlo = 100
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information
@@ -129,7 +130,7 @@ def run_test_1():
         antenna_type=antenna_type,
         debug=debug,
         verbose=False,
-        check=True,
+        check=False,
         plot_args=plot_args,
     )
 
@@ -230,7 +231,7 @@ if __name__ == "__main__":
     """
     antenna_type = "zhang"
     event_stype = "wn"
-    debug = True
+    debug = False
 
     freq_draw_method = "equally_spaced"
     nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)

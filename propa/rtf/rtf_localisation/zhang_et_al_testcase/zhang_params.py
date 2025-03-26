@@ -13,6 +13,13 @@
 # Import
 # ======================================================================================================================
 import os
+
+# Limit OpenMP and BLAS threading (for NumPy, SciPy, etc.)
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
 import numpy as np
 
 # ======================================================================================================================
@@ -63,8 +70,8 @@ if os.name == "nt":
     }
 else:
     # Linux
-    N_WORKERS = 10
-    max_ram_gb = 108
+    N_WORKERS = 30
+    max_ram_gb = 90
     MAX_RAM_PER_WORKER_GB = np.ceil(max_ram_gb / N_WORKERS)
     BLOCK_SIZES = {
         "t": -1,
@@ -72,3 +79,5 @@ else:
         "x": 10,
         "y": 5,
     }
+
+

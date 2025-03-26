@@ -12,7 +12,7 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
-import numpy as np 
+import numpy as np
 
 
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_process_testcase import (
@@ -21,7 +21,10 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_process_testcase impo
 )
 from dask.distributed import Client
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import get_subarrays
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import N_WORKERS, MAX_RAM_PER_WORKER_GB
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    N_WORKERS,
+    MAX_RAM_PER_WORKER_GB,
+)
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
     build_tf_dataset,
     grid_dataset,
@@ -39,47 +42,49 @@ Functions are split so that they can be be run from two separated dockers at the
 
 
 def run_test_1():
-    ### 
-    # Etape 2 : Simulation avec deux sous-antennes à trois capteurs de l'antenne hexagonale complète 
+    ###
+    # Etape 2 : Simulation avec deux sous-antennes à trois capteurs de l'antenne hexagonale complète
     ###
     """
-    Le choix des deux sous-antennes à trois capteurs est basé sur les performances (critère hybride msr/rmse) de la méthode évaluée à un SNR = -15 dB sur l'ensemble des 57 sous-antennes de l'antenne hexagonale (sur 100 réalisations) : 
+    Le choix des deux sous-antennes à trois capteurs est basé sur les performances (critère hybride msr/rmse) de la méthode évaluée à un SNR = -15 dB sur l'ensemble des 57 sous-antennes de l'antenne hexagonale (sur 100 réalisations) :
     -   **Antenne 1** (meilleure perf) : capteurs $s_1, s_3, s_6$
     -   **Antenne 2** (pire perf) : capteurs $s_3, s_4, s_6$
 
     ### Objectif
-    L'objectif est de produire les figures de MSR et RMSE versus SNR pour les deux antennes, pour la zone de recherche complète et sur une large gamme de SNR. 
+    L'objectif est de produire les figures de MSR et RMSE versus SNR pour les deux antennes, pour la zone de recherche complète et sur une large gamme de SNR.
 
-    ### Paramètres 
+    ### Paramètres
     -   **Nombre de simulations (Monte Carlo)** = 100
-    -   **SNR** = de -30 à +20 dB par pas de 2.5 dB 
+    -   **SNR** = de -30 à +20 dB par pas de 2.5 dB
     build_features_fullsimu(debug=debug, antenna_type=antenna_type, event_stype=event_stype)
 
     """
 
-    # Liste des sous antennes considérées 
+    # Liste des sous antennes considérées
     # best_subarray = [0, 2, 5]
     # worste_subarray = [2, 3, 5]
     # subarrays_list = [best_subarray, worste_subarray]
     subarrays_list = []
-    n_rcv = [2, 3, 4, 5, 6]
+    # n_rcv = [2, 3, 4, 5, 6]
+    n_rcv = [5, 6]
+
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
     print(f"Number of subarrays = {len(subarrays_list)}")
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
-    # Docker 1 
+    # Docker 1
     # snr_min = -15
     # snr_max = 15
-    # # Docker 1 
+    # # Docker 1
     # snr_min = -15
     # snr_max = -7.5
-    # # Docker 2 
+    # # Docker 2
     # snr_min = -5
     # snr_max = 2.5
     # # Docker 3
-    snr_min = 5
+    snr_min = 0
     snr_max = 15
 
     snr_step = 2.5
@@ -92,10 +97,12 @@ def run_test_1():
     n_monte_carlo = 20
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
-    # Derive expected cpu time for information 
+    # Derive expected cpu time for information
     avg_cpu_t_per_iter = 200
     total_expected_cpu_time = n_snr * n_monte_carlo * avg_cpu_t_per_iter
-    print(f"Expected cpu time = {np.round(total_expected_cpu_time, 0)} s = {np.round(total_expected_cpu_time/3600, 2)} h")
+    print(
+        f"Expected cpu time = {np.round(total_expected_cpu_time, 0)} s = {np.round(total_expected_cpu_time/3600, 2)} h"
+    )
 
     # Paramètres graphiques pour la génération des figures
     plot_args = {
@@ -105,8 +112,8 @@ def run_test_1():
         "plot_cpl_surf_comparison": True,
         "plot_fullarray_surf_comparison": True,
         "plot_surf_dist_comparison": False,
-        "plot_mainlobe_contour": False,
-        "plot_msr_estimation": False,
+        "plot_mainlobe_contour": True,
+        "plot_msr_estimation": True,
     }
 
     # Calcul des MSR, RMSE pour chaque sous-antennes
@@ -126,6 +133,7 @@ def run_test_1():
         plot_args=plot_args,
     )
 
+
 def run_test_2():
     ###
     # Etape 3 : Etude des performances à faible SNR en fonction du nombre de récepteurs de l'antenne
@@ -133,9 +141,9 @@ def run_test_2():
 
     """
     ### Objectif
-    L'objectif de cette simulation est d'étudier les performances de la méthode RTF vis à vis des performances de la méthode DCF à faible SNR. En particulier on cherche à mettre en lumière les avantages de la méthode RTF lorsque le nombre de récepteurs de l'antenne augmente. Pour cela on considère l'ensemble des sous antennes de l'antenne hexagonale et on cherche à représenter les métriques MSR et RMSE en fonction du nombre de capteur. On souhaite également représenter l'amplitude des variations de ces métriques pour un même nombre de capteur afin de voir si la configuration des capteurs à une influence importante sur les méthodes étudiées. 
+    L'objectif de cette simulation est d'étudier les performances de la méthode RTF vis à vis des performances de la méthode DCF à faible SNR. En particulier on cherche à mettre en lumière les avantages de la méthode RTF lorsque le nombre de récepteurs de l'antenne augmente. Pour cela on considère l'ensemble des sous antennes de l'antenne hexagonale et on cherche à représenter les métriques MSR et RMSE en fonction du nombre de capteur. On souhaite également représenter l'amplitude des variations de ces métriques pour un même nombre de capteur afin de voir si la configuration des capteurs à une influence importante sur les méthodes étudiées.
 
-    ### Paramètres 
+    ### Paramètres
     -   **Nombre de simulations (Monte Carlo)** = 100
     -   **SNR** = -15 dB
     """
@@ -154,10 +162,12 @@ def run_test_2():
     # Nombre de simulations à réaliser pour chaque SNR
     n_monte_carlo = 900
 
-    # Derive expected cpu time for information 
+    # Derive expected cpu time for information
     avg_cpu_t_per_iter = 200
     total_expected_cpu_time = 1 * n_monte_carlo * avg_cpu_t_per_iter
-    print(f"Expected cpu time = {np.round(total_expected_cpu_time, 0)} s = {np.round(total_expected_cpu_time/3600, 2)} h")
+    print(
+        f"Expected cpu time = {np.round(total_expected_cpu_time, 0)} s = {np.round(total_expected_cpu_time/3600, 2)} h"
+    )
 
     # Paramètres graphiques pour la génération des figures
     plot_args = {
@@ -201,20 +211,20 @@ if __name__ == "__main__":
     # belay_before_exec =  nb_snr_to_run * n_mc * t_per_iter
     # time.sleep(belay_before_exec)
 
-    ### 
-    # Etape 0 : définition des paramètres de l'étude 
-    ### 
+    ###
+    # Etape 0 : définition des paramètres de l'étude
+    ###
     """
     **antenna_type** -> type d'antenne considérée :
-    -   "zhang" : antenne hexagonnale régulière de coté 250 m 
+    -   "zhang" : antenne hexagonnale régulière de coté 250 m
     -   "random" : antenne de 6 capteurs positionnés aléatoirement dans un cercle de rayon 1.5 km autour de l'origine du repère
 
     **event_stype** -> nature du signal émis par la source *event* à localiser :
-    -   "wn" : bruit blanc gaussien 
+    -   "wn" : bruit blanc gaussien
     -   "lfm" : chirp linéaire
 
     **debug** -> mode d'execution du code :
-    -   True : execution en mode debug sur une sous-zone de calcul (plus rapide) 
+    -   True : execution en mode debug sur une sous-zone de calcul (plus rapide)
     -   False : execution sur la zone complète (1km x 1km) (plus lent)
 
     """
@@ -226,35 +236,37 @@ if __name__ == "__main__":
     nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)
     dx, dy = 20, 20  # Taille des mailles de la grille de recherche
 
-    ### 
-    # Etape 1 : génération du dataset de fonctions de transfert 
+    ###
+    # Etape 1 : génération du dataset de fonctions de transfert
     ###
 
     ## Step 1 : Construction du dataset de fonctions de transfert avec Kraken
     # Not needed here, the correponding dataset should already be available in the ROOT_DATA folder with name : tf_zhang_dataset.nc
-    # build_tf_dataset()     
+    # build_tf_dataset()
 
-    ## Step 2 : Interpolation des fonctions de transfert sur la grille de recherche 
+    ## Step 2 : Interpolation des fonctions de transfert sur la grille de recherche
     # A executer une unique fois en mode debug = False pour obtenir le dataset correspondant à la zone de recherche complète (1km x 1km)
     # grid_dataset(debug=debug, antenna_type=antenna_type)
 
-    ## Step 3 : Calcul des signaux propagés depuis chacun des points de la grille 
+    ## Step 3 : Calcul des signaux propagés depuis chacun des points de la grille
     # A executer une unique fois
     # Step 3
     # build_signal(debug=debug, antenna_type=antenna_type, event_stype=event_stype)
 
     ## Step 4 : Calcul des vecteurs de RTF "théorique" directement à partir des fonctions de transfert
-    # Principalement pour comparaison avec les vecteurs de RTF estimés par la méthode CS 
+    # Principalement pour comparaison avec les vecteurs de RTF estimés par la méthode CS
 
     run_test_1()
 
-
     # ### Open Dask client to manage ressources ###
-    # with Client(n_workers=N_WORKERS, threads_per_worker=1, memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB") as client:
+    # with Client(
+    #     n_workers=N_WORKERS,
+    #     threads_per_worker=1,
+    #     memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
+    # ) as client:
     #     # Print dashboard link
     #     print("Dask Dashboard:", client.dashboard_link)
 
-    #     # Uncomment target test 
+    #     # Uncomment target test
     #     run_test_1()
-    #     # run_test_2()
-
+    # #     # run_test_2()

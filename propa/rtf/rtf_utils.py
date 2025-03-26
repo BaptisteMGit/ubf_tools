@@ -3,7 +3,7 @@
 """
 @File    :   rtf_utils.py
 @Time    :   2024/10/20 12:20:48
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -14,7 +14,7 @@
 # ======================================================================================================================
 import numpy as np
 import scipy.interpolate as sp_int
-
+from misc import cast_matrix_to_target_shape
 
 # def D_frobenius(g_ref, g):
 #     """Derive the generalised distance combining all receivers."""
@@ -136,34 +136,22 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
     apply_median = kwargs.get("apply_median", False)
     apply_sum = kwargs.get("apply_sum", False)
     ax_rcv = kwargs.get("ax_rcv", 3 if rtf.ndim == 4 else 1)
-    f_axis = kwargs.get("f_axis", 1)
+    ax_f = kwargs.get("ax_f", 1)
 
-    if f_axis != 0:
-        rtf = np.moveaxis(rtf, f_axis, 0)
-        rtf_ref = np.moveaxis(rtf_ref, f_axis, 0)
-        ax_rcv = 1
+    # Moveaxis to be fit with the reference order (nf, nrcv, ...)
+    rtf = np.moveaxis(rtf, [ax_f, ax_rcv], [0, 1])
+    rtf_ref = np.moveaxis(rtf_ref, [ax_f, ax_rcv], [0, 1])
 
     # Case: 4D input for variation
     if rtf.ndim == 4:
 
         # Expand rtf_ref along the necessary axes for broadcasting
-        # rtf_ref_expanded = np.expand_dims(rtf_ref, axis=(1, 3))
-        if rtf_ref.ndim == 2:
-            ax_to_expand = tuple(
-                [i for i in range(1, rtf.ndim) if i != ax_rcv]
-            )  # Frequency axis is assumed to always be the first axis
-            rtf_ref = np.expand_dims(rtf_ref, axis=ax_to_expand)
-
-        tile_shape = tuple(
-            [rtf.shape[i] - rtf_ref.shape[i] + 1 for i in range(rtf.ndim)]
-        )
-        rtf_ref_expanded = np.tile(rtf_ref, tile_shape)
+        rtf_ref_expanded = cast_matrix_to_target_shape(rtf_ref, rtf.shape)
 
         # Calculate inner product and norms along the receiver axis
-        # ax_rcv = 2
-        inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=ax_rcv))
-        norm_ref = np.linalg.norm(rtf_ref_expanded, axis=ax_rcv)
-        norm_rtf = np.linalg.norm(rtf, axis=ax_rcv)
+        inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=1))
+        norm_ref = np.linalg.norm(rtf_ref_expanded, axis=1)
+        norm_rtf = np.linalg.norm(rtf, axis=1)
 
         # Calculate cosine of Hermitian angle, clipped to [-1, 1] for stability
         cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
@@ -205,7 +193,6 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
         elif apply_sum:
             dist = np.nansum(dist)
 
-    # return dist, cos_angle
     return dist
 
 

@@ -3,7 +3,7 @@
 """
 @File    :   misc.py
 @Time    :   2024/07/08 09:13:24
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Miscellaneous functions.
@@ -64,6 +64,8 @@ def mult_along_axis(A, B, axis):
 
 def cast_matrix_to_target_shape(matrix, target_shape):
 
+    # print(f"Matrix to transform : {matrix.shape}")
+    # print(f"target shape: {target_shape}")
     # Cast matrix to target shape
     # 1) Identify missing dimensions
     missing_dims = [dim for dim in target_shape if dim not in matrix.shape]
@@ -73,6 +75,7 @@ def cast_matrix_to_target_shape(matrix, target_shape):
     ]
     # 2) Add missing dimensions
     matrix_target_shape = np.expand_dims(matrix, axis=missing_dims_axis)
+    # print(f"matrix target shape {matrix_target_shape.shape}")
     # 3) Repeat matrix along missing dimensions
     tile_shape = tuple(
         [

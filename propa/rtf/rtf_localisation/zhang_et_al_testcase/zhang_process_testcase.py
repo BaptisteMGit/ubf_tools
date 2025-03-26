@@ -39,6 +39,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     get_array_label,
     build_subarrays_args,
     load_msr_rmse_res_subarrays,
+    get_axis_order,
 )
 
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
@@ -77,13 +78,6 @@ def process_localisation_zhang2023(
 
     # Compute distance between the RTF vector associated with the source and the RTF vector at each grid pixel
     # Match field processing #
-    dist_func = D_hermitian_angle_fast
-    dist_kwargs = {
-        "ax_rcv": 0,
-        "unit": "deg",
-        "apply_mean": True,
-        "f_axis": 1,
-    }
 
     # Select a few frequencies
     if (
@@ -103,7 +97,26 @@ def process_localisation_zhang2023(
     ds = ds.sel(f_gcc=f_loc_gcc)
     df_gcc = np.diff(ds.f_gcc.values)[0]
 
-    # d_gcc_fullarray = []
+    # Get dimension positions for more robustness and clarity
+    da_tmp = ds.rtf_real.sel(idx_rcv_ref=0)
+    ax_order = get_axis_order(da=da_tmp, ax_names=["idx_rcv", "f_rtf", "y", "x"])
+    ax_rcv = ax_order["idx_rcv"]
+    ax_f = ax_order["f_rtf"]
+    ax_y = ax_order["y"]
+    ax_x = ax_order["x"]
+
+    # Set spatial coords order
+    xy_dims = ["y", "x"] if ax_y < ax_x else ["x", "y"]
+
+    # Define distance to use
+    dist_func = D_hermitian_angle_fast
+
+    dist_kwargs = {
+        "ax_rcv": ax_rcv,
+        "unit": "deg",
+        "apply_mean": True,
+        "ax_f": ax_f,
+    }
 
     # Restrict the dataset to the receivers of interest
     if rcv_in_fullarray is None:
@@ -135,17 +148,17 @@ def process_localisation_zhang2023(
         # Extract data corresponding to the two-sensor pair rcv_cpl
         ds_cpl_rtf = ds.sel(idx_rcv_ref=i_ref, idx_rcv=rcv_cpl)
 
-        rtf_grid = ds_cpl_rtf.rtf_real.values + 1j * ds_cpl_rtf.rtf_imag.values
+        rtf_grid = (
+            ds_cpl_rtf.rtf_real.values + 1j * ds_cpl_rtf.rtf_imag.values
+        )  # (n_cpl=2, nf, ny, nx)
         rtf_event = (
             ds_cpl_rtf.rtf_event_real.values + 1j * ds_cpl_rtf.rtf_event_imag.values
-        )
+        )  # (n_cpl=2, nf)
 
         theta = dist_func(rtf_event, rtf_grid, **dist_kwargs)
 
         # Add theta to dataset
-        # ds_cpl_rtf["theta"] = (["x", "y"], theta)
-        ds_cpl_rtf["theta"] = (["y", "x"], theta)
-
+        ds_cpl_rtf["theta"] = (xy_dims, theta)
 
         # Normalize
         d_rtf = normalize_metric_contrast(-ds_cpl_rtf.theta)
@@ -154,9 +167,7 @@ def process_localisation_zhang2023(
         d_rtf = d_rtf.values
         d_rtf[d_rtf == 0] = MIN_VAL_LOG
         d_rtf = 10 * np.log10(d_rtf)
-        # ds_cpl_rtf["d_rtf"] = (["x", "y"], d_rtf)
-        ds_cpl_rtf["d_rtf"] = (["y", "x"], d_rtf)
-
+        ds_cpl_rtf["d_rtf"] = (xy_dims, d_rtf)
 
         ## GCC ##
         ds_cpl_gcc = ds.sel(idx_rcv_ref=rcv_cpl[0], idx_rcv=rcv_cpl[1])
@@ -187,9 +198,7 @@ def process_localisation_zhang2023(
         d_gcc = 10 * np.log10(d_gcc)  # Convert to dB
 
         # Add d to dataset
-        # ds_cpl_gcc["d_gcc"] = (["x", "y"], d_gcc)
-        ds_cpl_gcc["d_gcc"] = (["y", "x"], d_gcc)
-
+        ds_cpl_gcc["d_gcc"] = (xy_dims, d_gcc)
 
         # Store d_gcc for full array incoherent processing
         # d_gcc_fullarray.append(d_gcc)
@@ -197,12 +206,9 @@ def process_localisation_zhang2023(
         # Build dataset to be saved as netcdf
         ds_cpl = xr.Dataset(
             data_vars=dict(
-                # theta_rtf=(["x", "y"], ds_cpl_rtf.theta.values),
-                # d_rtf=(["x", "y"], ds_cpl_rtf.d_rtf.values),
-                # d_gcc=(["x", "y"], ds_cpl_gcc.d_gcc.values),
-                theta_rtf=(["y", "x"], ds_cpl_rtf.theta.values),
-                d_rtf=(["y", "x"], ds_cpl_rtf.d_rtf.values),
-                d_gcc=(["y", "x"], ds_cpl_gcc.d_gcc.values),
+                theta_rtf=(xy_dims, ds_cpl_rtf.theta.values),
+                d_rtf=(xy_dims, ds_cpl_rtf.d_rtf.values),
+                d_gcc=(xy_dims, ds_cpl_gcc.d_gcc.values),
             ),
             coords={
                 "x": ds.x.values,
@@ -253,7 +259,6 @@ def process_localisation_zhang2023(
         )  # TODO might need to fix a bug for nf=50
 
         # Build cross corr (Equation (8) in Zhang et al. 2023)
-        # d_gcc = np.sum(gcc_grid * np.conj(gcc_event) * df_gcc, axis=0)
         d_gcc = np.abs(np.sum(gcc_grid * np.conj(gcc_event) * df_gcc, axis=0))
         # d_gcc = d_gcc / np.max(d_gcc)
 
@@ -279,9 +284,7 @@ def process_localisation_zhang2023(
     theta = dist_func(rtf_event, rtf_grid, **dist_kwargs)
 
     # Add theta to dataset
-    # ds_fa_rtf["theta"] = (["x", "y"], theta)
-    ds_fa_rtf["theta"] = (["y", "x"], theta)
-
+    ds_fa_rtf["theta"] = (xy_dims, theta)
 
     # # Convert theta to a metric between -1 and 1
     # theta_inv = (
@@ -295,9 +298,7 @@ def process_localisation_zhang2023(
     d_rtf = d_rtf.values
     d_rtf[d_rtf == 0] = MIN_VAL_LOG
     d_rtf = 10 * np.log10(d_rtf)  # Convert to dB
-    # ds_fa_rtf["d_rtf"] = (["x", "y"], d_rtf)
-    ds_fa_rtf["d_rtf"] = (["y", "x"], d_rtf)
-
+    ds_fa_rtf["d_rtf"] = (xy_dims, d_rtf)
 
     ## GCC ##
     d_gcc_fullarray = np.array(d_gcc_fullarray)
@@ -323,12 +324,9 @@ def process_localisation_zhang2023(
     # Build dataset to be saved as netcdf
     ds_fullarray = xr.Dataset(
         data_vars=dict(
-            # theta_rtf=(["x", "y"], ds_fa_rtf.theta.values),
-            # d_rtf=(["x", "y"], ds_fa_rtf.d_rtf.values),
-            # d_gcc=(["x", "y"], d_gcc_fullarray),
-            theta_rtf=(["y", "x"], ds_fa_rtf.theta.values),
-            d_rtf=(["y", "x"], ds_fa_rtf.d_rtf.values),
-            d_gcc=(["y", "x"], d_gcc_fullarray),
+            theta_rtf=(xy_dims, ds_fa_rtf.theta.values),
+            d_rtf=(xy_dims, ds_fa_rtf.d_rtf.values),
+            d_gcc=(xy_dims, d_gcc_fullarray),
         ),
         coords={
             "x": ds.x.values,
@@ -432,14 +430,14 @@ def process_all_snr(
             # Run simulation (one simulation = 1 generation of noise)
             # t0 = time()
             # build_features_from_time_signal(snr)
-            build_features_from_time_signal(
-                snr_dB=snr,
-                debug=debug,
-                check=check,
-                use_welch_estimator=True,
-                antenna_type=antenna_type,
-                verbose=verbose,
-            )
+            # build_features_from_time_signal(
+            #     snr_dB=snr,
+            #     debug=debug,
+            #     check=check,
+            #     use_welch_estimator=True,
+            #     antenna_type=antenna_type,
+            #     verbose=verbose,
+            # )
 
             # elasped_time = time() - t0
             # print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
@@ -488,7 +486,7 @@ def process_all_snr(
                 )
                 ds_fa = xr.open_dataset(fpath)
 
-                msr, pos_hat = estimate_msr(ds_fa, plot=False)
+                msr, pos_hat = estimate_msr(ds_fa)
                 ds_fa.close()
 
                 # Store MSR and DR
@@ -571,7 +569,7 @@ def replay_all_snr(
             # Load processed surface and derive msr
             ds_fa = xr.open_dataset(file_fullpath)
 
-            msr, pos_hat = estimate_msr(ds_fa, plot=False)
+            msr, pos_hat = estimate_msr(ds_fa)
             ds_fa.close()
 
             # MSR

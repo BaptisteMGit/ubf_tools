@@ -260,10 +260,10 @@ def plot_study_zhang2023(
     y_src = source["y"]
 
     ###### Figure 4 : Subplot in Zhang et al 2023 ######
-    if len(ds_fa.idx_rcv) == 6 and not np.isnan(ds_fa.snr):
-        rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
-    else:  # Full simu case
-        rcv_couples = get_rcv_couples(ds_fa.idx_rcv)
+    # if len(ds_fa.idx_rcv) == 6 and not np.isnan(ds_fa.snr):
+    #     rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
+    # else:  # Full simu case
+    rcv_couples = get_rcv_couples(ds_fa.idx_rcv)
 
     if plot_cpl_surf_comparison:
         plot_subarrays_ambiguity_surfaces(

@@ -15,9 +15,9 @@
 import os
 import dask
 import numpy as np
+import scipy.signal as sp
 import xarray as xr
 import dask.array as da
-import scipy.signal as sp
 
 from cst import C0
 from time import time
@@ -49,6 +49,7 @@ from propa.rtf.rtf_estimation.rtf_estimation_utils import (
     rtf_covariance_substraction,
     rtf_covariance_whitening,
 )
+
 
 # ======================================================================================================================
 # Functions

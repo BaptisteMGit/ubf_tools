@@ -45,10 +45,9 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     check_rtf_features,
 )
 from propa.kraken_toolbox.run_kraken import readshd, run_kraken_exec, run_field_exec
-from propa.rtf.rtf_estimation.rtf_estimation_utils import (
-    rtf_covariance_subtraction,
-    rtf_covariance_whitening,
-)
+
+
+from source.rtf_estimator import RTFEstimator
 
 
 # ======================================================================================================================
@@ -423,61 +422,6 @@ def derive_received_noise(
     return ds_noise
 
 
-def estimate_rtf_parallel(
-    ds_sig_noise,
-    i_ref,
-    library_props,
-    nperseg=2**11,
-    noverlap=2**10,
-    verbose=False,
-):
-    """
-    Estimate the RTF vector using Covariance Substraction method (CS).
-
-    10/02/2025 : Dummy implementation looping over x and y axis.
-
-    """
-
-    # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
-    idx_pos_ref = np.argmin(np.abs(ds_sig_noise.idx_rcv.values - i_ref))
-    npos_to_roll = ds_sig_noise.sizes["idx_rcv"] - idx_pos_ref
-    ds_sig_noise_rolled = ds_sig_noise.roll(
-        idx_rcv=npos_to_roll,
-        roll_coords=True,
-    )
-    ## Derive event RTF ##
-    # Extract useful noisy signals
-    x_e = ds_sig_noise_rolled.x_e  # Noisy event signals
-    t = ds_sig_noise_rolled.t.values  # Time vector
-    # Extract noise signals (different noise realisation than the one use to pollute the signals)
-    n_e = ds_sig_noise_rolled.n_e_bis  # Event noise
-    f_rtf, rtf_e, _, _, _ = rtf_covariance_subtraction(
-        t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
-    )
-
-    ### Derive library RTF ###
-    # Split dataset in blocks to parallelize computation
-    ds_sig_noise_blocks = build_ds_block(ds_sig_noise_rolled)
-    iterable_args = [(ds_block, nperseg, noverlap) for ds_block in ds_sig_noise_blocks]
-
-    # Create multiprocessing Pool of workers
-    with Pool(N_WORKERS) as pool:
-        res = pool.starmap(
-            func=estimate_rtf_parallel_process_block, iterable=iterable_args
-        )
-
-    # Gather results
-    rtf = gather_res_blocks(res, ds_sig_noise_rolled, f_rtf)
-
-    # Restict to the frequency band of interest
-    idx_band = (f_rtf >= library_props["f0"]) & (f_rtf <= library_props["f1"])
-    f_rtf = f_rtf[idx_band]
-    rtf_l = rtf[idx_band]
-    rtf_e = rtf_e[idx_band]
-
-    return f_rtf, rtf_l, rtf_e
-
-
 def regions_slices(ds, nx=None, ny=None):
     if nx is None:
         nx = ds.sizes["x"] // BLOCK_SIZES["x"]
@@ -530,42 +474,6 @@ def gather_res_blocks(res_blocks, ds, f, nx=None, ny=None):
     return res
 
 
-def estimate_rtf_parallel_process_block(ds_block, nperseg, noverlap):
-    t = ds_block.t.values
-    results_cs = []
-    # results_cw = []
-    for x_i in ds_block.x:
-        for y_i in ds_block.y:
-            # Transpose to fit rtf estimation required input shape (ns, nrcv)
-            noisy_sig = ds_block.x_l.sel(x=x_i, y=y_i).T
-            noise_only = ds_block.n_l_bis.sel(x=x_i, y=y_i).T
-
-            # Derive rtf
-            _, rtf_cs_l, _, _, _ = rtf_covariance_subtraction(
-                t, noisy_sig, noise_only, nperseg, noverlap
-            )
-            # _, rtf_cs_l, _, _, _ = rtf_covariance_whitening(
-            #     t, noisy_sig, noise_only, nperseg, noverlap
-            # )
-
-            # Store
-            results_cs.append(rtf_cs_l)
-
-    rtf_cs_l = np.array(results_cs)
-
-    ### Reshape to the required shape ###
-    # Step 1 : reshape to (nx, ny, nf, n_rcv)
-    shape = (len(ds_block.x), len(ds_block.y)) + rtf_cs_l.shape[1:]
-    rtf_cs_l = rtf_cs_l.reshape(shape)
-
-    # Step 2 : permute to (nf, nx, ny, n_rcv)
-    axis_permutation = (2, 0, 1, 3)
-    rtf_cs_l = np.transpose(rtf_cs_l, axis_permutation)
-    ### End reshape ###
-
-    return rtf_cs_l
-
-
 @dask.delayed
 def estimate_rtf_arrays(
     t,
@@ -588,19 +496,17 @@ def estimate_rtf_arrays(
 
     """
     # Select estimator to use
+    re = RTFEstimator()
     if rtf_estimator == "cs":
-        rtf_func = rtf_covariance_subtraction
+        rtf_func = re.covariance_subtraction
     elif rtf_estimator == "cw":
-        rtf_func = rtf_covariance_whitening
+        rtf_func = re.covariance_whitening
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
-    f_rtf, rtf_e, _, _, _ = rtf_func(
+    f_rtf, rtf_e, _, _ = rtf_func(
         t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
-    # f_rtf, rtf_e, _, _, _ = rtf_covariance_whitening(
-    #     t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
-    # )
 
     nx = len(x)
     ny = len(y)
@@ -619,12 +525,9 @@ def estimate_rtf_arrays(
             noise_only = n_l[:, :, iy, jx].T
 
             # Derive rtf
-            _, rtf_l_ij, _, _, _ = rtf_func(
+            _, rtf_l_ij, _, _ = rtf_func(
                 t, noisy_sig, noise_only, nperseg, noverlap
             )  # (nf, nrcv)
-            # _, rtf_l_ij, _, _, _ = rtf_covariance_whitening(
-            #     t, noisy_sig, noise_only, nperseg, noverlap
-            # )
 
             # Store
             rtf_l[:, :, iy, jx] = rtf_l_ij.T  # (nrcv, nf)
@@ -638,96 +541,6 @@ def estimate_rtf_arrays(
     # Output shapes are rtf_l (nrcv, nf, ny, nx) and rtf_e (nrcv, nf)
 
     return f_rtf, rtf_l, rtf_e
-
-
-def estimate_rtf(
-    ds_sig_noise,
-    i_ref,
-    library_props,
-    nperseg=2**11,
-    noverlap=2**10,
-    verbose=False,
-    roll=True,
-):
-    """
-    Estimate the RTF vector using Covariance Substraction method (CS).
-
-    10/02/2025 : Dummy implementation looping over x and y axis.
-
-    """
-
-    # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
-    if roll:
-        idx_pos_ref = np.argmin(np.abs(ds_sig_noise.idx_rcv.values - i_ref))
-        npos_to_roll = ds_sig_noise.sizes["idx_rcv"] - idx_pos_ref
-        ds_sig_noise_rolled = ds_sig_noise.roll(
-            idx_rcv=npos_to_roll,
-            roll_coords=True,
-        )
-
-    # Extract useful noisy signals
-    x_l = ds_sig_noise_rolled.x_l  # Noisy library signals
-    x_e = ds_sig_noise_rolled.x_e  # Noisy event signals
-    t = ds_sig_noise_rolled.t.values  # Time vector
-
-    # Extract noise signals (different noise realisation than the one use to pollute the signals)
-    n_l = ds_sig_noise_rolled.n_l_bis  # Library noise
-    n_e = ds_sig_noise_rolled.n_e_bis  # Event noise
-
-    # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
-    ## Derive event RTF ##
-    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_subtraction(
-    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_subtraction(
-        t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
-    )
-
-    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_whitening(
-    #     t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
-    # )
-
-    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_whitening(
-    #     t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
-    # )
-    # Dask used at higher level to parallelize the computation
-
-    results_cs = []
-    # results_cw = []
-    for x_i in ds_sig_noise.x:
-        for y_i in ds_sig_noise.y:
-            # Transpose to fit rtf estimation required input shape (ns, nrcv)
-            noisy_sig = x_l.sel(x=x_i, y=y_i).T
-            noise_only = n_l.sel(x=x_i, y=y_i).T
-
-            # Derive rtf
-            _, rtf_cs_l, _, _, _ = rtf_covariance_subtraction(
-                t, noisy_sig, noise_only, nperseg, noverlap
-            )
-            # _, rtf_cs_l, _, _, _ = rtf_covariance_whitening(
-            #     t, noisy_sig, noise_only, nperseg, noverlap
-            # )
-
-            # Store
-            results_cs.append(rtf_cs_l)
-
-    rtf_cs_l = np.array(results_cs)
-
-    ### Reshape to the required shape ###
-    # Step 1 : reshape to (nx, ny, nf, n_rcv)
-    shape = (len(ds_sig_noise.x), len(ds_sig_noise.y)) + rtf_cs_l.shape[1:]
-    rtf_cs_l = rtf_cs_l.reshape(shape)
-
-    # Step 2 : permute to (nf, nx, ny, n_rcv)
-    axis_permutation = (2, 0, 1, 3)
-    rtf_cs_l = np.transpose(rtf_cs_l, axis_permutation)
-    ### End reshape ###
-
-    # Restict to the frequency band of interest
-    idx_band = (f_rtf >= library_props["f0"]) & (f_rtf <= library_props["f1"])
-    f_rtf = f_rtf[idx_band]
-    rtf_cs_l = rtf_cs_l[idx_band]
-    rtf_cs_e = rtf_cs_e[idx_band]
-
-    return f_rtf, rtf_cs_l, rtf_cs_e
 
 
 @dask.delayed

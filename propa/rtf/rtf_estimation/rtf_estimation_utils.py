@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 from misc import *
 from propa.rtf.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import *
-from propa.rtf.rtf_estimation.rtf_estimator import RTFEstimator
+from source.rtf_estimator import RTFEstimator
 
 # from real_data_analysis.real_data_utils import (
 #     compute_csd_matrix_fast,

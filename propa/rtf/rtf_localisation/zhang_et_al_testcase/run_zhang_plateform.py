@@ -255,12 +255,12 @@ if __name__ == "__main__":
     ## Step 3 : Calcul des signaux propagés depuis chacun des points de la grille
     # A executer une unique fois
     # Step 3
-    build_signal(debug=debug, antenna_type=antenna_type, event_stype=event_stype)
+    # build_signal(debug=debug, antenna_type=antenna_type, event_stype=event_stype)
 
     ## Step 4 : Calcul des vecteurs de RTF "théorique" directement à partir des fonctions de transfert
     # Principalement pour comparaison avec les vecteurs de RTF estimés par la méthode CS
 
-    # run_test_1()
+    run_test_1()
 
     # ### Open Dask client to manage ressources ###
     # with Client(

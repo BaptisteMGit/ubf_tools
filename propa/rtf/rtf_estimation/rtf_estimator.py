@@ -56,8 +56,8 @@ class RTFEstimator:
     def estimate_rtf_covariance_whitening(self, noisy_cpsd, noise_cpsd):
         """
         Estimate the RTF using the covariance whitening method.
-        :param noisy_cpsd: Noisy spatial covariance.
-        :param noise_cpsd: Noise spatial covariance.
+        :param noisy_cpsd: Noisy CSDMs (frequency bins x num_receivers x num_receivers).
+        :param noise_cpsd: Noise CSDMs covariances (frequency bins x num_receivers x num_receivers).
         :return: Estimated RTF.
         """
         rtf = self.covariance_whitening_cholesky(noisy_cpsd, noise_cpsd)
@@ -68,7 +68,7 @@ class RTFEstimator:
     def covariance_subtraction_first_column(clean_signal_csdm):
         """
         Estimate the RTF using the covariance subtraction method with the first column.
-        :param clean_signal_csdm: Clean speech CSDM.
+        :param clean_signal_csdm: Clean speech CSDM (frequency bins x num_receivers x num_receivers).
         :return: Estimated RTF.
         """
         e1 = np.eye(clean_signal_csdm.shape[-1])[:, 0]
@@ -94,18 +94,34 @@ class RTFEstimator:
         :param clean_signal_csdm: Clean speech CSDM.
         :return: Estimated RTF.
         """
-        for k in range(clean_signal_csdm.shape[0]):
-            eigva, eigve = scipy.linalg.eigh(
-                clean_signal_csdm[k, ...], check_finite=False
+
+        # from time import time
+        # t0 = time()
+        def covariance_subtraction_major_eigen_vector_f(
+            clean_signal_csdm_single_freq, nr, idx_rcv_ref=0
+        ):
+            _, major_eigve = scipy.linalg.eigh(
+                clean_signal_csdm_single_freq,
+                check_finite=False,
+                subset_by_index=[nr - 1, nr - 1],  # Only get the major eigenvector
             )
 
-            _, rtf_f = cls.sort_eigenvectors_get_major(eigva, eigve)
-            rtf_f = cls.normalize_eigve_to_1(rtf_f, idx_rcv_ref)
+            rtf_f = cls.normalize_eigve_to_1(major_eigve, idx_rcv_ref)
 
-            if k == 0:
-                rtf = rtf_f[np.newaxis, :]
-            else:
-                rtf = np.vstack((rtf, rtf_f[np.newaxis, :]))
+            return rtf_f
+
+        nf, nr, _ = clean_signal_csdm.shape
+        # Using builtin map is slighly faster than using an explicit foor loop
+        rtf = list(
+            map(
+                covariance_subtraction_major_eigen_vector_f,
+                [clean_signal_csdm[k, ...] for k in range(nf)],
+                [nr] * nf,
+                [idx_rcv_ref] * nf,
+            )
+        )
+        rtf = np.array(rtf)
+        # print(f"Ellapsed time (map) = {time()-t0}")
 
         return np.squeeze(rtf)
 
@@ -172,9 +188,10 @@ class RTFEstimator:
         noise_cpsd_sqrt, noisy_cpsd_whitened = cls.whiten_covariance(
             noisy_cpsd, noise_cpsd
         )
-        eigva_noisy_whitened, eigve_noisy_whitened = np.linalg.eigh(noisy_cpsd_whitened)
-        maj_eigva, maj_eigve_whitened = cls.sort_eigenvectors_get_major(
-            eigva_noisy_whitened, eigve_noisy_whitened, how_many
+        nr = noisy_cpsd.shape[-1]
+        maj_eigva, maj_eigve_whitened = np.linalg.eigh(
+            noisy_cpsd_whitened,
+            subset_by_index=[nr - 1, nr - 1],  # Only get the major eigenvector
         )
 
         return maj_eigva, maj_eigve_whitened, noise_cpsd_sqrt

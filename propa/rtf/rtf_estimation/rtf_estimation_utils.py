@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 from misc import *
 from propa.rtf.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import *
+from propa.rtf.rtf_estimation.rtf_estimator import RTFEstimator
 
 # from real_data_analysis.real_data_utils import (
 #     compute_csd_matrix_fast,
@@ -35,9 +36,9 @@ def rtf_covariance_whitening(
     Derive the RTF using covariance whitening method described in  Markovich-Golan, S., & Gannot, S. (2015).
     """
     # Derive usefull params
-    n_rcv = noisy_signal.shape[1]
-    ts = t[1] - t[0]
-    fs = 1 / ts
+    # n_rcv = noisy_signal.shape[1]
+    # ts = t[1] - t[0]
+    # fs = 1 / ts
 
     # nperseg_noise = 2048
     # noverlap_noise = int(nperseg_noise * 0.75)
@@ -50,7 +51,9 @@ def rtf_covariance_whitening(
     #     noverlap=noverlap,
     # )
     f, Rv = get_csdm_from_signal(t, noise_only, nperseg, noverlap, add_identity=True)
-    Rx = Rs = None
+    f, Rx = get_csdm_from_signal(t, noisy_signal, nperseg, noverlap, add_identity=True)
+
+    Rs = None
 
     # # Rv_th
     # fvv, Svv = sp.welch(
@@ -65,10 +68,14 @@ def rtf_covariance_whitening(
     # for i in range(Svv.shape[1]):
     #     plt.plot(fvv, Svv[:, i], label=f"rcv {i}")
     # plt.savefig("test")
-    # Derive noisy_signal STFT
-    ff, tt, stft_x = get_stft_array(noisy_signal, fs, nperseg, noverlap)
-    # Estimate RTF
-    f, rtf = rtf_cw(f, n_rcv, stft_x, Rv)
+
+    # # Derive noisy_signal STFT
+    # ff, tt, stft_x = get_stft_array(noisy_signal, fs, nperseg, noverlap)
+    # # Estimate RTF
+    # f, rtf = rtf_cw(f, n_rcv, stft_x, Rv)
+
+    re = RTFEstimator()
+    rtf = re.estimate_rtf_covariance_whitening(Rx, Rv)
 
     return f, rtf, Rx, Rs, Rv
 
@@ -131,7 +138,7 @@ def rtf_covariance_substraction(
     """
 
     # Derive usefull params
-    n_rcv = noisy_signal.shape[1]
+    # n_rcv = noisy_signal.shape[1]
     # Derive CSDM
     # f, Rx, Rs, Rv = get_csdm(
     #     t,
@@ -151,9 +158,12 @@ def rtf_covariance_substraction(
         t, noise_only, nperseg, noverlap, add_identity=add_identity_noise
     )
     Rs = None
+    Rs_tild = Rx - Rv
 
+    re = RTFEstimator()
+    rtf = re.estimate_rtf_covariance_subtraction(Rs_tild, use_first_column=first_column)
     # Estimate RTF
-    f, rtf = rtf_cs(f, n_rcv, Rx, Rv, first_column=first_column)
+    # f, rtf = rtf_cs(f, n_rcv, Rx, Rv, first_column=first_column)
 
     # x = rcv_sig + rcv_noise
     # n_rcv = x.shape[1]
@@ -190,7 +200,6 @@ def rtf_cs(f, n_rcv, Rx, Rv, first_column=False):
         Relative Transfer Function (RTF) matrix (len(f) x num_receivers).
     """
 
-    # Rv = Rv +
     R_delta = Rx - Rv  # Equation (9)
 
     # for k in range(R_delta.shape[0]):
@@ -225,7 +234,6 @@ def rtf_cs(f, n_rcv, Rx, Rv, first_column=False):
                 rtf = rtf_f[np.newaxis, :]
             else:
                 rtf = np.vstack((rtf, rtf_f[np.newaxis, :]))
-        # eigva, eigve = scipy.linalg.eigh(R_delta, check_finite=False)
 
         # _, rtf = sort_eigenvectors_get_major(eigva, eigve)
         # rtf = normalize_to_1(rtf)

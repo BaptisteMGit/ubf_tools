@@ -296,11 +296,11 @@ def mfp_measured_replicas(testcase, snr_dB):
     alpha_overlap = 1 / 2
     noverlap = int(nperseg * alpha_overlap)
 
-    # Use the first signal slice to set f_cs by running rtf_covariance_substraction once
+    # Use the first signal slice to set f_cs by running rtf_covariance_subtraction once
     rcv_sig = ds_rcv_sig.sel(r=r_src, z=z_src).values
     rcv_noise = ds_noise.sel(r=r_src, z=z_src).values
     noisy_signal = rcv_sig + rcv_noise
-    f_rtf, rtf, _, _, _ = rtf_covariance_substraction(
+    f_rtf, rtf, _, _, _ = rtf_covariance_subtraction(
         t, noisy_signal, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
 
@@ -317,7 +317,7 @@ def mfp_measured_replicas(testcase, snr_dB):
                 # Wrap function call in dask delayed
                 delayed_rtf_cs = da.from_delayed(
                     delayed(
-                        lambda t, noisy_sig, noise: rtf_covariance_substraction(
+                        lambda t, noisy_sig, noise: rtf_covariance_subtraction(
                             t, noisy_sig, noise, nperseg, noverlap
                         )[1]
                     )(t, noisy_signal, rcv_noise),
@@ -1302,7 +1302,7 @@ if __name__ == "__main__":
 #         rcv_noise = ds_noise.sel(r=r_i, z=z_i)
 
 #         # Estimate RTF using covariance substraction method
-#         f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
+#         f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_subtraction(
 #             t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
 #         )
 

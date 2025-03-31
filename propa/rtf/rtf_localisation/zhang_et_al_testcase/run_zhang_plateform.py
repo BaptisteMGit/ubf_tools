@@ -117,6 +117,7 @@ def run_test_1():
         "plot_fullarray_surf_comparison": True,
         "plot_surf_dist_comparison": False,
         "plot_mainlobe_contour": False,
+        "plot_msr_estimation": True,
     }
 
     # Calcul des MSR, RMSE pour chaque sous-antennes
@@ -232,7 +233,7 @@ if __name__ == "__main__":
     """
     antenna_type = "zhang"
     event_stype = "wn"
-    debug = False
+    debug = True
 
     freq_draw_method = "equally_spaced"
     nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)

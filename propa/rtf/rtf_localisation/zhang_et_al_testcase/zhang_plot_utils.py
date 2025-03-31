@@ -32,6 +32,8 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     get_estimated_src_pos,
     get_axis_order,
     get_hull_points,
+    get_mainlobe_mask,
+    get_mainlobe_contours,
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     ROOT_IMG,
@@ -305,7 +307,7 @@ def plot_study_zhang2023(
             ds_fa, root_img, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap=cmap
         )
 
-    estimate_msr(ds_fa=ds_fa, verbose=True)
+    estimate_msr(ds=ds_fa, verbose=True)
 
 
 def plot_antenna_and_search_area(
@@ -626,7 +628,11 @@ def plot_ambiguity_surface_mainlobe_contour(
     ds_fa, root_img, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap="jet"
 ):
     # Find mainlobe contours
-    mainlobe_contours = find_mainlobe(ds_fa)
+    masks = get_mainlobe_mask(ds_fa)
+    mainlobe_contours = {
+        dist: get_mainlobe_contours(ds_fa[dist], masks[dist])
+        for dist in ["d_gcc", "d_rtf"]
+    }
 
     f, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
     # Plot d_gcc and d_rtf
@@ -648,7 +654,6 @@ def plot_ambiguity_surface_mainlobe_contour(
         )
 
         contour = mainlobe_contours[dist]
-        hull_points = get_hull_points(da_amb_surf=amb_surf, contour=contour)
 
         ax.plot(
             ds_fa["x"].values[contour[:, ax_order["x"]].astype(int)],
@@ -656,14 +661,6 @@ def plot_ambiguity_surface_mainlobe_contour(
             color="k",
             linewidth=2,
             label="Contour",
-        )
-
-        ax.plot(
-            hull_points[:, 0],
-            hull_points[:, 1],
-            "r-",
-            linewidth=2,
-            label="Convex Hull",
         )
 
         title = "DCF" if dist == "d_gcc" else "RTF"

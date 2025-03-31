@@ -89,11 +89,11 @@ def testcase_1_unpropagated_whitenoise(snr_dB=10, plot=True):
 
     # Estimate RTF using covariance substraction method
     rcv_noisy_signal = rcv_sig + rcv_noise
-    f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
+    f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_subtraction(
         t, rcv_noisy_signal, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
 
-    # f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
+    # f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_subtraction(
     #     t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
     # )
 
@@ -226,11 +226,11 @@ def testcase_2_propagated_whitenoise(snr_dB=10, plot=True):
     # Estimate RTF using covariance substraction method
     # TODO : update with another realization of noise
     rcv_noisy_signal = rcv_sig + rcv_noise
-    f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
+    f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_subtraction(
         t, rcv_noisy_signal, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
 
-    # f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
+    # f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_subtraction(
     #     t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
     # )
     # TODO : update with another realization of noise
@@ -397,10 +397,10 @@ def testcase_3_propagated_interference(
     t0 = time()
     # TODO : update with another realization of noise -> ie another noise time segment
     rcv_noisy_signal = rcv_sig + rcv_noise
-    f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
+    f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_subtraction(
         t, rcv_noisy_signal, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
-    print(f"rtf_covariance_substraction: {time() - t0:.2f} s")
+    print(f"rtf_covariance_subtraction: {time() - t0:.2f} s")
     t0 = time()
     f_cw, rtf_cw, _, _, _ = rtf_covariance_whitening(
         t, rcv_noisy_signal, rcv_noise, nperseg=nperseg, noverlap=noverlap

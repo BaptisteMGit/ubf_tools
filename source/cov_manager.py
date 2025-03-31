@@ -33,7 +33,10 @@ class CovManager:
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Derive the CSDM of y.
-        Shape of y must be (ns, nrcv) where ns is the number of samples and nrcv is the number of receivers
+        :param y: A 2D signals array with shape (ns, nrcv), where ns is the number of samples and nrcv is the number of receivers.
+        :param fs: Sampling frequency of the signal.
+        :param add_identity: Add identity matrix to the covariance matrix.
+        :return: Frequency bins and corresponding CSDM.
         """
         ff, _, stft_list = self.get_stft_array(
             y, fs, self.nperseg, self.noverlap, self.window

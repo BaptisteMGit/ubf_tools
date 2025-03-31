@@ -509,13 +509,13 @@ def build_ds_block(ds, nx=None, ny=None):
     return blocks
 
 
-def gather_res_blocks(res_blocks, ds, f_rtf, nx=None, ny=None):
+def gather_res_blocks(res_blocks, ds, f, nx=None, ny=None):
     # Res is a list of np arrays of shape (nr, nf, ny, nx)
     x_slices, y_slices = regions_slices(ds, nx=nx, ny=ny)
     res = np.empty(
         (
             ds.sizes["idx_rcv"],
-            len(f_rtf),
+            len(f),
             ds.sizes["y"],
             ds.sizes["x"],
         ),
@@ -576,6 +576,7 @@ def estimate_rtf_arrays(
     x,
     y,
     library_props,
+    rtf_estimator="cs",
     nperseg=2**11,
     noverlap=2**10,
     verbose=False,
@@ -586,10 +587,15 @@ def estimate_rtf_arrays(
     24/03/2025 : Avoid using xarray dataset to speed up computation (use numpy arrays instead).
 
     """
+    # Select estimator to use
+    if rtf_estimator == "cs":
+        rtf_func = rtf_covariance_substraction
+    elif rtf_estimator == "cw":
+        rtf_func = rtf_covariance_whitening
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
-    f_rtf, rtf_e, _, _, _ = rtf_covariance_substraction(
+    f_rtf, rtf_e, _, _, _ = rtf_func(
         t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
     # f_rtf, rtf_e, _, _, _ = rtf_covariance_whitening(
@@ -613,7 +619,7 @@ def estimate_rtf_arrays(
             noise_only = n_l[:, :, iy, jx].T
 
             # Derive rtf
-            _, rtf_l_ij, _, _, _ = rtf_covariance_substraction(
+            _, rtf_l_ij, _, _, _ = rtf_func(
                 t, noisy_sig, noise_only, nperseg, noverlap
             )  # (nf, nrcv)
             # _, rtf_l_ij, _, _, _ = rtf_covariance_whitening(
@@ -1108,6 +1114,8 @@ def build_features_from_time_signal(
     check=False,
     use_welch_estimator=False,
     antenna_type="zhang",
+    rtf_estimator="cs",
+    root_name="zhang_output_from_signal",
     verbose=False,
 ):
     """
@@ -1244,16 +1252,16 @@ def build_features_from_time_signal(
     # n_ref = len(idx_rcv_refs)
     nx = ny = int(np.sqrt(N_WORKERS))
 
-    # Split dataset in blocks to parallelize computation
-    ds_sn_rtf_blocks = build_ds_block(ds_sig_noise_light_rtf, nx=nx, ny=ny)
-    ds_sn_dcf_blocks = build_ds_block(ds_sig_noise_light_dcf, nx=nx, ny=ny)
-    n_spatial_blocks = len(ds_sn_rtf_blocks)
-
     with Client(
         n_workers=N_WORKERS,
-        threads_per_worker=1,
+        threads_per_worker=4,
         memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
     ) as client:
+        # Split dataset in blocks to parallelize computation
+        ds_sn_rtf_blocks = build_ds_block(ds_sig_noise_light_rtf, nx=nx, ny=ny)
+        ds_sn_dcf_blocks = build_ds_block(ds_sig_noise_light_dcf, nx=nx, ny=ny)
+        n_spatial_blocks = len(ds_sn_rtf_blocks)
+
         first_iter = True
         for i_ref in idx_rcv_refs:
             rtf_iref = []
@@ -1286,6 +1294,7 @@ def build_features_from_time_signal(
                     x=ds_block.x.values,
                     y=ds_block.y.values,
                     library_props=library_props,
+                    rtf_estimator=rtf_estimator,
                     nperseg=nperseg,
                     noverlap=noverlap,
                     verbose=verbose,
@@ -1344,7 +1353,7 @@ def build_features_from_time_signal(
             gcc_l = gather_res_blocks(
                 res_blocks=dcf_iref_l,
                 ds=ds_tmp,
-                f_rtf=f_gcc,
+                f=f_gcc,
                 nx=nx,
                 ny=ny,
             )
@@ -1360,7 +1369,7 @@ def build_features_from_time_signal(
             rtf_cs_l = gather_res_blocks(
                 res_blocks=rtf_iref_l,
                 ds=ds_tmp,
-                f_rtf=f_rtf,
+                f=f_rtf,
                 nx=nx,
                 ny=ny,
             )
@@ -1438,7 +1447,7 @@ def build_features_from_time_signal(
     # Save updated dataset
     fpath = os.path.join(
         ROOT_DATA,
-        f"zhang_output_from_signal_dx{grid['dx']}m_dy{grid['dy']}m_snr{snr_dB:.1f}dB.nc",
+        f"{root_name}_dx{grid['dx']}m_dy{grid['dy']}m_snr{snr_dB:.1f}dB.nc",
     )
     ds_res_from_sig.to_netcdf(fpath)
     ds_res_from_sig.close()

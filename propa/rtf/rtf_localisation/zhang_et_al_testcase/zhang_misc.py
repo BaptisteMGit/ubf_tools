@@ -37,6 +37,13 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
     USE_TEX,
 )
 
+from scipy import ndimage as ndi
+from skimage.filters import rank
+from skimage.measure import label
+from skimage.morphology import disk
+from skimage.util import img_as_ubyte
+from scipy.ndimage import binary_dilation, label
+
 
 PubFigure(ticks_fontsize=22, use_tex=USE_TEX)
 
@@ -102,12 +109,12 @@ def params(debug=False, antenna_type="zhang"):
 
     if debug:
         # Test with non square area
-        l_detection_area_x = 0.4e3  # Length of the detection area along x axis
-        l_detection_area_y = 0.5e3  # Length of the detection area along y axis
+        # l_detection_area_x = 0.4e3  # Length of the detection area along x axis
+        # l_detection_area_y = 0.5e3  # Length of the detection area along y axis
 
         # # To debug 17032025
-        # l_detection_area_x = 0.3e3  # Length of the detection area along x axis
-        # l_detection_area_y = 0.2e3  # Length of the detection area along y axis
+        l_detection_area_x = 0.2e3  # Length of the detection area along x axis
+        l_detection_area_y = 0.18e3  # Length of the detection area along y axis
 
         # Manual def (ugly)
         x_bott_left_corner = 3800
@@ -229,14 +236,15 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
         "phi": 0,
     }
 
-    t = np.arange(0, library_props["T"], 1 / library_props["fs"])
-    s = sp.chirp(
-        t,
-        library_props["f0"],
-        library_props["T"],
-        library_props["f1"],
-        method="linear",
-    )
+    # t = np.arange(0, library_props["T"], 1 / library_props["fs"])
+    # s = sp.chirp(
+    #     t,
+    #     library_props["f0"],
+    #     library_props["T"],
+    #     library_props["f1"],
+    #     method="linear",
+    # )
+    t, s = colored_noise(library_props["T"], fs, "white")
 
     # Normalise signal to get unit variance
     s /= np.std(s)
@@ -268,6 +276,17 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
     fpath = os.path.join(ROOT_IMG, f"library_source_spectrum.png")
     plt.savefig(fpath)
     plt.close("all")
+
+    # Compute and plot DSP
+    dsp = sp.welch(s, fs, nperseg=1024, noverlap=512, nfft=1024)
+    plt.figure()
+    plt.plot(dsp[0], 10 * np.log10(dsp[1]))
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("PSD [dB/Hz]")
+    plt.title(f"Library source signal")
+    # plt.yscale("log")
+    plt.savefig(os.path.join(ROOT_IMG, "library_source_dsp.png"))
+
     # plt.show()
 
     # Interp library source spectrum at desired frequencies
@@ -276,7 +295,7 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
     # Keep frequencies between 50 and 550 Hz
     idx_in_band = (f_library >= 50) & (f_library <= 550)
 
-    # Right frequencies in band in a
+    # Right frequencies in band in a txt file
     f_in_band = f_library[idx_in_band]
     txt = " ".join([f"{f:.2f}" for f in f_in_band])
     fpath = os.path.join(ROOT_TMP, "f_in_band.txt")
@@ -590,7 +609,133 @@ def get_hull_points(da_amb_surf, contour):
     return hull_points
 
 
-def estimate_msr(ds_fa, verbose=False):
+def apply_kmeans(X, n_clusters):
+    # Normalize features
+    X_norm = preprocessing.normalize(X).T
+    # Apply kmeans
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init="auto")
+    kmeans.fit(X_norm)
+
+    # Get labels
+    labels = kmeans.labels_
+
+    return labels
+
+
+def get_src_pos_label(amb_surf, labels):
+    x_idx, y_idx, _, _ = get_estimated_src_pos(amb_surf=amb_surf, loc_arg="max")
+    ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+    idx_tuple = (y_idx, x_idx) if (ax_order["y"] == 0) else (x_idx, y_idx)
+    src_hat_class = labels[idx_tuple]
+    return src_hat_class
+
+
+def get_mainlobe_contours(amb_surf, mask):
+    x_idx, y_idx, _, _ = get_estimated_src_pos(amb_surf=amb_surf, loc_arg="max")
+    ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+
+    # Find contours of src_hat_class and select the contour corresponding to the estimated position
+    contours = measure.find_contours(mask, level=0.5)
+    for contour in contours:
+        # Check if src_hat is within the contour
+        idx_x_min = np.min(contour[:, ax_order["x"]].astype(int))
+        idx_x_max = np.max(contour[:, ax_order["x"]].astype(int))
+        idx_y_min = np.min(contour[:, ax_order["y"]].astype(int))
+        idx_y_max = np.max(contour[:, ax_order["y"]].astype(int))
+        if (idx_x_min <= x_idx <= idx_x_max) and (idx_y_min <= y_idx <= idx_y_max):
+            break
+
+    return contour
+
+
+def get_mainlobe_mask(ds):
+    # Cast to uint8
+    image_dcf = 10 ** (ds.d_gcc.values / 10)
+    image_dcf = img_as_ubyte(image_dcf)
+
+    image_rtf = 10 ** (ds.d_rtf.values / 10)
+    image_rtf = img_as_ubyte(image_rtf)
+
+    # Smooth images
+    disk_size = 4
+    image_dcf = rank.median(image_dcf, disk(disk_size))
+    image_rtf = rank.median(image_rtf, disk(disk_size))
+
+    # Number of clusters
+    n_clusters = 7
+    # Kmeans avec seulement les intensités des pixels
+    X_dcf = image_dcf.flatten()[np.newaxis, :]
+    X_rtf = image_rtf.flatten()[np.newaxis, :]
+
+    # Apply K-means to get labels for each pixel
+    labels_dcf = apply_kmeans(X_dcf, n_clusters)
+    labels_rtf = apply_kmeans(X_rtf, n_clusters)
+
+    # Reshape labels to 2d arrays
+    labels_dcf = labels_dcf.reshape(ds.d_gcc.shape)
+    labels_rtf = labels_rtf.reshape(ds.d_rtf.shape)
+
+    # Define mask for regions belonging to the class of the estimated source position
+    mask_dcf = labels_dcf == get_src_pos_label(amb_surf=ds.d_gcc, labels=labels_dcf)
+    mask_rtf = labels_rtf == get_src_pos_label(amb_surf=ds.d_rtf, labels=labels_rtf)
+
+    # New labels to get the region of interest
+    mask_labeled_dcf, nlabel_dcf = label(mask_dcf)
+    mask_labeled_rtf, nlabel_dcf = label(mask_rtf)
+
+    # Get labels of the region of interest
+    label_dcf = get_src_pos_label(amb_surf=ds.d_gcc, labels=mask_labeled_dcf)
+    label_rtf = get_src_pos_label(amb_surf=ds.d_rtf, labels=mask_labeled_rtf)
+
+    # Create new masks with only the region of interest
+    mask_dcf_new = mask_labeled_dcf == label_dcf
+    mask_rtf_new = mask_labeled_rtf == label_rtf
+
+    # Remove holes
+    mask_dcf_new = ndi.binary_fill_holes(mask_dcf_new)
+    mask_rtf_new = ndi.binary_fill_holes(mask_rtf_new)
+
+    # Expand regions
+    mask_dcf_new = binary_dilation(mask_dcf_new, iterations=2)
+    mask_rtf_new = binary_dilation(mask_rtf_new, iterations=2)
+    masks = {"d_gcc": mask_dcf_new, "d_rtf": mask_rtf_new}
+
+    return masks
+
+
+def estimate_msr(ds, verbose=False):
+
+    ### Define the mainlobe mask ###
+    masks = get_mainlobe_mask(ds)
+
+    ### Compute MSR ###
+    msr = {}
+    pos_hat = {}
+    for i, dist in enumerate(["d_gcc", "d_rtf"]):
+
+        amb_surf = ds[dist]
+        # Source pos
+        x_idx, y_idx, x_src_hat, y_src_hat = get_estimated_src_pos(
+            amb_surf=amb_surf, loc_arg="max"
+        )
+        pos_hat[dist] = {"x": x_src_hat.values, "y": y_src_hat.values}
+
+        mainlobe_mask = masks[dist]
+
+        # Compute mainlobe to side lobe ratio
+        main_lobe = np.max(amb_surf.values)
+        side_lobe = np.max(amb_surf.values[~mainlobe_mask])
+        msr[dist] = -(
+            main_lobe - side_lobe
+        )  # MSR = mainlobe_dB - side_lobe_dB  (- to fit with negative results presented by Zhang et al 2023)
+
+        if verbose:
+            print(f"MSR {dist} : {msr[dist]:.2f} dB")
+
+    return msr, pos_hat
+
+
+def estimate_msr_before(ds_fa, verbose=False):
     # Derive mainlobe to side lobe ratio
 
     # Find mainlobe contours
@@ -639,8 +784,6 @@ def estimate_msr(ds_fa, verbose=False):
                 X.shape
             )  # Use logical OR to combine multiple contours
 
-            plot_hull = True
-
         except:
             # Handle case where it impossible to define a contour
 
@@ -650,8 +793,6 @@ def estimate_msr(ds_fa, verbose=False):
                 mainlobe_mask[y_idx, x_idx] = 1  # Mainlobe = single pixel
             else:
                 mainlobe_mask[x_idx, y_idx] = 1  # Mainlobe = single pixel
-
-            plot_hull = False
 
         # Compute mainlobe to side lobe ratio
         main_lobe = np.max(amb_surf.values)

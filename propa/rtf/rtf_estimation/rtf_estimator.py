@@ -30,18 +30,33 @@ import propa.rtf.rtf_global_constants as g_rtf
 class RTFEstimator:
     """
     Class dedicated to the estimation of the RTF.
+    Two methods are available:
+    - covariance subtraction
+    - covariance whitening
+
+    Covariance subtraction method is available with two options:
+    - using the first column of the CSDM
+    - using the major eigen vector of the CSDM
+
+    Both methods are described in:
+    Markovich-Golan, S., & Gannot, S. (2015). Performance analysis of the covariance subtraction method for relative
+    transfer function estimation and comparison to the covariance whitening method. 2015 IEEE International Conference
+    on Acoustics, Speech and Signal Processing (ICASSP), 544-548. https://doi.org/10.1109/ICASSP.2015.7178028
+
     """
 
     def __init__(self, idx_rcv_ref=0):
         self.index_reference_rcv = idx_rcv_ref
 
     def estimate_rtf_covariance_subtraction(
-        self, clean_signal_csdm, use_first_column=False
-    ):
+        self, clean_signal_csdm: np.array, use_first_column: bool = False
+    ) -> np.array:
         """
         Estimate the RTF using the covariance subtraction method.
-        :param clean_signal_csdm: Clean speech CSDM at all frequency bins (3D array : frequency bins x num_receivers x num_receivers).
-        :param use_first_column: Boolean indicating if estimation should be performed using the clean_signal_csdm first column. Otherwise, uses the major eigen vector of the clean_signal_csdm.
+        :param clean_signal_csdm: Clean speech CSDM at all frequency bins
+        (3D array: frequency bins x num_receivers x num_receivers).
+        :param use_first_column: Boolean indicating if estimation should be performed using the clean_signal_csdm first
+        column. Otherwise, rtf is estimated from the major eigen vector of the clean_signal_csdm.
         :return: Estimated RTF.
         """
         if use_first_column:
@@ -53,7 +68,9 @@ class RTFEstimator:
 
         return rtf
 
-    def estimate_rtf_covariance_whitening(self, noisy_cpsd, noise_cpsd):
+    def estimate_rtf_covariance_whitening(
+        self, noisy_cpsd: np.array, noise_cpsd: np.array
+    ) -> np.array:
         """
         Estimate the RTF using the covariance whitening method.
         :param noisy_cpsd: Noisy CSDMs (frequency bins x num_receivers x num_receivers).
@@ -65,9 +82,9 @@ class RTFEstimator:
         return rtf
 
     @staticmethod
-    def covariance_subtraction_first_column(clean_signal_csdm):
+    def covariance_subtraction_first_column(clean_signal_csdm: np.array) -> np.array:
         """
-        Estimate the RTF using the covariance subtraction method with the first column.
+        Estimate the RTF using the covariance subtraction method with the first column of the CSDM.
         :param clean_signal_csdm: Clean speech CSDM (frequency bins x num_receivers x num_receivers).
         :return: Estimated RTF.
         """
@@ -87,11 +104,11 @@ class RTFEstimator:
 
     @classmethod
     def covariance_subtraction_major_eigen_vector(
-        cls, clean_signal_csdm, idx_rcv_ref=0
-    ):
+        cls, clean_signal_csdm: np.array, idx_rcv_ref: int = 0
+    ) -> np.array:
         """
-        Estimate the RTF using the covariance subtraction method with the major eigen vector.
-        :param clean_signal_csdm: Clean speech CSDM.
+        Estimate the RTF using the covariance subtraction method with the major eigen vector of the CSDM.
+        :param clean_signal_csdm: Clean speech CSDM (frequency bins x num_receivers x num_receivers).
         :return: Estimated RTF.
         """
 
@@ -111,7 +128,7 @@ class RTFEstimator:
             return rtf_f
 
         nf, nr, _ = clean_signal_csdm.shape
-        # Using builtin map is slighly faster than using an explicit foor loop
+        # Using map is slighly faster than using an explicit for loop
         rtf = list(
             map(
                 covariance_subtraction_major_eigen_vector_f,
@@ -126,10 +143,13 @@ class RTFEstimator:
         return np.squeeze(rtf)
 
     @staticmethod
-    def sort_eigenvectors_get_major(eigva, eigve, num_to_keep=1):
+    def sort_eigenvectors_get_major(
+        eigva: np.array, eigve: np.array, num_to_keep: int = 1
+    ) -> tuple:
         """
         Sort eigenvectors and eigenvalues in descending order and return the major eigenvector.
-        This function is adapted from the original code in the SVD-direct package
+        This function is adapted from the original code in the SVD-direct package and is replaced when possible
+        here by the subset_by_index args of scipy.linalg.eigh.
         :param eigva: Eigenvalues.
         :param eigve: Eigenvectors.
         :return: Sorted eigenvalues and eigenvectors and major eigenvector.
@@ -154,7 +174,15 @@ class RTFEstimator:
         return eigva[:num_to_keep], eigve[:, :num_to_keep]
 
     @staticmethod
-    def normalize_eigve_to_1(eigve_single_column, idx_rcv_ref=0):
+    def normalize_eigve_to_1(
+        eigve_single_column: np.array, idx_rcv_ref: int = 0
+    ) -> np.array:
+        """
+        Normalize eigenvector to 1 at the reference microphone.
+        :param eigve_single_column: Eigenvector.
+        :param idx_rcv_ref: Index of the reference microphone.
+        :return: Normalized eigenvector.
+        """
 
         # Normalize input vector at the reference microphone
         if np.abs(eigve_single_column[idx_rcv_ref]) < g_rtf.eps:
@@ -165,8 +193,16 @@ class RTFEstimator:
         return eigve_normalized
 
     @classmethod
-    def covariance_whitening_cholesky(cls, noisy_cpsd, noise_cpsd) -> np.array:
-        # noise_cpsd must be Hermitian (symmetric if real-valued) and positive-definite
+    def covariance_whitening_cholesky(
+        cls, noisy_cpsd: np.array, noise_cpsd: np.array
+    ) -> np.array:
+        """
+        Estimate the RTF using the covariance whitening method.
+        Noise CSDM must be Hermitian (symmetric if real-valued) and positive-definite.
+        :param noisy_cpsd: Noisy CSDMs (frequency bins x num_receivers x num_receivers).
+        :param noise_cpsd: Noise CSDMs (frequency bins x num_receivers x num_receivers).
+        :return: Estimated RTF.
+        """
 
         rtf = np.zeros((noisy_cpsd.shape[0], noisy_cpsd.shape[1]), dtype=complex)
         for k in range(noise_cpsd.shape[0]):
@@ -184,12 +220,22 @@ class RTFEstimator:
         return rtf
 
     @classmethod
-    def get_eigenvectors_whitened_noisy_cov(cls, noisy_cpsd, noise_cpsd, how_many=1):
+    def get_eigenvectors_whitened_noisy_cov(
+        cls, noisy_cpsd: np.array, noise_cpsd: np.array
+    ) -> np.array:
+        """
+        Get the major eigenvector of the whitened noisy CSDM.
+        :param noisy_cpsd: Noisy CSDMs (frequency bins x num_receivers x num_receivers).
+        :param noise_cpsd: Noise CSDMs (frequency bins x num_receivers x num_receivers).
+        :return: Major eigenvalue, major eigenvector of the whitened noisy covariance, Cholesky factor of the noise
+        spatial covariance.
+        """
+
         noise_cpsd_sqrt, noisy_cpsd_whitened = cls.whiten_covariance(
             noisy_cpsd, noise_cpsd
         )
         nr = noisy_cpsd.shape[-1]
-        maj_eigva, maj_eigve_whitened = np.linalg.eigh(
+        maj_eigva, maj_eigve_whitened = scipy.linalg.eigh(
             noisy_cpsd_whitened,
             subset_by_index=[nr - 1, nr - 1],  # Only get the major eigenvector
         )
@@ -197,12 +243,12 @@ class RTFEstimator:
         return maj_eigva, maj_eigve_whitened, noise_cpsd_sqrt
 
     @staticmethod
-    def whiten_covariance(noisy_cpsd, noise_cpsd):
+    def whiten_covariance(noisy_cpsd: np.array, noise_cpsd: np.array) -> np.array:
         """
         1) Perform Cholesky decomposition on noise_cpsd: noise_cpsd = L @ L.conj().T
         2) Calculate whitened covariance R_white = L^-1 @  noisy_cpsd @ (L^(-1))^H
-        :param noisy_cpsd: noisy spatial covariance
-        :param noise_cpsd: noise spatial covariance
+        :param noisy_cpsd: Noisy CSDMs (frequency bins x num_receivers x num_receivers).
+        :param noise_cpsd: Noise CSDMs (frequency bins x num_receivers x num_receivers).
         :return: Cholesky factor L, whitened noisy spatial covariance
         """
         noise_cpsd_sqrt = np.linalg.cholesky(noise_cpsd)

@@ -66,7 +66,7 @@ def run_test_1():
     # subarrays_list = [best_subarray, worste_subarray]
     subarrays_list = []
     # n_rcv = [2, 3, 4, 5, 6]
-    n_rcv = [5, 6]
+    n_rcv = [3, 5, 6]
 
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
@@ -85,17 +85,20 @@ def run_test_1():
     # snr_min = -5
     # snr_max = 2.5
     # # Docker 3
-    snr_min = 0
-    snr_max = 15
+    # snr_min = 0
+    # snr_max = 15
 
-    snr_step = 2.5
-    n_snr = int((snr_max - snr_min) / snr_step + 1)
-    snrs = np.linspace(snr_min, snr_max, n_snr)
+    # snr_step = 2.5
+    # n_snr = int((snr_max - snr_min) / snr_step + 1)
+    # snrs = np.linspace(snr_min, snr_max, n_snr)
+
+    snrs = [-10, -5, 0, 5, 10]
+    n_snr = 5
     print("SNRs : ", snrs)
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 100
+    n_monte_carlo = 1
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information
@@ -113,8 +116,7 @@ def run_test_1():
         "plot_cpl_surf_comparison": True,
         "plot_fullarray_surf_comparison": True,
         "plot_surf_dist_comparison": False,
-        "plot_mainlobe_contour": True,
-        "plot_msr_estimation": True,
+        "plot_mainlobe_contour": False,
     }
 
     # Calcul des MSR, RMSE pour chaque sous-antennes
@@ -179,7 +181,6 @@ def run_test_2():
         "plot_fullarray_surf_comparison": True,
         "plot_surf_dist_comparison": False,
         "plot_mainlobe_contour": False,
-        "plot_msr_estimation": False,
     }
 
     # Calcul des MSR, RMSE pour chaque sous-antennes

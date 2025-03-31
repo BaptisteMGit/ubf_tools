@@ -3,7 +3,7 @@
 """
 @File    :   real_data_analysis_1.ipynb
 @Time    :   2024/09/06 12:01:19
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -29,7 +29,8 @@ import matplotlib.pyplot as plt
 from get_data.ais.ais_tools import *
 from get_data.wav.get_data_from_rhumrum import *
 from publication.PublicationFigure import PubFigure
-from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
+
+# from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
 

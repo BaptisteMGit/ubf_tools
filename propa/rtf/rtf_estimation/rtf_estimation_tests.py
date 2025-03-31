@@ -3,7 +3,7 @@
 """
 @File    :   rtf_estimation_tests.py
 @Time    :   2024/11/04 13:56:19
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -261,7 +261,7 @@ def test_rtf_cs(snr_dB=10):
         snr_dB=snr_dB,
     )
 
-    f, rtf = rtf_covariance_substraction(t, rcv_sig, rcv_noise)
+    f, rtf = rtf_covariance_subtraction(t, rcv_sig, rcv_noise)
     # first component of rtf is the reference receiver -> we can remove it (equal to 1)
     rtf = rtf[:, 1:]
 

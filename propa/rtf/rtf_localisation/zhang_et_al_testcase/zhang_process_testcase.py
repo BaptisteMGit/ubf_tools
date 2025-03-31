@@ -430,14 +430,14 @@ def process_all_snr(
             # Run simulation (one simulation = 1 generation of noise)
             # t0 = time()
             # build_features_from_time_signal(snr)
-            # build_features_from_time_signal(
-            #     snr_dB=snr,
-            #     debug=debug,
-            #     check=check,
-            #     use_welch_estimator=True,
-            #     antenna_type=antenna_type,
-            #     verbose=verbose,
-            # )
+            build_features_from_time_signal(
+                snr_dB=snr,
+                debug=debug,
+                check=check,
+                use_welch_estimator=True,
+                antenna_type=antenna_type,
+                verbose=verbose,
+            )
 
             # elasped_time = time() - t0
             # print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")

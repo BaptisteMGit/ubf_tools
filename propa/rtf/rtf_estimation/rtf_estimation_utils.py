@@ -22,9 +22,10 @@ import matplotlib.pyplot as plt
 from misc import *
 from propa.rtf.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import *
-from real_data_analysis.real_data_utils import (
-    compute_csd_matrix_fast,
-)
+
+# from real_data_analysis.real_data_utils import (
+#     compute_csd_matrix_fast,
+# )
 
 
 def rtf_covariance_whitening(
@@ -38,14 +39,32 @@ def rtf_covariance_whitening(
     ts = t[1] - t[0]
     fs = 1 / ts
 
+    # nperseg_noise = 2048
+    # noverlap_noise = int(nperseg_noise * 0.75)
     # Derive CSDM
-    f, Rx, Rs, Rv = get_csdm(
-        t,
-        noisy_signal=noisy_signal,
-        noise_only=noise_only,
-        nperseg=nperseg,
-        noverlap=noverlap,
-    )
+    # f, Rx, Rs, Rv = get_csdm(
+    #     t,
+    #     noisy_signal=noisy_signal,
+    #     noise_only=noise_only,
+    #     nperseg=nperseg,
+    #     noverlap=noverlap,
+    # )
+    f, Rv = get_csdm_from_signal(t, noise_only, nperseg, noverlap, add_identity=True)
+    Rx = Rs = None
+
+    # # Rv_th
+    # fvv, Svv = sp.welch(
+    #     noise_only,
+    #     fs=fs,
+    #     nperseg=nperseg_noise,
+    #     noverlap=noverlap_noise,
+    #     axis=0,
+    # )
+    # Rv_th = np.array([np.diag(Svv[k, :]) for k in range(Svv.shape[0])])
+    # plt.figure()
+    # for i in range(Svv.shape[1]):
+    #     plt.plot(fvv, Svv[:, i], label=f"rcv {i}")
+    # plt.savefig("test")
     # Derive noisy_signal STFT
     ff, tt, stft_x = get_stft_array(noisy_signal, fs, nperseg, noverlap)
     # Estimate RTF
@@ -69,9 +88,11 @@ def rtf_cw(f, n_rcv, stft_x, Rv):
 
         # Cholesky decomposition of the noise csdm and its inverse : Equation (25a) and (25b)
         Rv_half = scipy.linalg.cholesky(Rv_f, lower=False)
-        # Rv_half_inv = np.linalg.inv(Rv_half).T        # Theoreticaly equivalent but leads to greater numerical errors
-        Rv_inv_f = np.linalg.inv(Rv_f)
-        Rv_half_inv = scipy.linalg.cholesky(Rv_inv_f, lower=False)
+        Rv_half_inv = np.linalg.inv(
+            Rv_half
+        ).T  # Theoreticaly equivalent but leads to greater numerical errors
+        # Rv_inv_f = np.linalg.inv(Rv_f)
+        # Rv_half_inv = scipy.linalg.cholesky(Rv_inv_f, lower=False)
 
         # Compute the whitened signal csdm : Equation (26)
         stft_y_f = Rv_half_inv @ stft_x_f
@@ -102,7 +123,7 @@ def rtf_cw(f, n_rcv, stft_x, Rv):
 
 
 def rtf_covariance_substraction(
-    t, noisy_signal, noise_only, nperseg=2**12, noverlap=2**11
+    t, noisy_signal, noise_only, nperseg=2**12, noverlap=2**11, first_column=False
 ):
     """
     Derive the RTF using covariance substraction method described in Markovich-Golan, S., & Gannot, S. (2015).
@@ -112,15 +133,27 @@ def rtf_covariance_substraction(
     # Derive usefull params
     n_rcv = noisy_signal.shape[1]
     # Derive CSDM
-    f, Rx, Rs, Rv = get_csdm(
-        t,
-        noisy_signal=noisy_signal,
-        noise_only=noise_only,
-        nperseg=nperseg,
-        noverlap=noverlap,
+    # f, Rx, Rs, Rv = get_csdm(
+    #     t,
+    #     noisy_signal=noisy_signal,
+    #     noise_only=noise_only,
+    #     nperseg=nperseg,
+    #     noverlap=noverlap,
+    # )
+
+    if first_column:
+        add_identity_noise = False
+    else:
+        add_identity_noise = True
+
+    f, Rx = get_csdm_from_signal(t, noisy_signal, nperseg, noverlap, add_identity=False)
+    f, Rv = get_csdm_from_signal(
+        t, noise_only, nperseg, noverlap, add_identity=add_identity_noise
     )
+    Rs = None
+
     # Estimate RTF
-    f, rtf = rtf_cs(f, n_rcv, Rx, Rv)
+    f, rtf = rtf_cs(f, n_rcv, Rx, Rv, first_column=first_column)
 
     # x = rcv_sig + rcv_noise
     # n_rcv = x.shape[1]
@@ -135,7 +168,7 @@ def rtf_covariance_substraction(
     return f, rtf, Rx, Rs, Rv
 
 
-def rtf_cs(f, n_rcv, Rx, Rv):
+def rtf_cs(f, n_rcv, Rx, Rv, first_column=False):
     """
     Derive RTF vector using covariance subtraction method described in Markovich-Golan, S., & Gannot, S. (2015).
     Reference receiver is assumed to be the first one.
@@ -157,20 +190,90 @@ def rtf_cs(f, n_rcv, Rx, Rv):
         Relative Transfer Function (RTF) matrix (len(f) x num_receivers).
     """
 
+    # Rv = Rv +
     R_delta = Rx - Rv  # Equation (9)
+
+    # for k in range(R_delta.shape[0]):
+    #     print(k, np.alltrue(np.diag(R_delta[k]) >= 0))
+    # pos_diags = np.array(
+    #     [np.alltrue(np.diag(R_delta[k]) >= 0) for k in range(R_delta.shape[0])]
+    # )
+    # print(np.sum(pos_diags))
 
     # Faster implementation
     # Reference receiver is assumed to be the first one
-    e1 = np.eye(n_rcv)[:, 0]
+    if first_column:
+        e1 = np.eye(n_rcv)[:, 0]
 
-    # Vectorized computation of rtf across all frequencies
-    R_delta_e1 = R_delta @ e1
-    e1_TR_delta_e1 = e1.T @ R_delta @ e1
-    rtf = R_delta_e1 / e1_TR_delta_e1[:, None]
+        # Vectorized computation of rtf across all frequencies
+        R_delta_e1 = R_delta @ e1  # First columns of CSDMs (for all freqs)
+        e1_TR_delta_e1 = (
+            e1.T @ R_delta @ e1
+        )  # First entry of first column of CSDMs (for all freqs)
 
+        eps = np.finfo(float).eps
+        rtf = R_delta_e1 / (e1_TR_delta_e1[:, np.newaxis] + eps)
+
+    else:
+        for k in range(R_delta.shape[0]):
+            eigva, eigve = scipy.linalg.eigh(R_delta[k, ...], check_finite=False)
+
+            _, rtf_f = sort_eigenvectors_get_major(eigva, eigve)
+            rtf_f = normalize_to_1(rtf_f)
+
+            if k == 0:
+                rtf = rtf_f[np.newaxis, :]
+            else:
+                rtf = np.vstack((rtf, rtf_f[np.newaxis, :]))
+        # eigva, eigve = scipy.linalg.eigh(R_delta, check_finite=False)
+
+        # _, rtf = sort_eigenvectors_get_major(eigva, eigve)
+        # rtf = normalize_to_1(rtf)
+
+    # rtf[~pos_diags, :] = np.ones(R_delta.shape[1]) * np.nan
     # print(f"Ellapsed time (fast) = {time()-t0}")
 
     return f, rtf
+
+
+def sort_eigenvectors_get_major(eigva, eigve, num_to_keep=1, squeeze=True):
+    """
+    Return eigenvector corresponding to eigenvalue with maximum norm. if eigenvalues are not ALL finite, return NaN
+    """
+
+    if num_to_keep == -1:
+        num_to_keep = len(eigva)  # keep all eigenvectors
+
+    if not np.all(np.isfinite(eigva)):
+        return (
+            np.ones_like(eigva)[:num_to_keep] * np.nan,
+            np.ones_like(eigve)[:, :num_to_keep] * np.nan,
+        )
+
+    # Sort eigenvalues and eigenvectors in ascending order
+    idx_largest_eigvas_sorted = np.argsort(np.real(eigva))
+    eigva, eigve = (
+        eigva[idx_largest_eigvas_sorted],
+        eigve[:, idx_largest_eigvas_sorted],
+    )
+
+    if squeeze:
+        return np.squeeze(eigva[-num_to_keep:]), np.squeeze(eigve[:, -num_to_keep:])
+    else:
+        return eigva[-num_to_keep:], eigve[:, -num_to_keep:]
+
+
+def normalize_to_1(eigve_single_column):
+    idx_ref_mic = 0
+    eps = np.finfo(float).eps
+
+    # normalize vector to get 1 at reference microphone
+    if np.abs(eigve_single_column[idx_ref_mic]) < eps:
+        eigve_normalized = np.zeros_like(eigve_single_column)
+    else:
+        eigve_normalized = eigve_single_column / eigve_single_column[idx_ref_mic]
+
+    return eigve_normalized
 
 
 def get_csdm(
@@ -180,24 +283,31 @@ def get_csdm(
     signal_only=None,
     nperseg=2**12,
     noverlap=2**11,
+    add_identity=False,
 ):
     """
     Derive the CSDM of the received signal and noise.
     Shape of received signal and noise must be (ns, nrcv) where ns is the number of samples and nrcv is the number of receivers
     """
 
-    ff, csdm_x = get_csdm_from_signal(t, noisy_signal, nperseg, noverlap)
-    ff, csdm_noise = get_csdm_from_signal(t, noise_only, nperseg, noverlap)
+    ff, csdm_x = get_csdm_from_signal(
+        t, noisy_signal, nperseg, noverlap, add_identity=add_identity
+    )
+    ff, csdm_noise = get_csdm_from_signal(
+        t, noise_only, nperseg, noverlap, add_identity=add_identity
+    )
 
     if signal_only is not None:
-        ff, csdm_sig = get_csdm_from_signal(t, signal_only, nperseg, noverlap)
+        ff, csdm_sig = get_csdm_from_signal(
+            t, signal_only, nperseg, noverlap, add_identity=add_identity
+        )
     else:
         csdm_sig = None
 
     return ff, csdm_x, csdm_sig, csdm_noise
 
 
-def get_csdm_from_signal(t, y, nperseg=2**12, noverlap=2**11):
+def get_csdm_from_signal(t, y, nperseg=2**12, noverlap=2**11, add_identity=False):
     """
     Derive the CSDM of y.
     Shape of y must be (ns, nrcv) where ns is the number of samples and nrcv is the number of receivers
@@ -209,7 +319,60 @@ def get_csdm_from_signal(t, y, nperseg=2**12, noverlap=2**11):
     csdm_y = compute_csd_matrix_fast(stft_list, n_seg_cov=0)
     # print(f"Ellapsed time (first) : {time() - t0}s")
 
+    if add_identity:
+        diagonal_loading = 1e-8  # amount of diagonal loading when adding identity matrix to covariance matrix
+        csdm_y = (
+            csdm_y + diagonal_loading * np.identity(csdm_y.shape[-1])[np.newaxis, ...]
+        )
     return ff, csdm_y
+
+
+def compute_csd_matrix_fast(stfts, n_seg_cov):
+    """
+    Compute the Cross Spectral Density (CSD) matrix for a set of receivers using matrix operations.
+
+    Args:
+    - stfts: list of 2D STFT matrices (frequency bins x time snapshots), one per receiver.
+    - n_seg_cov: Number of time snapshots to average over (number of segments per block).
+
+    Returns:
+    - csd_matrix: 3D CSD matrix (frequency bins x num_receivers x num_receivers).
+    """
+    num_receivers = len(stfts)
+    num_freq_bins, num_snapshots = stfts[0].shape
+
+    if n_seg_cov == 0:
+        n_seg_cov = num_snapshots
+
+    n_available_segments = num_snapshots // n_seg_cov
+
+    # Convert list of arrays into a single array
+    stacked_stfts = np.asarray(
+        stfts
+    )  # Shape: (num_receivers, num_freq_bins, num_snapshots)
+    stacked_stfts = np.moveaxis(
+        stacked_stfts, 0, -1
+    )  # (num_freq_bins, num_snapshots, num_receivers)
+
+    # Preallocate CSD matrix
+    csd_matrix = np.empty(
+        (num_freq_bins, num_receivers, num_receivers, n_available_segments),
+        dtype=np.complex128,
+    )
+
+    # Compute CSD matrix using batch operations
+    for k in range(n_available_segments):
+        idx_start = k * n_seg_cov
+        stft_block = stacked_stfts[
+            :, idx_start : idx_start + n_seg_cov, :
+        ]  # View-based slicing
+        stft_block_conj = np.conj(stft_block)  # Precompute conjugate
+
+        csd_matrix[..., k] = (
+            np.einsum("ftr,fts->frs", stft_block, stft_block_conj) / n_seg_cov
+        )
+
+    return np.squeeze(csd_matrix, axis=-1) if n_available_segments == 1 else csd_matrix
 
 
 def get_stft_array(y, fs, nperseg, noverlap):

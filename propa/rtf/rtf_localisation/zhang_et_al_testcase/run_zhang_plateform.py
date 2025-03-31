@@ -85,17 +85,20 @@ def run_test_1():
     # snr_min = -5
     # snr_max = 2.5
     # # Docker 3
-    snr_min = 0
-    snr_max = 15
+    # snr_min = 0
+    # snr_max = 15
 
-    snr_step = 2.5
-    n_snr = int((snr_max - snr_min) / snr_step + 1)
-    snrs = np.linspace(snr_min, snr_max, n_snr)
+    # snr_step = 2.5
+    # n_snr = int((snr_max - snr_min) / snr_step + 1)
+    # snrs = np.linspace(snr_min, snr_max, n_snr)
+    # snrs = [-10, -5, 0, 5, 10]
+    snrs = [5]
+    n_snr = len(snrs)
     print("SNRs : ", snrs)
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 100
+    n_monte_carlo = 1
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information
@@ -113,7 +116,7 @@ def run_test_1():
         "plot_cpl_surf_comparison": True,
         "plot_fullarray_surf_comparison": True,
         "plot_surf_dist_comparison": False,
-        "plot_mainlobe_contour": True,
+        "plot_mainlobe_contour": False,
         "plot_msr_estimation": True,
     }
 
@@ -231,7 +234,7 @@ if __name__ == "__main__":
     """
     antenna_type = "zhang"
     event_stype = "wn"
-    debug = False
+    debug = True
 
     freq_draw_method = "equally_spaced"
     nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)
@@ -252,12 +255,12 @@ if __name__ == "__main__":
     ## Step 3 : Calcul des signaux propagés depuis chacun des points de la grille
     # A executer une unique fois
     # Step 3
-    # build_signal(debug=debug, antenna_type=antenna_type, event_stype=event_stype)
+    build_signal(debug=debug, antenna_type=antenna_type, event_stype=event_stype)
 
     ## Step 4 : Calcul des vecteurs de RTF "théorique" directement à partir des fonctions de transfert
     # Principalement pour comparaison avec les vecteurs de RTF estimés par la méthode CS
 
-    run_test_1()
+    # run_test_1()
 
     # ### Open Dask client to manage ressources ###
     # with Client(

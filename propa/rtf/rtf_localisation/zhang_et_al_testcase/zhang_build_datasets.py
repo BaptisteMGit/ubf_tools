@@ -46,7 +46,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
 )
 from propa.kraken_toolbox.run_kraken import readshd, run_kraken_exec, run_field_exec
 from propa.rtf.rtf_estimation.rtf_estimation_utils import (
-    rtf_covariance_substraction,
+    rtf_covariance_subtraction,
     rtf_covariance_whitening,
 )
 
@@ -451,7 +451,7 @@ def estimate_rtf_parallel(
     t = ds_sig_noise_rolled.t.values  # Time vector
     # Extract noise signals (different noise realisation than the one use to pollute the signals)
     n_e = ds_sig_noise_rolled.n_e_bis  # Event noise
-    f_rtf, rtf_e, _, _, _ = rtf_covariance_substraction(
+    f_rtf, rtf_e, _, _, _ = rtf_covariance_subtraction(
         t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
 
@@ -541,7 +541,7 @@ def estimate_rtf_parallel_process_block(ds_block, nperseg, noverlap):
             noise_only = ds_block.n_l_bis.sel(x=x_i, y=y_i).T
 
             # Derive rtf
-            _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
+            _, rtf_cs_l, _, _, _ = rtf_covariance_subtraction(
                 t, noisy_sig, noise_only, nperseg, noverlap
             )
             # _, rtf_cs_l, _, _, _ = rtf_covariance_whitening(
@@ -589,7 +589,7 @@ def estimate_rtf_arrays(
     """
     # Select estimator to use
     if rtf_estimator == "cs":
-        rtf_func = rtf_covariance_substraction
+        rtf_func = rtf_covariance_subtraction
     elif rtf_estimator == "cw":
         rtf_func = rtf_covariance_whitening
 
@@ -676,8 +676,8 @@ def estimate_rtf(
 
     # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
     ## Derive event RTF ##
-    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
-    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_substraction(
+    # f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_subtraction(
+    f_rtf, rtf_cs_e, _, _, _ = rtf_covariance_subtraction(
         t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
     )
 
@@ -699,7 +699,7 @@ def estimate_rtf(
             noise_only = n_l.sel(x=x_i, y=y_i).T
 
             # Derive rtf
-            _, rtf_cs_l, _, _, _ = rtf_covariance_substraction(
+            _, rtf_cs_l, _, _, _ = rtf_covariance_subtraction(
                 t, noisy_sig, noise_only, nperseg, noverlap
             )
             # _, rtf_cs_l, _, _, _ = rtf_covariance_whitening(

@@ -236,18 +236,18 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
         "phi": 0,
     }
 
-    # t = np.arange(0, library_props["T"], 1 / library_props["fs"])
-    # s = sp.chirp(
-    #     t,
-    #     library_props["f0"],
-    #     library_props["T"],
-    #     library_props["f1"],
-    #     method="linear",
-    # )
-    t, s = colored_noise(library_props["T"], fs, "white")
+    t = np.arange(0, library_props["T"], 1 / library_props["fs"])
+    s = sp.chirp(
+        t,
+        library_props["f0"],
+        library_props["T"],
+        library_props["f1"],
+        method="linear",
+    )
+    # t, s = colored_noise(library_props["T"], fs, "white")
 
-    # Normalise signal to get unit variance
-    s /= np.std(s)
+    # # Normalise signal to get unit variance
+    # s /= np.std(s)
 
     # # Add library signal power to the library props to calibrate the event signal
     # library_props["sig_var"] = np.var(s)

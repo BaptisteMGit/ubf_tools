@@ -3,7 +3,7 @@
 """
 @File    :   signals.py
 @Time    :   2024/07/08 09:13:43
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Define signals for underwater acoustics.
@@ -430,6 +430,43 @@ def psd_to_timeserie(psd, df):
     return t, x
 
 
+def psd_to_timeserie_v2(psd, df):
+
+    # Set f=0 and f=fs/2 to 0   -> psd has exactly nf=np.fft.rfftfreq points
+    psd = np.concatenate(([0], psd, [0]))
+
+    # Number of frequency components in psd
+    nf = psd.shape[0]
+
+    # Define module of the spectrum
+    X_f_mod = np.sqrt(psd)  # Definition of PSD Sxx(f) = |X(f)|^2
+
+    # Generate random phase to create the complexe spectrum
+    phi_t = np.random.randn(2 * nf - 1)
+    X_f_ang = np.angle(np.fft.rfft(phi_t))
+
+    # Use random phase to create spectrum
+    X_f = X_f_mod * np.exp(1j * X_f_ang)
+
+    # Inverse fourier transform to get time signal
+    x_t = np.fft.irfft(X_f)
+    nt = x_t.shape[0]
+
+    # Correct for rfft factor
+    x_t *= nt * np.sqrt(df / 2)
+
+    # Time vector
+    fs = nt * df
+    t = np.linspace(0, 1 / fs * (nt - 1), nt)
+
+    # We can assert x_t has the required psd
+    # fs = nt * df
+    # ff, sxx = sp.welch(x_t, fs=fs)
+    # assert np.allclose(psd, np.abs(X_f))
+
+    return t, x_t
+
+
 def colored_noise(T, fs, noise_color="white"):
 
     nt = T * fs
@@ -448,9 +485,10 @@ def colored_noise(T, fs, noise_color="white"):
         raise ValueError("Unknown noise color")
 
     df = 1 / T
-    t, x = psd_to_timeserie(psd, df)
+    # t, x = psd_to_timeserie(psd, df)
+    t, x = psd_to_timeserie_v2(psd, df)
 
-    return t, x
+    return t, x, f, psd
 
 
 if __name__ == "__main__":
@@ -479,7 +517,7 @@ if __name__ == "__main__":
 
     # t, x = psd_to_timeserie(psd, df)
     # print(len(t))
-    t, x = colored_noise(T, fs, noise_color="white")
+    t, x, f_, psd_ = colored_noise(T, fs, noise_color="blue")
 
     plt.figure()
     plt.plot(t, x)
@@ -491,28 +529,32 @@ if __name__ == "__main__":
     f, psd = sp.welch(x, fs, nperseg=1024, noverlap=512)
 
     plt.figure()
-    plt.plot(f, 10 * np.log10(psd))
+    plt.plot(f, 10 * np.log10(psd), label="reached")
+    plt.plot(f_, 10 * np.log10(psd_), label="target")
     plt.xscale("log")
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("PSD")
-    # plt.show()
+    plt.legend()
+    plt.show()
 
     # Compute fft and plot
     f = np.fft.rfftfreq(len(x), 1 / fs)
     X = np.fft.rfft(x)
     plt.figure()
-    plt.plot(f, np.abs(X))
+    plt.plot(f, 10 * np.log10(np.abs(X) ** 2), label="reached")
+    plt.plot(f_, 10 * np.log10(psd_), label="target")
+    plt.xscale("log")
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Amplitude")
-    # plt.show()
-
-    # Compute inverse fft
-    x_recon = np.fft.irfft(X)
-    plt.figure()
-    plt.plot(t, x_recon)
-    plt.xlabel("Time (s)")
-    plt.ylabel("Amplitude")
     plt.show()
+
+    # # Compute inverse fft
+    # x_recon = np.fft.irfft(X)
+    # plt.figure()
+    # plt.plot(t, x_recon)
+    # plt.xlabel("Time (s)")
+    # plt.ylabel("Amplitude")
+    # plt.show()
 
     # ### LFM Chirp ###
     # f0 = 100

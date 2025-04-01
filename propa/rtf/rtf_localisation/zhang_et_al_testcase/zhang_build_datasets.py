@@ -1063,7 +1063,18 @@ def build_features_from_time_signal(
 
     # Parallelize estimation
     # n_ref = len(idx_rcv_refs)
-    nx = ny = int(np.sqrt(N_WORKERS))
+    # nx = ny = int(np.sqrt(N_WORKERS))
+
+    # NOTE : We need to make sure that the chunk size is small enough to fit in the CPU cache to avoid memory access bottleneck
+    target_chunk_nbytes = 50 * 1e3  # 50 KB -> CPU cache size L1
+    nb_chunk_rtf = int(np.ceil(ds_sig_noise_light_rtf.nbytes / target_chunk_nbytes))
+    nb_chunk_dcf = int(np.ceil(ds_sig_noise_light_dcf.nbytes / target_chunk_nbytes))
+
+    # NOTE : We need to make sure that the number of chunk is small enough to avoid empty chuncks
+    nx_rtf = min(int(np.sqrt(nb_chunk_rtf)), ds_sig_noise_light_rtf.sizes["x"])
+    ny_rtf = min(int(np.sqrt(nb_chunk_rtf)), ds_sig_noise_light_rtf.sizes["y"])
+    nx_dcf = min(int(np.sqrt(nb_chunk_dcf)), ds_sig_noise_light_dcf.sizes["x"])
+    ny_dcf = min(int(np.sqrt(nb_chunk_dcf)), ds_sig_noise_light_dcf.sizes["y"])
 
     with Client(
         n_workers=N_WORKERS,
@@ -1071,9 +1082,10 @@ def build_features_from_time_signal(
         memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
     ) as client:
         # Split dataset in blocks to parallelize computation
-        ds_sn_rtf_blocks = build_ds_block(ds_sig_noise_light_rtf, nx=nx, ny=ny)
-        ds_sn_dcf_blocks = build_ds_block(ds_sig_noise_light_dcf, nx=nx, ny=ny)
-        n_spatial_blocks = len(ds_sn_rtf_blocks)
+        ds_sn_rtf_blocks = build_ds_block(ds_sig_noise_light_rtf, nx=nx_rtf, ny=ny_rtf)
+        ds_sn_dcf_blocks = build_ds_block(ds_sig_noise_light_dcf, nx=nx_dcf, ny=ny_dcf)
+        n_spatial_blocks_rtf = len(ds_sn_rtf_blocks)
+        n_spatial_blocks_dcf = len(ds_sn_dcf_blocks)
 
         first_iter = True
         for i_ref in idx_rcv_refs:
@@ -1082,7 +1094,7 @@ def build_features_from_time_signal(
 
             iterable_args_rtf = []
             iterable_args_dcf = []
-            for i_ds_block in range(n_spatial_blocks):
+            for i_ds_block in range(n_spatial_blocks_rtf):
 
                 ### RTF ###
                 # t0 = time()
@@ -1116,7 +1128,7 @@ def build_features_from_time_signal(
                 # iterable_args_rtf.append(inputs)
                 rtf_iref.append(estimate_rtf_arrays(**inputs))
                 # print(f"Def inputs rtf : {time()-t0}")
-
+            for i_ds_block in range(n_spatial_blocks_dcf):
                 ### DCF ###
                 # t0 = time()
                 ds_block = ds_sn_dcf_blocks[i_ds_block]
@@ -1167,8 +1179,8 @@ def build_features_from_time_signal(
                 res_blocks=dcf_iref_l,
                 ds=ds_tmp,
                 f=f_gcc,
-                nx=nx,
-                ny=ny,
+                nx=nx_dcf,
+                ny=ny_dcf,
             )
 
             gcc_e = res_dcf_iref[0][2]  # (nrcv, nf)
@@ -1183,8 +1195,8 @@ def build_features_from_time_signal(
                 res_blocks=rtf_iref_l,
                 ds=ds_tmp,
                 f=f_rtf,
-                nx=nx,
-                ny=ny,
+                nx=nx_dcf,
+                ny=ny_dcf,
             )
             rtf_cs_e = res_rtf_iref[0][2]  # (nrcv, nf)
 

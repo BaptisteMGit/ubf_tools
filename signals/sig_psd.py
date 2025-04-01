@@ -29,9 +29,11 @@ def psd_to_timeserie(psd, df):
     # Generate random phase to create the complexe spectrum
     phi_t = np.random.randn(2 * nf - 1)
     X_f_ang = np.angle(np.fft.rfft(phi_t))
+    # Y_f = np.fft.rfft(phi_t)
 
     # Use random phase to create spectrum
     X_f = X_f_mod * np.exp(1j * X_f_ang)
+    # X_f = X_f_mod * Y_f
 
     # Inverse fourier transform to get time signal
     x_t = np.fft.irfft(X_f)
@@ -39,6 +41,7 @@ def psd_to_timeserie(psd, df):
 
     # Correct for rfft factor
     x_t *= nt * np.sqrt(df / 2)
+    # x_t *= nt
 
     # Time vector
     fs = nt * df
@@ -80,9 +83,14 @@ if __name__ == "__main__":
     import scipy.signal as sp
     import matplotlib.pyplot as plt
 
-    fs = 1200
+    fs = 5000
     T = 10
-    t, x, f_, psd_ = colored_noise(T, fs, noise_color="blue")
+    # t, x, f_, psd_ = colored_noise(T, fs, noise_color="purple")
+
+    f_ = np.fft.rfftfreq(int(T * fs), 1 / fs)[1:-1]
+    psd_ = f_**2 + 3 * f_**3 + 1
+    df = 1 / T
+    t, x = psd_to_timeserie(psd_, df)
 
     plt.figure()
     plt.plot(t, x)
@@ -94,7 +102,7 @@ if __name__ == "__main__":
     f, psd = sp.welch(x, fs, nperseg=1024, noverlap=512)
 
     plt.figure()
-    plt.plot(f, 10 * np.log10(psd), label="reached")
+    plt.plot(f, 10 * np.log10(psd), label="reached", marker="o")
     plt.plot(f_, 10 * np.log10(psd_), label="target")
     plt.xscale("log")
     plt.xlabel("Frequency (Hz)")

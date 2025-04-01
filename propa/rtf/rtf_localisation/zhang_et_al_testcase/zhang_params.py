@@ -59,7 +59,7 @@ for folder in [ROOT_TMP, ROOT_DATA, ROOT_IMG]:
 # Hardware limitations
 if os.name == "nt":
     # Windows
-    N_WORKERS = 2
+    N_WORKERS = 4
     max_ram_gb = 8
     MAX_RAM_PER_WORKER_GB = np.ceil(max_ram_gb / N_WORKERS)
     BLOCK_SIZES = {

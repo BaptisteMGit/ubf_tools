@@ -21,6 +21,25 @@ from scipy.signal import stft
 class CovManager:
     """
     Class to manage covariance matrices.
+
+    Attributes
+    ----------
+    nperseg : int
+        Length of each segment for the STFT.
+    noverlap : int
+        Number of overlapping samples between consecutive segments.
+    window : str
+        Window function to apply to each segment.
+
+    Methods
+    -------
+    get_signal_csdm(y, fs, add_identity=False)
+        Derive the CSDM of y.
+    get_stft_array(y, fs, nperseg=2**12, noverlap=2**11, window="hann")
+        Derive the STFT of each component of y.
+    compute_csdm_fast(stfts, n_seg_cov=0)
+        Compute the Cross Spectral Density Matrix (CSDM) from STFTs.
+
     """
 
     def __init__(self, nperseg=2**12, noverlap=2**11, window="hann"):
@@ -33,15 +52,28 @@ class CovManager:
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Derive the CSDM of y.
-        :param y: A 2D signals array with shape (ns, nrcv), where ns is the number of samples and nrcv is the number of receivers.
-        :param fs: Sampling frequency of the signal.
-        :param add_identity: Add identity matrix to the covariance matrix.
-        :return: Frequency bins and corresponding CSDM.
+
+        Parameters
+        ----------
+        y : np.ndarray
+            A 2D signals array with shape (num_samples, num_receivers).
+        fs : float
+            Sampling frequency of the signal.
+        add_identity : bool
+            Add identity matrix to the covariance matrix.
+
+        Returns
+        -------
+        ff : np.ndarray
+            Frequency bins.
+        csdm_y : np.ndarray
+            Corresponding CSDM (num_frequency_bins x num_receivers x num_receivers).
         """
-        ff, _, stft_list = self.get_stft_array(
+
+        ff, _, stft_arr = self.get_stft_array(
             y, fs, self.nperseg, self.noverlap, self.window
         )
-        csdm_y = self.compute_csdm_fast(stft_list, n_seg_cov=0)
+        csdm_y = self.compute_csdm_fast(stft_arr, n_seg_cov=0)
 
         if add_identity:
             csdm_y = (
@@ -60,12 +92,28 @@ class CovManager:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Derive the STFT of each component of y.
-        :param y: A 2D signals array with shape (ns, nrcv), where ns is the number of samples and nrcv is the number of receivers.
-        :param fs: Sampling frequency of the signal.
-        :param nperseg: Length of each segment for the STFT.
-        :param noverlap: Number of overlapping samples between consecutive segments.
-        :param window: Window function to apply to each segment.
-        :return: Frequency bins, time bins and STFT array.
+
+        Parameters
+        ----------
+        y : np.ndarray
+            A 2D signals array with shape (num_samples, num_receivers).
+        fs : float
+            Sampling frequency of the signal.
+        nperseg : int
+            Length of each segment for the STFT.
+        noverlap : int
+            Number of overlapping samples between consecutive segments.
+        window : str
+            Window function to apply to each segment.
+
+        Returns
+        -------
+        ff : np.ndarray
+            Frequency bins.
+        tt : np.ndarray
+            Time bins.
+        stft_array : np.ndarray
+            STFTs array (num_receivers, num_frequency_bins, num_snapshots).
         """
 
         ff, tt, stft_array = stft(
@@ -79,10 +127,20 @@ class CovManager:
     def compute_csdm_fast(stfts: list[np.ndarray], n_seg_cov: int = 0) -> np.ndarray:
         """
         Compute the Cross Spectral Density Matrix (CSDM) from STFTs.
-        :param stfts: list of 2D STFT matrices (frequency bins x time snapshots), one per receiver.
-        :param n_seg_cov: Number of time snapshots to average over (number of segments per block).
-        :return: 3D CSDM (frequency bins x num_receivers x num_receivers).
+
+        Parameters
+        ----------
+        stfts : np.ndarray
+            STFTs array (num_receivers, num_frequency_bins, num_snapshots).
+        n_seg_cov : int
+            Number of time snapshots to average over (number of segments per block).
+
+        Returns
+        -------
+        np.ndarray
+            3D CSDM (num_frequency_bins x num_receivers x num_receivers).
         """
+
         num_receivers = len(stfts)
         num_freq_bins, num_snapshots = stfts[0].shape
 

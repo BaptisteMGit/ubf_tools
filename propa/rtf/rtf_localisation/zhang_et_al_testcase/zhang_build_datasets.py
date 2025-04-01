@@ -1254,7 +1254,7 @@ def build_features_from_time_signal(
 
     with Client(
         n_workers=N_WORKERS,
-        threads_per_worker=4,
+        threads_per_worker=1,
         memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
     ) as client:
         # Split dataset in blocks to parallelize computation

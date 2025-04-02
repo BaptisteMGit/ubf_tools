@@ -1057,7 +1057,7 @@ def build_features_from_time_signal(
     )
 
     # ====================================================================================================
-    # Other approach: computing STFTs and CSDMs on the whole dask dataset before estimating RTFs
+    # Optimized version: RTF are computed directly on the whole 4D array (nrcv, nt, ny, nx)
     # ====================================================================================================
 
     t0 = time()
@@ -1092,16 +1092,14 @@ def build_features_from_time_signal(
 
     Rdelta = Rx - Rv
 
-    re = RTFEstimator()
+    # Get major eigenvector of the CSDMs (faster than calling the covariance_subtraction_major_eigen_vector_5D for each reference receiver)
     dims_order = {"f": 0, "r1": 1, "r2": 2, "y": 3, "x": 4}
+    major_eigve = cm.get_major_eigve_5D(csdm_5D=Rdelta, dims_order=dims_order)
 
     rtf_library_direct = np.array(
         [
-            re.covariance_subtraction_major_eigen_vector_5D(
-                clean_signal_csdm_5D=Rdelta,
-                idx_rcv_ref=i_ref,
-                dims_order=dims_order,
-            )
+            major_eigve
+            / np.broadcast_to(major_eigve[i_ref : i_ref + 1, ...], major_eigve.shape)
             for i_ref in idx_rcv_refs
         ]
     )
@@ -1109,7 +1107,6 @@ def build_features_from_time_signal(
     # Restict to the frequency band of interest
     idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
     rtf_library_direct = rtf_library_direct[:, :, idx_band, ...]
-
     print(f"RTFs computed in {time()-t0} s")
 
     t0 = time()
@@ -1186,24 +1183,24 @@ def build_features_from_time_signal(
                 # iterable_args_rtf.append(inputs)
                 rtf_iref.append(estimate_rtf_arrays(**inputs))
                 # print(f"Def inputs rtf : {time()-t0}")
-            # for i_ds_block in range(n_spatial_blocks_dcf):
-            #     ### DCF ###
-            #     # t0 = time()
-            #     ds_block = ds_sn_dcf_blocks[i_ds_block]
-            #     inputs = dict(
-            #         x_l=ds_block.x_l.values,
-            #         x_e=ds_block.x_e.values,
-            #         x_l_ref=ds_block.x_l.sel(idx_rcv=i_ref).values,
-            #         x_e_ref=ds_block.x_e.sel(idx_rcv=i_ref).values,
-            #         idx_rcv=ds_block.idx_rcv.values,
-            #         library_props=library_props,
-            #         nperseg=nperseg,
-            #         noverlap=noverlap,
-            #         use_welch_estimator=use_welch_estimator,
-            #         verbose=verbose,
-            #     )
-            #     # iterable_args_dcf.append(inputs)
-            #     dcf_iref.append(estimate_dcf_gcc_arrays(**inputs))
+                # for i_ds_block in range(n_spatial_blocks_dcf):
+                #     ### DCF ###
+                #     # t0 = time()
+                #     ds_block = ds_sn_dcf_blocks[i_ds_block]
+                #     inputs = dict(
+                #         x_l=ds_block.x_l.values,
+                #         x_e=ds_block.x_e.values,
+                #         x_l_ref=ds_block.x_l.sel(idx_rcv=i_ref).values,
+                #         x_e_ref=ds_block.x_e.sel(idx_rcv=i_ref).values,
+                #         idx_rcv=ds_block.idx_rcv.values,
+                #         library_props=library_props,
+                #         nperseg=nperseg,
+                #         noverlap=noverlap,
+                #         use_welch_estimator=use_welch_estimator,
+                #         verbose=verbose,
+                #     )
+                #     # iterable_args_dcf.append(inputs)
+                # dcf_iref.append(estimate_dcf_gcc_arrays(**inputs))
             # print(f"Def inputs dcf : {time()-t0}")
 
             # with Pool(N_WORKERS) as pool:

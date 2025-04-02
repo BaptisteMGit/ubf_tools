@@ -347,48 +347,13 @@ class RTFEstimator:
 
         """
 
-        # 1) Reshape the csdm array to ensure order is (nf, ny, nx, nrcv, nrcv) as required by np.linalg.eigh
-        # Get the axis order
-        dims = dims_order.keys()
-        target_order = {"f": 0, "r1": 3, "r2": 4, "y": 1, "x": 2}
-        axis_src = [dims_order[dim] for dim in dims]
-        axis_dst = [target_order[dim] for dim in dims]
-        # Reshape
-        clean_signal_csdm_5D = np.moveaxis(clean_signal_csdm_5D, axis_src, axis_dst)
+        # Get major eigenvector of the CSDM
+        cm = CovManager()
+        major_eigve = cm.get_major_eigve_5D(
+            csdm_5D=clean_signal_csdm_5D, dims_order=dims_order
+        )
 
-        # 2) Compute eigen decomposition
-        eigva, eigve = np.linalg.eigh(clean_signal_csdm_5D)
-
-        # 3) Sort eigenvalues and eigenvectors to get the major eigenvector
-        # Sort eigenvalues and eigenvectors in descending order
-        idx = np.argsort(np.real(eigva), axis=-1)[::-1]
-        # eigva_sorted = np.take_along_axis(eigva, idx, axis=-1)
-        eigve_sorted = np.take_along_axis(
-            eigve, idx[..., np.newaxis, :], axis=-1
-        )  # (nf, ny, nx, nrcv, nrcv)
-
-        # # Assert it is still a valid eigendecomposition
-        # assert np.alltrue(
-        #     [
-        #         np.allclose(
-        #             np.dot(Rdelta_[i, j, k, ...], eigve_sorted[i, j, k, :, iv]),
-        #             eigva_sorted[i, j, k, iv] * eigve_sorted[i, j, k, :, iv],
-        #         )
-        #         for i in range(Rdelta_.shape[0])
-        #         for j in range(Rdelta_.shape[1])
-        #         for k in range(Rdelta_.shape[2])
-        #         for iv in range(eigva.shape[-1])
-        #     ]
-        # )
-
-        # Extract major eigenvector
-        major_eigve = eigve_sorted[..., -1]  # (nf, ny, nx, nrcv)
-        # major_eigva = eigva_sorted[..., -1]
-
-        # Move receiver axis in first position
-        major_eigve = np.moveaxis(major_eigve, -1, 0)  # (nrcv, nf, ny, nx)
-
-        # Normalize to 1 at idx_rcv_ref
+        # Normalize to 1 at idx_rcv_ref to get RTF
         rtf = major_eigve / np.broadcast_to(
             major_eigve[idx_rcv_ref : idx_rcv_ref + 1, ...], major_eigve.shape
         )  # (nrcv, nf, ny, nx)

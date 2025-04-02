@@ -76,17 +76,17 @@ def run_test_1():
 
     # Liste des SNR considérés
     # Docker 1
-    snr_min = -15
-    snr_max = -2.5
+    # snr_min = -15
+    # snr_max = -2.5
     # # Docker 1
     # snr_min = 0
     # snr_max = 15
     # # Docker 2
     # snr_min = -5
     # snr_max = 2.5
-    # # Docker 3
-    # snr_min = 0
-    # snr_max = 15
+    # Docker 3
+    snr_min = 9
+    snr_max = 10
 
     snr_step = 1
     n_snr = int((snr_max - snr_min) / snr_step + 1)
@@ -133,7 +133,7 @@ def run_test_1():
         antenna_type=antenna_type,
         debug=debug,
         verbose=False,
-        check=False,
+        check=False,  # TODO set to False before running on docker
         plot_args=plot_args,
     )
 

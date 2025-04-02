@@ -634,6 +634,55 @@ def build_features_from_time_signal(
     # Optimized version: RTF are computed directly on the whole 4D array (nrcv, nt, ny, nx)
     # ====================================================================================================
     # t0 = time()
+    # xl_4D = ds_feature_estimate.x_l.values
+    # vl_4D = ds_feature_estimate.n_l_bis.values
+
+    # client = Client(
+    #     n_workers=N_WORKERS,
+    #     threads_per_worker=1,
+    #     memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
+    # )
+    # # Convert to dask arrays
+    # xl_4D = da.from_array(xl_4D, chunks=(-1, -1, 10, 10))
+    # vl_4D = da.from_array(vl_4D, chunks=(-1, -1, 10, 10))
+
+    # ff, rtf_library = rtf_4D(
+    #     x_4D=xl_4D,
+    #     v_4D=vl_4D,
+    #     fs=library_props["fs"],
+    #     idx_rcv_refs=idx_rcv_refs,
+    #     nperseg=nperseg,
+    #     noverlap=noverlap,
+    #     window="hann",
+    # )
+
+    # # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
+    # xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
+    # ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
+
+    # ff, rtf_event = rtf_4D(
+    #     x_4D=xe_4D,
+    #     v_4D=ve_4D,
+    #     fs=library_props["fs"],
+    #     idx_rcv_refs=idx_rcv_refs,
+    #     nperseg=nperseg,
+    #     noverlap=noverlap,
+    #     window="hann",
+    # )
+
+    # # Squeeze to remove dummy dimensions
+    # rtf_event = np.squeeze(rtf_event)
+
+    # # Restict to the frequency band of interest
+    # idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
+    # rtf_library = rtf_library[:, :, idx_band, ...]
+    # rtf_event = rtf_event[..., idx_band]
+    # f_rtf = ff[idx_band]
+    # client.close()
+
+    # print(f"With dask RTFs computed in {time()-t0} s")
+
+    t0 = time()
     xl_4D = ds_feature_estimate.x_l.values
     vl_4D = ds_feature_estimate.n_l_bis.values
 
@@ -669,7 +718,7 @@ def build_features_from_time_signal(
     rtf_event = rtf_event[..., idx_band]
     f_rtf = ff[idx_band]
 
-    # print(f"RTFs computed in {time()-t0} s")
+    print(f"RTFs computed in {time()-t0} s")
 
     # ====================================================================================================
     # Optimized version: GCC are computed directly on the whole 4D array (nrcv, nt, ny, nx)

@@ -455,5 +455,505 @@ ff_new = SFT.f
 tt_new = SFT.t(ds_sig_noise_light_rtf.sizes["t"])
 stfts_new = SFT.stft(ds_sig_noise_light_rtf.x_l.values, axis=1)
 
+
+def regions_slices(ds, nx=None, ny=None):
+    if nx is None:
+        nx = ds.sizes["x"] // BLOCK_SIZES["x"]
+    if ny is None:
+        ny = ds.sizes["y"] // BLOCK_SIZES["y"]
+
+    # X slices
+    x_slice_lims = np.linspace(0, ds.sizes["x"], nx + 1, dtype=int)
+    x_slices = [slice(x_slice_lims[i], x_slice_lims[i + 1]) for i in range(nx)]
+    # Y slices
+    y_slice_lims = np.linspace(0, ds.sizes["y"], ny + 1, dtype=int)
+    y_slices = [slice(y_slice_lims[i], y_slice_lims[i + 1]) for i in range(ny)]
+
+    return x_slices, y_slices
+
+
+def build_ds_block(ds, nx=None, ny=None):
+
+    # Define region slices
+    x_slices, y_slices = regions_slices(ds, nx=nx, ny=ny)
+
+    # Define blocks
+    blocks = []
+    for y_slice in y_slices:
+        for x_slice in x_slices:
+            ds_block = ds.isel(y=y_slice, x=x_slice)
+            blocks.append(ds_block)
+
+    return blocks
+
+
+def gather_res_blocks(res_blocks, ds, f, nx=None, ny=None):
+    # Res is a list of np arrays of shape (nr, nf, ny, nx)
+    x_slices, y_slices = regions_slices(ds, nx=nx, ny=ny)
+    res = np.empty(
+        (
+            ds.sizes["idx_rcv"],
+            len(f),
+            ds.sizes["y"],
+            ds.sizes["x"],
+        ),
+        dtype=complex,
+    )
+    k = 0
+    for y_sl in y_slices:
+        for x_sl in x_slices:
+            res[:, :, y_sl, x_sl] = res_blocks[k]
+            k += 1
+
+    return res
+
+
+@dask.delayed
+def estimate_rtf_arrays(
+    t,
+    x_l,
+    x_e,
+    n_l,
+    n_e,
+    x,
+    y,
+    library_props,
+    rtf_estimator="cs",
+    nperseg=2**11,
+    noverlap=2**10,
+    verbose=False,
+):
+    """
+    Estimate the RTF vector using Covariance Substraction method (CS).
+
+    24/03/2025 : Avoid using xarray dataset to speed up computation (use numpy arrays instead).
+
+    """
+    # Select estimator to use
+    re = RTFEstimator()
+    if rtf_estimator == "cs":
+        rtf_func = re.covariance_subtraction
+    elif rtf_estimator == "cw":
+        rtf_func = re.covariance_whitening
+
+    # NOTE : inputs to rtf estimation function need to be transposed to fit required input shape (ns, nrcv)
+    ## Derive event RTF ##
+    f_rtf, rtf_e, _, _ = rtf_func(
+        t, noisy_signal=x_e.T, noise_only=n_e.T, nperseg=nperseg, noverlap=noverlap
+    )
+
+    nx = len(x)
+    ny = len(y)
+    input_shape = x_l.shape  # (n_rcv, nt, ny, nx)
+    output_shape = (
+        input_shape[0],
+        len(f_rtf),
+        input_shape[2],
+        input_shape[3],
+    )  # (nr, nf, ny, nx)
+    rtf_l = np.empty(output_shape, dtype=complex)
+    for iy in range(ny):
+        for jx in range(nx):
+            # Transpose to fit rtf estimation required input shape (nt, nrcv)
+            noisy_sig = x_l[:, :, iy, jx].T
+            noise_only = n_l[:, :, iy, jx].T
+
+            # Derive rtf
+            _, rtf_l_ij, _, _ = rtf_func(
+                t, noisy_sig, noise_only, nperseg, noverlap
+            )  # (nf, nrcv)
+
+            # Store
+            rtf_l[:, :, iy, jx] = rtf_l_ij.T  # (nrcv, nf)
+
+    # Restict to the frequency band of interest
+    idx_band = (f_rtf >= library_props["f0"]) & (f_rtf <= library_props["f1"])
+    f_rtf = f_rtf[idx_band]
+    rtf_l = rtf_l[:, idx_band, :, :]
+    rtf_e = rtf_e.T[:, idx_band]
+
+    # Output shapes are rtf_l (nrcv, nf, ny, nx) and rtf_e (nrcv, nf)
+
+    return f_rtf, rtf_l, rtf_e
+
+
+@dask.delayed
+def estimate_dcf_gcc_arrays(
+    x_l,
+    x_e,
+    x_l_ref,
+    x_e_ref,
+    idx_rcv,
+    library_props,
+    nperseg=2**11,
+    noverlap=2**10,
+    use_welch_estimator=True,
+    verbose=False,
+):
+    """
+    Estimate the Generalized Cross Correlation in frequency domain.
+
+    """
+
+    gcc_library, gcc_event = [], []
+
+    if verbose:
+        if use_welch_estimator:
+            print(
+                f"GCC estimation using Welch estimator with nperseg={nperseg} and noverlap={noverlap}"
+            )
+        else:
+            print(f"GCC estimation using FFT estimator")
+
+    if use_welch_estimator:
+        # Power spectral density of library signals received by reference receiver
+        fxx, Sxx_library_ref = sp.welch(
+            x_l_ref,
+            fs=library_props["fs"],
+            nperseg=nperseg,
+            noverlap=noverlap,
+            axis=0,
+        )  # (nf, ny, nx)
+
+        # Power spectral density of event signal received by reference receiver
+        _, Sxx_event_ref = sp.welch(
+            x_e_ref,
+            fs=library_props["fs"],
+            nperseg=nperseg,
+            noverlap=noverlap,
+            axis=0,
+        )  # (nf, )
+
+        # Restict to the frequency band of interest
+        idx_band = (fxx >= library_props["f0"]) & (fxx <= library_props["f1"])
+        fxx = fxx[idx_band]
+
+        Sxx_library_ref = Sxx_library_ref[idx_band]
+        Sxx_event_ref = Sxx_event_ref[idx_band]
+
+        # Power spectral density of library signals (ie for all receivers)
+        _, Syy_library = sp.welch(
+            x_l,
+            fs=library_props["fs"],
+            nperseg=nperseg,
+            noverlap=noverlap,
+            axis=1,
+        )  # (nrcv, nf, ny, nx)
+        Syy_library = Syy_library[:, idx_band, ...]
+
+        # print(f"Sxx_library_ref: {Sxx_library_ref.shape}")
+        # print(f"Syy_library: {Syy_library.shape}")
+        # Compute weights for GCC-SCOT library
+        w_l = 1 / np.abs(
+            np.sqrt(
+                cast_matrix_to_target_shape(Sxx_library_ref, Syy_library.shape)
+                * Syy_library
+            )
+        )
+
+        # Power spectral density of event signals (ie for all receivers)
+        _, Syy_event = sp.welch(
+            x_e,
+            fs=library_props["fs"],
+            nperseg=nperseg,
+            noverlap=noverlap,
+            axis=1,
+        )  # (nrcv, nf)
+        Syy_event = Syy_event[:, idx_band]
+
+        # print(f"Sxx_event_ref: {Sxx_event_ref.shape}")
+        # print(f"Syy_event: {Syy_event.shape}")
+
+        # Compute weights for GCC-SCOT event
+        w_e = 1 / np.abs(
+            np.sqrt(
+                cast_matrix_to_target_shape(Sxx_event_ref, Syy_event.shape) * Syy_event
+            )
+        )
+
+    else:
+        fxx = np.fft.rfftfreq(x_e.shape[1], 1 / library_props["fs"])
+
+        # Power spectral density of library signals received by reference receiver
+        Sxx_library_ref = np.abs(np.fft.rfft(x_l_ref, axis=0)) ** 2
+
+        # Power spectral density of event signal received by reference receiver
+        Sxx_event_ref = np.abs(np.fft.rfft(x_e_ref, axis=0)) ** 2
+
+        # Restict to the frequency band of interest
+        idx_band = (fxx >= library_props["f0"]) & (fxx <= library_props["f1"])
+        fxx = fxx[idx_band]
+
+        Sxx_library_ref = Sxx_library_ref[idx_band]
+        Sxx_event_ref = Sxx_event_ref[idx_band]
+
+        # Power spectral density of library signals (ie for all receivers)
+        Syy_library = np.abs(np.fft.rfft(x_l, axis=1)) ** 2
+        Syy_library = Syy_library[:, idx_band, ...]
+
+        # Compute weights for GCC-SCOT library
+        w_l = 1 / np.abs(
+            np.sqrt(
+                cast_matrix_to_target_shape(Sxx_library_ref, Syy_library.shape)
+                * Syy_library
+            )
+        )
+
+        # Power spectral density of event signals (ie for all receivers)
+        Syy_event = np.abs(np.fft.rfft(x_e, axis=1)) ** 2
+        Syy_event = Syy_event[:, idx_band]
+
+        # Compute weights for GCC-SCOT event
+        w_e = 1 / np.abs(
+            np.sqrt(
+                cast_matrix_to_target_shape(Sxx_event_ref, Syy_event.shape) * Syy_event
+            )
+        )
+
+    for i_rcv in idx_rcv:
+
+        if use_welch_estimator:
+
+            ## Library ##
+            # Cross power spectral density of library signals between the reference receiver and receiver i
+            _, Sxy_library = sp.csd(
+                x_l_ref,
+                # x_l.sel(idx_rcv=i_rcv),
+                x_l[i_rcv, ...],
+                fs=library_props["fs"],
+                nperseg=nperseg,
+                noverlap=noverlap,
+                axis=0,
+            )  # (nf, ny, nx)
+
+            ## Event ##
+            # Cross power spectral density of event signals between reference receiver and receiver i
+            _, Sxy_event = sp.csd(
+                x_e_ref,
+                # x_e.sel(idx_rcv=i_rcv),
+                x_e[i_rcv, ...],
+                fs=library_props["fs"],
+                nperseg=nperseg,
+                noverlap=noverlap,
+                axis=0,
+            )  # (nf, )
+
+        else:
+            ## Library ##
+            # Cross power spectral density of library signals between the reference receiver and receiver i
+            Sxy_library = np.fft.rfft(x_l_ref, axis=0) * np.conj(
+                # np.fft.rfft(x_l.sel(idx_rcv=i_rcv), axis=0)
+                np.fft.rfft(x_l[i_rcv, ...], axis=0)
+            )
+
+            ## Event ##
+            # Cross power spectral density of event signals between reference receiver and receiver i
+            Sxy_event = np.fft.rfft(x_e_ref, axis=0) * np.conj(
+                # np.fft.rfft(x_e.sel(idx_rcv=i_rcv), axis=0)
+                np.fft.rfft(x_e[i_rcv, ...], axis=0)
+            )
+
+        # Apply GCC-SCOT
+        # Library
+        gcc_library_i = w_l[i_rcv, ...] * Sxy_library[idx_band]
+        # gcc_library_i = gcc_library_i.reshape((fxx.size, nx, ny))
+        gcc_library.append(gcc_library_i)
+
+        # Event
+        gcc_event_i = w_e[i_rcv, :] * Sxy_event[idx_band]
+        gcc_event.append(gcc_event_i)
+
+    gcc_library = np.array(gcc_library)  # (nrcv, nf, ny, nx)
+    gcc_event = np.array(gcc_event)  # (nrcv, nf)
+
+    return fxx, gcc_library, gcc_event
+
+
+def estimate_dcf_gcc(
+    ds_sig_noise,
+    i_ref,
+    library_props,
+    nperseg=2**11,
+    noverlap=2**10,
+    use_welch_estimator=True,
+    verbose=False,
+):
+    """
+    Estimate the Generalized Cross Correlation in frequency domain.
+
+    """
+
+    gcc_library, gcc_event = [], []
+
+    # To avoid too long notations
+    x_l = ds_sig_noise.x_l
+    x_e = ds_sig_noise.x_e
+
+    # Choose ref signals for library and event
+    x_l_ref = x_l.sel(idx_rcv=i_ref)
+    x_e_ref = x_e.sel(idx_rcv=i_ref)
+
+    if verbose:
+        if use_welch_estimator:
+            print(
+                f"GCC estimation using Welch estimator with nperseg={nperseg} and noverlap={noverlap}"
+            )
+        else:
+            print(f"GCC estimation using FFT estimator")
+
+    if use_welch_estimator:
+        # Power spectral density of library signals received by reference receiver
+        fxx, Sxx_library_ref = sp.welch(
+            x_l_ref,
+            fs=library_props["fs"],
+            nperseg=nperseg,
+            noverlap=noverlap,
+            axis=0,
+        )
+
+        # Power spectral density of event signal received by reference receiver
+        _, Sxx_event_ref = sp.welch(
+            x_e_ref,
+            fs=library_props["fs"],
+            nperseg=nperseg,
+            noverlap=noverlap,
+            axis=0,
+        )
+
+        # Restict to the frequency band of interest
+        idx_band = (fxx >= library_props["f0"]) & (fxx <= library_props["f1"])
+        fxx = fxx[idx_band]
+
+        Sxx_library_ref = Sxx_library_ref[idx_band]
+        Sxx_event_ref = Sxx_event_ref[idx_band]
+
+        # Power spectral density of library signals (ie for all receivers)
+        _, Syy_library = sp.welch(
+            x_l,
+            fs=library_props["fs"],
+            nperseg=nperseg,
+            noverlap=noverlap,
+            axis=1,
+        )
+        Syy_library = Syy_library[:, idx_band, ...]
+
+        # Compute weights for GCC-SCOT library
+        w_l = 1 / np.abs(
+            np.sqrt(
+                cast_matrix_to_target_shape(Sxx_library_ref, Syy_library.shape)
+                * Syy_library
+            )
+        )
+
+        # Power spectral density of event signals (ie for all receivers)
+        _, Syy_event = sp.welch(
+            x_e,
+            fs=library_props["fs"],
+            nperseg=nperseg,
+            noverlap=noverlap,
+            axis=1,
+        )
+        Syy_event = Syy_event[:, idx_band]
+
+        # Compute weights for GCC-SCOT event
+        w_e = 1 / np.abs(
+            np.sqrt(
+                cast_matrix_to_target_shape(Sxx_event_ref, Syy_event.shape) * Syy_event
+            )
+        )
+
+    else:
+        fxx = np.fft.rfftfreq(x_e.shape[1], 1 / library_props["fs"])
+
+        # Power spectral density of library signals received by reference receiver
+        Sxx_library_ref = np.abs(np.fft.rfft(x_l_ref, axis=0)) ** 2
+
+        # Power spectral density of event signal received by reference receiver
+        Sxx_event_ref = np.abs(np.fft.rfft(x_e_ref, axis=0)) ** 2
+
+        # Restict to the frequency band of interest
+        idx_band = (fxx >= library_props["f0"]) & (fxx <= library_props["f1"])
+        fxx = fxx[idx_band]
+
+        Sxx_library_ref = Sxx_library_ref[idx_band]
+        Sxx_event_ref = Sxx_event_ref[idx_band]
+
+        # Power spectral density of library signals (ie for all receivers)
+        Syy_library = np.abs(np.fft.rfft(x_l, axis=1)) ** 2
+        Syy_library = Syy_library[:, idx_band, ...]
+
+        # Compute weights for GCC-SCOT library
+        w_l = 1 / np.abs(
+            np.sqrt(
+                cast_matrix_to_target_shape(Sxx_library_ref, Syy_library.shape)
+                * Syy_library
+            )
+        )
+
+        # Power spectral density of event signals (ie for all receivers)
+        Syy_event = np.abs(np.fft.rfft(x_e, axis=1)) ** 2
+        Syy_event = Syy_event[:, idx_band]
+
+        # Compute weights for GCC-SCOT event
+        w_e = 1 / np.abs(
+            np.sqrt(
+                cast_matrix_to_target_shape(Sxx_event_ref, Syy_event.shape) * Syy_event
+            )
+        )
+
+    for i_rcv in ds_sig_noise.idx_rcv.values:
+
+        if use_welch_estimator:
+
+            ## Library ##
+            # Cross power spectral density of library signals between the reference receiver and receiver i
+            _, Sxy_library = sp.csd(
+                x_l_ref,
+                x_l.sel(idx_rcv=i_rcv),
+                fs=library_props["fs"],
+                nperseg=nperseg,
+                noverlap=noverlap,
+                axis=0,
+            )
+
+            ## Event ##
+            # Cross power spectral density of event signals between reference receiver and receiver i
+            _, Sxy_event = sp.csd(
+                x_e_ref,
+                x_e.sel(idx_rcv=i_rcv),
+                fs=library_props["fs"],
+                nperseg=nperseg,
+                noverlap=noverlap,
+                axis=0,
+            )
+
+        else:
+            ## Library ##
+            # Cross power spectral density of library signals between the reference receiver and receiver i
+            Sxy_library = np.fft.rfft(x_l_ref, axis=0) * np.conj(
+                np.fft.rfft(x_l.sel(idx_rcv=i_rcv), axis=0)
+            )
+
+            ## Event ##
+            # Cross power spectral density of event signals between reference receiver and receiver i
+            Sxy_event = np.fft.rfft(x_e_ref, axis=0) * np.conj(
+                np.fft.rfft(x_e.sel(idx_rcv=i_rcv), axis=0)
+            )
+
+        # Apply GCC-SCOT
+        # Library
+        gcc_library_i = w_l[i_rcv, ...] * Sxy_library[idx_band]
+        gcc_library_i = gcc_library_i.reshape(
+            (fxx.size, ds_sig_noise.sizes["x"], ds_sig_noise.sizes["y"])
+        )
+        gcc_library.append(gcc_library_i)
+
+        # Event
+        gcc_event_i = w_e[i_rcv, :] * Sxy_event[idx_band]
+        gcc_event.append(gcc_event_i)
+
+    return fxx, gcc_library, gcc_event
+
+
 if __name__ == "__main__":
     pass

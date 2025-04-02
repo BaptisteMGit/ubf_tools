@@ -163,6 +163,11 @@ class CovManager:
             dtype=np.complex128,
         )
 
+        # We can check the optimal path for the einsum operation
+        # path_info = np.einsum_path(
+        #     "ftr,fts->frs", stft_block, stft_block_conj, optimize="greedy"
+        # )
+
         # Compute CSD matrix using batch operations
         for k in range(n_available_segments):
             idx_start = k * n_seg_cov
@@ -178,3 +183,56 @@ class CovManager:
         return (
             np.squeeze(csd_matrix, axis=-1) if n_available_segments == 1 else csd_matrix
         )
+
+    @staticmethod
+    def csdm_5D(
+        stft_5D: np.ndarray,
+        dims_order: dict = {"r": 0, "f": 1, "y": 2, "x": 3, "t": 4},
+    ) -> np.ndarray:
+        """
+        Compute the Cross Spectral Density Matrix (CSDM) from a multi-dimensional STFT array.
+
+        Parameters
+        ----------
+        stft_5D : np.ndarray
+            5D STFTs array, default shape is (num_receivers, num_frequency_bins, num_y, num_x, num_snapshots),
+            one can use a different input shape by specifying dims_order.
+        dims_order : dict
+            Dictionary specifying the order of the dimensions in the input array.
+
+        Returns
+        -------
+        np.ndarray
+            5D array containing the CSDMs at all x, y positions (num_frequency_bins x num_receivers x num_receivers x num_y x num_x).
+        """
+
+        # Stft is a (nrcv, nf, ny, nx, nt) array -> for coherence with the compute_csdm_fast implementation of the
+        # we can reshape the array into (nrcv, nf, nt, ny, nx)
+
+        # 1) Reshape the stft array to ensure order is (nf, nt, nr, ny, nx)
+        # Get the axis order
+        dims = dims_order.keys()
+        target_order = {"r": 2, "f": 0, "t": 1, "y": 3, "x": 4}
+        axis_src = [dims_order[dim] for dim in dims]
+        axis_dst = [target_order[dim] for dim in dims]
+        # Reshape
+        stft_5D = np.moveaxis(stft_5D, axis_src, axis_dst)
+
+        # 2) Compute CSDMs
+        # We can compute the CSDMs on the whole dataset before estimating the RTFs by applying same einsum
+        # operations as in the CovManager class
+        # stfts dimensions are (nf, nt, nrcv, ny, nx) = (f,t,r,y,x)
+        # conjuagted stfts dimensions are (nrcv, nf, nt, ny, nx) = (f,t,s,y,x)  (r, s are the receiver indices)
+        csdm = np.einsum(
+            "ftryx,ftsyx->frsyx", stft_5D, np.conj(stft_5D)
+        )  # (nf,nrcv,nrcv,ny,nx)
+
+        # In the previous line t indices disappear as we sum over them to compute the CSDM
+        # We can check that no there is no optimized version of the previous  path_info = np.einsum_path(
+        #     "ftryx,ftsyx->frsyx", stfts, np.conj(stfts), optimize="greedy"
+        # )
+        csdm = (
+            csdm / stft_5D.shape[1]
+        )  # Normalization by the number of time samples to get the average
+
+        return csdm

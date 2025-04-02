@@ -443,5 +443,17 @@ def save_simulation_netcdf():
 # plt.savefig(fpath)
 # plt.close("all")
 
+window = np.hanning(nperseg)
+# stft_ = sp.ShortTimeFFTfrom_window(win=window, hop=nperseg - noverlap, fs=library_props["fs"])
+SFT = sp.ShortTimeFFT.from_window(
+    win_param="hann",
+    fs=library_props["fs"],
+    nperseg=nperseg,
+    noverlap=noverlap,
+)
+ff_new = SFT.f
+tt_new = SFT.t(ds_sig_noise_light_rtf.sizes["t"])
+stfts_new = SFT.stft(ds_sig_noise_light_rtf.x_l.values, axis=1)
+
 if __name__ == "__main__":
     pass

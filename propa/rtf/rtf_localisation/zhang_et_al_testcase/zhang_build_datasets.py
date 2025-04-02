@@ -48,6 +48,7 @@ from propa.kraken_toolbox.run_kraken import readshd, run_kraken_exec, run_field_
 
 
 from source.rtf_estimator import RTFEstimator
+from source.cov_manager import CovManager
 
 
 # ======================================================================================================================
@@ -1055,11 +1056,174 @@ def build_features_from_time_signal(
         ),
     )
 
+    # ====================================================================================================
+    # Other approach: computing STFTs and CSDMs on the whole dask dataset before estimating RTFs
+    # ====================================================================================================
+
+    t0 = time()
+    # 1) Compute STFTs -> it much faster without dask
+    ff, tt, stfts_xl = sp.stft(
+        ds_sig_noise_light_rtf.x_l,
+        fs=library_props["fs"],
+        nperseg=nperseg,
+        noverlap=noverlap,
+        window="hann",
+        axis=1,
+    )
+    ff, tt, stfts_nl = sp.stft(
+        ds_sig_noise_light_rtf.n_l_bis,
+        fs=library_props["fs"],
+        nperseg=nperseg,
+        noverlap=noverlap,
+        window="hann",
+        axis=1,
+    )
+
+    cm = CovManager(nperseg=nperseg, noverlap=noverlap, window="hann")
+    dims_order = {
+        "r": 0,
+        "f": 1,
+        "y": 2,
+        "x": 3,
+        "t": 4,
+    }  # Stft is a (nrcv, nf, ny, nx, nt) array
+    Rx = cm.csdm_5D(stfts_xl, dims_order=dims_order)
+    Rv = cm.csdm_5D(stfts_nl, dims_order=dims_order)
+
+    # # Stft is a (nrcv, nf, ny, nx, nt) array -> for coherence with the csdm_fast implementation of the
+    # # CovManager class we can reshape the array into (nrcv, nf, nt, ny, nx)
+    # stfts_xl = np.moveaxis(stfts_xl, -1, 2)
+    # stfts_nl = np.moveaxis(stfts_nl, -1, 2)
+    # # We further reshape into (nf, nt, nr, ny, nx)
+    # stfts_xl = np.moveaxis(stfts_xl, 0, 2)
+    # stfts_nl = np.moveaxis(stfts_nl, 0, 2)
+
+    # # 2) Compute CSDMs
+    # # We can compute the CSDMs on the whole dataset before estimating the RTFs by applying same einsum
+    # # operations as in the CovManager class
+    # # stfts dimensions are (nf, nt, nrcv, ny, nx) = (f,t,r,y,x)
+    # # conjuagted stfts dimensions are (nrcv, nf, nt, ny, nx) = (f,t,s,y,x)  (r, s are the receiver indices)
+    # Rx = np.einsum(
+    #     "ftryx,ftsyx->frsyx", stfts_xl, np.conj(stfts_xl)
+    # )  # (nf,nrcv,nrcv,ny,nx)
+    # Rv = np.einsum("ftryx,ftsyx->frsyx", stfts_nl, np.conj(stfts_nl))
+
+    # # In the previous line t indices disappear as we sum over them to compute the CSDM
+    # # We can check that no there is no optimized version of the previous  path_info = np.einsum_path(
+    # #     "ftryx,ftsyx->frsyx", stfts, np.conj(stfts), optimize="greedy"
+    # # )
+    # Rx = (
+    #     Rx / stfts_xl.shape[1]
+    # )  # Normalization by the number of time samples to get the average
+    # Rv = Rv / stfts_nl.shape[1]
+
+    Rdelta = Rx - Rv
+
+    re = RTFEstimator()
+    dims_order = {"f": 0, "r1": 1, "r2": 2, "y": 3, "x": 4}
+
+    # re.covariance_subtraction_major_eigen_vector_5D(clean_signal_csdm_5D=Rdelta)
+
+    rtf_library_direct = np.array(
+        [
+            re.covariance_subtraction_major_eigen_vector_5D(
+                clean_signal_csdm_5D=Rdelta,
+                idx_rcv_ref=i_ref,
+                dims_order=dims_order,
+            )
+            for i_ref in idx_rcv_refs
+        ]
+    )
+
+    # Restict to the frequency band of interest
+    idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
+    rtf_library_direct = rtf_library_direct[:, :, idx_band, ...]
+
+    print(f"RTFs computed in {time()-t0} s")
+
+    # # Reshape to put receiver axis at the end (requireded by np.linalg.eigh) -> (nf,ny,nx, nrcv,nrcv)
+    # Rdelta_ = np.moveaxis(Rdelta, [1, 2], [-2, -1])
+    # eigva, eigve = np.linalg.eigh(Rdelta_)
+
+    # # Sort eigenvalues and eigenvectors in descending order
+    # idx = np.argsort(np.real(eigva), axis=-1)[::-1]
+    # eigva_sorted = np.take_along_axis(eigva, idx, axis=-1)
+    # eigve_sorted = np.take_along_axis(eigve, idx[..., np.newaxis, :], axis=-1)
+
+    # # # Assert it is still a valid eigendecomposition
+    # # assert np.alltrue(
+    # #     [
+    # #         np.allclose(
+    # #             np.dot(Rdelta_[i, j, k, ...], eigve_sorted[i, j, k, :, iv]),
+    # #             eigva_sorted[i, j, k, iv] * eigve_sorted[i, j, k, :, iv],
+    # #         )
+    # #         for i in range(Rdelta_.shape[0])
+    # #         for j in range(Rdelta_.shape[1])
+    # #         for k in range(Rdelta_.shape[2])
+    # #         for iv in range(eigva.shape[-1])
+    # #     ]
+    # # )
+
+    # # Extract major eigenvector
+    # major_eigve = eigve_sorted[..., -1]
+    # # major_eigva = eigva_sorted[..., -1]
+
+    # # Restict to the frequency band of interest
+    # idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
+    # major_eigve = major_eigve[idx_band, ...]
+    # major_eigve = np.moveaxis(major_eigve, -1, 0)  # (nrcv, nf, ny, nx)
+
+    # # Normalize to 1 (normalize_eigve_to_1(major_eigve, idx_rcv_ref))
+    # rtf_iref = major_eigve / np.broadcast_to(major_eigve[..., 2:3], major_eigve.shape)
+
+    # rtf_library_direct = np.array(
+    #     [
+    #         major_eigve
+    #         / np.broadcast_to(major_eigve[iref : iref + 1, ...], major_eigve.shape)
+    #         for iref in idx_rcv_refs
+    #     ]
+    # )
+
+    # eigva = eigva[asc_idx]
+    # # Move axis before sorting eigve
+    # eigve = np.moveaxis(eigve, -1, -2)
+    # eigve = eigve[asc_idx, :]
+    # #
+
+    # with Client(
+    #     n_workers=N_WORKERS,
+    #     threads_per_worker=1,
+    #     memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
+    # ) as client:
+    #     # NOTE
+    #     # We can use the "auto" argument as chunksize: "auto": allow the chunking in this dimension to accommodate ideal chunk sizes
+    #     # The ideal chunksize set can be check using : dask.config.get("array.chunk-size") and can be modify with
+    #     # dask.config.set({"array.chunk-size": target_chunksize})
+
+    #     # 0) Transform to dask dataset
+    #     # First simple approach : use maximum number of chunks along receiver, x, and y axis
+    #     dask_rtf = ds_sig_noise_light_rtf.chunk({"idx_rcv": 1, "t": -1, "y": 1, "x": 1})
+    #     # 1) Compute STFTs
+    #     t0 = time()
+    #     for i in range(100):
+    #         ff, tt, stfts = sp.stft(
+    #             dask_rtf.x_l,
+    #             fs=library_props["fs"],
+    #             nperseg=nperseg,
+    #             noverlap=noverlap,
+    #             axis=1,
+    #         )
+    #     print(f"DASK -> STFTs computed in {time()-t0} s")
+
+    #     # 2) Compute CSDMs
+    #     # 3) Estimate RTFs
+
+    t0 = time()
     # Init lists to save results
     rtf_event = []  # RFT vector at the source position
     rtf_library = []  # RTF vector evaluated at each grid pixel
-    gcc_event = []  # GCC vector evaluated at the source position
-    gcc_library = []  # GCC-SCOT vector evaluated at each grid pixel
+    # gcc_event = []  # GCC vector evaluated at the source position
+    # gcc_library = []  # GCC-SCOT vector evaluated at each grid pixel
 
     # Parallelize estimation
     # n_ref = len(idx_rcv_refs)
@@ -1068,13 +1232,13 @@ def build_features_from_time_signal(
     # NOTE : We need to make sure that the chunk size is small enough to fit in the CPU cache to avoid memory access bottleneck
     target_chunk_nbytes = 50 * 1e3  # 50 KB -> CPU cache size L1
     nb_chunk_rtf = int(np.ceil(ds_sig_noise_light_rtf.nbytes / target_chunk_nbytes))
-    nb_chunk_dcf = int(np.ceil(ds_sig_noise_light_dcf.nbytes / target_chunk_nbytes))
+    # nb_chunk_dcf = int(np.ceil(ds_sig_noise_light_dcf.nbytes / target_chunk_nbytes))
 
     # NOTE : We need to make sure that the number of chunk is small enough to avoid empty chuncks
     nx_rtf = min(int(np.sqrt(nb_chunk_rtf)), ds_sig_noise_light_rtf.sizes["x"])
     ny_rtf = min(int(np.sqrt(nb_chunk_rtf)), ds_sig_noise_light_rtf.sizes["y"])
-    nx_dcf = min(int(np.sqrt(nb_chunk_dcf)), ds_sig_noise_light_dcf.sizes["x"])
-    ny_dcf = min(int(np.sqrt(nb_chunk_dcf)), ds_sig_noise_light_dcf.sizes["y"])
+    # nx_dcf = min(int(np.sqrt(nb_chunk_dcf)), ds_sig_noise_light_dcf.sizes["x"])
+    # ny_dcf = min(int(np.sqrt(nb_chunk_dcf)), ds_sig_noise_light_dcf.sizes["y"])
 
     with Client(
         n_workers=N_WORKERS,
@@ -1083,17 +1247,17 @@ def build_features_from_time_signal(
     ) as client:
         # Split dataset in blocks to parallelize computation
         ds_sn_rtf_blocks = build_ds_block(ds_sig_noise_light_rtf, nx=nx_rtf, ny=ny_rtf)
-        ds_sn_dcf_blocks = build_ds_block(ds_sig_noise_light_dcf, nx=nx_dcf, ny=ny_dcf)
+        # ds_sn_dcf_blocks = build_ds_block(ds_sig_noise_light_dcf, nx=nx_dcf, ny=ny_dcf)
         n_spatial_blocks_rtf = len(ds_sn_rtf_blocks)
-        n_spatial_blocks_dcf = len(ds_sn_dcf_blocks)
+        # n_spatial_blocks_dcf = len(ds_sn_dcf_blocks)
 
         first_iter = True
         for i_ref in idx_rcv_refs:
             rtf_iref = []
-            dcf_iref = []
+            # dcf_iref = []
 
             iterable_args_rtf = []
-            iterable_args_dcf = []
+            # iterable_args_dcf = []
             for i_ds_block in range(n_spatial_blocks_rtf):
 
                 ### RTF ###
@@ -1128,39 +1292,39 @@ def build_features_from_time_signal(
                 # iterable_args_rtf.append(inputs)
                 rtf_iref.append(estimate_rtf_arrays(**inputs))
                 # print(f"Def inputs rtf : {time()-t0}")
-            for i_ds_block in range(n_spatial_blocks_dcf):
-                ### DCF ###
-                # t0 = time()
-                ds_block = ds_sn_dcf_blocks[i_ds_block]
-                inputs = dict(
-                    x_l=ds_block.x_l.values,
-                    x_e=ds_block.x_e.values,
-                    x_l_ref=ds_block.x_l.sel(idx_rcv=i_ref).values,
-                    x_e_ref=ds_block.x_e.sel(idx_rcv=i_ref).values,
-                    idx_rcv=ds_block.idx_rcv.values,
-                    library_props=library_props,
-                    nperseg=nperseg,
-                    noverlap=noverlap,
-                    use_welch_estimator=use_welch_estimator,
-                    verbose=verbose,
-                )
-                # iterable_args_dcf.append(inputs)
-                dcf_iref.append(estimate_dcf_gcc_arrays(**inputs))
-                # print(f"Def inputs dcf : {time()-t0}")
+            # for i_ds_block in range(n_spatial_blocks_dcf):
+            #     ### DCF ###
+            #     # t0 = time()
+            #     ds_block = ds_sn_dcf_blocks[i_ds_block]
+            #     inputs = dict(
+            #         x_l=ds_block.x_l.values,
+            #         x_e=ds_block.x_e.values,
+            #         x_l_ref=ds_block.x_l.sel(idx_rcv=i_ref).values,
+            #         x_e_ref=ds_block.x_e.sel(idx_rcv=i_ref).values,
+            #         idx_rcv=ds_block.idx_rcv.values,
+            #         library_props=library_props,
+            #         nperseg=nperseg,
+            #         noverlap=noverlap,
+            #         use_welch_estimator=use_welch_estimator,
+            #         verbose=verbose,
+            #     )
+            #     # iterable_args_dcf.append(inputs)
+            #     dcf_iref.append(estimate_dcf_gcc_arrays(**inputs))
+            # print(f"Def inputs dcf : {time()-t0}")
 
             # with Pool(N_WORKERS) as pool:
             #     res_rtf_iref = pool.starmap(func=estimate_rtf_arrays, iterable=iterable_args_rtf)
             #     res_dcf_iref = pool.starmap(func=estimate_dcf_gcc_arrays, iterable=iterable_args_dcf)
             res_rtf_iref = dask.compute(rtf_iref)
-            res_dcf_iref = dask.compute(dcf_iref)
+            # res_dcf_iref = dask.compute(dcf_iref)
             res_rtf_iref = res_rtf_iref[0]
-            res_dcf_iref = res_dcf_iref[0]
+            # res_dcf_iref = res_dcf_iref[0]
 
             # NOTE : both res_iref are a list of output from func. i.e each element of the list if a three elements tuple (f, feature_l, feature_e)
 
             if first_iter:
                 f_rtf = res_rtf_iref[0][0]
-                f_gcc = res_dcf_iref[0][0]
+                # f_gcc = res_dcf_iref[0][0]
                 # Set tmp dataset used by the gather_ fct
                 ds_tmp = xr.Dataset(
                     data_vars={},
@@ -1172,21 +1336,21 @@ def build_features_from_time_signal(
                 )
                 first_iter = False
 
-            # Save DCF
-            # t0 = time()
-            dcf_iref_l = [res[1] for res in res_dcf_iref]  # [(nrcv, nf, ny, nx), ...]
-            gcc_l = gather_res_blocks(
-                res_blocks=dcf_iref_l,
-                ds=ds_tmp,
-                f=f_gcc,
-                nx=nx_dcf,
-                ny=ny_dcf,
-            )
+            # # Save DCF
+            # # t0 = time()
+            # dcf_iref_l = [res[1] for res in res_dcf_iref]  # [(nrcv, nf, ny, nx), ...]
+            # gcc_l = gather_res_blocks(
+            #     res_blocks=dcf_iref_l,
+            #     ds=ds_tmp,
+            #     f=f_gcc,
+            #     nx=nx_dcf,
+            #     ny=ny_dcf,
+            # )
 
-            gcc_e = res_dcf_iref[0][2]  # (nrcv, nf)
-            gcc_library.append(gcc_l)
-            gcc_event.append(gcc_e)
-            # print(f"Gather dcf : {time()-t0}s")
+            # gcc_e = res_dcf_iref[0][2]  # (nrcv, nf)
+            # gcc_library.append(gcc_l)
+            # gcc_event.append(gcc_e)
+            # # print(f"Gather dcf : {time()-t0}s")
 
             # Save RTF
             # t0 = time()
@@ -1195,8 +1359,8 @@ def build_features_from_time_signal(
                 res_blocks=rtf_iref_l,
                 ds=ds_tmp,
                 f=f_rtf,
-                nx=nx_dcf,
-                ny=ny_dcf,
+                nx=nx_rtf,
+                ny=ny_rtf,
             )
             rtf_cs_e = res_rtf_iref[0][2]  # (nrcv, nf)
 
@@ -1216,14 +1380,17 @@ def build_features_from_time_signal(
     del iterable_args_rtf
     del ds_sn_rtf_blocks
     del ds_sig_noise_light_dcf
-    del iterable_args_dcf
-    del ds_sn_dcf_blocks
+    # del iterable_args_dcf
+    # del ds_sn_dcf_blocks
 
     # Convert to numpy arrays
     rtf_event = np.array(rtf_event)
     rtf_library = np.array(rtf_library)
-    gcc_event = np.array(gcc_event)
-    gcc_library = np.array(gcc_library)
+    # gcc_event = np.array(gcc_event)
+    # gcc_library = np.array(gcc_library)
+
+    print(f"DASK : RTF computed in {time()-t0} s")
+    print(np.allclose(rtf_library, rtf_library_direct))
 
     # Create dataset to store results
     attrs.update(

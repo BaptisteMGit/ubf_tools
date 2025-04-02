@@ -1090,39 +1090,10 @@ def build_features_from_time_signal(
     Rx = cm.csdm_5D(stfts_xl, dims_order=dims_order)
     Rv = cm.csdm_5D(stfts_nl, dims_order=dims_order)
 
-    # # Stft is a (nrcv, nf, ny, nx, nt) array -> for coherence with the csdm_fast implementation of the
-    # # CovManager class we can reshape the array into (nrcv, nf, nt, ny, nx)
-    # stfts_xl = np.moveaxis(stfts_xl, -1, 2)
-    # stfts_nl = np.moveaxis(stfts_nl, -1, 2)
-    # # We further reshape into (nf, nt, nr, ny, nx)
-    # stfts_xl = np.moveaxis(stfts_xl, 0, 2)
-    # stfts_nl = np.moveaxis(stfts_nl, 0, 2)
-
-    # # 2) Compute CSDMs
-    # # We can compute the CSDMs on the whole dataset before estimating the RTFs by applying same einsum
-    # # operations as in the CovManager class
-    # # stfts dimensions are (nf, nt, nrcv, ny, nx) = (f,t,r,y,x)
-    # # conjuagted stfts dimensions are (nrcv, nf, nt, ny, nx) = (f,t,s,y,x)  (r, s are the receiver indices)
-    # Rx = np.einsum(
-    #     "ftryx,ftsyx->frsyx", stfts_xl, np.conj(stfts_xl)
-    # )  # (nf,nrcv,nrcv,ny,nx)
-    # Rv = np.einsum("ftryx,ftsyx->frsyx", stfts_nl, np.conj(stfts_nl))
-
-    # # In the previous line t indices disappear as we sum over them to compute the CSDM
-    # # We can check that no there is no optimized version of the previous  path_info = np.einsum_path(
-    # #     "ftryx,ftsyx->frsyx", stfts, np.conj(stfts), optimize="greedy"
-    # # )
-    # Rx = (
-    #     Rx / stfts_xl.shape[1]
-    # )  # Normalization by the number of time samples to get the average
-    # Rv = Rv / stfts_nl.shape[1]
-
     Rdelta = Rx - Rv
 
     re = RTFEstimator()
     dims_order = {"f": 0, "r1": 1, "r2": 2, "y": 3, "x": 4}
-
-    # re.covariance_subtraction_major_eigen_vector_5D(clean_signal_csdm_5D=Rdelta)
 
     rtf_library_direct = np.array(
         [
@@ -1140,83 +1111,6 @@ def build_features_from_time_signal(
     rtf_library_direct = rtf_library_direct[:, :, idx_band, ...]
 
     print(f"RTFs computed in {time()-t0} s")
-
-    # # Reshape to put receiver axis at the end (requireded by np.linalg.eigh) -> (nf,ny,nx, nrcv,nrcv)
-    # Rdelta_ = np.moveaxis(Rdelta, [1, 2], [-2, -1])
-    # eigva, eigve = np.linalg.eigh(Rdelta_)
-
-    # # Sort eigenvalues and eigenvectors in descending order
-    # idx = np.argsort(np.real(eigva), axis=-1)[::-1]
-    # eigva_sorted = np.take_along_axis(eigva, idx, axis=-1)
-    # eigve_sorted = np.take_along_axis(eigve, idx[..., np.newaxis, :], axis=-1)
-
-    # # # Assert it is still a valid eigendecomposition
-    # # assert np.alltrue(
-    # #     [
-    # #         np.allclose(
-    # #             np.dot(Rdelta_[i, j, k, ...], eigve_sorted[i, j, k, :, iv]),
-    # #             eigva_sorted[i, j, k, iv] * eigve_sorted[i, j, k, :, iv],
-    # #         )
-    # #         for i in range(Rdelta_.shape[0])
-    # #         for j in range(Rdelta_.shape[1])
-    # #         for k in range(Rdelta_.shape[2])
-    # #         for iv in range(eigva.shape[-1])
-    # #     ]
-    # # )
-
-    # # Extract major eigenvector
-    # major_eigve = eigve_sorted[..., -1]
-    # # major_eigva = eigva_sorted[..., -1]
-
-    # # Restict to the frequency band of interest
-    # idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
-    # major_eigve = major_eigve[idx_band, ...]
-    # major_eigve = np.moveaxis(major_eigve, -1, 0)  # (nrcv, nf, ny, nx)
-
-    # # Normalize to 1 (normalize_eigve_to_1(major_eigve, idx_rcv_ref))
-    # rtf_iref = major_eigve / np.broadcast_to(major_eigve[..., 2:3], major_eigve.shape)
-
-    # rtf_library_direct = np.array(
-    #     [
-    #         major_eigve
-    #         / np.broadcast_to(major_eigve[iref : iref + 1, ...], major_eigve.shape)
-    #         for iref in idx_rcv_refs
-    #     ]
-    # )
-
-    # eigva = eigva[asc_idx]
-    # # Move axis before sorting eigve
-    # eigve = np.moveaxis(eigve, -1, -2)
-    # eigve = eigve[asc_idx, :]
-    # #
-
-    # with Client(
-    #     n_workers=N_WORKERS,
-    #     threads_per_worker=1,
-    #     memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
-    # ) as client:
-    #     # NOTE
-    #     # We can use the "auto" argument as chunksize: "auto": allow the chunking in this dimension to accommodate ideal chunk sizes
-    #     # The ideal chunksize set can be check using : dask.config.get("array.chunk-size") and can be modify with
-    #     # dask.config.set({"array.chunk-size": target_chunksize})
-
-    #     # 0) Transform to dask dataset
-    #     # First simple approach : use maximum number of chunks along receiver, x, and y axis
-    #     dask_rtf = ds_sig_noise_light_rtf.chunk({"idx_rcv": 1, "t": -1, "y": 1, "x": 1})
-    #     # 1) Compute STFTs
-    #     t0 = time()
-    #     for i in range(100):
-    #         ff, tt, stfts = sp.stft(
-    #             dask_rtf.x_l,
-    #             fs=library_props["fs"],
-    #             nperseg=nperseg,
-    #             noverlap=noverlap,
-    #             axis=1,
-    #         )
-    #     print(f"DASK -> STFTs computed in {time()-t0} s")
-
-    #     # 2) Compute CSDMs
-    #     # 3) Estimate RTFs
 
     t0 = time()
     # Init lists to save results

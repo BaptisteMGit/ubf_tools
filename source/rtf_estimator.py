@@ -324,6 +324,78 @@ class RTFEstimator:
         return np.squeeze(rtf)
 
     @staticmethod
+    def covariance_subtraction_major_eigen_vector_5D(
+        clean_signal_csdm_5D: np.ndarray,
+        idx_rcv_ref: int = 0,
+        dims_order: dict = {"f": 0, "r1": 1, "r2": 2, "y": 3, "x": 4},
+    ) -> np.ndarray:
+        """
+        Estimate the RTF using the covariance subtraction method with the major eigen vector of the CSDM in the case of
+        a 5D CSDM array (CSDM at all positions on a y, x grid).
+
+        Parameters
+        ----------
+        clean_signal_csdm_5D : np.ndarray
+            Clean speech CSDM at all positions (num_frequency_bins x num_receivers x num_receivers x num_y x num_x).
+        idx_rcv_ref : int, optional
+            Index of the reference receiver.
+
+        Returns
+        -------
+        rtf : np.ndarray
+            Estimated RTF (num_receivers x num_frequency_bins x num_y x num_x).
+
+        """
+
+        # 1) Reshape the csdm array to ensure order is (nf, ny, nx, nrcv, nrcv) as required by np.linalg.eigh
+        # Get the axis order
+        dims = dims_order.keys()
+        target_order = {"f": 0, "r1": 3, "r2": 4, "y": 1, "x": 2}
+        axis_src = [dims_order[dim] for dim in dims]
+        axis_dst = [target_order[dim] for dim in dims]
+        # Reshape
+        clean_signal_csdm_5D = np.moveaxis(clean_signal_csdm_5D, axis_src, axis_dst)
+
+        # 2) Compute eigen decomposition
+        eigva, eigve = np.linalg.eigh(clean_signal_csdm_5D)
+
+        # 3) Sort eigenvalues and eigenvectors to get the major eigenvector
+        # Sort eigenvalues and eigenvectors in descending order
+        idx = np.argsort(np.real(eigva), axis=-1)[::-1]
+        # eigva_sorted = np.take_along_axis(eigva, idx, axis=-1)
+        eigve_sorted = np.take_along_axis(
+            eigve, idx[..., np.newaxis, :], axis=-1
+        )  # (nf, ny, nx, nrcv, nrcv)
+
+        # # Assert it is still a valid eigendecomposition
+        # assert np.alltrue(
+        #     [
+        #         np.allclose(
+        #             np.dot(Rdelta_[i, j, k, ...], eigve_sorted[i, j, k, :, iv]),
+        #             eigva_sorted[i, j, k, iv] * eigve_sorted[i, j, k, :, iv],
+        #         )
+        #         for i in range(Rdelta_.shape[0])
+        #         for j in range(Rdelta_.shape[1])
+        #         for k in range(Rdelta_.shape[2])
+        #         for iv in range(eigva.shape[-1])
+        #     ]
+        # )
+
+        # Extract major eigenvector
+        major_eigve = eigve_sorted[..., -1]  # (nf, ny, nx, nrcv)
+        # major_eigva = eigva_sorted[..., -1]
+
+        # Move receiver axis in first position
+        major_eigve = np.moveaxis(major_eigve, -1, 0)  # (nrcv, nf, ny, nx)
+
+        # Normalize to 1 at idx_rcv_ref
+        rtf = major_eigve / np.broadcast_to(
+            major_eigve[idx_rcv_ref : idx_rcv_ref + 1, ...], major_eigve.shape
+        )  # (nrcv, nf, ny, nx)
+
+        return rtf
+
+    @staticmethod
     def sort_eigenvectors_get_major(
         eigva: np.ndarray, eigve: np.ndarray, num_to_keep: int = 1
     ) -> tuple[np.ndarray, np.ndarray]:

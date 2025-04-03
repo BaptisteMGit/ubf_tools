@@ -470,14 +470,15 @@ def rtf_4D(x_4D, v_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
 
 
 def dask_rtf_4D(x_4D, v_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
-    """
-    This is just a wrapper function for rtf_4D with dask.
-    """
+    """Wrapper function for rtf_4D with dask."""
     ff, rtf = rtf_4D(x_4D, v_4D, fs, idx_rcv_refs, nperseg, noverlap, window)
     # print(rtf.shape)
     return rtf
 
-    
+def dask_gcc_4D(x_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
+    """Wrapper function for gcc_4D with dask."""
+    ff, gcc = gcc_4D(x_4D, fs, idx_rcv_refs, nperseg, noverlap, window)
+    return gcc
 
 
 def gcc_4D(x_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
@@ -519,6 +520,7 @@ def gcc_4D(x_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
         gcc[iref, ...] = w * Sxy_library
 
     return ff, gcc
+
 
 def compute_chunks(shape, n_workers):
     """
@@ -680,123 +682,170 @@ def build_features_from_time_signal(
     )
 
     # ====================================================================================================
-    # Optimized version: RTF are computed directly on the whole 4D array (nrcv, nt, ny, nx)
+    # Optimized version: RTF and GCC are computed directly on the whole 4D array (nrcv, nt, ny, nx)
     # ====================================================================================================
+    use_dask = True 
     window="hann"
     fs = library_props["fs"]
 
     xl_4D = ds_feature_estimate.x_l.values
     vl_4D = ds_feature_estimate.n_l_bis.values
 
-    # Define optimal chunk size to fit with the number of workers 
-    # shape = xl_4D.shape
-    # optimal_chunks = compute_chunks(shape, N_WORKERS)
-    optimal_chunks = (-1, -1, 4, 4)         # Seems to be one one the fastest configuration with 20 workers 
+    if use_dask:
 
-    client = Client(
-        n_workers=N_WORKERS,
-        threads_per_worker=1,
-        memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
-    )
+        ### RTF ### 
+        # Define optimal chunk size to fit with the number of workers 
+        # shape = xl_4D.shape
+        # optimal_chunks = compute_chunks(shape, N_WORKERS)
+        optimal_chunks = (-1, -1, 4, 4)         # Seems to be one one the fastest configuration with 20 workers 
 
-    # Convert to dask arrays
-    xl_4D = da.from_array(xl_4D, chunks=optimal_chunks)
-    xl_4D = xl_4D.persist()
-    vl_4D = da.from_array(vl_4D, chunks=optimal_chunks)
-    vl_4D = vl_4D.persist()
+        client = Client(
+            n_workers=N_WORKERS,
+            threads_per_worker=1,
+            memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
+        )
+
+        # Convert to dask arrays
+        xl_4D = da.from_array(xl_4D, chunks=optimal_chunks)
+        xl_4D = xl_4D.persist()
+        vl_4D = da.from_array(vl_4D, chunks=optimal_chunks)
+        vl_4D = vl_4D.persist()
 
 
-    # print("Total number of chunks : ", xl_4D.numblocks[-2]*xl_4D.numblocks[-1])
-    t0 = time()
-    output_chunks = (xl_4D.shape[0],) + xl_4D.shape
-    rtf_dask = da.map_blocks(
-        dask_rtf_4D,
-        xl_4D, vl_4D,
-        dtype=complex,  
-        chunks=output_chunks,
-        fs=library_props["fs"],
-        idx_rcv_refs=idx_rcv_refs,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        window=window
-    )
-    # rtf_dask = rtf_dask.persist()
-    rtf_library = rtf_dask.compute()
+        # print("Total number of chunks : ", xl_4D.numblocks[-2]*xl_4D.numblocks[-1])
+        # t0 = time()
+        output_chunks = (xl_4D.shape[0],) + xl_4D.shape
+        rtf_dask = da.map_blocks(
+            dask_rtf_4D,
+            xl_4D, vl_4D,
+            dtype=complex,  
+            chunks=output_chunks,
+            fs=fs,
+            idx_rcv_refs=idx_rcv_refs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window=window
+        )
+        # rtf_dask = rtf_dask.persist()
+        rtf_library = rtf_dask.compute()
 
-    print(f"With dask RTFs computed in {time()-t0} s")
+        # print(f"With dask RTFs computed in {time()-t0} s")
+        
+        # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
+        xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
+        ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
+
+        ff, rtf_event = rtf_4D(
+            x_4D=xe_4D,
+            v_4D=ve_4D,
+            fs=fs,
+            idx_rcv_refs=idx_rcv_refs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window=window,
+        )
+
+        # Squeeze to remove dummy dimensions
+        rtf_event = np.squeeze(rtf_event)
+
+        # Restict to the frequency band of interest
+        idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
+        rtf_library = rtf_library[:, :, idx_band, ...]
+        rtf_event = rtf_event[..., idx_band]
+        f_rtf = ff[idx_band]
+
+
+        ### DCF ### 
+        # t0 = time()
+        # xl_4D = ds_feature_estimate.x_l.values
+        xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
+
+        gcc_dask = da.map_blocks(
+            dask_gcc_4D,
+            xl_4D,
+            dtype=complex,  
+            chunks=output_chunks,
+            fs=fs,
+            idx_rcv_refs=idx_rcv_refs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window=window
+        )
+        gcc_library = gcc_dask.compute()
+
+        # ff, gcc_library = gcc_4D(
+        #     x_4D=xl_4D,
+        #     fs=library_props["fs"],
+        #     idx_rcv_refs=idx_rcv_refs,
+        #     nperseg=nperseg,
+        #     noverlap=noverlap,
+        #     window="hann",
+        # )
+
+        ff, gcc_event = gcc_4D(
+            x_4D=xe_4D,
+            fs=fs,
+            idx_rcv_refs=idx_rcv_refs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window="hann",
+        )
+        gcc_event = np.squeeze(gcc_event)
+
+        # Restict to the frequency band of interest
+        idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
+        gcc_library = gcc_library[:, :, idx_band, ...]
+        gcc_event = gcc_event[:, :, idx_band]
+        f_gcc = ff[idx_band]
+
+        # TODO remove once validated 
+        gcc_library_dask = gcc_library
+
+        client.close()
+
     
-    # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
-    xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
-    ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
+    else:
+        ### RTF ###
+        # t0 = time()
+        xl_4D = ds_feature_estimate.x_l.values
+        vl_4D = ds_feature_estimate.n_l_bis.values
 
-    ff, rtf_event = rtf_4D(
-        x_4D=xe_4D,
-        v_4D=ve_4D,
-        fs=library_props["fs"],
-        idx_rcv_refs=idx_rcv_refs,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        window=window,
-    )
+        ff, rtf_library = rtf_4D(
+            x_4D=xl_4D,
+            v_4D=vl_4D,
+            fs=library_props["fs"],
+            idx_rcv_refs=idx_rcv_refs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window="hann",
+        )
 
-    # Squeeze to remove dummy dimensions
-    rtf_event = np.squeeze(rtf_event)
+        # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
+        xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
+        ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
+        ff, rtf_event = rtf_4D(
+            x_4D=xe_4D,
+            v_4D=ve_4D,
+            fs=library_props["fs"],
+            idx_rcv_refs=idx_rcv_refs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window="hann",
+        )
 
-    # Restict to the frequency band of interest
-    idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
-    rtf_library = rtf_library[:, :, idx_band, ...]
-    rtf_event = rtf_event[..., idx_band]
-    f_rtf = ff[idx_band]
-    client.close()
+        # Squeeze to remove dummy dimensions
+        rtf_event = np.squeeze(rtf_event)
 
-    # TODO remove once validated 
-    rtf_library_dask = rtf_library
+        # Restict to the frequency band of interest
+        idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
+        rtf_library = rtf_library[:, :, idx_band, ...]
+        rtf_event = rtf_event[..., idx_band]
+        f_rtf = ff[idx_band]
 
-   
+        # print(f"RTFs computed in {time()-t0} s")
+        # print("Dask RTF matches RTF", np.allclose(rtf_library, rtf_library_dask))
 
-    t0 = time()
-    xl_4D = ds_feature_estimate.x_l.values
-    vl_4D = ds_feature_estimate.n_l_bis.values
-
-    ff, rtf_library = rtf_4D(
-        x_4D=xl_4D,
-        v_4D=vl_4D,
-        fs=library_props["fs"],
-        idx_rcv_refs=idx_rcv_refs,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        window="hann",
-    )
-
-    # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
-    xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
-    ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
-    ff, rtf_event = rtf_4D(
-        x_4D=xe_4D,
-        v_4D=ve_4D,
-        fs=library_props["fs"],
-        idx_rcv_refs=idx_rcv_refs,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        window="hann",
-    )
-
-    # Squeeze to remove dummy dimensions
-    rtf_event = np.squeeze(rtf_event)
-
-    # Restict to the frequency band of interest
-    idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
-    rtf_library = rtf_library[:, :, idx_band, ...]
-    rtf_event = rtf_event[..., idx_band]
-    f_rtf = ff[idx_band]
-
-    print(f"RTFs computed in {time()-t0} s")
-
-    print("Dask RTF matches RTF", np.allclose(rtf_library, rtf_library_dask))
-
-    # ====================================================================================================
-    # Optimized version: GCC are computed directly on the whole 4D array (nrcv, nt, ny, nx)
-    # ====================================================================================================
+    ### GCC ###
     # t0 = time()
     xl_4D = ds_feature_estimate.x_l.values
     xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
@@ -825,6 +874,8 @@ def build_features_from_time_signal(
     gcc_library = gcc_library[:, :, idx_band, ...]
     gcc_event = gcc_event[:, :, idx_band]
     f_gcc = ff[idx_band]
+
+    print("GCC dask matches GCC ", np.allclose(gcc_library, gcc_library_dask))
 
     # print(f"GCCs computed in {time()-t0} s")
 

@@ -845,37 +845,37 @@ def build_features_from_time_signal(
         # print(f"RTFs computed in {time()-t0} s")
         # print("Dask RTF matches RTF", np.allclose(rtf_library, rtf_library_dask))
 
-    ### GCC ###
-    # t0 = time()
-    xl_4D = ds_feature_estimate.x_l.values
-    xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
+        ### GCC ###
+        # t0 = time()
+        xl_4D = ds_feature_estimate.x_l.values
+        xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
 
-    ff, gcc_library = gcc_4D(
-        x_4D=xl_4D,
-        fs=library_props["fs"],
-        idx_rcv_refs=idx_rcv_refs,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        window="hann",
-    )
+        ff, gcc_library = gcc_4D(
+            x_4D=xl_4D,
+            fs=library_props["fs"],
+            idx_rcv_refs=idx_rcv_refs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window="hann",
+        )
 
-    _, gcc_event = gcc_4D(
-        x_4D=xe_4D,
-        fs=library_props["fs"],
-        idx_rcv_refs=idx_rcv_refs,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        window="hann",
-    )
-    gcc_event = np.squeeze(gcc_event)
+        _, gcc_event = gcc_4D(
+            x_4D=xe_4D,
+            fs=library_props["fs"],
+            idx_rcv_refs=idx_rcv_refs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window="hann",
+        )
+        gcc_event = np.squeeze(gcc_event)
 
-    # Restict to the frequency band of interest
-    idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
-    gcc_library = gcc_library[:, :, idx_band, ...]
-    gcc_event = gcc_event[:, :, idx_band]
-    f_gcc = ff[idx_band]
+        # Restict to the frequency band of interest
+        idx_band = (ff >= library_props["f0"]) & (ff <= library_props["f1"])
+        gcc_library = gcc_library[:, :, idx_band, ...]
+        gcc_event = gcc_event[:, :, idx_band]
+        f_gcc = ff[idx_band]
 
-    print("GCC dask matches GCC ", np.allclose(gcc_library, gcc_library_dask))
+        # print("GCC dask matches GCC ", np.allclose(gcc_library, gcc_library_dask))
 
     # print(f"GCCs computed in {time()-t0} s")
 

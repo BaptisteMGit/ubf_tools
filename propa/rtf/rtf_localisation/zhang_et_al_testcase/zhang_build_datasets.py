@@ -799,7 +799,7 @@ def build_features_from_time_signal(
         f_gcc = ff[idx_band]
 
         # TODO remove once validated 
-        gcc_library_dask = gcc_library
+        # gcc_library_dask = gcc_library
 
         client.close()
 

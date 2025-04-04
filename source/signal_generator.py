@@ -54,48 +54,80 @@ class SignalGenerator:
             Time serie
         """
 
-        nt = T * fs
-        f = np.fft.rfftfreq(nt, 1 / fs)[1:-1]
+        target_nt = int(T * fs)
+
+        # Ensure nt is even
+        if target_nt % 2 != 0:
+            nt = target_nt + 1
+        else:
+            nt = target_nt
+
+        # The number number of fft points if nt and  we have nt/2+1 points such that f>=0
+        nf = nt // 2 + 1
+        k = np.arange(
+            1,
+            nf + 1,
+        )
         if noise_color == "white":
-            psd = np.ones(f.shape)
+            # psd = np.ones(f.shape)
+            alpha_psd = 0
         elif noise_color == "pink":
-            psd = 1 / f
+            # psd = 1 / f
+            alpha_psd = -1
         elif noise_color == "brown":
-            psd = 1 / f**2
+            # psd = 1 / f**2
+            alpha_psd = -2
         elif noise_color == "blue":
-            psd = f
+            # psd = f
+            alpha_psd = 1
         elif noise_color == "purple":
-            psd = f**2
+            # psd = f**2
+            alpha_psd = 2
         else:
             raise ValueError("Unknown noise color")
 
-        df = 1 / T
-        t, x = cls.psd_to_timeserie(psd, df)
+        # Convert psd slope into amplitude spectrum slope given that Sxx(f) = |X(f)|^2
+        # We wish to get Sxx(f) = f ** alpha_psd which is equivalent to |X(f)| = f ** (alpha_psd / 2)
+        alpha_spec = alpha_psd / 2
 
-        return t, x, f, psd
+        # Generate WGN spectrum
+        X_f = np.random.randn(nf) + 1j * np.random.randn(nf)
+
+        # Apply the desired correction to get the right spectrum slope
+        X_f = X_f * (k**alpha_spec)
+
+        # Apply inverse fft to get the time signal
+        x_t = np.fft.irfft(X_f, n=nt)
+
+        # Normalize to unit variance and zero mean
+        x_t = (x_t - np.mean(x_t)) / np.std(x_t)
+
+        # Remove extra point if nt was odd
+        if x_t.shape[0] > target_nt:
+            x_t = x_t[:-1]  # Drop last point
+
+        # Build associated time vector
+        t = np.arange(0, target_nt) / fs
+
+        return t, x_t
 
     @staticmethod
     def psd_to_timeserie(psd, df):
         """
-        Generate a time serie from its Power Spectral Density (PSD).
-
+        Generate a time series from a given power spectral density (PSD) using the inverse Fourier transform.
         Parameters
         ----------
         psd : np.ndarray
-            Power Spectral Density
+            Power spectral density (PSD) of the signal containing the psd components for positive frequencies (f=np.fft.rfftfreq(nt, 1/fs)).
         df : float
-            Frequency resolution
-
+            Frequency resolution of the PSD.
         Returns
         -------
-        t : np.array
-            Time vector
-        x_t : np.array
-            Time serie
+        t : np.ndarray
+            Time vector of the signal.
+        x_t : np.ndarray
+            Time series generated from the PSD.
         """
-
-        # Set f=0 and f=fs/2 to 0   -> psd has exactly nf=np.fft.rfftfreq points
-        psd = np.concatenate(([0], psd, [0]))
 
         # Number of frequency components in psd
         nf = psd.shape[0]
@@ -120,11 +152,6 @@ class SignalGenerator:
         # Time vector
         fs = nt * df
         t = np.linspace(0, 1 / fs * (nt - 1), nt)
-
-        # We can assert x_t has the required psd
-        # fs = nt * df
-        # ff, sxx = sp.welch(x_t, fs=fs)
-        # assert np.allclose(psd, np.abs(X_f))
 
         return t, x_t
 

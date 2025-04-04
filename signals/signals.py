@@ -433,7 +433,7 @@ def psd_to_timeserie(psd, df):
 def psd_to_timeserie_v2(psd, df):
 
     # Set f=0 and f=fs/2 to 0   -> psd has exactly nf=np.fft.rfftfreq points
-    psd = np.concatenate(([0], psd, [0]))
+    # psd = np.concatenate(([0], psd, [0]))
 
     # Number of frequency components in psd
     nf = psd.shape[0]
@@ -464,31 +464,70 @@ def psd_to_timeserie_v2(psd, df):
     # ff, sxx = sp.welch(x_t, fs=fs)
     # assert np.allclose(psd, np.abs(X_f))
 
+    # # Ensure unit variance and zero mean
+    # x_t = (x_t - np.mean(x_t)) / np.std(x_t)
+
     return t, x_t
 
 
 def colored_noise(T, fs, noise_color="white"):
 
-    nt = T * fs
-    f = np.fft.rfftfreq(nt, 1 / fs)[1:-1]
+    target_nt = int(T * fs)
+
+    # Ensure nt is even
+    if target_nt % 2 != 0:
+        nt = target_nt + 1
+    else:
+        nt = target_nt
+
+    # The number number of fft points if nt and  we have nt/2+1 points such that f>=0
+    nf = nt // 2 + 1
+    k = np.arange(
+        1,
+        nf + 1,
+    )
     if noise_color == "white":
-        psd = np.ones(f.shape)
+        # psd = np.ones(f.shape)
+        alpha_psd = 0
     elif noise_color == "pink":
-        psd = 1 / f
+        # psd = 1 / f
+        alpha_psd = -1
     elif noise_color == "brown":
-        psd = 1 / f**2
+        # psd = 1 / f**2
+        alpha_psd = -2
     elif noise_color == "blue":
-        psd = f
+        # psd = f
+        alpha_psd = 1
     elif noise_color == "purple":
-        psd = f**2
+        # psd = f**2
+        alpha_psd = 2
     else:
         raise ValueError("Unknown noise color")
 
-    df = 1 / T
-    # t, x = psd_to_timeserie(psd, df)
-    t, x = psd_to_timeserie_v2(psd, df)
+    # Convert psd slope into amplitude spectrum slope given that Sxx(f) = |X(f)|^2
+    # We wish to get Sxx(f) = f ** alpha_psd which is equivalent to |X(f)| = f ** (alpha_psd / 2)
+    alpha_spec = alpha_psd / 2
 
-    return t, x, f, psd
+    # Generate WGN spectrum
+    X_f = np.random.randn(nf) + 1j * np.random.randn(nf)
+
+    # Apply the desired correction to get the right spectrum slope
+    X_f = X_f * (k**alpha_spec)
+
+    # Apply inverse fft to get the time signal
+    x_t = np.fft.irfft(X_f, n=nt)
+
+    # Normalize to unit variance and zero mean
+    x_t = (x_t - np.mean(x_t)) / np.std(x_t)
+
+    # Remove extra point if nt was odd
+    if x_t.shape[0] > target_nt:
+        x_t = x_t[:-1]  # Drop last point
+
+    # Build associated time vector
+    t = np.arange(0, target_nt) / fs
+
+    return t, x_t
 
 
 if __name__ == "__main__":
@@ -498,15 +537,16 @@ if __name__ == "__main__":
 
     ## Generate gaussian white noise
     fs = 1200
-    T = 10
-    # nt = T * fs
+    T = 500
+    nt = int(T * fs)
     # psd = np.ones((nt - 1) // 2)
     # f = np.fft.rfftfreq(nt, 1 / fs)[1:-1]
 
-    # # f = np.fft.rfftfreq(nt, 1 / fs)[1:]
-    # # psd = 10 ** (-1 / (10 * f))
+    f_ = np.fft.rfftfreq(nt, 1 / fs)
+    psd_ = 3 * f_**2 + 2 * f_ + 1
     # # psd = 1 / f
-    # df = fs / nt
+    df = fs / nt
+    t, x = psd_to_timeserie_v2(psd_, df)
 
     # # Plot input psd
     # plt.figure()
@@ -517,7 +557,8 @@ if __name__ == "__main__":
 
     # t, x = psd_to_timeserie(psd, df)
     # print(len(t))
-    t, x, f_, psd_ = colored_noise(T, fs, noise_color="blue")
+    t, x = colored_noise(T, fs, noise_color="brown")
+    # t, x, f_, psd_ = colored_noise(T, fs, noise_color="blue")
 
     plt.figure()
     plt.plot(t, x)
@@ -528,25 +569,36 @@ if __name__ == "__main__":
     # Derive and plot psd
     f, psd = sp.welch(x, fs, nperseg=1024, noverlap=512)
 
-    plt.figure()
-    plt.plot(f, 10 * np.log10(psd), label="reached")
-    plt.plot(f_, 10 * np.log10(psd_), label="target")
-    plt.xscale("log")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("PSD")
-    plt.legend()
-    plt.show()
+    # plt.figure()
+    # plt.plot(f, psd, label="reached")
+    # plt.plot(f_, psd_, label="target")
+    # # plt.xscale("log")
+    # # plt.xlim([1, fs / 2])
+    # plt.xlabel("Frequency (Hz)")
+    # plt.ylabel("PSD")
+    # plt.legend()
+    # plt.show()
+
+    # plt.figure()
+    # plt.plot(f, 10 * np.log10(psd), label="reached")
+    # plt.plot(f_, 10 * np.log10(psd_), label="target")
+    # plt.xscale("log")
+    # # plt.xlim([1, fs / 2])
+    # plt.xlabel("Frequency (Hz)")
+    # plt.ylabel("PSD")
+    # plt.legend()
+    # plt.show()
 
     # Compute fft and plot
-    f = np.fft.rfftfreq(len(x), 1 / fs)
-    X = np.fft.rfft(x)
-    plt.figure()
-    plt.plot(f, 10 * np.log10(np.abs(X) ** 2), label="reached")
-    plt.plot(f_, 10 * np.log10(psd_), label="target")
-    plt.xscale("log")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Amplitude")
-    plt.show()
+    # f = np.fft.rfftfreq(len(x), 1 / fs)
+    # X = np.fft.rfft(x)
+    # plt.figure()
+    # plt.plot(f, 10 * np.log10(np.abs(X) ** 2), label="reached")
+    # plt.plot(f_, 10 * np.log10(psd_), label="target")
+    # plt.xscale("log")
+    # plt.xlabel("Frequency (Hz)")
+    # plt.ylabel("Amplitude")
+    # plt.show()
 
     # # Compute inverse fft
     # x_recon = np.fft.irfft(X)

@@ -12,13 +12,18 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.deprecated.zhang_build_datasets import (
     grid_dataset,
     build_signal,
 )
 from dask.distributed import Client, LocalCluster
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_process_testcase import process_all_snr
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import N_WORKERS, MAX_RAM_PER_WORKER_GB
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_process_testcase import (
+    process_all_snr,
+)
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+    N_WORKERS,
+    MAX_RAM_PER_WORKER_GB,
+)
 
 
 ### Build dataset ###
@@ -31,7 +36,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import N_WORKE
 nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)
 dx, dy = 20, 20  # Taille des mailles de la grille de recherche
 antenna_type = "zhang"  # Type d'antenne utilisée pour la simulation : antenne hexagonale (a = 250 m)
-debug = False  
+debug = False
 event_stype = "wn"  # Signal source à localiser : bruit blanc gaussien
 
 
@@ -69,12 +74,17 @@ def run_test():
         plot_args=plot_args,
     )
 
+
 if __name__ == "__main__":
     #
-    with Client(n_workers=N_WORKERS, threads_per_worker=1, memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB") as client:
-    # with Client(n_workers=1, threads_per_worker=1, memory_limit="4GB") as client:
+    with Client(
+        n_workers=N_WORKERS,
+        threads_per_worker=1,
+        memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
+    ) as client:
+        # with Client(n_workers=1, threads_per_worker=1, memory_limit="4GB") as client:
         # Print dashboard link
         print("Dask Dashboard:", client.dashboard_link)
         run_test()
-    
+
     # run_test()

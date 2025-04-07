@@ -18,6 +18,7 @@ G. Bologni, R. C. Hendriks and R. Heusdens, "Wideband Relative Transfer Function
 # Import
 # ======================================================================================================================
 import numpy as np
+import scipy.signal as sp
 import source.global_constants as g
 from scipy.linalg import eigh
 from source.cov_manager import CovManager
@@ -51,9 +52,9 @@ class RTFEstimator:
 
     Methods
     -------
-    covariance_subtraction(t, noisy_signal, noise_only, nperseg=2**12, noverlap=2**11, window="hann", use_first_column=False)
+    covariance_subtraction(noisy_signal, noise_only, use_first_column=False, add_id_x=False, add_id_v=False)
         Derive the RTF using covariance subtraction method.
-    covariance_whitening(t, noisy_signal, noise_only, nperseg=2**12, noverlap=2**11, window="hann")
+    covariance_whitening(noisy_signal, noise_only, add_id_x=False, add_id_v=True)
         Derive the RTF using covariance whitening method.
     estimate_rtf_covariance_subtraction(clean_signal_csdm, use_first_column=False)
         Estimate the RTF using the covariance subtraction method.
@@ -76,36 +77,54 @@ class RTFEstimator:
 
     """
 
-    def __init__(self, idx_rcv_ref=0):
-        self.index_reference_rcv = idx_rcv_ref
-
-    def covariance_subtraction(
+    def __init__(
         self,
-        t: np.ndarray,
-        noisy_signal: np.ndarray,
-        noise_only: np.ndarray,
+        fs: float,
+        idx_rcv_ref: int = 0,
         nperseg: int = 2**12,
         noverlap: int = 2**11,
         window: str = "hann",
-        use_first_column=False,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ):
         """
-        Derive the RTF using covariance subtraction method described in Markovich-Golan, S., & Gannot, S. (2015).
-
         Parameters
         ----------
-        t : np.ndarray
-            Time vector.
-        noisy_signal : np.ndarray
-            Noisy signal.
-        noise_only : np.ndarray
-            Noise only signal.
+        fs : float
+            Sampling frequency.
+        idx_rcv_ref : int, optional
+            Index of the reference receiver.
         nperseg : int, optional
             Number of samples per segment used to derive CSDM.
         noverlap : int, optional
             Number of overlapping samples between consecutive segments used to derived CSDM.
         window : str, optional
             Window function used to derive CSDM.
+        """
+        self.fs = fs
+        self.index_reference_rcv = idx_rcv_ref
+        self.nperseg = nperseg
+        self.noverlap = noverlap
+        self.window = window
+        self.cov_manager = CovManager(nperseg=nperseg, noverlap=noverlap, window=window)
+
+    def covariance_subtraction(
+        self,
+        noisy_signal: np.ndarray,
+        noise_only: np.ndarray,
+        use_first_column=False,
+        add_id_x=False,
+        add_id_v=False,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Derive the RTF using covariance subtraction method described in Markovich-Golan, S., & Gannot, S. (2015).
+
+        Best estimates are obtained with add_id_x = False and add_id_v = False (no diagonal loading).
+
+        Parameters
+        ----------
+        noisy_signal : np.ndarray
+            Noisy signal.
+        noise_only : np.ndarray
+            Noise only signal.
         use_first_column : bool, optional
             Boolean indicating if estimation should be performed using the first column of the CSDM.
             Otherwise, rtf is estimated from the major eigen vector of the CSDM.
@@ -122,15 +141,13 @@ class RTFEstimator:
             CSDM of the noise signal.
 
         """
-        if use_first_column:
-            add_identity_noise = False
-        else:
-            add_identity_noise = True
 
-        cm = CovManager(nperseg=nperseg, noverlap=noverlap, window=window)
-        fs = 1 / (t[1] - t[0])
-        f, Rx = cm.get_signal_csdm(y=noisy_signal, fs=fs, add_identity=False)
-        f, Rv = cm.get_signal_csdm(y=noise_only, fs=fs, add_identity=add_identity_noise)
+        f, Rx = self.cov_manager.get_signal_csdm(
+            y=noisy_signal, fs=self.fs, add_identity=add_id_x
+        )
+        f, Rv = self.cov_manager.get_signal_csdm(
+            y=noise_only, fs=self.fs, add_identity=add_id_v
+        )
 
         rtf = self.estimate_rtf_covariance_subtraction(
             Rx - Rv, use_first_column=use_first_column
@@ -140,30 +157,22 @@ class RTFEstimator:
 
     def covariance_whitening(
         self,
-        t: np.ndarray,
         noisy_signal: np.ndarray,
         noise_only: np.ndarray,
-        nperseg: int = 2**12,
-        noverlap: int = 2**11,
-        window: str = "hann",
+        add_id_x=False,
+        add_id_v=True,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Derive the RTF using covariance whitening method described in Markovich-Golan, S., & Gannot, S. (2015).
 
+        Best estimates are obtained with add_id_x = False and add_id_v = True (diagonal loading of the noise CSDM only).
+
         Parameters
         ----------
-        t : np.ndarray
-            Time vector.
         noisy_signal : np.ndarray
             Noisy signal.
         noise_only : np.ndarray
             Noise only signal.
-        nperseg : int, optional
-            Number of samples per segment used to derive CSDM.
-        noverlap : int, optional
-            Number of overlapping samples between consecutive segments used to derived CSDM.
-        window : str, optional
-            Window function used to derive CSDM.
 
         Returns
         -------
@@ -178,10 +187,12 @@ class RTFEstimator:
 
         """
 
-        cm = CovManager(nperseg=nperseg, noverlap=noverlap, window=window)
-        fs = 1 / (t[1] - t[0])
-        f, Rx = cm.get_signal_csdm(y=noisy_signal, fs=fs, add_identity=False)
-        f, Rv = cm.get_signal_csdm(y=noise_only, fs=fs, add_identity=True)
+        f, Rx = self.cov_manager.get_signal_csdm(
+            y=noisy_signal, fs=self.fs, add_identity=add_id_x
+        )
+        f, Rv = self.cov_manager.get_signal_csdm(
+            y=noise_only, fs=self.fs, add_identity=add_id_v
+        )
 
         rtf = self.estimate_rtf_covariance_whitening(Rx, Rv)
 
@@ -335,7 +346,7 @@ class RTFEstimator:
 
         Parameters
         ----------
-        clean_signal_csdm_5D : np.ndarray
+        clean_signal_csdm_4D : np.ndarray
             Clean speech CSDM at all positions (num_frequency_bins x num_receivers x num_receivers x num_y x num_x).
         idx_rcv_ref : int, optional
             Index of the reference receiver.
@@ -359,6 +370,118 @@ class RTFEstimator:
         )  # (nrcv, nf, ny, nx)
 
         return rtf
+
+    def covariance_subtraction_major_eigen_vector_4D(
+        self,
+        x_4D: np.ndarray,
+        v_4D: np.ndarray,
+        dims_order: dict,
+        idx_rcv_refs: list,
+        return_csdm: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Estimate RTF vectors on 2D grid from input x_4D and v_4D arrays. x_4D and v_4D respectively contain the noisy
+        and noise only signals for different x, y positions of the source. The RTF is estimated using the covariance
+        subtraction method with the major eigen vector of the CSDM.
+
+        Compared to covariance_subtraction_major_eigen_vector_5D, this function handles multiple reference receivers.
+        When evaluating the RTF for multiple reference receivers this function is more efficient than calling
+        covariance_subtraction_major_eigen_vector_5D for each reference receiver.
+
+        CSDMs are estimated directly from the 4D STFT arrays.
+
+        x_4D and v_4D are assumed to be of shape (num_receivers x n_samples x num_y x num_x). A different shape can be
+        used but the order of the dimensions must be specified in the dims_order dictionary.
+
+        Parameters
+        ----------
+        x_4D : np.ndarray
+            Noisy signals. Default shape is assumed to be (num_receivers x n_samples x num_y x num_x).
+        v_4D : np.ndarray
+            Noise only signals. Default shape is assumed to be (num_receivers x n_samples x num_y x num_x).
+        dims_order : dict
+            Dictionary containing the order of the dimensions in the input arrays.
+            Keys are 'r', 't', 'y', 'x' and values are the corresponding indices.
+        idx_rcv_refs : list
+            List of indices of the reference receivers.
+
+        Returns
+        -------
+        ff : np.ndarray
+            Frequencies vector.
+        rtf : np.ndarray
+            RTF.
+        Rx : np.ndarray, optional
+            CSDM of the noisy signal.
+        Rv : np.ndarray, optional
+            CSDM of the noise signal.
+        """
+
+        # Check if the input arrays are 4D
+        if x_4D.ndim != 4 or v_4D.ndim != 4:
+            raise ValueError("Input arrays must be 4D.")
+
+        # Check if the input arrays have the same shape
+        if x_4D.shape != v_4D.shape:
+            raise ValueError("Input arrays must have the same shape.")
+
+        # Reshape the x_4D and v_4D arrays into default shape (num_receivers x n_samples x num_y x num_x)
+        # Get the axis order
+        dims = dims_order.keys()
+        target_order = {"r": 0, "t": 1, "y": 2, "x": 3}
+        axis_src = [dims_order[dim] for dim in dims]
+        axis_dst = [target_order[dim] for dim in dims]
+        # Reshape
+        x_4D = np.moveaxis(x_4D, axis_src, axis_dst)
+        v_4D = np.moveaxis(v_4D, axis_src, axis_dst)
+
+        # Noisy signal stfts
+        ff, tt, stfts_x = sp.stft(
+            x_4D,
+            fs=self.fs,
+            nperseg=self.nperseg,
+            noverlap=self.noverlap,
+            window=self.window,
+            axis=1,  # Time axis
+        )
+        # Noise only stfts
+        ff, tt, stfts_v = sp.stft(
+            v_4D,
+            fs=self.fs,
+            nperseg=self.nperseg,
+            noverlap=self.noverlap,
+            window=self.window,
+            axis=1,  # Time axis
+        )
+
+        # Get CSDM of the noisy signal and noise only
+        # Stft is a (nrcv, nf, ny, nx, nt) array
+        dims_order = {"r": 0, "f": 1, "y": 2, "x": 3, "t": 4}
+        Rx = self.cov_manager.csdm_5D(stfts_x, dims_order=dims_order)
+        Rv = self.cov_manager.csdm_5D(stfts_v, dims_order=dims_order)
+        # Clean signal CSDM
+        Rdelta = Rx - Rv
+
+        # Get major eigenvector of the CSDMs (faster than calling the covariance_subtraction_major_eigen_vector_5D for each reference receiver)
+        dims_order = {"f": 0, "r1": 1, "r2": 2, "y": 3, "x": 4}
+        major_eigve = self.cov_manager.get_major_eigve_5D(
+            csdm_5D=Rdelta, dims_order=dims_order
+        )
+
+        rtf = np.array(
+            [
+                major_eigve
+                / np.broadcast_to(
+                    major_eigve[i_ref : i_ref + 1, ...], major_eigve.shape
+                )
+                for i_ref in idx_rcv_refs
+            ]
+        )  # (nrcv, nrcv, nf, ny, nx)
+
+        if not return_csdm:
+            return ff, rtf
+        else:
+            return ff, rtf, Rx, Rv
 
     @staticmethod
     def sort_eigenvectors_get_major(

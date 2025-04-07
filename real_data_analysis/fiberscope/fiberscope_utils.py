@@ -18,7 +18,7 @@ import xarray as xr
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from propa.rtf.rtf_utils import D_hermitian_angle_fast
 from real_data_analysis.fiberscope.read_tdms import load_fiberscope_data
 from real_data_analysis.deconvolution_utils import crosscorr_deconvolution

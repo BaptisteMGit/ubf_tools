@@ -3,7 +3,7 @@
 """
 @File    :   kraken_env.py
 @Time    :   2024/07/08 09:06:58
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Kraken environment class
@@ -21,7 +21,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 from cst import SAND_PROPERTIES, C0
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from propa.kraken_toolbox.utils import align_var_description
 from propa.kraken_toolbox.plot_utils import plot_ssp, plot_attenuation, plot_density
 

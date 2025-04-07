@@ -16,7 +16,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     params,
     load_random_antenna,

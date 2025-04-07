@@ -20,7 +20,7 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from misc import compute_hyperbola
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     params,
     get_array_label,
@@ -1132,7 +1132,7 @@ def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang", debug=False):
         fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m_debug.nc"
     else:
         fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
-        
+
     fpath = os.path.join(ROOT_DATA, fname)
     ds_tf = xr.open_dataset(fpath)
     # Build complex tf
@@ -1458,7 +1458,7 @@ def plot_fullarray_ambiguity_surfaces_publi(
         plt.savefig(f"{fpath}.png", dpi=300)
 
 
-def plot_performance_vs_number_of_rcv_in_subarray_publi(root_img, snrs=[-15]):
+def plot_performance_vs_number_of_rcv_in_subarray_publi(root_img, snrs=[0]):
 
     pfig = PubFigure(
         label_fontsize=25, ticks_fontsize=25, labelpad=15, legend_fontsize=14
@@ -1467,7 +1467,9 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(root_img, snrs=[-15]):
     # Build sub arrays
     # Here we consider all the potential subarrays containing from 2 to 6 receivers
     subarrays_list = []
-    n_rcv = [2, 3, 4, 5, 6]
+    # n_rcv = [2, 3, 4, 5, 6]
+    n_rcv = [3, 4, 5, 6]
+
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
     # Build associated labels
@@ -1710,11 +1712,11 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(root_img, snrs=[-15]):
         plt.savefig(f"{fpath}.png", dpi=300)
 
 
-def study_perf_vs_snr_publi(subarrays_list, root_img):
+def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
     """Plot metrics (MSR, RMSE) vs SNR for both DCF and RTF"""
 
     # Load results (all available snrs)
-    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list)
+    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list, root_data=root_data)
 
     for sa_key in msr.keys():
         # Extract info dataframes for current subarray
@@ -1791,7 +1793,7 @@ def study_perf_vs_snr_publi(subarrays_list, root_img):
         # Plot RMSE
         fig, ax1 = plt.subplots(figsize=(8, 6))
         rmse_gcc = ax1.plot(
-            rmse_sa.index, rmse_sa["dcf"], "o--", label="RMSE DCF", color="tab:blue"
+            rmse_sa.index, rmse_sa["dcf"], "s--", label="RMSE DCF", color="tab:blue"
         )
         rmse_rtf = ax1.plot(
             rmse_sa.index, rmse_sa["rtf"], "o-", label="RMSE RTF", color="tab:blue"
@@ -1799,6 +1801,11 @@ def study_perf_vs_snr_publi(subarrays_list, root_img):
         ax1.set_xlabel("SNR [dB]")
         ax1.set_ylabel("RMSE [m]", color="tab:blue")
         ax1.tick_params(axis="y", labelcolor="tab:blue")
+        ax1.legend(
+            loc="upper right",
+            frameon=False,
+            bbox_to_anchor=(0.79, 0.98),
+        )
 
         # Create a second y-axis for MSR
         ax2 = ax1.twinx()
@@ -1807,8 +1814,8 @@ def study_perf_vs_snr_publi(subarrays_list, root_img):
             msr_sa.dcf_mean,
             yerr=msr_sa.dcf_std,
             color="tab:red",
-            capsize=8,
-            fmt="o--",
+            capsize=4,
+            fmt="s--",
             label="MSR DCF",
         )
         msr_rtf = ax2.errorbar(
@@ -1816,15 +1823,19 @@ def study_perf_vs_snr_publi(subarrays_list, root_img):
             msr_sa.rtf_mean,
             yerr=msr_sa.rtf_std,
             color="tab:red",
-            capsize=8,
+            capsize=4,
             fmt="o-",
             label="MSR RTF",
         )
 
         ax2.set_ylabel("MSR [dB]", color="tab:red")
         ax2.tick_params(axis="y", labelcolor="tab:red")
-
-        # Collect handles and labels from both axes
+        ax2.legend(
+            loc="upper right",
+            frameon=False,
+            bbox_to_anchor=(0.98, 0.98),
+        )
+        # # Collect handles and labels from both axes
         # handles = [rmse_gcc, rmse_rtf, msr_gcc, msr_rtf]
         # labels = [h.get_label() for h in handles]
         # fig.legend(

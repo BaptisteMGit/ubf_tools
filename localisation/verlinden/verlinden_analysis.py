@@ -34,7 +34,7 @@ from localisation.verlinden.misc.params import (
     VERLINDEN_ANALYSIS_FOLDER,
 )
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PFIG = PubFigure(
     label_fontsize=40,

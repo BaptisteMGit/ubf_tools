@@ -3,7 +3,7 @@
 """
 @File    :   process_batch.py
 @Time    :   2025/02/08 18:29:54
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -15,7 +15,7 @@
 import os
 
 from real_data_analysis.real_data_utils import *
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
 

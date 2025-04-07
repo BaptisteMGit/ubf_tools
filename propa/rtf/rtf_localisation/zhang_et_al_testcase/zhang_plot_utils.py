@@ -35,10 +35,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     get_mainlobe_mask,
     get_mainlobe_contours,
 )
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT_IMG,
-    ROOT_DATA,
-)
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p 
 
 # ======================================================================================================================
 # Functions
@@ -69,12 +66,12 @@ def plot_study_zhang2023(
     plot_msr_estimation = plot_args.get("plot_msr_estimation", False)
 
     # Define folder to store images
-    root_img = os.path.join(ROOT_IMG, folder)
+    root_img = os.path.join(p.root_img, folder)
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
     # Define folder to store data
-    root_data = os.path.join(ROOT_DATA, folder)
+    root_data = os.path.join(p.root_data, folder)
     # if not os.path.exists(root_data):
     #     os.makedirs(root_data)
 
@@ -1120,7 +1117,7 @@ def check_signal_noise_stft(ds_sig_noise):
 def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang", debug=False):
 
     # Define folder to store images
-    root_img = os.path.join(ROOT_IMG, folder, "check_rtf")
+    root_img = os.path.join(p.root_img, folder, "check_rtf")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
@@ -1133,7 +1130,7 @@ def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang", debug=False):
     else:
         fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
 
-    fpath = os.path.join(ROOT_DATA, fname)
+    fpath = os.path.join(p.root_data, fname)
     ds_tf = xr.open_dataset(fpath)
     # Build complex tf
     tf = ds_tf.tf_real + 1j * ds_tf.tf_imag
@@ -1220,7 +1217,7 @@ def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang", debug=False):
 def check_gcc_features(ds_gcc, folder):
 
     # Define folder to store images
-    root_img = os.path.join(ROOT_IMG, folder, "check_gcc")
+    root_img = os.path.join(p.root_img, folder, "check_gcc")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
@@ -1310,7 +1307,7 @@ def study_perf_vs_snr(subarrays_list):
     """Plot metrics (MSR, RMSE) vs SNR for both DCF and RTF"""
 
     folder = "from_signal_dx20m_dy20m"
-    root_img = os.path.join(ROOT_IMG, folder, "perf_vs_snr")
+    root_img = os.path.join(p.root_img, folder, "perf_vs_snr")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 

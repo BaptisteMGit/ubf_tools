@@ -23,12 +23,10 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     get_subarrays,
     load_msr_rmse_res_subarrays,
 )
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT_IMG,
-    USE_TEX,
-)
 
-pfig = PubFigure(use_tex=USE_TEX)
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
+
+pfig = PubFigure(use_tex=p.use_tex)
 
 
 def random_array(rmax, nr):
@@ -213,7 +211,7 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
 
     folder = "from_signal_dx20m_dy20m"
     root_img = os.path.join(
-        ROOT_IMG, folder, "analyse_arrays", antenna_type, subarrays_size_info
+        p.root_img, folder, "analyse_arrays", antenna_type, subarrays_size_info
     )
     if not os.path.exists(root_img):
         os.makedirs(root_img)

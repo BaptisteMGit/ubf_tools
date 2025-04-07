@@ -24,11 +24,8 @@ from misc import cast_matrix_to_target_shape
 from propa.kraken_toolbox.run_kraken import readshd
 from propa.rtf.rtf_utils import D_hermitian_angle_fast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import params
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT_TMP,
-    ROOT_DATA,
-    ROOT_IMG,
-)
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.deprecated.zhang_params as p
+
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     plot_ambiguity_surface,
 )
@@ -46,7 +43,7 @@ def main_lobe_segmentation_study():
 
     # Load full array dataset
     fpath = os.path.join(
-        ROOT_DATA,
+        p.root_data,
         f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
     )
     ds_fa = xr.open_dataset(fpath)
@@ -111,7 +108,7 @@ def main_lobe_segmentation_study():
     #     ax.contour(mask, levels=[0.5])
 
     # Save figure
-    fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig5_segmentation.png")
+    fpath = os.path.join(p.root_img, "loc_zhang2023_fig5_segmentation.png")
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
 
     # 1.4) Select the class corresponding to the estimated position defined by the maximum of the ambiguity surface
@@ -180,7 +177,7 @@ def main_lobe_segmentation_study():
     ax.set_yticks([6.400, 6.900, 7.400])
 
     # Save figure
-    fpath = os.path.join(ROOT_IMG, "loc_zhang2023_fig5_segmentation_highlight.png")
+    fpath = os.path.join(p.root_img, "loc_zhang2023_fig5_segmentation_highlight.png")
     plt.savefig(fpath, dpi=300, bbox_inches="tight")
 
 
@@ -190,8 +187,8 @@ def localise(sub_array=None):
     depth, receivers, source, grid, frequency, _ = params()
 
     # Load rtf data
-    # fpath = os.path.join(ROOT_DATA, "rtf_zhang.nc")
-    fpath = os.path.join(ROOT_DATA, f"rtf_zhang_dx{grid['dx']}m_dy{grid['dy']}m.nc")
+    # fpath = os.path.join(p.root_data, "rtf_zhang.nc")
+    fpath = os.path.join(p.root_data, f"rtf_zhang_dx{grid['dx']}m_dy{grid['dy']}m.nc")
     ds = xr.open_dataset(fpath)
 
     # Compute distance between the RTF vector associated with the source and the RTF vector at each grid pixel
@@ -229,7 +226,7 @@ def localise(sub_array=None):
     plot_args = {
         "dist": "hermitian_angle",
         "vmax_percentile": 5,
-        "root_img": ROOT_IMG,
+        "root_img": p.root_img,
         "testcase": "zhang_et_al_2023",
         "dist_label": r"$\theta \, \textrm{[°]}$",
         "vmax": 50,
@@ -298,7 +295,7 @@ def save_simulation_netcdf():
 
     # Read shd from previously run kraken
     # working_dir = os.path.join(ROOT, "tmp")
-    working_dir = ROOT_TMP
+    working_dir = p.root_tmp
     os.chdir(working_dir)
     shdfile = r"testcase_zhang2023.shd"
 
@@ -324,7 +321,7 @@ def save_simulation_netcdf():
     )
 
     # Save waveguide transfert functions as netcdf
-    fpath = os.path.join(ROOT_DATA, "tf_zhang.nc")
+    fpath = os.path.join(p.root_data, "tf_zhang.nc")
     tf_zhang.to_netcdf(fpath)
     tf_zhang.close()
 

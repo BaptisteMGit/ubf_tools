@@ -20,10 +20,7 @@ from dask.distributed import Client, LocalCluster
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_process_testcase import (
     process_all_snr,
 )
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    N_WORKERS,
-    MAX_RAM_PER_WORKER_GB,
-)
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.deprecated.zhang_params as p
 
 
 ### Build dataset ###
@@ -78,9 +75,9 @@ def run_test():
 if __name__ == "__main__":
     #
     with Client(
-        n_workers=N_WORKERS,
+        n_workers=p.n_workers,
         threads_per_worker=1,
-        memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
+        memory_limit=f"{p.max_ram_per_worker_gb}GB",
     ) as client:
         # with Client(n_workers=1, threads_per_worker=1, memory_limit="4GB") as client:
         # Print dashboard link

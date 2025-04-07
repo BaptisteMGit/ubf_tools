@@ -40,9 +40,9 @@ class DataBuilder:
         fmax: float = p.fmax,
         fs: float = p.fs,
         signal_duration: float = p.duration,
-        antenna_type: str = "zhang",
-        library_stype: str = "lfm",
-        event_stype: str = "wn",
+        antenna_type: str = p.antenna_type,
+        library_stype: str = p.antenna_type,
+        event_stype: str = p.event_stype,
         debug: bool = False,
         verbose: bool = False,
     ):
@@ -376,11 +376,11 @@ class DataBuilder:
 
     def derive_received_noise(
         self,
-        s_library,
-        s_event,
-        event_source,
-        snr_dB=10,
-        noise_model="gaussian",
+        s_library: xr.DataArray,
+        s_event: xr.DataArray,
+        event_source: dict,
+        snr_dB: float = 10,
+        noise_model: str = "gaussian",
     ):
         """
         Function to derive noise signals according to target SNR.

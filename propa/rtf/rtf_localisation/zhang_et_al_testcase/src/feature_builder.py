@@ -127,16 +127,6 @@ class FeatureBuilder:
         ds_sig = xr.open_dataset(fpath)
         attrs = ds_sig.attrs
 
-        # Load library spectrum
-        # library_props, _, _, _ = library_src_spectrum(
-        #     stype=self.library_stype,
-        #     fs=self.fs,
-        #     fmin=self.fmin,
-        #     fmax=self.fmax,
-        #     T=self.signal_duration,
-        #     plot=False,
-        # )
-
         # Derive noise dataset
         ds_noise = self.data_builder.derive_received_noise(
             s_library=ds_sig.s_l,
@@ -427,7 +417,9 @@ class FeatureBuilder:
         # ds_res_from_sig = ds_res_from_sig.isel(f=subsample_idx)
 
         if self.check:
-            check_rtf_features(ds_res_from_sig, folder=ds_sig_noise.attrs["root_img"])
+            check_rtf_features(
+                ds_res_from_sig, folder=ds_sig_noise.attrs["root_img"], debug=self.debug
+            )
             check_gcc_features(ds_res_from_sig, folder=ds_sig_noise.attrs["root_img"])
 
         # Save updated dataset

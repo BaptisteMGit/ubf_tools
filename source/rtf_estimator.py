@@ -88,9 +88,13 @@ class RTFEstimator:
         noverlap: int = 2**11,
         window: str = "hann",
         use_first_column=False,
+        add_id_x=False,
+        add_id_v=False,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Derive the RTF using covariance subtraction method described in Markovich-Golan, S., & Gannot, S. (2015).
+
+        Best estimates are obtained with add_id_x = False and add_id_v = False (no diagonal loading).
 
         Parameters
         ----------
@@ -122,15 +126,11 @@ class RTFEstimator:
             CSDM of the noise signal.
 
         """
-        if use_first_column:
-            add_identity_noise = False
-        else:
-            add_identity_noise = True
 
         cm = CovManager(nperseg=nperseg, noverlap=noverlap, window=window)
         fs = 1 / (t[1] - t[0])
-        f, Rx = cm.get_signal_csdm(y=noisy_signal, fs=fs, add_identity=False)
-        f, Rv = cm.get_signal_csdm(y=noise_only, fs=fs, add_identity=add_identity_noise)
+        f, Rx = cm.get_signal_csdm(y=noisy_signal, fs=fs, add_identity=add_id_x)
+        f, Rv = cm.get_signal_csdm(y=noise_only, fs=fs, add_identity=add_id_v)
 
         rtf = self.estimate_rtf_covariance_subtraction(
             Rx - Rv, use_first_column=use_first_column
@@ -146,9 +146,13 @@ class RTFEstimator:
         nperseg: int = 2**12,
         noverlap: int = 2**11,
         window: str = "hann",
+        add_id_x=False,
+        add_id_v=True,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
         Derive the RTF using covariance whitening method described in Markovich-Golan, S., & Gannot, S. (2015).
+
+        Best estimates are obtained with add_id_x = False and add_id_v = True (diagonal loading of the noise CSDM only).
 
         Parameters
         ----------
@@ -180,8 +184,8 @@ class RTFEstimator:
 
         cm = CovManager(nperseg=nperseg, noverlap=noverlap, window=window)
         fs = 1 / (t[1] - t[0])
-        f, Rx = cm.get_signal_csdm(y=noisy_signal, fs=fs, add_identity=False)
-        f, Rv = cm.get_signal_csdm(y=noise_only, fs=fs, add_identity=True)
+        f, Rx = cm.get_signal_csdm(y=noisy_signal, fs=fs, add_identity=add_id_x)
+        f, Rv = cm.get_signal_csdm(y=noise_only, fs=fs, add_identity=add_id_v)
 
         rtf = self.estimate_rtf_covariance_whitening(Rx, Rv)
 
@@ -335,7 +339,7 @@ class RTFEstimator:
 
         Parameters
         ----------
-        clean_signal_csdm_5D : np.ndarray
+        clean_signal_csdm_4D : np.ndarray
             Clean speech CSDM at all positions (num_frequency_bins x num_receivers x num_receivers x num_y x num_x).
         idx_rcv_ref : int, optional
             Index of the reference receiver.

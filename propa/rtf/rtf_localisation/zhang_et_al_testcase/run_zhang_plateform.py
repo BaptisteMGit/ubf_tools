@@ -75,18 +75,12 @@ def run_test_1():
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
+    # # Docker 1
+    # snr_min = -15
+    # snr_max = -1
     # Docker 1
     snr_min = -15
-    snr_max = -1
-    # # Docker 1
-    # snr_min = 0
-    # snr_max = 15
-    # # Docker 2
-    # snr_min = -5
-    # snr_max = 2.5
-    # Docker 3
-    # snr_min = 9
-    # snr_max = 10
+    snr_max = 15
 
     snr_step = 1
     n_snr = int((snr_max - snr_min) / snr_step + 1)
@@ -102,7 +96,7 @@ def run_test_1():
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information
-    avg_cpu_t_per_iter = 200
+    avg_cpu_t_per_iter = 50
     total_expected_cpu_time = n_snr * n_monte_carlo * avg_cpu_t_per_iter
     print(
         f"Expected cpu time = {np.round(total_expected_cpu_time, 0)} s = {np.round(total_expected_cpu_time/3600, 2)} h"

@@ -21,16 +21,10 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_process_testcase impo
 )
 from dask.distributed import Client
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import get_subarrays
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    N_WORKERS,
-    MAX_RAM_PER_WORKER_GB,
-)
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
-    build_tf_dataset,
-    grid_dataset,
-    build_signal,
-    build_features_fullsimu,
-    build_features_from_time_signal,
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.src.data_builder import DataBuilder
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.src.feature_builder import (
+    FeatureBuilder,
 )
 
 """
@@ -41,7 +35,9 @@ Functions are split so that they can be be run from two separated dockers at the
 """
 
 
-def run_test_1():
+def run_test_1(
+    antenna_type="zhang", library_stype="lfm", event_stype="wn", debug=False
+):
     ###
     # Etape 2 : Simulation avec deux sous-antennes à trois capteurs de l'antenne hexagonale complète
     ###
@@ -76,9 +72,11 @@ def run_test_1():
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
+    snr_min = 40
+    snr_max = 40
     # Docker 1
-    snr_min = -16
-    snr_max = -12
+    # snr_min = -16
+    # snr_max = -12
     # # Docker 1
     # snr_min = 0
     # snr_max = 15
@@ -132,10 +130,12 @@ def run_test_1():
         run_mode="a",
         subarrays_list=subarrays_list,
         antenna_type=antenna_type,
+        library_stype=library_stype,
+        event_stype=event_stype,
+        plot_args=plot_args,
         debug=debug,
         verbose=False,
-        check=False,  # TODO set to False before running on docker
-        plot_args=plot_args,
+        check=True,  # TODO set to False before running on docker
     )
 
 
@@ -223,7 +223,7 @@ if __name__ == "__main__":
     -   "zhang" : antenne hexagonnale régulière de coté 250 m
     -   "random" : antenne de 6 capteurs positionnés aléatoirement dans un cercle de rayon 1.5 km autour de l'origine du repère
 
-    **event_stype** -> nature du signal émis par la source *event* à localiser :
+    **library_stype/event_stype** -> nature du signal émis par la source *event* à localiser :
     -   "wn" : bruit blanc gaussien
     -   "lfm" : chirp linéaire
 
@@ -234,6 +234,9 @@ if __name__ == "__main__":
     """
     antenna_type = "zhang"
     event_stype = "wn"
+    # library_stype = "lfm"
+    library_stype = "wn"
+
     debug = True
 
     freq_draw_method = "equally_spaced"
@@ -243,34 +246,53 @@ if __name__ == "__main__":
     ###
     # Etape 1 : génération du dataset de fonctions de transfert
     ###
+    db = DataBuilder(
+        antenna_type=antenna_type,
+        library_stype=library_stype,
+        event_stype=event_stype,
+        debug=debug,
+    )
 
-    ## Step 1 : Construction du dataset de fonctions de transfert avec Kraken
-    # Not needed here, the correponding dataset should already be available in the ROOT_DATA folder with name : tf_zhang_dataset.nc
-    # build_tf_dataset()
+    # ## Step 1 : Construction du dataset de fonctions de transfert avec Kraken
+    # # Not needed here, the correponding dataset should already be available in the ROOT_DATA folder with name : tf_zhang_dataset.nc
+    # # build_tf_dataset()
+    # db.build_tf_dataset()
 
-    ## Step 2 : Interpolation des fonctions de transfert sur la grille de recherche
-    # A executer une unique fois en mode debug = False pour obtenir le dataset correspondant à la zone de recherche complète (1km x 1km)
-    # grid_dataset(debug=debug, antenna_type=antenna_type)
+    # ## Step 2 : Interpolation des fonctions de transfert sur la grille de recherche
+    # # A executer une unique fois en mode debug = False pour obtenir le dataset correspondant à la zone de recherche complète (1km x 1km)
+    # # grid_dataset(debug=debug, antenna_type=antenna_type)
+    # db.grid_dataset()
 
-    ## Step 3 : Calcul des signaux propagés depuis chacun des points de la grille
-    # A executer une unique fois
-    # Step 3
-    # build_signal(debug=debug, antenna_type=antenna_type, event_stype=event_stype)
+    # # ## Step 3 : Calcul des signaux propagés depuis chacun des points de la grille
+    # # # A executer une unique fois
+    # # # Step 3
+    # # # build_signal(debug=debug, antenna_type=antenna_type, event_stype=event_stype)
+    db.build_signal()
 
     ## Step 4 : Calcul des vecteurs de RTF "théorique" directement à partir des fonctions de transfert
     # Principalement pour comparaison avec les vecteurs de RTF estimés par la méthode CS
-
-    # run_test_1()
+    # fb = FeatureBuilder(
+    #     antenna_type=antenna_type,
+    #     library_stype=library_stype,
+    #     event_stype=event_stype,
+    #     debug=debug,
+    # )
+    # fb.build_features_fullsimu()
 
     ### Open Dask client to manage ressources ###
     with Client(
-        n_workers=N_WORKERS,
+        n_workers=p.n_workers,
         threads_per_worker=1,
-        memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
+        memory_limit=f"{p.max_ram_per_worker_gb}GB",
     ) as client:
         # Print dashboard link
         print("Dask Dashboard:", client.dashboard_link)
 
         # Uncomment target test
-        run_test_1()
+        run_test_1(
+            antenna_type=antenna_type,
+            library_stype=library_stype,
+            event_stype=event_stype,
+            debug=debug,
+        )
     #     # run_test_2()

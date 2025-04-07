@@ -25,7 +25,7 @@ from propa.rtf.rtf_utils import (
     D_hermitian_angle_fast,
 )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import ROOT_DATA
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.deprecated.zhang_build_datasets import (
     build_features_from_time_signal,
     build_signal,
 )

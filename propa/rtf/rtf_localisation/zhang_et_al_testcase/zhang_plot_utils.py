@@ -1117,7 +1117,7 @@ def check_signal_noise_stft(ds_sig_noise):
     plt.close("all")
 
 
-def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang"):
+def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang", debug=False):
 
     # Define folder to store images
     root_img = os.path.join(ROOT_IMG, folder, "check_rtf")
@@ -1128,7 +1128,11 @@ def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang"):
     _, _, source, grid, frequency, _ = params(antenna_type=antenna_type)
 
     # Load gridded dataset
-    fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
+    if debug:
+        fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m_debug.nc"
+    else:
+        fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
+        
     fpath = os.path.join(ROOT_DATA, fname)
     ds_tf = xr.open_dataset(fpath)
     # Build complex tf

@@ -28,6 +28,7 @@ import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
 
 # from time import time
 from misc import cast_matrix_to_target_shape
+
 # from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
 #     p.root_data,
 #     p.root_img,
@@ -54,6 +55,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     # check_gcc_features,
     plot_study_zhang2023,
 )
+
 # from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
 #     build_features_from_time_signal,
 # )
@@ -376,18 +378,20 @@ def process_all_snr(
     subarrays_list=None,
     freq_draw_method="equally_spaced",
     antenna_type="zhang",
+    library_stype="lfm",
+    event_stype="wn",
+    plot_args={},
     debug=False,
     verbose=False,
     check=False,
-    plot_args={},
 ):
 
     fb = FeatureBuilder(
         root_name="zhang_output_from_signal",
         root_data=p.root_data,
         antenna_type=antenna_type,
-        library_stype="lfm",
-        event_stype="wn",
+        library_stype=library_stype,
+        event_stype=event_stype,
         rtf_method="cs_eigve",
         gcc_method="scot",
         verbose=verbose,
@@ -463,7 +467,8 @@ def process_all_snr(
 
             # Load results
             fpath = os.path.join(
-                p.root_data, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr:.1f}dB.nc"
+                p.root_data,
+                f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr:.1f}dB.nc",
             )
             ds = xr.open_dataset(fpath)
 

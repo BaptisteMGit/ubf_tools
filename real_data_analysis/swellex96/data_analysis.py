@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import scipy.io as sio
 import scipy.signal as sp
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure()
 

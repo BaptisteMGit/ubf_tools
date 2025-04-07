@@ -3,7 +3,7 @@
 """
 @File    :   verlinden_utils.py
 @Time    :   2024/02/15 09:21:29
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -33,7 +33,7 @@ from pyproj import Geod
 from cst import BAR_FORMAT, C0, N_CORES
 from misc import mult_along_axis, fft_convolve_f
 from signals.signals import ship_noise, pulse, pulse_train, generate_ship_signal
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 # from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import waveguide_cutoff_freq, get_rcv_pos_idx
@@ -48,6 +48,7 @@ from propa.kraken_toolbox.run_kraken import runkraken
 # from propa.kraken_toolbox.plot_utils import plotshd
 
 from localisation.verlinden.misc.params import VERLINDEN_POPULATED_FOLDER, PROJECT_ROOT
+
 
 def populate_isotropic_env(xr_dataset, library_src, signal_library_dim, testcase):
     """
@@ -573,7 +574,8 @@ def add_event_anisotropic_env(
             if i_rcv == 0 and i_src == 0:
                 xr_dataset["event_signal_time"] = t_rcv.astype(np.float32)
                 rcv_signal_event = np.empty(
-                    tuple(xr_dataset.sizes[d] for d in signal_event_dim), dtype=np.float32
+                    tuple(xr_dataset.sizes[d] for d in signal_event_dim),
+                    dtype=np.float32,
                 )
 
             s_rcv = s_rcv[:, 0, :].T
@@ -889,13 +891,14 @@ def init_library_dataset(
         # Associate azimuths to grid cells for each receiver
         xr_dataset = set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv)
 
-    # Set attrs 
+    # Set attrs
     set_dataset_attrs(xr_dataset, grid_info, testcase, src_info, file_ext)
 
     # Build rcv pairs
     build_rcv_pairs(xr_dataset)
 
     return xr_dataset
+
 
 def build_rcv_pairs(xr_dataset):
     rcv_pairs = []
@@ -1011,7 +1014,7 @@ def set_azimuths(xr_dataset, grid_info, rcv_info, n_rcv):
     # Remove az_rcv
     ds = xr_dataset.drop_vars("az_rcv")
 
-    return ds 
+    return ds
 
 
 def init_event_dataset(xr_dataset, src_info, rcv_info, interp_src_pos_on_grid=False):
@@ -1726,7 +1729,7 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
         event_data = xr_dataset.event_corr.sel(idx_rcv_pairs=i_pair)
 
         if parallel:
-            """ Parallel processing"""
+            """Parallel processing"""
             # Store all ambiguity surfaces in a list (for parrallel processing)
             # TODO: swicht between parallel and sequential processing depending on the number of ship positions
             # Init pool
@@ -1753,9 +1756,11 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
             print(f"Elapsed time (parallel) : {time.time() - t0}")
 
         else:
-            """ Sequential processing"""
+            """Sequential processing"""
             # t0 = time.time()
-            amb_surf_da = derive_ambiguity(lib_data, event_data, xr_dataset.src_trajectory_time, similarity_metric)
+            amb_surf_da = derive_ambiguity(
+                lib_data, event_data, xr_dataset.src_trajectory_time, similarity_metric
+            )
             ambiguity_surfaces.append(amb_surf_da)
 
         # lib_data_array = lib_data.values
@@ -1827,7 +1832,9 @@ def build_ambiguity_surf(xr_dataset, idx_similarity_metric, i_noise, verbose=Tru
     ] = amb_surf_merged["ambiguity_surface"]
 
     # amb_surf_combined = amb_surf_merged.ambiguity_surface.mean(dim=["idx_rcv_pairs"])
-    amb_surf_combined = amb_surf_merged.ambiguity_surface.prod(dim="idx_rcv_pairs") ** (1 / len(xr_dataset.idx_rcv_pairs))
+    amb_surf_combined = amb_surf_merged.ambiguity_surface.prod(dim="idx_rcv_pairs") ** (
+        1 / len(xr_dataset.idx_rcv_pairs)
+    )
     xr_dataset.ambiguity_surface_combined.loc[
         dict(idx_similarity_metric=idx_similarity_metric)
     ] = amb_surf_combined
@@ -1860,9 +1867,10 @@ def init_ambiguity_surface(xr_dataset):
     # Add attributes
     xr_dataset.ambiguity_surface.attrs["long_name"] = "Ambiguity surface"
     xr_dataset.ambiguity_surface.attrs["units"] = "dB"
-    xr_dataset.ambiguity_surface_combined.attrs["long_name"] = "Ambiguity surface combined"
+    xr_dataset.ambiguity_surface_combined.attrs["long_name"] = (
+        "Ambiguity surface combined"
+    )
     xr_dataset.ambiguity_surface_combined.attrs["units"] = "dB"
-
 
     # # Expand dims to add snr dimension to the rcv_signal_library dataarray
     # # Using expand_dims to avoid loading the entire dataset in memory -> overflow
@@ -1891,8 +1899,14 @@ def init_ambiguity_surface(xr_dataset):
 
     xr_dataset["detected_pos_lon"] = (detected_pos_dim, detected_pos_init_lon)
     xr_dataset["detected_pos_lat"] = (detected_pos_dim, detected_pos_init_lat)
-    xr_dataset["detected_pos_lon_combined"] = (detected_pos_dim[1:], detected_pos_init_lon[0, ...])
-    xr_dataset["detected_pos_lat_combined"] = (detected_pos_dim[1:], detected_pos_init_lat[0, ...])
+    xr_dataset["detected_pos_lon_combined"] = (
+        detected_pos_dim[1:],
+        detected_pos_init_lon[0, ...],
+    )
+    xr_dataset["detected_pos_lat_combined"] = (
+        detected_pos_dim[1:],
+        detected_pos_init_lat[0, ...],
+    )
 
     # # Expand dims to add snr dimension to the rcv_signal_library dataarray
     # # Using expand_dims to avoid loading the entire dataset in memory -> overflow
@@ -1954,8 +1968,12 @@ def get_detected_pos(xr_dataset, idx_similarity_metric, i_noise, method="absmax"
         detected_lat = xr_dataset.lat.isel(lat=ilat_detected).values
 
         max_pos_combined_idx = ambiguity_surface_combined.argmax(dim=["lon", "lat"])
-        ilon_detected_combined = max_pos_combined_idx["lon"]  # Index of detected longitude
-        ilat_detected_combined = max_pos_combined_idx["lat"]  # Index of detected longitude
+        ilon_detected_combined = max_pos_combined_idx[
+            "lon"
+        ]  # Index of detected longitude
+        ilat_detected_combined = max_pos_combined_idx[
+            "lat"
+        ]  # Index of detected longitude
 
         detected_lon_combined = xr_dataset.lon.isel(lon=ilon_detected_combined).values
         detected_lat_combined = xr_dataset.lat.isel(lat=ilat_detected_combined).values
@@ -2060,7 +2078,9 @@ def plot_src(src, testcase, usage="library"):
     fig.suptitle("Source signal")
     plt.tight_layout()
     plt.savefig(
-        os.path.join(testcase.env_dir, "env_desc_img", f"{usage}_src_{testcase.name}.png")
+        os.path.join(
+            testcase.env_dir, "env_desc_img", f"{usage}_src_{testcase.name}.png"
+        )
     )
     plt.close()
 
@@ -2262,6 +2282,7 @@ def get_bathy_grid_size(lon, lat):
     )
 
     return dlon, dlat
+
 
 def get_dist_between_rcv(rcv_info):
     """
@@ -2603,6 +2624,7 @@ def add_src_to_dataset(xr_dataset, library_src, event_src, src_info):
     for p in param:
         xr_dataset["event_src"].attrs[p] = src_info["event"][p]
 
+
 def merge_file_path(output_dir, testcase_name, ext="nc"):
     merge_fpath = os.path.join(output_dir, f"output_{testcase_name}_snrs.{ext}")
     return merge_fpath
@@ -2610,9 +2632,9 @@ def merge_file_path(output_dir, testcase_name, ext="nc"):
 
 def merge_results(output_dir, testcase_name, snr, ext="nc"):
     if ext == "zarr":
-        engine="zarr"
+        engine = "zarr"
     else:
-        engine="netcdf4"
+        engine = "netcdf4"
 
     merged_fpath = merge_file_path(output_dir, testcase_name, ext=ext)
     if not os.path.exists(merged_fpath):
@@ -2634,8 +2656,7 @@ def merge_results(output_dir, testcase_name, snr, ext="nc"):
                 "event_corr",
                 "library_corr",
                 "ambiguity_surface",
-                "ambiguity_surface_combined"
-                "detected_pos_lon",
+                "ambiguity_surface_combined" "detected_pos_lon",
                 "detected_pos_lat",
                 "detected_pos_lon_combined",
                 "detected_pos_lat_combined",
@@ -2666,7 +2687,10 @@ def merge_results(output_dir, testcase_name, snr, ext="nc"):
             # If list is not empty
             if snr_filepaths_to_merge:
                 with xr.open_mfdataset(
-                    snr_filepaths_to_merge, combine="nested", concat_dim="snr", engine=engine
+                    snr_filepaths_to_merge,
+                    combine="nested",
+                    concat_dim="snr",
+                    engine=engine,
                 ) as ds:
 
                     merged_ds = xr.concat([merged_ds, ds], dim="snr")
@@ -2694,7 +2718,11 @@ def merge_results(output_dir, testcase_name, snr, ext="nc"):
     # List files to remove
     snr_filepaths_to_delete = []
     for path in os.listdir(output_dir):
-        if path.startswith(f"output_{testcase_name}_snr") and path.endswith(f".{ext}") and path != f"output_{testcase_name}_snrs.{ext}":
+        if (
+            path.startswith(f"output_{testcase_name}_snr")
+            and path.endswith(f".{ext}")
+            and path != f"output_{testcase_name}_snrs.{ext}"
+        ):
             snr = float(path.split("snr")[-1].split("dB")[0])
             if snr in merged_ds.snr.values:
                 fullpath = os.path.join(output_dir, path)
@@ -2703,6 +2731,8 @@ def merge_results(output_dir, testcase_name, snr, ext="nc"):
     merged_ds.close()
 
     return snr_filepaths_to_delete
+
+
 # # Remove snr file
 #     os.remove(snr_filepaths)
 

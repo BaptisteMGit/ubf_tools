@@ -48,6 +48,8 @@ if os.name == "nt":  # Windows
     root_img = os.path.join(
         project_root, r"img\illustration\rtf\rtf_localisation\zhang_et_al_2023"
     )
+    root_img_publi = os.path.join(root_img, "publication_rtf")
+
 else:  # Linux
     project_root = "/home/program/ubf_tools"
     data_root = "/home/data"
@@ -58,7 +60,7 @@ else:  # Linux
     root_img = os.path.join(data_folder, "img")
 
 # Ensure folders exist
-for folder in [root_tmp, root_data, root_img]:
+for folder in [root_tmp, root_data, root_img, root_img_publi]:
     if not os.path.exists(folder):
         os.makedirs(folder)
 

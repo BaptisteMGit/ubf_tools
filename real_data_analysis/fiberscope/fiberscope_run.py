@@ -3,7 +3,7 @@
 """
 @File    :   fiberscope_run.py
 @Time    :   2024/11/18 11:43:18
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -14,7 +14,7 @@
 # ======================================================================================================================
 from real_data_analysis.fiberscope.fiberscope_utils import *
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure()
 

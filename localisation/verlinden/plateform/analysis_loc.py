@@ -36,7 +36,7 @@ from localisation.verlinden.misc.params import (
     BATHY_FILEPATH,
 )
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PFIG = PubFigure(
     label_fontsize=40,

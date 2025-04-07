@@ -4,7 +4,7 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 import scipy.io.wavfile as wavfile
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PFIG = PubFigure(
     label_fontsize=20,

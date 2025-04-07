@@ -241,7 +241,22 @@ class CovManager:
     def get_major_eigve_5D(
         csdm_5D: np.ndarray,
         dims_order: dict = {"f": 0, "r1": 1, "r2": 2, "y": 3, "x": 4},
-    ):
+    ) -> np.ndarray:
+        """
+        Compute the major eigenvector of CSDMs from a mutli-dimensional CSDM array.
+
+        Parameters
+        ----------
+        csdm_5D : np.ndarray
+            5D CSDM array, default shape is (num_frequency_bins, num_receivers, num_receivers, num_y, num_x),
+            one can use a different input shape by specifying dims_order.
+        dims_order : dict
+            Dictionary specifying the order of the dimensions in the input array.
+        Returns
+        -------
+        major_eigve : np.ndarray
+            4D array containing the major eigenvectors at all x, y positions and all frequencies (num_receivers x num_frequency_bins x num_y x num_x).
+        """
 
         #  1) Reshape the csdm array to ensure order is (nf, ny, nx, nrcv, nrcv) as required by np.linalg.eigh
         # Get the axis order

@@ -1,4 +1,17 @@
-"""Define classes to handle figures properties for publication purpose"""
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   publication_figure.py
+@Time    :   2025/04/07 16:15:41
+@Author  :   Menetrier Baptiste
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Class to handle figures properties.
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -25,6 +38,7 @@ class PubFigure:
         constrained_layout_hspace=0.1,
         constrained_layout_wspace=0.1,
         use_tex=True,
+        disable_backend=True,
     ):
         self.size = size
         self.label_fontsize = label_fontsize
@@ -49,6 +63,7 @@ class PubFigure:
         self.dpi = dpi
         self.fmt = fmt
         self.use_tex = use_tex
+        self.disable_backend = disable_backend
         self.set_all_params()
 
     def set_full_screen(self):
@@ -78,8 +93,10 @@ class PubFigure:
             "axes.labelpad": self.labelpad,
             "text.usetex": self.use_tex,
             "font.family": "serif",
-            "backend": "Agg",  # Use Agg backend to avoid GUI (quicker and safer)
         }
+        if self.disable_backend:
+            params["backend"] = "Agg"
+
         plt.rcParams.update(params)
 
     def set_better_axis(axis, fontsize=13):

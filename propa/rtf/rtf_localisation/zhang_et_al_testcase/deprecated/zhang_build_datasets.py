@@ -13,6 +13,7 @@
 # Import
 # ======================================================================================================================
 import os
+import gc
 import dask
 import numpy as np
 import scipy.signal as sp
@@ -46,9 +47,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
 )
 from propa.kraken_toolbox.run_kraken import readshd, run_kraken_exec, run_field_exec
 
-
-from source.rtf_estimator import RTFEstimator
-from source.cov_manager import CovManager
+from source.feature_processor import FeatureProcessor
 
 
 # ======================================================================================================================
@@ -423,57 +422,22 @@ def derive_received_noise(
     return ds_noise
 
 
-def rtf_4D(x_4D, v_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
-    ff, tt, stfts_x = sp.stft(
-        x_4D,
-        fs=fs,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        window=window,
-        axis=1,
-    )
-    ff, tt, stfts_v = sp.stft(
-        v_4D,
-        fs=fs,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        window=window,
-        axis=1,
-    )
-
-    cm = CovManager(nperseg=nperseg, noverlap=noverlap, window=window)
-    dims_order = {
-        "r": 0,
-        "f": 1,
-        "y": 2,
-        "x": 3,
-        "t": 4,
-    }  # Stft is a (nrcv, nf, ny, nx, nt) array
-    Rx = cm.csdm_5D(stfts_x, dims_order=dims_order)
-    Rv = cm.csdm_5D(stfts_v, dims_order=dims_order)
-
-    Rdelta = Rx - Rv
-
-    # Get major eigenvector of the CSDMs (faster than calling the covariance_subtraction_major_eigen_vector_5D for each reference receiver)
-    dims_order = {"f": 0, "r1": 1, "r2": 2, "y": 3, "x": 4}
-    major_eigve = cm.get_major_eigve_5D(csdm_5D=Rdelta, dims_order=dims_order)
-
-    rtf = np.array(
-        [
-            major_eigve
-            / np.broadcast_to(major_eigve[i_ref : i_ref + 1, ...], major_eigve.shape)
-            for i_ref in idx_rcv_refs
-        ]
-    )       # (nrcv, nrcv, nf, ny, nx)
-
-    return ff, rtf
-
-
 def dask_rtf_4D(x_4D, v_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
     """Wrapper function for rtf_4D with dask."""
-    ff, rtf = rtf_4D(x_4D, v_4D, fs, idx_rcv_refs, nperseg, noverlap, window)
-    # print(rtf.shape)
+
+    # x_4D is a (nrcv, nt, ny, nx) array
+    dims_order = {"r": 0, "t": 1, "y": 2, "x": 3}
+    re = RTFEstimator(fs=fs, nperseg=nperseg, noverlap=noverlap, window=window)
+
+    _, rtf = re.covariance_subtraction_major_eigen_vector_4D(
+        x_4D,
+        v_4D,
+        dims_order,
+        idx_rcv_refs,
+        return_csdm=False,
+    )
     return rtf
+
 
 def dask_gcc_4D(x_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
     """Wrapper function for gcc_4D with dask."""
@@ -525,17 +489,17 @@ def gcc_4D(x_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
 def compute_chunks(shape, n_workers):
     """
     Compute chunk sizes for axes 2 and 3 to distribute workload efficiently among workers.
-    
+
     Parameters:
     - shape: Tuple, full shape of the array (dim0, dim1, dim2, dim3, dim4)
     - n_workers: Int, number of Dask workers available
-    
+
     Returns:
     - Tuple of chunk sizes for each dimension
     """
     # Extract shape dimensions
     dim0, dim1, dim2, dim3 = shape
-    
+
     # Compute approximate number of chunks along axes 2 and 3
     total_elements_2_3 = dim2 * dim3
 
@@ -557,7 +521,7 @@ def compute_chunks(shape, n_workers):
 
     # Keep other dimensions unchanged
     chunk_sizes = (dim0, dim1, chunk_size_2, chunk_size_3)
-    
+
     return chunk_sizes
 
 
@@ -617,12 +581,12 @@ def build_features_from_time_signal(
     )  # (nr, nt, ny, nx)
 
     # Noisy signals
-    noisy_signal_library = ds_sig.s_l + ds_noise.n_l  # (nrcv, nt, ny, nx)
-    noisy_signal_event = ds_sig.s_e + ds_noise.n_e  # (nrcv, nt)
+    noisy_signal_library = ds_noise.n_l + ds_sig.s_l  # (nrcv, nt, ny, nx)
+    noisy_signal_event = ds_noise.n_e + ds_sig.s_e  # (nrcv, nt)
 
     # We don't need all datasets anymore
-    ds_noise.close()
-    ds_sig.close()
+    # ds_noise.close()
+    # ds_sig.close()
 
     # Plot signal and noise at source position -> library
     if check:
@@ -668,10 +632,10 @@ def build_features_from_time_signal(
 
     ds_feature_estimate = xr.Dataset(
         data_vars=dict(
-            x_l=(["idx_rcv", "t", "y", "x"], noisy_signal_library.values),
-            n_l_bis=(["idx_rcv", "t", "y", "x"], ds_noise_bis.n_l.values),
-            x_e=(["idx_rcv", "t"], noisy_signal_event.values),
-            n_e_bis=(["idx_rcv", "t"], ds_noise_bis.n_e.values),
+            x_l=(["idx_rcv", "t", "y", "x"], noisy_signal_library.data),
+            n_l_bis=(["idx_rcv", "t", "y", "x"], ds_noise_bis.n_l.data),
+            x_e=(["idx_rcv", "t"], noisy_signal_event.data),
+            n_e_bis=(["idx_rcv", "t"], ds_noise_bis.n_e.data),
         ),
         coords=dict(
             t=ds_sig.t,
@@ -684,26 +648,29 @@ def build_features_from_time_signal(
     # ====================================================================================================
     # Optimized version: RTF and GCC are computed directly on the whole 4D array (nrcv, nt, ny, nx)
     # ====================================================================================================
-    use_dask = True 
-    window="hann"
+    use_dask = True
+    window = "hann"
     fs = library_props["fs"]
 
-    xl_4D = ds_feature_estimate.x_l.values
-    vl_4D = ds_feature_estimate.n_l_bis.values
+    xl_4D = ds_feature_estimate.x_l.data
+    vl_4D = ds_feature_estimate.n_l_bis.data
+
+    fp = FeatureProcessor(
+        fs=fs, idx_rcv_ref=0, nperseg=nperseg, noverlap=noverlap, window=window
+    )
 
     if use_dask:
 
-        ### RTF ### 
-        # Define optimal chunk size to fit with the number of workers 
+        ### RTF ###
+        # Define optimal chunk size to fit with the number of workers
         # shape = xl_4D.shape
         # optimal_chunks = compute_chunks(shape, N_WORKERS)
-        optimal_chunks = (-1, -1, 4, 4)         # Seems to be one one the fastest configuration with 20 workers 
-
-        client = Client(
-            n_workers=N_WORKERS,
-            threads_per_worker=1,
-            memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
-        )
+        optimal_chunks = (
+            -1,
+            -1,
+            4,
+            4,
+        )  # Seems to be one one the fastest configuration with 20 workers
 
         # Convert to dask arrays
         xl_4D = da.from_array(xl_4D, chunks=optimal_chunks)
@@ -711,38 +678,30 @@ def build_features_from_time_signal(
         vl_4D = da.from_array(vl_4D, chunks=optimal_chunks)
         vl_4D = vl_4D.persist()
 
-
         # print("Total number of chunks : ", xl_4D.numblocks[-2]*xl_4D.numblocks[-1])
         # t0 = time()
         output_chunks = (xl_4D.shape[0],) + xl_4D.shape
         rtf_dask = da.map_blocks(
-            dask_rtf_4D,
-            xl_4D, vl_4D,
-            dtype=complex,  
+            fp.dask_rtf_4D,
+            xl_4D,
+            vl_4D,
+            dtype=complex,
             chunks=output_chunks,
-            fs=fs,
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window=window
         )
-        # rtf_dask = rtf_dask.persist()
         rtf_library = rtf_dask.compute()
 
-        # print(f"With dask RTFs computed in {time()-t0} s")
-        
         # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
         xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
         ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
 
-        ff, rtf_event = rtf_4D(
-            x_4D=xe_4D,
-            v_4D=ve_4D,
-            fs=fs,
-            idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window=window,
+        dims_order = {"r": 0, "t": 1, "y": 2, "x": 3}
+        ff, rtf_event = fp.rtf_estimator.covariance_subtraction_major_eigen_vector_4D(
+            xe_4D,
+            ve_4D,
+            dims_order,
+            idx_rcv_refs,
+            return_csdm=False,
         )
 
         # Squeeze to remove dummy dimensions
@@ -754,41 +713,20 @@ def build_features_from_time_signal(
         rtf_event = rtf_event[..., idx_band]
         f_rtf = ff[idx_band]
 
-
-        ### DCF ### 
-        # t0 = time()
-        # xl_4D = ds_feature_estimate.x_l.values
-        xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
-
+        ### DCF ###
         gcc_dask = da.map_blocks(
-            dask_gcc_4D,
+            fp.dask_gcc_4D,
             xl_4D,
-            dtype=complex,  
+            dtype=complex,
             chunks=output_chunks,
-            fs=fs,
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window=window
         )
         gcc_library = gcc_dask.compute()
 
-        # ff, gcc_library = gcc_4D(
-        #     x_4D=xl_4D,
-        #     fs=library_props["fs"],
-        #     idx_rcv_refs=idx_rcv_refs,
-        #     nperseg=nperseg,
-        #     noverlap=noverlap,
-        #     window="hann",
-        # )
-
-        ff, gcc_event = gcc_4D(
+        xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
+        ff, gcc_event = fp.gcc_estimator.gcc_4D(
             x_4D=xe_4D,
-            fs=fs,
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
         gcc_event = np.squeeze(gcc_event)
 
@@ -798,39 +736,29 @@ def build_features_from_time_signal(
         gcc_event = gcc_event[:, :, idx_band]
         f_gcc = ff[idx_band]
 
-        # TODO remove once validated 
-        # gcc_library_dask = gcc_library
+        # Clean up memory
+        del xl_4D, vl_4D, xe_4D, ve_4D, gcc_dask, rtf_dask
+        gc.collect()
 
-        client.close()
-
-    
     else:
         ### RTF ###
         # t0 = time()
         xl_4D = ds_feature_estimate.x_l.values
         vl_4D = ds_feature_estimate.n_l_bis.values
 
-        ff, rtf_library = rtf_4D(
+        ff, rtf_library = fp.rtf_estimator.covariance_subtraction_major_eigen_vector_4D(
             x_4D=xl_4D,
             v_4D=vl_4D,
-            fs=library_props["fs"],
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
 
         # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
         xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
         ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
-        ff, rtf_event = rtf_4D(
+        ff, rtf_event = fp.rtf_estimator.covariance_subtraction_major_eigen_vector_4D(
             x_4D=xe_4D,
             v_4D=ve_4D,
-            fs=library_props["fs"],
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
 
         # Squeeze to remove dummy dimensions
@@ -842,30 +770,18 @@ def build_features_from_time_signal(
         rtf_event = rtf_event[..., idx_band]
         f_rtf = ff[idx_band]
 
-        # print(f"RTFs computed in {time()-t0} s")
-        # print("Dask RTF matches RTF", np.allclose(rtf_library, rtf_library_dask))
-
         ### GCC ###
-        # t0 = time()
         xl_4D = ds_feature_estimate.x_l.values
         xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
 
-        ff, gcc_library = gcc_4D(
+        ff, gcc_library = fp.gcc_estimator.gcc_4D(
             x_4D=xl_4D,
-            fs=library_props["fs"],
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
 
-        _, gcc_event = gcc_4D(
+        _, gcc_event = fp.gcc_estimator.gcc_4D(
             x_4D=xe_4D,
-            fs=library_props["fs"],
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
         gcc_event = np.squeeze(gcc_event)
 

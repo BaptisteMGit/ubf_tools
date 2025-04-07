@@ -39,7 +39,7 @@ def rtf_covariance_whitening(
     f, Rv = get_csdm_from_signal(t, noise_only, nperseg, noverlap, add_identity=True)
     f, Rx = get_csdm_from_signal(t, noisy_signal, nperseg, noverlap, add_identity=True)
     Rs = None
-    re = RTFEstimator()
+    re = RTFEstimator(fs=1 / (t[1] - t[0]), nperseg=nperseg, noverlap=noverlap)
     rtf = re.estimate_rtf_covariance_whitening(Rx, Rv)
 
     return f, rtf, Rx, Rs, Rv
@@ -65,7 +65,7 @@ def rtf_covariance_subtraction(
     Rs = None
     Rs_tild = Rx - Rv
 
-    re = RTFEstimator()
+    re = RTFEstimator(fs=1 / (t[1] - t[0]), nperseg=nperseg, noverlap=noverlap)
     rtf = re.estimate_rtf_covariance_subtraction(Rs_tild, use_first_column=first_column)
 
     return f, rtf, Rx, Rs, Rv

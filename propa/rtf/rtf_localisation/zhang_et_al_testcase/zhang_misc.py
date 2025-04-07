@@ -30,12 +30,9 @@ from scipy.spatial import ConvexHull
 from scipy.ndimage import gaussian_filter
 from signals.signals import colored_noise
 from publication.PublicationFigure import PubFigure
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT_TMP,
-    ROOT_IMG,
-    ROOT_DATA,
-    USE_TEX,
-)
+
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
+
 
 from scipy import ndimage as ndi
 from skimage.filters import rank
@@ -45,7 +42,7 @@ from skimage.util import img_as_ubyte
 from scipy.ndimage import binary_dilation, label
 
 
-PubFigure(ticks_fontsize=22, use_tex=USE_TEX)
+# PubFigure(ticks_fontsize=22, use_tex=USE_TEX)
 
 
 def params(debug=False, antenna_type="zhang"):
@@ -206,12 +203,12 @@ def generate_random_antenna(rmax, nr):
     y_rcv = rho * np.sin(theta)
 
     txt = np.c_[x_rcv, y_rcv]
-    fpath = os.path.join(ROOT_DATA, f"random_antenna_rmax{rmax}m_nr{nr}.txt")
+    fpath = os.path.join(p.root_data, f"random_antenna_rmax{rmax}m_nr{nr}.txt")
     np.savetxt(fpath, txt, fmt="%.2f")
 
 
 def load_random_antenna(rmax, nr):
-    fpath = os.path.join(ROOT_DATA, f"random_antenna_rmax{rmax}m_nr{nr}.txt")
+    fpath = os.path.join(p.root_data, f"random_antenna_rmax{rmax}m_nr{nr}.txt")
 
     if os.path.exists(fpath):
         data = np.loadtxt(fpath, dtype=float)
@@ -225,26 +222,34 @@ def load_random_antenna(rmax, nr):
     return x_rcv, y_rcv
 
 
-def library_src_spectrum(f0=100, f1=500, fs=2000):
-    """Library source signal spectrum : Zhang et al. 2023 -> LFM 100 - 500 Hz"""
-    # Library source is defined as a LFM 100-500 Hz
+def library_src_spectrum(stype="lfm", fs=1200, T=10, fmin=100, fmax=500, plot=True):
+    """Library source signal spectrum : Zhang et al. 2023 Default -> LFM 100 - 500 Hz"""
     library_props = {
-        "f0": f0,
-        "f1": f1,
+        "f0": fmin,
+        "f1": fmax,
         "fs": fs,
-        "T": 10,
-        "phi": 0,
+        "T": T,
+        "stype": stype,
     }
 
-    t = np.arange(0, library_props["T"], 1 / library_props["fs"])
-    s = sp.chirp(
-        t,
-        library_props["f0"],
-        library_props["T"],
-        library_props["f1"],
-        method="linear",
-    )
-    # t, s = colored_noise(library_props["T"], fs, "white")
+    if stype == "lfm":
+        # Library source is defined as a LFM 100-500 Hz
+        library_props.update({})
+
+        t = np.arange(0, library_props["T"], 1 / library_props["fs"])
+        s = sp.chirp(
+            t,
+            library_props["f0"],
+            library_props["T"],
+            library_props["f1"],
+            method="linear",
+        )
+
+    elif stype == "wn":
+        # Library source is defined as a Gaussian noise
+        library_props.update({"noise_colour": "white"})
+
+        t, s = colored_noise(library_props["T"], fs, "white")
 
     # # Normalise signal to get unit variance
     # s /= np.std(s)
@@ -261,50 +266,42 @@ def library_src_spectrum(f0=100, f1=500, fs=2000):
     S_f_library = np.fft.rfft(s)
     f_library = np.fft.rfftfreq(len(s), 1 / library_props["fs"])
 
-    # Plot signal and spectrum
-    plt.figure()
-    plt.plot(t, s)
-    plt.xlabel("Time [s]")
-    plt.ylabel(r"$s(t)$")
-    fpath = os.path.join(ROOT_IMG, f"library_source_signal.png")
-    plt.savefig(fpath)
+    if plot:
+        # Plot signal and spectrum
+        plt.figure()
+        plt.plot(t, s)
+        plt.xlabel("Time [s]")
+        plt.ylabel(r"$s(t)$")
+        fpath = os.path.join(p.root_img, f"library_source_signal.png")
+        plt.savefig(fpath)
 
-    plt.figure()
-    plt.plot(f_library, np.abs(S_f_library))
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel(r"$|S(f)|$")
-    fpath = os.path.join(ROOT_IMG, f"library_source_spectrum.png")
-    plt.savefig(fpath)
-    plt.close("all")
+        plt.figure()
+        plt.plot(f_library, np.abs(S_f_library))
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel(r"$|S(f)|$")
+        fpath = os.path.join(p.root_img, f"library_source_spectrum.png")
+        plt.savefig(fpath)
+        plt.close("all")
 
-    # Compute and plot DSP
-    dsp = sp.welch(s, fs, nperseg=1024, noverlap=512, nfft=1024)
-    plt.figure()
-    plt.plot(dsp[0], 10 * np.log10(dsp[1]))
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel("PSD [dB/Hz]")
-    plt.title(f"Library source signal")
-    # plt.yscale("log")
-    plt.savefig(os.path.join(ROOT_IMG, "library_source_dsp.png"))
-
-    # plt.show()
-
-    # Interp library source spectrum at desired frequencies
-    # S_f_library = np.interp(f, f_library, S_f_library)
+        # Compute and plot DSP
+        dsp = sp.welch(s, fs, nperseg=1024, noverlap=512, nfft=1024)
+        plt.figure()
+        plt.plot(dsp[0], 10 * np.log10(dsp[1]))
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel("PSD [dB/Hz]")
+        plt.title(f"Library source signal")
+        # plt.yscale("log")
+        plt.savefig(os.path.join(p.root_img, "library_source_dsp.png"))
 
     # Keep frequencies between 50 and 550 Hz
-    idx_in_band = (f_library >= 50) & (f_library <= 550)
+    idx_in_band = (f_library >= fmin - 50) & (f_library <= fmax + 50)
 
     # Right frequencies in band in a txt file
     f_in_band = f_library[idx_in_band]
     txt = " ".join([f"{f:.2f}" for f in f_in_band])
-    fpath = os.path.join(ROOT_TMP, "f_in_band.txt")
+    fpath = os.path.join(p.root_tmp, "f_in_band.txt")
     with open(fpath, "w") as f:
         f.write(txt)
-    # np.savetxt(fpath, f_in_band, fmt="%.2f")
-
-    # f_library = f_library[idx]
-    # S_f_library = S_f_library[idx]
 
     return library_props, S_f_library, f_library, idx_in_band
 
@@ -323,7 +320,7 @@ def generate_event_src_signal(T, fs):
 
     # Save t, s to txt
     txt = np.c_[t, s_e]
-    fpath = os.path.join(ROOT_DATA, "event_src_signal.txt")
+    fpath = os.path.join(p.root_data, "event_src_signal.txt")
     np.savetxt(fpath, txt, fmt="%.6f")
 
     nt = len(t)
@@ -332,11 +329,11 @@ def generate_event_src_signal(T, fs):
 
     # Save f, S to txt
     txt = np.c_[f_event, np.real(S_f_event), np.imag(S_f_event)]
-    fpath = os.path.join(ROOT_DATA, "event_src_spectrum.txt")
+    fpath = os.path.join(p.root_data, "event_src_spectrum.txt")
     np.savetxt(fpath, txt, fmt="%.6f")
 
 
-def event_src_spectrum(T, fs, stype="wn"):
+def event_src_spectrum(stype="wn", fs=1200, T=10, fmin=100, fmax=500, plot=True):
     """
     Event source signal spectrum : Zhang et al. 2023 -> Gaussian noise
     The variance of the signal is set to the variance of the library signal (assuming both signal have same power)
@@ -380,20 +377,27 @@ def event_src_spectrum(T, fs, stype="wn"):
     if stype == "wn":
         event_props = {}
         # Load event signal
-        fpath = os.path.join(ROOT_DATA, "event_src_signal.txt")
+        fpath = os.path.join(p.root_data, "event_src_signal.txt")
         if not os.path.exists(fpath):
             generate_event_src_signal(T, fs)
 
         t, s_e = np.loadtxt(fpath, unpack=True)
 
         # Load event spectrum
-        fpath = os.path.join(ROOT_DATA, "event_src_spectrum.txt")
+        fpath = os.path.join(p.root_data, "event_src_spectrum.txt")
         f_event, S_f_event_real, S_f_event_imag = np.loadtxt(fpath, unpack=True)
         S_f_event = S_f_event_real + 1j * S_f_event_imag
         stype_name = "Gaussian white noise"
 
     elif stype == "lfm":
-        event_props, S_f_event, f_event, _ = library_src_spectrum(fs=fs)
+        event_props, S_f_event, f_event, _ = library_src_spectrum(
+            stype=stype,
+            fs=fs,
+            T=T,
+            fmin=fmin,
+            fmax=fmax,
+            plot=False,
+        )
 
         # Derive t, s_e by inverse fourier transform
         s_e = np.fft.irfft(S_f_event)
@@ -404,43 +408,44 @@ def event_src_spectrum(T, fs, stype="wn"):
     # S_f_event = np.fft.rfft(s_e)
     # f_event = np.fft.rfftfreq(nt, 1 / fs)
 
-    plt.figure()
-    plt.plot(t, s_e)
-    plt.xlabel("Time [s]")
-    plt.ylabel(r"$s(t)$")
-    plt.title(f"Event source signal = {stype_name}")
-    fpath = os.path.join(ROOT_IMG, f"event_source_signal.png")
-    plt.savefig(fpath)
+    if plot:
+        plt.figure()
+        plt.plot(t, s_e)
+        plt.xlabel("Time [s]")
+        plt.ylabel(r"$s(t)$")
+        plt.title(f"Event source signal = {stype_name}")
+        fpath = os.path.join(p.root_img, f"event_source_signal.png")
+        plt.savefig(fpath)
 
-    plt.figure()
-    plt.plot(f_event, np.abs(S_f_event))
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel(r"$|S(f)|$")
-    plt.title(f"Event source signal = {stype_name}")
-    fpath = os.path.join(ROOT_IMG, f"event_source_spectrum.png")
-    plt.savefig(fpath)
-    # plt.close("all")
+        plt.figure()
+        plt.plot(f_event, np.abs(S_f_event))
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel(r"$|S(f)|$")
+        plt.title(f"Event source signal = {stype_name}")
+        fpath = os.path.join(p.root_img, f"event_source_spectrum.png")
+        plt.savefig(fpath)
+        # plt.close("all")
 
-    # Compute and plot DSP
-    dsp = sp.welch(s_e, fs, nperseg=1024, noverlap=512, nfft=1024)
-    plt.figure()
-    plt.plot(dsp[0], 10 * np.log10(dsp[1]))
-    plt.xlabel("Frequency [Hz]")
-    plt.ylabel("PSD [dB/Hz]")
-    plt.title(f"Event source signal = {stype_name}")
-    # plt.yscale("log")
-    plt.savefig(os.path.join(ROOT_IMG, "event_source_dsp.png"))
-    # S_f_event = np.ones_like(f)
+        # Compute and plot DSP
+        dsp = sp.welch(s_e, fs, nperseg=1024, noverlap=512, nfft=1024)
+        plt.figure()
+        plt.plot(dsp[0], 10 * np.log10(dsp[1]))
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel("PSD [dB/Hz]")
+        plt.title(f"Event source signal = {stype_name}")
+        # plt.yscale("log")
+        plt.savefig(os.path.join(p.root_img, "event_source_dsp.png"))
+        # S_f_event = np.ones_like(f)
 
-    # Plot noise signal derived from inverse FFT
-    s_e_ifft = np.fft.irfft(S_f_event)
-    plt.figure()
-    plt.plot(t, s_e_ifft)
-    plt.xlabel("Time [s]")
-    plt.ylabel("s(t)")
-    plt.title(f"Event source signal = {stype_name}")
-    plt.savefig(os.path.join(ROOT_IMG, "event_source_signal_ifft.png"))
-    plt.close("all")
+        # Plot noise signal derived from inverse FFT
+        s_e_ifft = np.fft.irfft(S_f_event)
+        plt.figure()
+        plt.plot(t, s_e_ifft)
+        plt.xlabel("Time [s]")
+        plt.ylabel("s(t)")
+        plt.title(f"Event source signal = {stype_name}")
+        plt.savefig(os.path.join(p.root_img, "event_source_signal_ifft.png"))
+        plt.close("all")
 
     return event_props, S_f_event, f_event
 
@@ -657,12 +662,12 @@ def get_mainlobe_mask(ds):
     image_rtf = img_as_ubyte(image_rtf)
 
     # Smooth images
-    disk_size = 4
+    disk_size = 1
     image_dcf = rank.median(image_dcf, disk(disk_size))
     image_rtf = rank.median(image_rtf, disk(disk_size))
 
     # Number of clusters
-    n_clusters = 7
+    n_clusters = 5
     # Kmeans avec seulement les intensités des pixels
     X_dcf = image_dcf.flatten()[np.newaxis, :]
     X_rtf = image_rtf.flatten()[np.newaxis, :]
@@ -855,7 +860,7 @@ def build_subarrays_args(subarrays_list):
 
 def init_msr_file(folder, run_mode, subarrays_args):
 
-    root_msr = os.path.join(ROOT_DATA, folder, "msr")
+    root_msr = os.path.join(p.root_data, folder, "msr")
     if not os.path.exists(root_msr):
         os.makedirs(root_msr)
 
@@ -877,7 +882,7 @@ def init_msr_file(folder, run_mode, subarrays_args):
 
 def init_dr_file(folder, run_mode, subarrays_args):
 
-    root_dr = os.path.join(ROOT_DATA, folder, "dr_pos")
+    root_dr = os.path.join(p.root_data, folder, "dr_pos")
     if not os.path.exists(root_dr):
         os.makedirs(root_dr)
 

@@ -47,9 +47,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
 )
 from propa.kraken_toolbox.run_kraken import readshd, run_kraken_exec, run_field_exec
 
-
-from source.rtf_estimator import RTFEstimator
-from source.cov_manager import CovManager
+from source.feature_processor import FeatureProcessor
 
 
 # ======================================================================================================================
@@ -348,7 +346,6 @@ def build_signal(debug=False, antenna_type="zhang", event_stype="wn"):
     ds_sig.to_netcdf(fpath)
 
 
-# @dask.delayed
 def derive_received_noise(
     s_library,
     s_event,
@@ -430,17 +427,13 @@ def dask_rtf_4D(x_4D, v_4D, fs, idx_rcv_refs, nperseg, noverlap, window="hann"):
 
     # x_4D is a (nrcv, nt, ny, nx) array
     dims_order = {"r": 0, "t": 1, "y": 2, "x": 3}
-    re = RTFEstimator()
+    re = RTFEstimator(fs=fs, nperseg=nperseg, noverlap=noverlap, window=window)
 
     _, rtf = re.covariance_subtraction_major_eigen_vector_4D(
         x_4D,
         v_4D,
         dims_order,
-        fs,
         idx_rcv_refs,
-        nperseg,
-        noverlap,
-        window,
         return_csdm=False,
     )
     return rtf
@@ -662,6 +655,10 @@ def build_features_from_time_signal(
     xl_4D = ds_feature_estimate.x_l.data
     vl_4D = ds_feature_estimate.n_l_bis.data
 
+    fp = FeatureProcessor(
+        fs=fs, idx_rcv_ref=0, nperseg=nperseg, noverlap=noverlap, window=window
+    )
+
     if use_dask:
 
         ### RTF ###
@@ -685,16 +682,12 @@ def build_features_from_time_signal(
         # t0 = time()
         output_chunks = (xl_4D.shape[0],) + xl_4D.shape
         rtf_dask = da.map_blocks(
-            dask_rtf_4D,
+            fp.dask_rtf_4D,
             xl_4D,
             vl_4D,
             dtype=complex,
             chunks=output_chunks,
-            fs=fs,
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window=window,
         )
         rtf_library = rtf_dask.compute()
 
@@ -702,17 +695,12 @@ def build_features_from_time_signal(
         xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
         ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
 
-        re = RTFEstimator()
         dims_order = {"r": 0, "t": 1, "y": 2, "x": 3}
-        ff, rtf_event = re.covariance_subtraction_major_eigen_vector_4D(
+        ff, rtf_event = fp.rtf_estimator.covariance_subtraction_major_eigen_vector_4D(
             xe_4D,
             ve_4D,
             dims_order,
-            fs,
             idx_rcv_refs,
-            nperseg,
-            noverlap,
-            window,
             return_csdm=False,
         )
 
@@ -727,26 +715,18 @@ def build_features_from_time_signal(
 
         ### DCF ###
         gcc_dask = da.map_blocks(
-            dask_gcc_4D,
+            fp.dask_gcc_4D,
             xl_4D,
             dtype=complex,
             chunks=output_chunks,
-            fs=fs,
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window=window,
         )
         gcc_library = gcc_dask.compute()
 
         xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
-        ff, gcc_event = gcc_4D(
+        ff, gcc_event = fp.gcc_estimator.gcc_4D(
             x_4D=xe_4D,
-            fs=fs,
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
         gcc_event = np.squeeze(gcc_event)
 
@@ -766,27 +746,19 @@ def build_features_from_time_signal(
         xl_4D = ds_feature_estimate.x_l.values
         vl_4D = ds_feature_estimate.n_l_bis.values
 
-        ff, rtf_library = rtf_4D(
+        ff, rtf_library = fp.rtf_estimator.covariance_subtraction_major_eigen_vector_4D(
             x_4D=xl_4D,
             v_4D=vl_4D,
-            fs=library_props["fs"],
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
 
         # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
         xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
         ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
-        ff, rtf_event = rtf_4D(
+        ff, rtf_event = fp.rtf_estimator.covariance_subtraction_major_eigen_vector_4D(
             x_4D=xe_4D,
             v_4D=ve_4D,
-            fs=library_props["fs"],
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
 
         # Squeeze to remove dummy dimensions
@@ -798,30 +770,18 @@ def build_features_from_time_signal(
         rtf_event = rtf_event[..., idx_band]
         f_rtf = ff[idx_band]
 
-        # print(f"RTFs computed in {time()-t0} s")
-        # print("Dask RTF matches RTF", np.allclose(rtf_library, rtf_library_dask))
-
         ### GCC ###
-        # t0 = time()
         xl_4D = ds_feature_estimate.x_l.values
         xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
 
-        ff, gcc_library = gcc_4D(
+        ff, gcc_library = fp.gcc_estimator.gcc_4D(
             x_4D=xl_4D,
-            fs=library_props["fs"],
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
 
-        _, gcc_event = gcc_4D(
+        _, gcc_event = fp.gcc_estimator.gcc_4D(
             x_4D=xe_4D,
-            fs=library_props["fs"],
             idx_rcv_refs=idx_rcv_refs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
         )
         gcc_event = np.squeeze(gcc_event)
 

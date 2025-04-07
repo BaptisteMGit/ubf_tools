@@ -21,14 +21,19 @@ import xarray as xr
 # import pandas as pd
 import matplotlib.pyplot as plt
 
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.src.feature_builder import (
+    FeatureBuilder,
+)
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
+
 # from time import time
 from misc import cast_matrix_to_target_shape
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT_DATA,
-    ROOT_IMG,
-    MIN_VAL_LOG,
-    USE_TEX,
-)
+# from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
+#     p.root_data,
+#     p.root_img,
+#     p.min_val_log,
+#     p.use_tex,
+# )
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     params,
     estimate_msr,
@@ -45,17 +50,17 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     study_perf_vs_snr,
-    check_rtf_features,
-    check_gcc_features,
+    # check_rtf_features,
+    # check_gcc_features,
     plot_study_zhang2023,
 )
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
-    build_features_from_time_signal,
-)
+# from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_build_datasets import (
+#     build_features_from_time_signal,
+# )
 
 from publication.PublicationFigure import PubFigure
 
-PubFigure(ticks_fontsize=22, use_tex=USE_TEX)
+PubFigure(ticks_fontsize=22, use_tex=p.use_tex)
 
 
 def process_localisation_zhang2023(
@@ -72,7 +77,7 @@ def process_localisation_zhang2023(
     _, _, _, grid, _, _ = params(debug=debug, antenna_type=antenna_type)
 
     # Define folder to store data
-    root_data = os.path.join(ROOT_DATA, folder)
+    root_data = os.path.join(p.root_data, folder)
     if not os.path.exists(root_data):
         os.makedirs(root_data)
 
@@ -165,7 +170,7 @@ def process_localisation_zhang2023(
 
         # Convert to dB
         d_rtf = d_rtf.values
-        d_rtf[d_rtf == 0] = MIN_VAL_LOG
+        d_rtf[d_rtf == 0] = p.min_val_log
         d_rtf = 10 * np.log10(d_rtf)
         ds_cpl_rtf["d_rtf"] = (xy_dims, d_rtf)
 
@@ -194,7 +199,7 @@ def process_localisation_zhang2023(
 
         # Convert to dB
         d_gcc = d_gcc
-        d_gcc[d_gcc == 0] = MIN_VAL_LOG
+        d_gcc[d_gcc == 0] = p.min_val_log
         d_gcc = 10 * np.log10(d_gcc)  # Convert to dB
 
         # Add d to dataset
@@ -267,7 +272,7 @@ def process_localisation_zhang2023(
 
         # # Convert to dB
         # d_gcc = d_gcc
-        # d_gcc[d_gcc == 0] = MIN_VAL_LOG
+        # d_gcc[d_gcc == 0] = p.min_val_log
         # d_gcc = 10 * np.log10(d_gcc)  # Convert to dB
 
         # Store d_gcc for full array incoherent processing
@@ -296,7 +301,7 @@ def process_localisation_zhang2023(
 
     #  Replace 0 by 1e-5 to avoid log(0) in dB conversion
     d_rtf = d_rtf.values
-    d_rtf[d_rtf == 0] = MIN_VAL_LOG
+    d_rtf[d_rtf == 0] = p.min_val_log
     d_rtf = 10 * np.log10(d_rtf)  # Convert to dB
     ds_fa_rtf["d_rtf"] = (xy_dims, d_rtf)
 
@@ -309,7 +314,7 @@ def process_localisation_zhang2023(
 
     # # Convert to dB
     # d_gcc = d_gcc
-    # d_gcc[d_gcc == 0] = MIN_VAL_LOG
+    # d_gcc[d_gcc == 0] = p.min_val_log
     # d_gcc = 10 * np.log10(d_gcc)  # Convert to dB
 
     # # Convert back to linear scale before computing the mean
@@ -317,7 +322,7 @@ def process_localisation_zhang2023(
     # d_gcc_fullarray = np.mean(d_gcc_fullarray, axis=0)
 
     # Convert to dB
-    d_gcc_fullarray[d_gcc_fullarray == 0] = MIN_VAL_LOG
+    d_gcc_fullarray[d_gcc_fullarray == 0] = p.min_val_log
     d_gcc_fullarray = 10 * np.log10(d_gcc_fullarray)
     # d_gcc_fullarray = d_gcc_fullarray
 
@@ -377,6 +382,19 @@ def process_all_snr(
     plot_args={},
 ):
 
+    fb = FeatureBuilder(
+        root_name="zhang_output_from_signal",
+        root_data=p.root_data,
+        antenna_type=antenna_type,
+        library_stype="lfm",
+        event_stype="wn",
+        rtf_method="cs_eigve",
+        gcc_method="scot",
+        verbose=verbose,
+        debug=debug,
+        check=check,
+    )
+
     # Load params
     _, receivers, source, _, _, _ = params(debug=debug, antenna_type=antenna_type)
     if subarrays_list is None:
@@ -392,7 +410,7 @@ def process_all_snr(
 
     for snr in snrs:
         subfolder = os.path.join(folder, f"snr_{snr:.1f}dB")
-        subfolder_fullpath = os.path.join(ROOT_DATA, subfolder)
+        subfolder_fullpath = os.path.join(p.root_data, subfolder)
         if not os.path.exists(subfolder_fullpath):
             os.makedirs(subfolder_fullpath)
 
@@ -430,21 +448,22 @@ def process_all_snr(
             # Run simulation (one simulation = 1 generation of noise)
             # t0 = time()
             # build_features_from_time_signal(snr)
-            build_features_from_time_signal(
-                snr_dB=snr,
-                debug=debug,
-                check=check,
-                use_welch_estimator=True,
-                antenna_type=antenna_type,
-                verbose=verbose,
-            )
+            fb.build_features_from_time_signal(snr_dB=snr)
+            # build_features_from_time_signal(
+            #     snr_dB=snr,
+            #     debug=debug,
+            #     check=check,
+            #     use_welch_estimator=True,
+            #     antenna_type=antenna_type,
+            #     verbose=verbose,
+            # )
 
             # elasped_time = time() - t0
             # print(f"Features built (elapsed time = {np.round(elasped_time,0)}s)")
 
             # Load results
             fpath = os.path.join(
-                ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr:.1f}dB.nc"
+                p.root_data, f"zhang_output_from_signal_dx{dx}m_dy{dy}m_snr{snr:.1f}dB.nc"
             )
             ds = xr.open_dataset(fpath)
 
@@ -540,7 +559,7 @@ def replay_all_snr(
 
     dr_pos_gcc = []
     dr_pos_rtf = []
-    dr_txt_filepath = os.path.join(ROOT_DATA, folder, "dr_pos_snr.txt")
+    dr_txt_filepath = os.path.join(p.root_data, folder, "dr_pos_snr.txt")
     header_line = "snr i_mc dr_gcc dr_rtf\n"
     with open(dr_txt_filepath, "w") as f:
         f.write(header_line)
@@ -548,14 +567,14 @@ def replay_all_snr(
     msr_gcc = []
     msr_rtf = []
 
-    msr_txt_filepath = os.path.join(ROOT_DATA, folder, "msr_snr.txt")
+    msr_txt_filepath = os.path.join(p.root_data, folder, "msr_snr.txt")
     header_line = "snr i_mc d_gcc d_rtf\n"
     with open(msr_txt_filepath, "w") as f:
         f.write(header_line)
 
     for snr in snrs:
         subfolder = os.path.join(folder, f"snr_{snr}dB")
-        subfolder_fullpath = os.path.join(ROOT_DATA, subfolder)
+        subfolder_fullpath = os.path.join(p.root_data, subfolder)
         # List available files in subfolder
         snr_files = [
             file for file in os.listdir(subfolder_fullpath) if "fullarray" in file
@@ -604,7 +623,7 @@ def replay_all_snr(
 def study_perf_vs_subarrays(subarrays_list, snrs, var="std", dx=20, dy=20):
 
     folder = "from_signal_dx20m_dy20m"
-    root_img = os.path.join(ROOT_IMG, folder, "perf_vs_subarrays")
+    root_img = os.path.join(p.root_img, folder, "perf_vs_subarrays")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
@@ -1075,7 +1094,7 @@ if __name__ == "__main__":
 
 
 # # Load rtf data
-# fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
+# fpath = os.path.join(p.root_data, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
 # ds = xr.open_dataset(fpath)
 
 # folder = f"fullsimu_dx{dx}m_dy{dy}m"
@@ -1097,7 +1116,7 @@ if __name__ == "__main__":
 # ds20 = xr.open_dataset(fpath)
 
 # fname = f"zhang_library_dx{dx}m_dy{dy}m.nc"
-# fpath = os.path.join(ROOT_DATA, fname)
+# fpath = os.path.join(p.root_data, fname)
 # ds_sig = xr.open_dataset(fpath)
 
 # fs = 1 / ds.t.diff("t").values[0]
@@ -1136,8 +1155,8 @@ if __name__ == "__main__":
 # plt.savefig("test")
 # plt.show()
 
-# # fpath = os.path.join(ROOT_DATA, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
-# fpath = os.path.join(ROOT_DATA, "zhang_output_from_signal_dx20m_dy20m_snr0dB.nc")
+# # fpath = os.path.join(p.root_data, f"zhang_output_from_signal_dx{dx}m_dy{dy}m.nc")
+# fpath = os.path.join(p.root_data, "zhang_output_from_signal_dx20m_dy20m_snr0dB.nc")
 # ds = xr.open_dataset(fpath)
 
 # folder = os.path.join(f"from_signal_dx{dx}m_dy{dy}m", "snr_0dB")

@@ -24,11 +24,15 @@ from matplotlib import rcParams
 from propa.rtf.rtf_utils import (
     D_hermitian_angle_fast,
 )
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import ROOT_DATA
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.deprecated.zhang_params import (
+    ROOT_DATA,
+)
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.deprecated.zhang_build_datasets import (
     build_features_from_time_signal,
     build_signal,
 )
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
+
 
 # print(rcParams["backend"])
 

@@ -1,4 +1,17 @@
-"""Define classes to handle figures properties for publication purpose"""
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   publication_figure.py
+@Time    :   2025/04/07 16:15:41
+@Author  :   Menetrier Baptiste
+@Version :   1.0
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Class to handle figures properties.
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt

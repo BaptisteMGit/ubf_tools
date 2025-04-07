@@ -66,7 +66,8 @@ def run_test_1():
     # subarrays_list = [best_subarray, worste_subarray]
     subarrays_list = []
     # n_rcv = [2, 3, 4, 5, 6]
-    n_rcv = [3, 4, 5, 6]
+    # n_rcv = [3, 4, 5, 6]
+    n_rcv = [6]
 
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
@@ -76,8 +77,8 @@ def run_test_1():
 
     # Liste des SNR considérés
     # Docker 1
-    snr_min = -15
-    snr_max = -1
+    snr_min = -16
+    snr_max = -12
     # # Docker 1
     # snr_min = 0
     # snr_max = 15
@@ -88,7 +89,7 @@ def run_test_1():
     # snr_min = 9
     # snr_max = 10
 
-    snr_step = 1
+    snr_step = 2
     n_snr = int((snr_max - snr_min) / snr_step + 1)
     snrs = np.linspace(snr_min, snr_max, n_snr)
 
@@ -98,7 +99,7 @@ def run_test_1():
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 100
+    n_monte_carlo = 1
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information
@@ -110,7 +111,7 @@ def run_test_1():
 
     # Paramètres graphiques pour la génération des figures
     plot_args = {
-        "plot_array": True,
+        "plot_array": False,
         "plot_single_cpl_surf": False,
         "plot_fullarray_surf": False,
         "plot_cpl_surf_comparison": True,
@@ -149,7 +150,7 @@ def run_test_2():
 
     ### Paramètres
     -   **Nombre de simulations (Monte Carlo)** = 100
-    -   **SNR** = -15 dB
+    -   **SNR** = 0 dB
     """
 
     # Liste des sous antennes considérées : toutes les sous antennes possibles pour 2, 3, 4, 5 et 6 récepteurs
@@ -161,7 +162,7 @@ def run_test_2():
     print("Subarrays list : ", subarrays_list)
 
     # Liste des SNR considérés
-    snrs = [-15]
+    snrs = [0]
 
     # Nombre de simulations à réaliser pour chaque SNR
     n_monte_carlo = 900
@@ -233,7 +234,7 @@ if __name__ == "__main__":
     """
     antenna_type = "zhang"
     event_stype = "wn"
-    debug = False
+    debug = True
 
     freq_draw_method = "equally_spaced"
     nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)
@@ -259,17 +260,17 @@ if __name__ == "__main__":
     ## Step 4 : Calcul des vecteurs de RTF "théorique" directement à partir des fonctions de transfert
     # Principalement pour comparaison avec les vecteurs de RTF estimés par la méthode CS
 
-    run_test_1()
+    # run_test_1()
 
-    # ### Open Dask client to manage ressources ###
-    # with Client(
-    #     n_workers=N_WORKERS,
-    #     threads_per_worker=1,
-    #     memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
-    # ) as client:
-    #     # Print dashboard link
-    #     print("Dask Dashboard:", client.dashboard_link)
+    ### Open Dask client to manage ressources ###
+    with Client(
+        n_workers=N_WORKERS,
+        threads_per_worker=1,
+        memory_limit=f"{MAX_RAM_PER_WORKER_GB}GB",
+    ) as client:
+        # Print dashboard link
+        print("Dask Dashboard:", client.dashboard_link)
 
-    #     # Uncomment target test
-    #     run_test_1()
-    # #     # run_test_2()
+        # Uncomment target test
+        run_test_1()
+    #     # run_test_2()

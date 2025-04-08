@@ -198,7 +198,9 @@ def generate_and_eval_arrays(n_arrays, rmax, nr, xs, ys, ncol=5):
     print()
 
 
-def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
+def eval_arrays(
+    subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20, root_data=p.root_data
+):
 
     # Min / max subarray list
     sa_sizes = np.unique([len(sa) for sa in subarrays_list])
@@ -300,9 +302,16 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
     #     subarrays_list, snrs, dx, dy
     # )
 
-    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list, snrs, dx, dy)
+    msr, dr, rmse = load_msr_rmse_res_subarrays(
+        subarrays_list, snrs, dx, dy, root_data=root_data
+    )
 
     for snr in snrs:
+
+        root_snr = os.path.join(root_img, str(snr))
+        if not os.path.exists(root_snr):
+            os.makedirs(root_snr)
+
         # Plot RMSE vs nr_in_sa
         rmse_gcc = [rmse[key]["dcf"].loc[snr] for key in list(rmse.keys())]
         rmse_rtf = [rmse[key]["rtf"].loc[snr] for key in list(rmse.keys())]
@@ -318,7 +327,7 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
         plt.title(f"SNR = {snr} dB")
         plt.legend()
 
-        fpath = os.path.join(root_img, f"rmse_vs_gamma1_snr{snr}.png")
+        fpath = os.path.join(root_snr, f"rmse_vs_gamma1_snr{snr}.png")
         plt.savefig(fpath, dpi=300)
         plt.close("all")
 
@@ -340,7 +349,7 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
         plt.title(f"SNR = {snr} dB")
         plt.legend()
 
-        fpath = os.path.join(root_img, f"dr_vs_gamma1_snr{snr}.png")
+        fpath = os.path.join(root_snr, f"dr_vs_gamma1_snr{snr}.png")
         plt.savefig(fpath, dpi=300)
 
         # Plot MSR vs nr_in_sa
@@ -361,21 +370,21 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
         plt.title(f"SNR = {snr} dB")
         plt.legend()
 
-        fpath = os.path.join(root_img, f"msr_vs_gamma1_snr{snr}.png")
+        fpath = os.path.join(root_snr, f"msr_vs_gamma1_snr{snr}.png")
         plt.savefig(fpath, dpi=300)
         plt.close("all")
 
         sort_and_plot_by_perf_order(
-            rmse_gcc, "gcc", "rmse", x_arrays, y_arrays, xs, ys, rmax, ncol, root_img
+            rmse_gcc, "gcc", "rmse", x_arrays, y_arrays, xs, ys, rmax, ncol, root_snr
         )
         sort_and_plot_by_perf_order(
-            rmse_rtf, "rtf", "rmse", x_arrays, y_arrays, xs, ys, rmax, ncol, root_img
+            rmse_rtf, "rtf", "rmse", x_arrays, y_arrays, xs, ys, rmax, ncol, root_snr
         )
         sort_and_plot_by_perf_order(
-            msr_gcc, "gcc", "msr", x_arrays, y_arrays, xs, ys, rmax, ncol, root_img
+            msr_gcc, "gcc", "msr", x_arrays, y_arrays, xs, ys, rmax, ncol, root_snr
         )
         sort_and_plot_by_perf_order(
-            msr_rtf, "rtf", "msr", x_arrays, y_arrays, xs, ys, rmax, ncol, root_img
+            msr_rtf, "rtf", "msr", x_arrays, y_arrays, xs, ys, rmax, ncol, root_snr
         )
 
         # Order arrays by hybrid metric
@@ -395,7 +404,7 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
             ys,
             rmax,
             ncol,
-            root_img,
+            root_snr,
         )
         sort_and_plot_by_perf_order(
             hybrid_rtf,
@@ -407,8 +416,161 @@ def eval_arrays(subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20):
             ys,
             rmax,
             ncol,
-            root_img,
+            root_snr,
         )
+
+
+def eval_arrays_combined_snrs(
+    subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20, root_data=p.root_data
+):
+
+    # Min / max subarray list
+    sa_sizes = np.unique([len(sa) for sa in subarrays_list])
+    if len(sa_sizes) > 1:
+        subarrays_size_info = (
+            f"subarrays_with_{np.min(sa_sizes)}_to_{np.max(sa_sizes)}_receivers"
+        )
+    else:
+        subarrays_size_info = f"subarrays_with_{sa_sizes[0]}_receivers"
+
+    folder = "from_signal_dx20m_dy20m"
+    root_img = os.path.join(
+        p.root_img, folder, "analyse_arrays", antenna_type, subarrays_size_info
+    )
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
+
+    _, receivers, source, _, _, _ = params(antenna_type=antenna_type)
+    xs, ys = source["x"], source["y"]
+
+    # Load receivers
+    if antenna_type == "zhang":
+        x_rcv = receivers["x"]
+        y_rcv = receivers["y"]
+        r = np.sqrt(x_rcv**2 + y_rcv**2)
+        rmax = np.round(np.max(r), 0)
+    elif antenna_type == "random":
+        rmax = 1.5e3  # 1.5km radius
+        nr = 6  # Same number of receivers as zhang
+        x_rcv, y_rcv = load_random_antenna(rmax, nr)
+
+    # Generate arrays
+    n_arrays = len(subarrays_list)
+    x_arrays = []
+    y_arrays = []
+    for i_sa, sa in enumerate(subarrays_list):
+        # Store vars
+        x_arrays.append(x_rcv[sa])
+        y_arrays.append(y_rcv[sa])
+
+    msr, dr, rmse = load_msr_rmse_res_subarrays(
+        subarrays_list, snrs, dx, dy, root_data=root_data
+    )
+
+    for i, snr in enumerate(snrs):
+
+        # Plot RMSE vs nr_in_sa
+        rmse_gcc_snr = [rmse[key]["dcf"].loc[snr] for key in list(rmse.keys())]
+        rmse_rtf_snr = [rmse[key]["rtf"].loc[snr] for key in list(rmse.keys())]
+
+        # Plot DR vs nr_in_sa
+        dr_gcc_snr = [dr[key]["dcf_mean"].loc[snr] for key in list(dr.keys())]
+        dr_rtf_snr = [dr[key]["rtf_mean"].loc[snr] for key in list(dr.keys())]
+
+        # Plot MSR vs nr_in_sa
+        msr_gcc_snr = [msr[key]["dcf_mean"].loc[snr] for key in list(msr.keys())]
+        msr_rtf_snr = [msr[key]["rtf_mean"].loc[snr] for key in list(msr.keys())]
+
+        # Order arrays by hybrid metric
+        rmse_gcc_norm = (
+            rmse_gcc_snr / np.max(rmse_gcc_snr) if np.max(rmse_gcc_snr) != 0 else 0
+        )
+        rmse_rtf_norm = (
+            rmse_rtf_snr / np.max(rmse_rtf_snr) if np.max(rmse_rtf_snr) != 0 else 0
+        )
+        hybrid_gcc_snr = rmse_gcc_norm + (1 + msr_gcc_snr / np.max(np.abs(msr_gcc_snr)))
+        hybrid_rtf_snr = rmse_rtf_norm + (1 + msr_rtf_snr / np.max(np.abs(msr_rtf_snr)))
+
+        if i == 0:
+            rmse_gcc = np.array(rmse_gcc_snr)
+            rmse_rtf = np.array(rmse_rtf_snr)
+            dr_gcc = np.array(dr_gcc_snr)
+            dr_rtf = np.array(dr_rtf_snr)
+            msr_gcc = np.array(msr_gcc_snr)
+            msr_rtf = np.array(msr_rtf_snr)
+            hybrid_gcc = np.array(hybrid_gcc_snr)
+            hybrid_rtf = np.array(hybrid_rtf_snr)
+
+        else:
+            rmse_gcc += np.array(rmse_gcc_snr)
+            rmse_rtf += np.array(rmse_rtf_snr)
+            dr_gcc += np.array(dr_gcc_snr)
+            dr_rtf += np.array(dr_rtf_snr)
+            msr_gcc += np.array(msr_gcc_snr)
+            msr_rtf += np.array(msr_rtf_snr)
+            hybrid_gcc += np.array(hybrid_gcc_snr)
+            hybrid_rtf += np.array(hybrid_rtf_snr)
+
+    # Mean quantities
+    n = len(snrs)
+    rmse_gcc = rmse_gcc / n
+    rmse_rtf = rmse_rtf / n
+    dr_gcc = dr_gcc / n
+    dr_rtf = dr_rtf / n
+    msr_gcc = msr_gcc / n
+    msr_rtf = msr_rtf / n
+    hybrid_gcc = hybrid_gcc / n
+    hybrid_rtf = hybrid_rtf / n
+
+    root_snr = os.path.join(root_img, "mean_over_snrs", f"snr_{snrs[0]}_to_{snrs[-1]}")
+    if not os.path.exists(root_snr):
+        os.makedirs(root_snr)
+    # Plot mean quantities
+    sort_and_plot_by_perf_order(
+        rmse_gcc,
+        "gcc",
+        "rmse",
+        x_arrays,
+        y_arrays,
+        xs,
+        ys,
+        rmax,
+        ncol,
+        root_snr,
+    )
+    sort_and_plot_by_perf_order(
+        rmse_rtf, "rtf", "rmse", x_arrays, y_arrays, xs, ys, rmax, ncol, root_snr
+    )
+    sort_and_plot_by_perf_order(
+        msr_gcc, "gcc", "msr", x_arrays, y_arrays, xs, ys, rmax, ncol, root_snr
+    )
+    sort_and_plot_by_perf_order(
+        msr_rtf, "rtf", "msr", x_arrays, y_arrays, xs, ys, rmax, ncol, root_snr
+    )
+    sort_and_plot_by_perf_order(
+        hybrid_gcc,
+        "gcc",
+        "hybrid",
+        x_arrays,
+        y_arrays,
+        xs,
+        ys,
+        rmax,
+        ncol,
+        root_snr,
+    )
+    sort_and_plot_by_perf_order(
+        hybrid_rtf,
+        "rtf",
+        "hybrid",
+        x_arrays,
+        y_arrays,
+        xs,
+        ys,
+        rmax,
+        ncol,
+        root_snr,
+    )
 
 
 def sort_and_plot_by_perf_order(
@@ -423,9 +585,13 @@ def sort_and_plot_by_perf_order(
     ncol,
     root_img,
 ):
-    # Order subarrays by rmse and plot all subarrays
+
+    _, receivers, source, _, _, _ = params(antenna_type="zhang")
+    x_rcv = np.append(receivers["x"], receivers["x"][0])
+    y_rcv = np.append(receivers["y"], receivers["y"][0])
+
+    # Order subarrays by values and plot all subarrays
     metric_order = np.argsort(metric_values)[::-1]  # Descending order
-    # Sort by gamma values
     x_arrays = [x_arrays[i] for i in metric_order]
     y_arrays = [y_arrays[i] for i in metric_order]
     metric_values = metric_values[metric_order]
@@ -448,7 +614,8 @@ def sort_and_plot_by_perf_order(
         ax = axs.flatten()[i]
         x_r = np.append(x_arrays[i], (x_arrays[i][0]))
         y_r = np.append(y_arrays[i], (y_arrays[i][0]))
-        ax.plot(x_r, y_r, linestyle="--", marker="o", markersize=5, color="k")
+        ax.plot(x_rcv, y_rcv, linestyle="--", marker="o", markersize=5, color="k")
+        ax.plot(x_r, y_r, linestyle="--", marker="o", markersize=6, color="r")
         ax.scatter(
             xb_arrays[i], yb_arrays[i], marker="o", color="r", s=5, label=r"$X_b$"
         )
@@ -459,7 +626,7 @@ def sort_and_plot_by_perf_order(
             color="r",
         )
 
-        ax.set_title(f"{metric_values[i]:.3f}")
+        ax.set_title(f"{metric_values[i]:.1f}")
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
 
@@ -491,8 +658,25 @@ if __name__ == "__main__":
     # All possible subarrays with n_rcv receivers
     subarrays_list = []
     # n_rcv = [2, 3, 4, 5, 6]
-    n_rcv = [3]
+    n_rcv = [3, 4, 5, 6]
+
+    # n_rcv = [3]
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
-    eval_arrays(subarrays_list, antenna_type="zhang", snrs=[-15], ncol=7)
+
+    root_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data\backups\rtf_zhang_backup_07041041\data"
+    # eval_arrays(
+    #     subarrays_list,
+    #     antenna_type="zhang",
+    #     snrs=[-10, -5, 0, 5, 10],
+    #     ncol=7,
+    #     root_data=root_data,
+    # )
+    eval_arrays_combined_snrs(
+        subarrays_list,
+        antenna_type="zhang",
+        snrs=np.arange(-4, 16, 1),
+        ncol=7,
+        root_data=root_data,
+    )
     print()

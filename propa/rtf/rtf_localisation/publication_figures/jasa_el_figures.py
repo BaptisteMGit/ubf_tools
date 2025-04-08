@@ -29,6 +29,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     study_perf_vs_snr_publi,
     plot_fullarray_ambiguity_surfaces_publi,
     plot_performance_vs_number_of_rcv_in_subarray_publi,
+    plot_performance_vs_number_of_rcv_in_subarray_publi_violin,
 )
 
 # pfig = PubFigure()
@@ -70,13 +71,18 @@ def no_noise_amb_surf():
     )
 
 
-def perf_vs_nb_rcv():
+def perf_vs_nb_rcv(snrs=[0], root_data=p.root_data):
     # Root img
     root_img = os.path.join(p.root_img_publi, "performance_against_number_of_receivers")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
-    plot_performance_vs_number_of_rcv_in_subarray_publi(root_img=root_img, snrs=[0])
+    plot_performance_vs_number_of_rcv_in_subarray_publi(
+        root_img=root_img, snrs=snrs, root_data=root_data
+    )
+    plot_performance_vs_number_of_rcv_in_subarray_publi_violin(
+        root_img=root_img, snrs=snrs, root_data=root_data
+    )
 
 
 def perf_vs_snr(root_data):
@@ -85,17 +91,30 @@ def perf_vs_snr(root_data):
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
-    best_subarray = [0, 2, 5]
-    worst_subarray = [2, 3, 5]
+    best_subarray = [0, 1, 4]
+    worst_subarray = [1, 3, 5]
     subarrays_list = [best_subarray, worst_subarray]
-    subarrays_list = [[0, 1, 2, 3, 4, 5]]
+    # subarrays_list = [[0, 1, 2, 3, 4, 5]]
+    # subarrays_list = [best_subarray]
 
     study_perf_vs_snr_publi(subarrays_list, root_img, root_data=root_data)
 
 
 if __name__ == "__main__":
     # no_noise_amb_surf()
-    # perf_vs_nb_rcv()
 
     root_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data\backups\rtf_zhang_backup_07041041\data"
-    perf_vs_snr(root_data=root_data)
+
+    p1 = np.arange(-15, -10, 1)
+    p2 = np.arange(-5, 5, 1)
+    p3 = np.arange(5, 15, 1)
+    p4 = np.arange(-5, 15, 1)
+    p5 = np.arange(-10, -5, 1)
+
+    # perf_vs_nb_rcv(root_data=root_data, snrs=p1)
+    # perf_vs_nb_rcv(root_data=root_data, snrs=p2)
+    # perf_vs_nb_rcv(root_data=root_data, snrs=p3)
+    # perf_vs_nb_rcv(root_data=root_data, snrs=p4)
+    perf_vs_nb_rcv(root_data=root_data, snrs=p5)
+
+    # perf_vs_snr(root_data=root_data)

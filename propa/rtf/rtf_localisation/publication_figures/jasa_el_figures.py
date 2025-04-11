@@ -17,27 +17,22 @@ import numpy as np
 import xarray as xr
 
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     params,
     get_rcv_couples,
 )
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT_DATA,
-    ROOT_IMG,
-)
+
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
 
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     study_perf_vs_snr_publi,
     plot_fullarray_ambiguity_surfaces_publi,
     plot_performance_vs_number_of_rcv_in_subarray_publi,
+    plot_performance_vs_number_of_rcv_in_subarray_publi_violin,
 )
 
 # pfig = PubFigure()
-
-ROOT_IMG_PUBLI = os.path.join(ROOT_IMG, "publication_rtf")
-if not os.path.exists(ROOT_IMG_PUBLI):
-    os.makedirs(ROOT_IMG_PUBLI)
 
 
 def no_noise_amb_surf():
@@ -49,7 +44,7 @@ def no_noise_amb_surf():
 
     # Full simu
     folder = f"fullsimu_dx{dx}m_dy{dy}m"
-    root_data = os.path.join(ROOT_DATA, folder)
+    root_data = os.path.join(p.root_data, folder)
 
     array_label = "s1_s2_s3_s4_s5_s6"
     data_fname_fa = f"loc_zhang_dx{dx}m_dy{dy}m_fullarray_{array_label}.nc"
@@ -61,7 +56,7 @@ def no_noise_amb_surf():
     y_src = source["y"]
 
     # Root img
-    root_img = os.path.join(ROOT_IMG_PUBLI, "hexagonal_array_noise_free")
+    root_img = os.path.join(p.root_img_publi, "hexagonal_array_noise_free")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
@@ -76,29 +71,50 @@ def no_noise_amb_surf():
     )
 
 
-def perf_vs_nb_rcv():
+def perf_vs_nb_rcv(snrs=[0], root_data=p.root_data):
     # Root img
-    root_img = os.path.join(ROOT_IMG_PUBLI, "performance_against_number_of_receivers")
+    root_img = os.path.join(p.root_img_publi, "performance_against_number_of_receivers")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
-    plot_performance_vs_number_of_rcv_in_subarray_publi(root_img=root_img, snrs=[-15])
+    plot_performance_vs_number_of_rcv_in_subarray_publi(
+        root_img=root_img, snrs=snrs, root_data=root_data
+    )
+    plot_performance_vs_number_of_rcv_in_subarray_publi_violin(
+        root_img=root_img, snrs=snrs, root_data=root_data
+    )
 
 
-def perf_vs_snr():
+def perf_vs_snr(root_data):
     # Root img
-    root_img = os.path.join(ROOT_IMG_PUBLI, "performance_against_snr")
+    root_img = os.path.join(p.root_img_publi, "performance_against_snr")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
-    best_subarray = [0, 2, 5]
-    worst_subarray = [2, 3, 5]
+    best_subarray = [0, 1, 4]
+    worst_subarray = [1, 3, 5]
     subarrays_list = [best_subarray, worst_subarray]
+    # subarrays_list = [[0, 1, 2, 3, 4, 5]]
+    # subarrays_list = [best_subarray]
 
-    study_perf_vs_snr_publi(subarrays_list, root_img)
+    study_perf_vs_snr_publi(subarrays_list, root_img, root_data=root_data)
 
 
 if __name__ == "__main__":
     # no_noise_amb_surf()
-    # perf_vs_nb_rcv()
-    perf_vs_snr()
+
+    root_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data\backups\rtf_zhang_backup_07041041\data"
+
+    p1 = np.arange(-15, -10, 1)
+    p2 = np.arange(-5, 5, 1)
+    p3 = np.arange(5, 15, 1)
+    p4 = np.arange(-5, 15, 1)
+    p5 = np.arange(-10, -5, 1)
+
+    # perf_vs_nb_rcv(root_data=root_data, snrs=p1)
+    # perf_vs_nb_rcv(root_data=root_data, snrs=p2)
+    # perf_vs_nb_rcv(root_data=root_data, snrs=p3)
+    # perf_vs_nb_rcv(root_data=root_data, snrs=p4)
+    perf_vs_nb_rcv(root_data=root_data, snrs=p5)
+
+    # perf_vs_snr(root_data=root_data)

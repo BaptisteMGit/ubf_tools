@@ -3,7 +3,7 @@
 """
 @File    :   deconvolution_test.py
 @Time    :   2024/11/13 10:42:42
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -13,7 +13,7 @@
 # Import
 # ======================================================================================================================
 from real_data_analysis.deconvolution_utils import *
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure()
 

@@ -3,10 +3,10 @@
 """
 @File    :   extract_ais_area.py
 @Time    :   2024/09/05 16:14:20
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   Script to extract ais data from csv file for a specific area (SWIR) 
+@Desc    :   Script to extract ais data from csv file for a specific area (SWIR)
 """
 
 # ======================================================================================================================
@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from pyproj import Geod, Proj, transform
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from illustration.RHUMRUM.SWIR.bathy_obs import plot_swir_bathy, plot_swir_obs
 
 
@@ -753,7 +753,7 @@ if __name__ == "__main__":
     # plt.legend()
 
     # Interpolate trajectories
-    from publication.PublicationFigure import PubFigure
+    from publication.publication_figure import PubFigure
 
     # PubFigure(legend_fontsize=5)
 

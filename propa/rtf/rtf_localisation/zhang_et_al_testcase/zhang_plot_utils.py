@@ -20,7 +20,7 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from misc import compute_hyperbola
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     params,
     get_array_label,

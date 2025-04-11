@@ -29,7 +29,7 @@ from skimage.filters import sobel
 from scipy.spatial import ConvexHull
 from scipy.ndimage import gaussian_filter
 from signals.signals import colored_noise
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
 

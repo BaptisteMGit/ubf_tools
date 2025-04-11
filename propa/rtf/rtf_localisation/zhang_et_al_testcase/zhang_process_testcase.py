@@ -60,7 +60,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
 #     build_features_from_time_signal,
 # )
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure(ticks_fontsize=22, use_tex=p.use_tex)
 

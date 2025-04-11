@@ -62,8 +62,8 @@ def run_test_1(
     # subarrays_list = [best_subarray, worste_subarray]
     subarrays_list = []
     # n_rcv = [2, 3, 4, 5, 6]
-    # n_rcv = [3, 4, 5, 6]
-    n_rcv = [6]
+    n_rcv = [3, 4, 5, 6]
+    # n_rcv = [6]
 
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
@@ -79,7 +79,7 @@ def run_test_1(
     snr_min = -15
     snr_max = 15
 
-    snr_step = 2
+    snr_step = 1
     n_snr = int((snr_max - snr_min) / snr_step + 1)
     snrs = np.linspace(snr_min, snr_max, n_snr)
 
@@ -89,7 +89,7 @@ def run_test_1(
     print(f"Number of SNRs = {n_snr}")
 
     # Nombre de simulations à réaliser pour chaque SNR
-    n_monte_carlo = 1
+    n_monte_carlo = 100
     print(f"Number of Monte Carlo simulations = {n_monte_carlo}")
 
     # Derive expected cpu time for information
@@ -119,7 +119,7 @@ def run_test_1(
         dy=dy,
         nf=nf,
         freq_draw_method=freq_draw_method,
-        run_mode="a",
+        run_mode="w",
         subarrays_list=subarrays_list,
         antenna_type=antenna_type,
         library_stype=library_stype,
@@ -127,7 +127,7 @@ def run_test_1(
         plot_args=plot_args,
         debug=debug,
         verbose=False,
-        check=True,  # TODO set to False before running on docker
+        check=False,  # TODO set to False before running on docker
     )
 
 
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     # library_stype = "lfm"
     library_stype = "wn"
 
-    debug = True
+    debug = False
 
     freq_draw_method = "equally_spaced"
     nf = 100  # Nombre de points fréquentiel pour le calcul des grandeurs signantes (DCF, RTF)
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     # ## Step 2 : Interpolation des fonctions de transfert sur la grille de recherche
     # # A executer une unique fois en mode debug = False pour obtenir le dataset correspondant à la zone de recherche complète (1km x 1km)
     # # grid_dataset(debug=debug, antenna_type=antenna_type)
-    # db.grid_dataset()
+    db.grid_dataset()
 
     # # ## Step 3 : Calcul des signaux propagés depuis chacun des points de la grille
     # # # A executer une unique fois

@@ -28,7 +28,7 @@ import matplotlib.pyplot as plt
 
 from get_data.ais.ais_tools import *
 from get_data.wav.get_data_from_rhumrum import *
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 # from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 

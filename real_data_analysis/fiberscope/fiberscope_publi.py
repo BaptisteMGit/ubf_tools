@@ -16,7 +16,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from real_data_analysis.fiberscope.fiberscope_utils import *
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from propa.rtf.rtf_utils import normalize_metric_contrast
 from matplotlib.animation import FuncAnimation, PillowWriter
 

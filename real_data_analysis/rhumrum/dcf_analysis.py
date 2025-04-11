@@ -8,7 +8,7 @@
 """
 @File    :   real_data_analysis_1.ipynb
 @Time    :   2024/09/06 12:01:19
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 
 from get_data.ais.ais_tools import *
 from get_data.wav.signal_processing_utils import *
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
 # ## AIS data

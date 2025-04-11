@@ -3,7 +3,7 @@
 """
 @File    :   process_ctds.py
 @Time    :   2025/01/23 16:44:47
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 pfig = PubFigure()
 

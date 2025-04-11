@@ -3,7 +3,7 @@
 """
 @File    :   ship_signal_properties.py
 @Time    :   2024/09/19 11:40:52
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -24,7 +24,7 @@ from matplotlib.dates import DateFormatter
 from get_data.wav.signal_processing_utils import *
 from signals.signals import ship_spectrum, generate_ship_signal
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure(legend_fontsize=8, label_fontsize=8, ticks_fontsize=8, title_fontsize=8)
 

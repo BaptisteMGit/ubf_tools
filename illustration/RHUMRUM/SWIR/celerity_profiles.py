@@ -3,7 +3,7 @@ import arlpy
 import xarray as xr
 import matplotlib.pyplot as plt
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 pubfig = PubFigure(legend_fontsize=20)
 

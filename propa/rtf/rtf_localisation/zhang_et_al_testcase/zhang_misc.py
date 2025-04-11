@@ -858,9 +858,9 @@ def build_subarrays_args(subarrays_list):
     return subarrays_args
 
 
-def init_msr_file(folder, run_mode, subarrays_args):
+def init_msr_file(folder, run_mode, subarrays_args, root_data=p.root_data):
 
-    root_msr = os.path.join(p.root_data, folder, "msr")
+    root_msr = os.path.join(root_data, folder, "msr")
     if not os.path.exists(root_msr):
         os.makedirs(root_msr)
 
@@ -880,9 +880,9 @@ def init_msr_file(folder, run_mode, subarrays_args):
         sa_item["msr_filepath"] = msr_txt_filepath
 
 
-def init_dr_file(folder, run_mode, subarrays_args):
+def init_dr_file(folder, run_mode, subarrays_args, root_data=p.root_data):
 
-    root_dr = os.path.join(p.root_data, folder, "dr_pos")
+    root_dr = os.path.join(root_data, folder, "dr_pos")
     if not os.path.exists(root_dr):
         os.makedirs(root_dr)
 
@@ -902,12 +902,16 @@ def init_dr_file(folder, run_mode, subarrays_args):
         sa_item["dr_pos_filepath"] = dr_txt_filepath
 
 
-def load_msr_rmse_res_subarrays(subarrays_list, snrs=None, dx=20, dy=20):
+def load_msr_rmse_res_subarrays(
+    subarrays_list, snrs=None, dx=20, dy=20, root_data=p.root_data
+):
     folder = f"from_signal_dx{dx}m_dy{dy}m"
     subarrays_args = build_subarrays_args(subarrays_list)
 
-    init_dr_file(folder, run_mode="a", subarrays_args=subarrays_args)
-    init_msr_file(folder, run_mode="a", subarrays_args=subarrays_args)
+    init_dr_file(folder, run_mode="a", subarrays_args=subarrays_args, root_data=root_data)
+    init_msr_file(
+        folder, run_mode="a", subarrays_args=subarrays_args, root_data=root_data
+    )
 
     sa_labels = [sa["array_label"] for sa in list(subarrays_args.values())]
 

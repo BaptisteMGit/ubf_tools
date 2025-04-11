@@ -19,10 +19,7 @@ import matplotlib.pyplot as plt
 
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import params
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT_IMG,
-    ROOT_DATA,
-)
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.deprecated.zhang_params as p
 
 
 def diag_hermitian_angle_vs_snr(
@@ -30,7 +27,7 @@ def diag_hermitian_angle_vs_snr(
 ):
 
     # Ensure img folder exists
-    root_img = os.path.join(ROOT_IMG, "diagnostic")
+    root_img = os.path.join(p.root_img, "diagnostic")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
@@ -38,7 +35,7 @@ def diag_hermitian_angle_vs_snr(
 
     # Load gridded dataset
     fname = f"zhang_output_fullsimu_dx{grid['dx']}m_dy{grid['dy']}m.nc"
-    fpath = os.path.join(ROOT_DATA, fname)
+    fpath = os.path.join(p.root_data, fname)
     ds_rtf = xr.open_dataset(fpath)
 
     # Define reference receiver to use
@@ -59,7 +56,7 @@ def diag_hermitian_angle_vs_snr(
     }
 
     # List file in root_data folder
-    files = os.listdir(ROOT_DATA)
+    files = os.listdir(p.root_data)
     # Select the files with following format zhang_output_from_signal_dx20m_dy20m_snr0dB.nc
     files = [f for f in files if "zhang_output_from_signal" in f]
 
@@ -87,7 +84,7 @@ def diag_hermitian_angle_vs_snr(
         snr = int(f.split("_")[-1].split("snr")[1].split("dB")[0])
         snrs.append(snr)
         # Load dataset
-        ds_rtf_cs = xr.open_dataset(os.path.join(ROOT_DATA, f))
+        ds_rtf_cs = xr.open_dataset(os.path.join(p.root_data, f))
         ds_rtf_cs = ds_rtf_cs.sel(idx_rcv_ref=i_ref)
 
         # Extract tf between fmin and fmax from ds_rtf_cs

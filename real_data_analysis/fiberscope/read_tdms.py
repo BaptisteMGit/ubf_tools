@@ -3,7 +3,7 @@
 """
 @File    :   read_tdms.py
 @Time    :   2024/11/12 15:43:22
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -20,7 +20,7 @@ import pandas as pd
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure()
 

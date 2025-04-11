@@ -19,7 +19,7 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from time import time
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=12, ticks_fontsize=20)
 

@@ -26,14 +26,8 @@ from multiprocessing import Pool
 from dask.distributed import Client
 from dask.diagnostics import ProgressBar
 from misc import cast_matrix_to_target_shape, mult_along_axis
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_params import (
-    ROOT_TMP,
-    ROOT_IMG,
-    ROOT_DATA,
-    BLOCK_SIZES,
-    N_WORKERS,
-    MAX_RAM_PER_WORKER_GB,
-)
+import propa.rtf.rtf_localisation.zhang_et_al_testcase.deprecated.zhang_params as p
+
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
     library_src_spectrum,
     event_src_spectrum,
@@ -70,7 +64,7 @@ def build_tf_dataset():
 
     fname = "testcase_zhang2023"
     # working_dir = os.path.join(ROOT, "tmp")
-    working_dir = ROOT_TMP
+    working_dir = p.root_tmp
     env_file = os.path.join(working_dir, f"{fname}.env")
 
     # Read env file
@@ -146,7 +140,7 @@ def build_tf_dataset():
     )
 
     # Save as netcdf
-    fpath = os.path.join(ROOT_DATA, "tf_zhang_dataset.nc")
+    fpath = os.path.join(p.root_data, "tf_zhang_dataset.nc")
     library_zhang.to_netcdf(fpath)
 
 
@@ -159,7 +153,7 @@ def grid_dataset(debug=False, antenna_type="zhang"):
     """
 
     # Load dataset
-    fpath = os.path.join(ROOT_DATA, "tf_zhang_dataset.nc")
+    fpath = os.path.join(p.root_data, "tf_zhang_dataset.nc")
     ds = xr.open_dataset(fpath)
 
     # Load param
@@ -223,7 +217,7 @@ def grid_dataset(debug=False, antenna_type="zhang"):
 
     # Save dataset
     fname = f"tf_zhang_grid_dx{ds_grid.dx}m_dy{ds_grid.dy}m.nc"
-    fpath = os.path.join(ROOT_DATA, fname)
+    fpath = os.path.join(p.root_data, fname)
     ds_grid.to_netcdf(fpath)
     ds_grid.close()
 
@@ -245,7 +239,7 @@ def build_signal(debug=False, antenna_type="zhang", event_stype="wn"):
 
     # Load gridded dataset
     fname = f"tf_zhang_grid_dx{grid['dx']}m_dy{grid['dy']}m.nc"
-    fpath = os.path.join(ROOT_DATA, fname)
+    fpath = os.path.join(p.root_data, fname)
     ds_gridded_tf = xr.open_dataset(fpath)  # (nf, ny, nx, nrcv)
 
     # Limit max frequency to speed up
@@ -342,7 +336,7 @@ def build_signal(debug=False, antenna_type="zhang", event_stype="wn"):
 
     # Save dataset
     fname = f"zhang_library_dx{grid['dx']}m_dy{grid['dy']}m.nc"
-    fpath = os.path.join(ROOT_DATA, fname)
+    fpath = os.path.join(p.root_data, fname)
     ds_sig.to_netcdf(fpath)
 
 
@@ -554,7 +548,7 @@ def build_features_from_time_signal(
 
     # Dataset with time signal (for realistic approach)
     fname = f"zhang_library_dx{dx}m_dy{dy}m.nc"
-    fpath = os.path.join(ROOT_DATA, fname)
+    fpath = os.path.join(p.root_data, fname)
     ds_sig = xr.open_dataset(fpath)
     attrs = ds_sig.attrs
 
@@ -614,7 +608,7 @@ def build_features_from_time_signal(
                 dx=dx,
                 dy=dy,
                 root_img=os.path.join(
-                    ROOT_IMG, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
+                    p.root_img, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
                 ),
             ),
         )
@@ -664,7 +658,7 @@ def build_features_from_time_signal(
         ### RTF ###
         # Define optimal chunk size to fit with the number of workers
         # shape = xl_4D.shape
-        # optimal_chunks = compute_chunks(shape, N_WORKERS)
+        # optimal_chunks = compute_chunks(shape, p.n_workers)
         optimal_chunks = (
             -1,
             -1,
@@ -804,7 +798,7 @@ def build_features_from_time_signal(
             xs=source["x"],
             ys=source["y"],
             root_img=os.path.join(
-                ROOT_IMG, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
+                p.root_img, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
             ),
         )
     )
@@ -841,7 +835,7 @@ def build_features_from_time_signal(
 
     # Save updated dataset
     fpath = os.path.join(
-        ROOT_DATA,
+        p.root_data,
         f"{root_name}_dx{grid['dx']}m_dy{grid['dy']}m_snr{snr_dB:.1f}dB.nc",
     )
     ds_res_from_sig.to_netcdf(fpath)
@@ -864,7 +858,7 @@ def build_features_fullsimu(debug=False, antenna_type="zhang", event_stype="wn")
 
     # Dataset with gridded tf (for full simulation)
     fname = f"tf_zhang_grid_dx{dx}m_dy{dy}m.nc"
-    fpath = os.path.join(ROOT_DATA, fname)
+    fpath = os.path.join(p.root_data, fname)
     ds_tf = xr.open_dataset(fpath)
 
     # Limit max frequency to speed up
@@ -1024,13 +1018,13 @@ def build_features_fullsimu(debug=False, antenna_type="zhang", event_stype="wn")
             snr=np.nan,
             dx=dx,
             dy=dy,
-            root_img=os.path.join(ROOT_IMG, f"fullsimu_dx{dx}m_dy{dy}m"),
+            root_img=os.path.join(p.root_img, f"fullsimu_dx{dx}m_dy{dy}m"),
         ),
     )
 
     # Save updated dataset
     fpath = os.path.join(
-        ROOT_DATA, f"zhang_output_fullsimu_dx{grid['dx']}m_dy{grid['dy']}m.nc"
+        p.root_data, f"zhang_output_fullsimu_dx{grid['dx']}m_dy{grid['dy']}m.nc"
     )
     ds_res_full_simu.to_netcdf(fpath)
     ds_res_full_simu.close()
@@ -1077,7 +1071,7 @@ if __name__ == "__main__":
     # )
 
     # # Full simu
-    # fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
+    # fpath = os.path.join(p.root_data, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
     # ds = xr.open_dataset(fpath)
 
     # folder = f"fullsimu_dx{dx}m_dy{dy}m"
@@ -1100,7 +1094,7 @@ if __name__ == "__main__":
 
     #     # Step 5 : analysis
     #     fpath = os.path.join(
-    #         ROOT_DATA, f"zhang_output_from_signal_dx20m_dy20m_snr{snr_dB:.0f}dB.nc"
+    #         p.root_data, f"zhang_output_from_signal_dx20m_dy20m_snr{snr_dB:.0f}dB.nc"
     #     )
     #     ds = xr.open_dataset(fpath)
 
@@ -1148,7 +1142,7 @@ if __name__ == "__main__":
 # )
 
 # fpath = os.path.join(
-#     ROOT_DATA, f"zhang_output_from_signal_dx20m_dy20m_snr{snr_dB:.0f}dB.nc"
+#     p.root_data, f"zhang_output_from_signal_dx20m_dy20m_snr{snr_dB:.0f}dB.nc"
 # )
 # ds = xr.open_dataset(fpath)
 
@@ -1157,7 +1151,7 @@ if __name__ == "__main__":
 # plot_study_zhang2023(folder)
 
 # # Full simu
-# fpath = os.path.join(ROOT_DATA, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
+# fpath = os.path.join(p.root_data, f"zhang_output_fullsimu_dx{dx}m_dy{dy}m.nc")
 # ds = xr.open_dataset(fpath)
 
 # folder = f"fullsimu_dx{dx}m_dy{dy}m"

@@ -2369,8 +2369,22 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
 
         # Plot rmse
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-        ax.plot(rmse_sa.index, rmse_sa["dcf"], "o-", color="tab:red", label="DCF")
-        ax.plot(rmse_sa.index, rmse_sa["rtf"], "o-", color="tab:blue", label="RTF")
+        ax.plot(
+            rmse_sa.index,
+            rmse_sa["dcf"],
+            "o-",
+            color="tab:red",
+            label="DCF",
+            markersize=3,
+        )
+        ax.plot(
+            rmse_sa.index,
+            rmse_sa["rtf"],
+            "o-",
+            color="tab:blue",
+            label="RTF",
+            markersize=3,
+        )
         plt.suptitle(f"Receivers = ({rcv_str})")
         ax.set_xlabel("SNR [dB]")
         ax.set_ylabel("RMSE [m]")
@@ -2379,82 +2393,301 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
         fpath = os.path.join(root_img, f"rmse_snr_{sa_key}.png")
         plt.savefig(fpath)
 
-        ## Combined plot ##
+        # Subplot for RMSE and MSR
+        fig, axs = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
         # Plot RMSE
-        fig, ax1 = plt.subplots(figsize=(8, 6))
-        rmse_gcc = ax1.plot(
+        axs[0].plot(
             rmse_sa.index,
             rmse_sa["dcf"],
-            "s--",
-            label="RMSE DCF",
-            color="tab:blue",
-            markersize=4,
+            "o-",
+            color="tab:red",
+            label="DCF",
+            markersize=3,
         )
-        rmse_rtf = ax1.plot(
+        axs[0].plot(
             rmse_sa.index,
             rmse_sa["rtf"],
             "o-",
-            label="RMSE RTF",
             color="tab:blue",
-            markersize=4,
+            label="RTF",
+            markersize=3,
         )
-        ax1.set_xlabel("SNR [dB]")
-        ax1.set_ylabel("RMSE [m]", color="tab:blue")
-        ax1.tick_params(axis="y", labelcolor="tab:blue")
-        ax1.legend(
-            loc="upper right",
-            frameon=False,
-            bbox_to_anchor=(0.79, 0.98),
-        )
-
-        # Create a second y-axis for MSR
-        ax2 = ax1.twinx()
-        msr_gcc = ax2.errorbar(
+        axs[0].set_ylabel("RMSE [m]")
+        axs[0].legend()
+        axs[0].grid()
+        axs[0].set_title(f"Receivers = ({rcv_str})")
+        # Plot MSR
+        axs[1].errorbar(
             msr_sa.index,
             msr_sa.dcf_mean,
             yerr=msr_sa.dcf_std,
             color="tab:red",
             capsize=4,
-            fmt="s--",
-            label="MSR DCF",
-            markersize=4,
+            fmt="o-",
+            label="DCF",
+            markersize=3,
         )
-        msr_rtf = ax2.errorbar(
+        axs[1].errorbar(
             msr_sa.index,
             msr_sa.rtf_mean,
             yerr=msr_sa.rtf_std,
-            color="tab:red",
+            color="tab:blue",
             capsize=4,
             fmt="o-",
-            label="MSR RTF",
-            markersize=4,
+            label="RTF",
+            markersize=3,
         )
+        axs[1].set_xlabel("SNR [dB]")
+        axs[1].set_ylabel("MSR [dB]")
+        axs[1].legend()
+        axs[1].grid()
+        fpath = os.path.join(root_img, f"rmse_msr_snr_{sa_key}_subplots.png")
+        plt.savefig(fpath)
 
-        ax2.set_ylabel("MSR [dB]", color="tab:red")
-        ax2.tick_params(axis="y", labelcolor="tab:red")
-        ax2.legend(
-            loc="upper right",
-            frameon=False,
-            bbox_to_anchor=(0.98, 0.98),
-        )
-        # # Collect handles and labels from both axes
-        # handles = [rmse_gcc, rmse_rtf, msr_gcc, msr_rtf]
-        # labels = [h.get_label() for h in handles]
-        # fig.legend(
-        #     handles,
-        #     labels,
+        # ## Combined plot ##
+        # # Plot RMSE
+        # fig, ax1 = plt.subplots(figsize=(8, 6))
+        # rmse_gcc = ax1.plot(
+        #     rmse_sa.index,
+        #     rmse_sa["dcf"],
+        #     "s--",
+        #     label="RMSE DCF",
+        #     color="tab:blue",
+        #     markersize=4,
+        # )
+        # rmse_rtf = ax1.plot(
+        #     rmse_sa.index,
+        #     rmse_sa["rtf"],
+        #     "o-",
+        #     label="RMSE RTF",
+        #     color="tab:blue",
+        #     markersize=4,
+        # )
+        # ax1.set_xlabel("SNR [dB]")
+        # ax1.set_ylabel("RMSE [m]", color="tab:blue")
+        # ax1.tick_params(axis="y", labelcolor="tab:blue")
+        # ax1.legend(
         #     loc="upper right",
-        #     frameon=True,
-        #     bbox_to_anchor=(0.82, 0.7),
-        #     ncol=2,
+        #     frameon=False,
+        #     bbox_to_anchor=(0.79, 0.98),
         # )
 
+        # # Create a second y-axis for MSR
+        # ax2 = ax1.twinx()
+        # msr_gcc = ax2.errorbar(
+        #     msr_sa.index,
+        #     msr_sa.dcf_mean,
+        #     yerr=msr_sa.dcf_std,
+        #     color="tab:red",
+        #     capsize=4,
+        #     fmt="s--",
+        #     label="MSR DCF",
+        #     markersize=4,
+        # )
+        # msr_rtf = ax2.errorbar(
+        #     msr_sa.index,
+        #     msr_sa.rtf_mean,
+        #     yerr=msr_sa.rtf_std,
+        #     color="tab:red",
+        #     capsize=4,
+        #     fmt="o-",
+        #     label="MSR RTF",
+        #     markersize=4,
+        # )
+
+        # ax2.set_ylabel("MSR [dB]", color="tab:red")
+        # ax2.tick_params(axis="y", labelcolor="tab:red")
+        # ax2.legend(
+        #     loc="upper right",
+        #     frameon=False,
+        #     bbox_to_anchor=(0.98, 0.98),
+        # )
+
+        # # Save the combined figure
+        # fpath = os.path.join(root_img, f"rmse_msr_combined_vs_snr_{sa_key}")
+        # plt.savefig(f"{fpath}.eps", dpi=300)
+        # plt.savefig(f"{fpath}.png", dpi=300)
+
+        plt.close("all")
+
+        # Plot delta quantities
+        delta_rmse = rmse_sa["rtf"] - rmse_sa["dcf"]
+        delta_msr = msr_sa["rtf_mean"] - msr_sa["dcf_mean"]
+        delta_dr = dr_sa["rtf_mean"] - dr_sa["dcf_mean"]
+
+        # Plot combined plot with delta_msr and delta_rmse
+        fig, ax1 = plt.subplots(figsize=(8, 6))
+        delta_rmse_plot = ax1.plot(
+            rmse_sa.index,
+            delta_rmse,
+            "o-",
+            label="RMSE",
+            color="tab:blue",
+            markersize=4,
+        )
+        ax1.set_xlabel("SNR [dB]")
+        ax1.set_ylabel(r"$\Delta$" + "RMSE [m]", color="tab:blue")
+        ax1.tick_params(axis="y", labelcolor="tab:blue")
+
+        # Create a second y-axis for MSR
+        ax2 = ax1.twinx()
+
+        delta_msr_plot = ax2.plot(
+            msr_sa.index,
+            delta_msr,
+            "o-",
+            label="MSR",
+            color="tab:red",
+            markersize=4,
+        )
+        ax2.set_ylabel(r"$\Delta$" + "MSR [dB]", color="tab:red")
+        ax2.tick_params(axis="y", labelcolor="tab:red")
+
         # Save the combined figure
-        fpath = os.path.join(root_img, f"rmse_msr_combined_vs_snr")
+        fpath = os.path.join(root_img, f"delta_rmse_msr_combined_vs_snr_{sa_key}")
         plt.savefig(f"{fpath}.eps", dpi=300)
         plt.savefig(f"{fpath}.png", dpi=300)
 
         plt.close("all")
+
+
+def study_perf_vs_snr_compare_arrays_publi(subarrays_list, root_img, root_data):
+    """Plot metrics (MSR, RMSE) vs SNR for both DCF and RTF"""
+
+    # Load results (all available snrs)
+    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list, root_data=root_data)
+
+    # Subplot for RMSE and MSR
+    nb_arrays = len(msr.keys())
+    fig, axs = plt.subplots(2, nb_arrays, figsize=(12, 6), sharex=True, sharey="row")
+
+    for i_sa, sa_key in enumerate(msr.keys()):
+        # Extract info dataframes for current subarray
+        rcv_ids = [f"{id[0]}_{id[1]}" for id in sa_key.split("_")]
+        rcv_str = "$" + ", \,".join(rcv_ids) + "$"
+        dr_sa = dr[sa_key]
+        msr_sa = msr[sa_key]
+        rmse_sa = rmse[sa_key]
+
+        # Plot RMSE
+        axs[0, i_sa].plot(
+            rmse_sa.index,
+            rmse_sa["dcf"],
+            "o-",
+            color="tab:red",
+            label="DCF",
+            markersize=3,
+        )
+        axs[0, i_sa].plot(
+            rmse_sa.index,
+            rmse_sa["rtf"],
+            "o-",
+            color="tab:blue",
+            label="RTF",
+            markersize=3,
+        )
+        if i_sa == 0:
+            axs[0, i_sa].set_ylabel("RMSE [m]")
+        axs[0, i_sa].legend()
+        axs[0, i_sa].grid()
+        axs[0, i_sa].set_title(f"({rcv_str})")
+        # Plot MSR
+        axs[1, i_sa].errorbar(
+            msr_sa.index,
+            msr_sa.dcf_mean,
+            yerr=msr_sa.dcf_std,
+            color="tab:red",
+            capsize=4,
+            fmt="o-",
+            label="DCF",
+            markersize=3,
+        )
+        axs[1, i_sa].errorbar(
+            msr_sa.index,
+            msr_sa.rtf_mean,
+            yerr=msr_sa.rtf_std,
+            color="tab:blue",
+            capsize=4,
+            fmt="o-",
+            label="RTF",
+            markersize=3,
+        )
+        axs[1, i_sa].set_xlabel("SNR [dB]")
+        if i_sa == 0:
+            axs[1, i_sa].set_ylabel("MSR [dB]")
+        axs[1, i_sa].legend()
+        axs[1, i_sa].grid()
+
+    label = [sa_key for sa_key in msr.keys()]
+    label = "-".join(label)
+    fpath = os.path.join(root_img, f"rmse_msr_snr_subplots_{label}.png")
+    plt.savefig(fpath)
+
+    plt.close("all")
+
+
+def perf_threshold(subarrays_list, root_data, root_res):
+    """Derive threshold for DCF and RTF"""
+
+    rmse_th = 50  # RMSE threshold
+    msr_th = -2  # MSR threshold
+    # Load results (all available snrs)
+    msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list, root_data=root_data)
+
+    label = ""
+    methods = ["dcf", "rtf"]
+    rmse_th_snrs = {m: [] for m in methods}
+    msr_th_snrs = {m: [] for m in methods}
+    col1 = []
+    col2 = []
+    col3 = []
+    col4 = []
+    for i_sa, sa_key in enumerate(msr.keys()):
+        # Extract info dataframes for current subarray
+        rcv_ids = [f"{id[0]}_{id[1]}" for id in sa_key.split("_")]
+        msr_sa = msr[sa_key]
+        rmse_sa = rmse[sa_key]
+
+        # Derive threshold
+        print(f"Subarray {sa_key}")
+        for method in methods:
+            print(f"\t {method.upper()} method")
+            rmse_th_idx = np.where(rmse_sa[f"{method}"] >= rmse_th)[0]
+            msr_th_idx = np.where(msr_sa[f"{method}_mean"] >= msr_th)[0]
+            if rmse_th_idx.size > 0:
+                rmse_th_idx = rmse_th_idx[-1]
+            else:
+                rmse_th_idx = -1
+
+            if msr_th_idx.size > 0:
+                msr_th_idx = msr_th_idx[-1]
+            else:
+                msr_th_idx = -1
+
+            rmse_th_snr = rmse_sa.index[rmse_th_idx]
+            msr_th_snr = msr_sa.index[msr_th_idx]
+
+            rmse_th_snrs[method].append(rmse_th_snr)
+            msr_th_snrs[method].append(msr_th_snr)
+
+            # Build cols
+            col1.append(sa_key)
+            col2.append(method)
+            col3.append(rmse_th_snr)
+            col4.append(msr_th_snr)
+
+            print(f"\t\t RMSE th = {rmse_th_snr} dB")
+            print(f"\t\t MSR th = {msr_th_snr} dB")
+
+        label += f"{sa_key}_"
+
+    # Save results
+    fpath = os.path.join(root_res, f"thresholds.txt")
+    header = "array, method, rmse_threshold, msr_threshold\n"
+    with open(fpath, "w") as f:
+        f.write(header)
+        for i in range(len(col1)):
+            f.write(f"{col1[i]}, {col2[i]}, {col3[i]}, {col4[i]}\n")
 
 
 if __name__ == "__main__":

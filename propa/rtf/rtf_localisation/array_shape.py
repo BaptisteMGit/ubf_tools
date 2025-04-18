@@ -421,7 +421,14 @@ def eval_arrays(
 
 
 def eval_arrays_combined_snrs(
-    subarrays_list, antenna_type, snrs, ncol=3, dx=20, dy=20, root_data=p.root_data
+    subarrays_list,
+    antenna_type,
+    snrs,
+    comb_method="mean",
+    ncol=3,
+    dx=20,
+    dy=20,
+    root_data=p.root_data,
 ):
 
     # Min / max subarray list
@@ -512,7 +519,12 @@ def eval_arrays_combined_snrs(
             hybrid_rtf += np.array(hybrid_rtf_snr)
 
     # Mean quantities
-    n = len(snrs)
+    if comb_method == "mean":
+        n = len(snrs)
+    elif comb_method == "sum":
+        n = 1
+
+    # n = len(snrs)
     rmse_gcc = rmse_gcc / n
     rmse_rtf = rmse_rtf / n
     dr_gcc = dr_gcc / n
@@ -522,7 +534,9 @@ def eval_arrays_combined_snrs(
     hybrid_gcc = hybrid_gcc / n
     hybrid_rtf = hybrid_rtf / n
 
-    root_snr = os.path.join(root_img, "mean_over_snrs", f"snr_{snrs[0]}_to_{snrs[-1]}")
+    root_snr = os.path.join(
+        root_img, f"{comb_method}_over_snrs", f"snr_{snrs[0]}_to_{snrs[-1]}"
+    )
     if not os.path.exists(root_snr):
         os.makedirs(root_snr)
     # Plot mean quantities
@@ -590,6 +604,10 @@ def sort_and_plot_by_perf_order(
     x_rcv = np.append(receivers["x"], receivers["x"][0])
     y_rcv = np.append(receivers["y"], receivers["y"][0])
 
+    # Derive barycentre of the hexagonal array
+    xb = np.mean(x_rcv)
+    yb = np.mean(y_rcv)
+
     # Order subarrays by values and plot all subarrays
     metric_order = np.argsort(metric_values)[::-1]  # Descending order
     x_arrays = [x_arrays[i] for i in metric_order]
@@ -607,8 +625,8 @@ def sort_and_plot_by_perf_order(
         nrows=nrow, ncols=ncol, figsize=(38, 20), sharex=True, sharey=True
     )
 
-    xlim = [-1.1 * rmax, 1.25 * rmax]
-    ylim = [-1.5 * rmax, 1.25 * rmax]
+    xlim = [xb - 1.1 * rmax, xb + 1.25 * rmax]
+    ylim = [yb - 1.5 * rmax, yb + 1.25 * rmax]
 
     for i in range(n_arrays):
         ax = axs.flatten()[i]
@@ -626,7 +644,19 @@ def sort_and_plot_by_perf_order(
             color="r",
         )
 
-        ax.set_title(f"{metric_values[i]:.1f}")
+        # Add annotation with array index in the bottom right corner
+        ax.annotate(
+            str(i),
+            xy=(0.96, 0.07),
+            xycoords="axes fraction",
+            fontsize=30,
+            ha="right",
+            va="bottom",
+            bbox=dict(
+                boxstyle="round,pad=0.15", edgecolor="black", facecolor="lightgray"
+            ),
+        )
+        ax.set_title(f"{metric_values[i]:.1f}", fontsize=36)
         ax.set_xlim(xlim)
         ax.set_ylim(ylim)
 
@@ -675,7 +705,8 @@ if __name__ == "__main__":
     eval_arrays_combined_snrs(
         subarrays_list,
         antenna_type="zhang",
-        snrs=np.arange(-4, 16, 1),
+        comb_method="mean",
+        snrs=np.arange(-10, 1, 1),
         ncol=7,
         root_data=root_data,
     )

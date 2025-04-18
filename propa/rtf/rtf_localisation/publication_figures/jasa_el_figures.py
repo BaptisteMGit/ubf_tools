@@ -26,7 +26,9 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
 import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
 
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
+    perf_threshold,
     study_perf_vs_snr_publi,
+    study_perf_vs_snr_compare_arrays_publi,
     plot_fullarray_ambiguity_surfaces_publi,
     plot_performance_vs_number_of_rcv_in_subarray_publi,
     plot_performance_vs_number_of_rcv_in_subarray_publi_violin,
@@ -73,7 +75,10 @@ def no_noise_amb_surf():
 
 def perf_vs_nb_rcv(snrs=[0], root_data=p.root_data):
     # Root img
-    root_img = os.path.join(p.root_img_publi, "performance_against_number_of_receivers")
+    data_name = os.path.split(os.path.split(root_data)[0])[1]
+    root_img = os.path.join(
+        p.root_img_publi, "performance_against_number_of_receivers", data_name
+    )
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
@@ -87,29 +92,42 @@ def perf_vs_nb_rcv(snrs=[0], root_data=p.root_data):
 
 def perf_vs_snr(root_data):
     # Root img
-    root_img = os.path.join(p.root_img_publi, "performance_against_snr")
+    data_name = os.path.split(os.path.split(root_data)[0])[1]
+    root_img = os.path.join(p.root_img_publi, "performance_against_snr", data_name)
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
     best_subarray = [0, 1, 4]
-    worst_subarray = [1, 3, 5]
-    subarrays_list = [best_subarray, worst_subarray]
+    worst_subarray = [0, 1, 3]
+    # subarrays_list = [best_subarray, worst_subarray]
     # subarrays_list = [[0, 1, 2, 3, 4, 5]]
-    # subarrays_list = [best_subarray]
+    subarrays_list = [[0, 1, 2, 3, 4, 5], worst_subarray, best_subarray]
 
+    perf_threshold(subarrays_list, root_data, root_res=root_img)
+
+    study_perf_vs_snr_compare_arrays_publi(
+        subarrays_list, root_img, root_data=root_data
+    )
     study_perf_vs_snr_publi(subarrays_list, root_img, root_data=root_data)
 
 
 if __name__ == "__main__":
     # no_noise_amb_surf()
 
-    root_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data\backups\rtf_zhang_backup_07041041\data"
+    root_backup = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data\backups"
+
+    # Library source = LFM
+    # data_name = "rtf_zhang_backup_07041041"
+
+    # Library source = WGN
+    data_name = "rtf_zhang_backup_11042025"
+    root_data = os.path.join(root_backup, data_name, "data")
 
     p1 = np.arange(-15, -10, 1)
     p2 = np.arange(-5, 5, 1)
     p3 = np.arange(5, 15, 1)
     p4 = np.arange(-5, 15, 1)
-    p5 = np.arange(-10, -5, 1)
+    p5 = np.arange(-10, 1, 1)
 
     # perf_vs_nb_rcv(root_data=root_data, snrs=p1)
     # perf_vs_nb_rcv(root_data=root_data, snrs=p2)
@@ -117,4 +135,4 @@ if __name__ == "__main__":
     # perf_vs_nb_rcv(root_data=root_data, snrs=p4)
     perf_vs_nb_rcv(root_data=root_data, snrs=p5)
 
-    # perf_vs_snr(root_data=root_data)
+    perf_vs_snr(root_data=root_data)

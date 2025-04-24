@@ -3,7 +3,7 @@
 """
 @File    :   run_kraken_exec.py
 @Time    :   2024/02/21 15:34:27
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Run Kraken executables.
@@ -20,7 +20,7 @@ import multiprocessing
 
 from cst import N_CORES
 from propa.kraken_toolbox.params import KRAKEN_BIN_DIRECTORY
-from propa.kraken_toolbox.kraken_env import KrakenEnv
+from propa.kraken_toolbox.src.kraken_env import KrakenEnv
 from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import find_optimal_intervals
 
@@ -367,7 +367,7 @@ def runkraken_broadband_range_dependent(
         try:
             run_field_exec(env.filename, parallel, worker_pid)
 
-        # Read pressure field for the current frequency
+            # Read pressure field for the current frequency
             _, _, _, _, read_freq, _, field_pos, pressure = readshd(
                 filename=env.filename + ".shd", freq=frequencies[ifreq]
             )

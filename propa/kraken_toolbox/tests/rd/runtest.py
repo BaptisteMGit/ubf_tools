@@ -8,7 +8,7 @@ from cst import SAND_PROPERTIES, TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 from propa.kraken_toolbox.run_kraken import run_kraken_exec
 from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.plot_utils import plotshd
-from propa.kraken_toolbox.kraken_env import (
+from propa.kraken_toolbox.src.kraken_env import (
     KrakenTopHalfspace,
     KrakenMedium,
     KrakenBottomHalfspace,

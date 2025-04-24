@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from cst import SAND_PROPERTIES, TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.plot_utils import plotshd_from_pressure_field
-from propa.kraken_toolbox.kraken_env import (
+from propa.kraken_toolbox.src.kraken_env import (
     KrakenTopHalfspace,
     KrakenMedium,
     KrakenBottomHalfspace,

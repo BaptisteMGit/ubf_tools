@@ -20,7 +20,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from cst import SAND_PROPERTIES, C0
+import source.global_constants as g
+
 from publication.publication_figure import PubFigure
 from propa.kraken_toolbox.utils import align_var_description
 from propa.kraken_toolbox.plot_utils import plot_ssp, plot_attenuation, plot_density
@@ -332,7 +333,7 @@ class KrakenBottomHalfspace:
         self,
         boundary_condition="acousto_elastic",
         sigma=0.0,
-        halfspace_properties=SAND_PROPERTIES,
+        halfspace_properties=g.sand_properties,
         fmin=10,
         alpha_wavelength=10,
     ):
@@ -341,7 +342,7 @@ class KrakenBottomHalfspace:
         self.halfspace_properties = halfspace_properties
 
         # Sedim layer depth
-        self.sedim_layer_depth = alpha_wavelength * C0 / fmin
+        self.sedim_layer_depth = alpha_wavelength * g.c0 / fmin
         self.z_in_bottom = np.array(
             [0, self.sedim_layer_depth]
         )  # Depth from bottom water/sediment interface (m)
@@ -450,7 +451,7 @@ class KrakenBottomHalfspace:
             self.lines.append(half_space_prop)
 
     def set_default(self):
-        self.halfspace_properties = SAND_PROPERTIES
+        self.halfspace_properties = g.sand_properties
         self.boundary_condition = "acousto_elastic"
         self.set_boundary_code()
         self.sigma = 0.0
@@ -541,9 +542,9 @@ class KrakenField:
 
         self.phase_speed_limits = np.array(phase_speed_limits)
 
-        self.src_depth = np.array(src_depth)
-        if self.src_depth.size == 1:
-            self.src_depth = np.array([src_depth])
+        self.src_depth = np.atleast_1d(src_depth)
+        # if self.src_depth.size == 1:
+        #     self.src_depth = np.array([src_depth])
 
         self.n_rcv_z = n_rcv_z
         self.rcv_depth_min = rcv_z_min
@@ -1137,7 +1138,7 @@ if __name__ == "__main__":
         units="m",
     )
 
-    bott_hs_properties = SAND_PROPERTIES
+    bott_hs_properties = g.sand_properties
     bott_hs_properties["z"] = z_ssp.max()
     bott_hs = KrakenBottomHalfspace(
         halfspace_properties=bott_hs_properties,

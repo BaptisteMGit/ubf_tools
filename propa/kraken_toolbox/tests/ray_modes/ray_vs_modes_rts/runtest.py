@@ -10,7 +10,7 @@ from propa.kraken_toolbox.post_process import (
     postprocess_received_signal,
     postprocess_received_signal_from_broadband_pressure_field,
 )
-from propa.kraken_toolbox.kraken_env import (
+from propa.kraken_toolbox.src.kraken_env import (
     KrakenTopHalfspace,
     KrakenMedium,
     KrakenBottomHalfspace,

@@ -20,7 +20,7 @@ import multiprocessing
 
 from cst import N_CORES
 from propa.kraken_toolbox.params import KRAKEN_BIN_DIRECTORY
-from propa.kraken_toolbox.kraken_env import KrakenEnv
+from propa.kraken_toolbox.src.kraken_env import KrakenEnv
 from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.utils import find_optimal_intervals
 
@@ -205,7 +205,7 @@ class KrakenManager:
         """
         Wrapper for field executable.
 
-        :param filename: (str) Env filename without the .env extension
+        :param filename: (str) Flp filename without the .flp extension
         :param parallel: (bool) Run in parallel mode (default: False)
         :param worker_pid: (int) Worker process id
         :param silent: (bool) Silent mode (default: True)

@@ -1,6 +1,7 @@
-""" Run kraken with range dependent downslope environment. 
-Defining a single media with an semi-infinite halfspace bottom leads to crash. 
-To fix it we need to define a 2 layer environement with the seconde layer being the sediment. """
+"""Run kraken with range dependent downslope environment.
+Defining a single media with an semi-infinite halfspace bottom leads to crash.
+To fix it we need to define a 2 layer environement with the seconde layer being the sediment.
+"""
 
 import os
 import time
@@ -11,7 +12,7 @@ import matplotlib.pyplot as plt
 from propa.kraken_toolbox.run_kraken import runkraken
 from propa.kraken_toolbox.read_shd import readshd
 from propa.kraken_toolbox.plot_utils import plotshd
-from propa.kraken_toolbox.kraken_env import (
+from propa.kraken_toolbox.src.kraken_env import (
     KrakenTopHalfspace,
     KrakenMedium,
     KrakenBottomHalfspace,

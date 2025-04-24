@@ -5,7 +5,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 
 from signals.signals import ricker_pulse
-from propa.kraken_toolbox.kraken_env import (
+from propa.kraken_toolbox.src.kraken_env import (
     KrakenTopHalfspace,
     KrakenMedium,
     KrakenBottomHalfspace,

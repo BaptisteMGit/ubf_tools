@@ -3,7 +3,7 @@ import time
 import numpy as np
 import pandas as pd
 
-from propa.kraken_toolbox.kraken_env import (
+from propa.kraken_toolbox.src.kraken_env import (
     KrakenTopHalfspace,
     KrakenMedium,
     KrakenBottomHalfspace,

@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from propa.kraken_toolbox.kraken_env import KrakenMedium
+from propa.kraken_toolbox.src.kraken_env import KrakenMedium
 
 sig_type = "pulse_train"
 

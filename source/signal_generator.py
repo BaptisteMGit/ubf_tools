@@ -429,6 +429,7 @@ class SignalGenerator:
 
         return s, t
 
+    @staticmethod
     def pulse(T, f, fs, t0=0):
         """Generate pulse defined in Jensen et al. (2000)"""
         t = np.arange(0, T, 1 / fs)
@@ -445,6 +446,7 @@ class SignalGenerator:
 
         return s, t
 
+    @staticmethod
     def pulse_train(T, f, fs, interpulse_delay=None):
         """Generate train of pulses"""
         pulse_duration = 4 / f
@@ -480,6 +482,29 @@ class SignalGenerator:
         """LFM chirp signal"""
         t = np.arange(0, T, 1 / fs)
         s = np.cos(2 * np.pi * (f0 + (f1 - f0) / (2 * T) * t) * t + phi)
+
+        return s, t
+
+    @staticmethod
+    def lfm_chirp_train(f0, f1, fs, T_chirp, T, interpulse_delay=None, start_delay=0):
+
+        if interpulse_delay is None:
+            interpulse_delay = 0.5 * T_chirp
+
+        t_chirp = np.arange(0, T_chirp, 1 / fs)
+        s0 = sp.chirp(t=t_chirp, f0=f0, f1=f1, t1=T_chirp, method="linear")
+        pad_before_t = np.arange(0, start_delay, 1 / fs)
+        pad_after_t = np.arange(0, T - (T_chirp + start_delay), 1 / fs)
+        s0 = np.pad(s0, (len(pad_before_t), len(pad_after_t)))
+
+        n_lfm = int(np.ceil((T - start_delay) / (interpulse_delay + T_chirp)))
+        s = np.zeros_like(s0)
+        t = np.arange(0, T, 1 / fs)
+        shift = int((interpulse_delay + T_chirp) * fs)
+        print(shift * 1 / fs)
+        for i in range(n_lfm):
+            si = np.roll(s0, shift=i * shift)
+            s += si
 
         return s, t
 
@@ -542,16 +567,23 @@ class SignalGenerator:
 
     @staticmethod
     def plot_spectrogram(
-        t, f, S_tf, title="Spectrogram", xlabel="Time (s)", ylabel="Frequency (Hz)"
+        t,
+        f,
+        S_tf,
+        ax=None,
+        title="Spectrogram",
+        xlabel="Time (s)",
+        ylabel="Frequency (Hz)",
     ):
         """Plot spectrogram"""
-        plt.figure()
-        plt.pcolormesh(t, f, np.abs(S_tf))
-        plt.title(title)
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        plt.grid()
-        plt.show()
+        if ax is None:
+            fig, ax = plt.subplots(1, 1)
+        ax.pcolormesh(t, f, np.abs(S_tf))
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.grid()
+        # plt.show()
 
     @staticmethod
     def plot_signal_spectrogram(

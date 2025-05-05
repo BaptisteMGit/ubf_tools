@@ -1980,182 +1980,187 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
         msr_gcc_std_allsnrs.append(msr_gcc_std)
         msr_rtf_std_allsnrs.append(msr_rtf_std)
 
-        # # Plot RMSE vs subarray size
-        # plt.figure(figsize=(8, 6))
-        # plt.errorbar(
-        #     subarray_sizes_unique,
-        #     rmse_gcc_mean,
-        #     yerr=rmse_gcc_std,
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="DCF",
-        #     color="tab:red",
-        #     markersize=4,
-        # )
-        # plt.errorbar(
-        #     subarray_sizes_unique,
-        #     rmse_rtf_mean,
-        #     yerr=rmse_rtf_std,
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="RTF",
-        #     color="tab:blue",
-        #     markersize=4,
-        # )
-        # plt.ylim([0, 500])
-        # plt.xlabel("Number of receivers in subarray")
-        # plt.ylabel("RMSE [m]")
-        # plt.title(f"SNR = {snr} dB")
-        # plt.legend()
+        pfig = PubFigure(
+            label_fontsize=25,
+            ticks_fontsize=25,
+            labelpad=15,
+            legend_fontsize=14,
+            title_fontsize=14,
+        )
 
-        # fpath = os.path.join(root_img, f"rmse_subarrays_snr{snr}")
-        # plt.savefig(f"{fpath}.eps", dpi=300)
-        # plt.savefig(f"{fpath}.png", dpi=300)
+        if len(snrs) == 1:
+            snr = snrs[0]
+            # Plot RMSE vs subarray size
+            plt.figure(figsize=(8, 6))
+            plt.errorbar(
+                subarray_sizes_unique,
+                rmse_gcc_mean,
+                yerr=rmse_gcc_std,
+                capsize=4,
+                fmt="o-",
+                label="DCF",
+                color="tab:red",
+                markersize=4,
+            )
+            plt.errorbar(
+                subarray_sizes_unique,
+                rmse_rtf_mean,
+                yerr=rmse_rtf_std,
+                capsize=4,
+                fmt="o-",
+                label="RTF",
+                color="tab:blue",
+                markersize=4,
+            )
+            plt.ylim([0, 500])
+            plt.xlabel("Number of receivers in subarray")
+            plt.ylabel("RMSE [m]")
+            plt.title(f"SNR = {snr} dB")
+            plt.legend()
 
-        # # Plot DR vs subarray size
-        # plt.figure(figsize=(8, 6))
-        # plt.errorbar(
-        #     subarray_sizes_unique,
-        #     dr_gcc_mean,
-        #     yerr=dr_gcc_std,
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="DCF",
-        #     color="tab:red",
-        #     markersize=4,
-        # )
-        # plt.errorbar(
-        #     subarray_sizes_unique,
-        #     dr_rtf_mean,
-        #     yerr=dr_rtf_std,
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="RTF",
-        #     color="tab:blue",
-        #     markersize=4,
-        # )
-        # plt.ylim([0, 500])
-        # plt.xlabel("Number of receivers in subarray")
-        # plt.ylabel("DR [m]")
-        # plt.title(f"SNR = {snr} dB")
-        # plt.legend()
+            fpath = os.path.join(root_img, f"rmse_subarrays_snr{snr}")
+            # plt.savefig(f"{fpath}.eps", dpi=300)
+            plt.savefig(f"{fpath}.png", dpi=300)
 
-        # fpath = os.path.join(root_img, f"dr_subarrays_snr{snr}")
-        # plt.savefig(f"{fpath}.eps", dpi=300)
-        # plt.savefig(f"{fpath}.png", dpi=300)
+            # Plot DR vs subarray size
+            plt.figure(figsize=(8, 6))
+            plt.errorbar(
+                subarray_sizes_unique,
+                dr_gcc_mean,
+                yerr=dr_gcc_std,
+                capsize=4,
+                fmt="o-",
+                label="DCF",
+                color="tab:red",
+                markersize=4,
+            )
+            plt.errorbar(
+                subarray_sizes_unique,
+                dr_rtf_mean,
+                yerr=dr_rtf_std,
+                capsize=4,
+                fmt="o-",
+                label="RTF",
+                color="tab:blue",
+                markersize=4,
+            )
+            plt.ylim([0, 500])
+            plt.xlabel("Number of receivers in subarray")
+            plt.ylabel("DR [m]")
+            plt.title(f"SNR = {snr} dB")
+            plt.legend()
 
-        # # Plot MSR vs subarray size
-        # plt.figure(figsize=(8, 6))
-        # plt.errorbar(
-        #     subarray_sizes_unique,
-        #     msr_gcc_mean,
-        #     yerr=msr_gcc_std,
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="DCF",
-        #     color="tab:red",
-        #     markersize=4,
-        # )
-        # plt.errorbar(
-        #     subarray_sizes_unique,
-        #     msr_rtf_mean,
-        #     yerr=msr_rtf_std,
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="RTF",
-        #     color="tab:blue",
-        #     markersize=4,
-        # )
-        # plt.ylim([-5, 0])
-        # plt.xlabel("Number of receivers in subarray")
-        # plt.ylabel("MSR [dB]")
-        # plt.title(f"SNR = {snr} dB")
-        # plt.legend()
+            fpath = os.path.join(root_img, f"dr_subarrays_snr{snr}")
+            # plt.savefig(f"{fpath}.eps", dpi=300)
+            plt.savefig(f"{fpath}.png", dpi=300)
 
-        # fpath = os.path.join(root_img, f"msr_subarrays_snr{snr}")
-        # plt.savefig(f"{fpath}.eps", dpi=300)
-        # plt.savefig(f"{fpath}.png", dpi=300)
+            # Plot MSR vs subarray size
+            plt.figure(figsize=(8, 6))
+            plt.errorbar(
+                subarray_sizes_unique,
+                msr_gcc_mean,
+                yerr=msr_gcc_std,
+                capsize=4,
+                fmt="o-",
+                label="DCF",
+                color="tab:red",
+                markersize=4,
+            )
+            plt.errorbar(
+                subarray_sizes_unique,
+                msr_rtf_mean,
+                yerr=msr_rtf_std,
+                capsize=4,
+                fmt="o-",
+                label="RTF",
+                color="tab:blue",
+                markersize=4,
+            )
+            plt.ylim([-5, 0])
+            plt.xlabel("Number of receivers in subarray")
+            plt.ylabel("MSR [dB]")
+            plt.title(f"SNR = {snr} dB")
+            plt.legend()
 
-        # # Plot RMSE and MSR on the same figure with dual y-axes
-        # fig, ax1 = plt.subplots(figsize=(8, 6))
+            fpath = os.path.join(root_img, f"msr_subarrays_snr{snr}")
+            # plt.savefig(f"{fpath}.eps", dpi=300)
+            plt.savefig(f"{fpath}.png", dpi=300)
 
-        # # Plot RMSE
-        # rmse_gcc = ax1.errorbar(
-        #     subarray_sizes_unique,
-        #     rmse_gcc_mean,
-        #     yerr=rmse_gcc_std,
-        #     color="tab:blue",
-        #     capsize=4,
-        #     fmt="o--",
-        #     label="RMSE DCF",
-        #     markersize=4,
-        # )
-        # rmse_rtf = ax1.errorbar(
-        #     subarray_sizes_unique,
-        #     rmse_rtf_mean,
-        #     yerr=rmse_rtf_std,
-        #     color="tab:blue",
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="RMSE RTF",
-        #     markersize=4,
-        # )
-        # ax1.set_xlabel("Number of receivers in subarray")
-        # ax1.set_ylabel("RMSE [m]", color="tab:blue")
-        # ax1.tick_params(axis="y", labelcolor="tab:blue")
-        # # ax1.set_title(f"SNR = {snr} dB")
-        # # ax1.legend(loc="upper left")
+            # Plot RMSE and MSR on the same figure with dual y-axes
+            fig, ax1 = plt.subplots(figsize=(8, 6))
 
-        # # Create a second y-axis for MSR
-        # ax2 = ax1.twinx()
-        # msr_gcc = ax2.errorbar(
-        #     subarray_sizes_unique,
-        #     msr_gcc_mean,
-        #     yerr=msr_gcc_std,
-        #     color="tab:red",
-        #     capsize=4,
-        #     fmt="o--",
-        #     label="MSR DCF",
-        #     markersize=4,
-        # )
-        # msr_rtf = ax2.errorbar(
-        #     subarray_sizes_unique,
-        #     msr_rtf_mean,
-        #     yerr=msr_rtf_std,
-        #     color="tab:red",
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="MSR RTF",
-        #     markersize=4,
-        # )
-        # ax2.set_ylabel("MSR [dB]", color="tab:red")
-        # ax2.tick_params(axis="y", labelcolor="tab:red")
-        # # ax2.legend(loc="upper right")
-        # # Collect handles and labels from both axes
-        # handles = [rmse_gcc, rmse_rtf, msr_gcc, msr_rtf]
-        # labels = [h.get_label() for h in handles]
-        # fig.legend(
-        #     handles,
-        #     labels,
-        #     loc="upper right",
-        #     frameon=True,
-        #     bbox_to_anchor=(0.81, 0.7),
-        #     ncol=1,
-        # )
+            # Plot RMSE
+            rmse_gcc = ax1.errorbar(
+                subarray_sizes_unique,
+                rmse_gcc_mean,
+                yerr=rmse_gcc_std,
+                color="tab:blue",
+                capsize=4,
+                fmt="o--",
+                label="RMSE DCF",
+                markersize=4,
+            )
+            rmse_rtf = ax1.errorbar(
+                subarray_sizes_unique,
+                rmse_rtf_mean,
+                yerr=rmse_rtf_std,
+                color="tab:blue",
+                capsize=4,
+                fmt="o-",
+                label="RMSE RTF",
+                markersize=4,
+            )
+            ax1.set_xlabel("Number of receivers in subarray")
+            ax1.set_ylabel("RMSE [m]", color="tab:blue")
+            ax1.tick_params(axis="y", labelcolor="tab:blue")
+            # ax1.set_title(f"SNR = {snr} dB")
+            # ax1.legend(loc="upper left")
 
-        # # Save the combined figure
-        # fpath = os.path.join(root_img, f"rmse_msr_combined_snr{snr}")
-        # plt.savefig(f"{fpath}.eps", dpi=300)
-        # plt.savefig(f"{fpath}.png", dpi=300)
+            # Create a second y-axis for MSR
+            ax2 = ax1.twinx()
+            msr_gcc = ax2.errorbar(
+                subarray_sizes_unique,
+                msr_gcc_mean,
+                yerr=msr_gcc_std,
+                color="tab:red",
+                capsize=4,
+                fmt="o--",
+                label="MSR DCF",
+                markersize=4,
+            )
+            msr_rtf = ax2.errorbar(
+                subarray_sizes_unique,
+                msr_rtf_mean,
+                yerr=msr_rtf_std,
+                color="tab:red",
+                capsize=4,
+                fmt="o-",
+                label="MSR RTF",
+                markersize=4,
+            )
+            ax2.set_ylabel("MSR [dB]", color="tab:red")
+            ax2.tick_params(axis="y", labelcolor="tab:red")
+            # ax2.legend(loc="upper right")
+            # Collect handles and labels from both axes
+            handles = [rmse_gcc, rmse_rtf, msr_gcc, msr_rtf]
+            labels = [h.get_label() for h in handles]
+            fig.legend(
+                handles,
+                labels,
+                loc="upper right",
+                frameon=True,
+                # bbox_to_anchor=(0.81, 0.7),
+                bbox_to_anchor=(0.4, 0.4),
+                ncol=1,
+            )
+
+            # Save the combined figure
+            fpath = os.path.join(root_img, f"rmse_msr_combined_snr{snr}")
+            plt.savefig(f"{fpath}.eps", dpi=300)
+            plt.savefig(f"{fpath}.png", dpi=300)
 
     # Plot subfigs for all snrs
-    pfig = PubFigure(
-        label_fontsize=25,
-        ticks_fontsize=25,
-        labelpad=15,
-        legend_fontsize=14,
-        title_fontsize=14,
-    )
+
     # Plot RMSE vs subarray size
     ncol = 5
     n_arrays = len(snrs)
@@ -2295,6 +2300,14 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
 
     # Load results (all available snrs)
     msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list, root_data=root_data)
+
+    pfig = PubFigure(
+        label_fontsize=25,
+        ticks_fontsize=25,
+        labelpad=15,
+        legend_fontsize=14,
+        title_fontsize=14,
+    )
 
     for sa_key in msr.keys():
         # Extract info dataframes for current subarray
@@ -2444,69 +2457,69 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
         fpath = os.path.join(root_img, f"rmse_msr_snr_{sa_key}_subplots.png")
         plt.savefig(fpath)
 
-        # ## Combined plot ##
-        # # Plot RMSE
-        # fig, ax1 = plt.subplots(figsize=(8, 6))
-        # rmse_gcc = ax1.plot(
-        #     rmse_sa.index,
-        #     rmse_sa["dcf"],
-        #     "s--",
-        #     label="RMSE DCF",
-        #     color="tab:blue",
-        #     markersize=4,
-        # )
-        # rmse_rtf = ax1.plot(
-        #     rmse_sa.index,
-        #     rmse_sa["rtf"],
-        #     "o-",
-        #     label="RMSE RTF",
-        #     color="tab:blue",
-        #     markersize=4,
-        # )
-        # ax1.set_xlabel("SNR [dB]")
-        # ax1.set_ylabel("RMSE [m]", color="tab:blue")
-        # ax1.tick_params(axis="y", labelcolor="tab:blue")
-        # ax1.legend(
-        #     loc="upper right",
-        #     frameon=False,
-        #     bbox_to_anchor=(0.79, 0.98),
-        # )
+        ## Combined plot ##
+        # Plot RMSE
+        fig, ax1 = plt.subplots(figsize=(8, 6))
+        rmse_gcc = ax1.plot(
+            rmse_sa.index,
+            rmse_sa["dcf"],
+            "s--",
+            label="RMSE DCF",
+            color="tab:blue",
+            markersize=4,
+        )
+        rmse_rtf = ax1.plot(
+            rmse_sa.index,
+            rmse_sa["rtf"],
+            "o-",
+            label="RMSE RTF",
+            color="tab:blue",
+            markersize=4,
+        )
+        ax1.set_xlabel("SNR [dB]")
+        ax1.set_ylabel("RMSE [m]", color="tab:blue")
+        ax1.tick_params(axis="y", labelcolor="tab:blue")
+        ax1.legend(
+            loc="upper right",
+            frameon=False,
+            bbox_to_anchor=(0.69, 0.98),
+        )
 
-        # # Create a second y-axis for MSR
-        # ax2 = ax1.twinx()
-        # msr_gcc = ax2.errorbar(
-        #     msr_sa.index,
-        #     msr_sa.dcf_mean,
-        #     yerr=msr_sa.dcf_std,
-        #     color="tab:red",
-        #     capsize=4,
-        #     fmt="s--",
-        #     label="MSR DCF",
-        #     markersize=4,
-        # )
-        # msr_rtf = ax2.errorbar(
-        #     msr_sa.index,
-        #     msr_sa.rtf_mean,
-        #     yerr=msr_sa.rtf_std,
-        #     color="tab:red",
-        #     capsize=4,
-        #     fmt="o-",
-        #     label="MSR RTF",
-        #     markersize=4,
-        # )
+        # Create a second y-axis for MSR
+        ax2 = ax1.twinx()
+        msr_gcc = ax2.errorbar(
+            msr_sa.index,
+            msr_sa.dcf_mean,
+            yerr=msr_sa.dcf_std,
+            color="tab:red",
+            capsize=4,
+            fmt="s--",
+            label="MSR DCF",
+            markersize=4,
+        )
+        msr_rtf = ax2.errorbar(
+            msr_sa.index,
+            msr_sa.rtf_mean,
+            yerr=msr_sa.rtf_std,
+            color="tab:red",
+            capsize=4,
+            fmt="o-",
+            label="MSR RTF",
+            markersize=4,
+        )
 
-        # ax2.set_ylabel("MSR [dB]", color="tab:red")
-        # ax2.tick_params(axis="y", labelcolor="tab:red")
-        # ax2.legend(
-        #     loc="upper right",
-        #     frameon=False,
-        #     bbox_to_anchor=(0.98, 0.98),
-        # )
+        ax2.set_ylabel("MSR [dB]", color="tab:red")
+        ax2.tick_params(axis="y", labelcolor="tab:red")
+        ax2.legend(
+            loc="upper right",
+            frameon=False,
+            bbox_to_anchor=(0.98, 0.98),
+        )
 
-        # # Save the combined figure
-        # fpath = os.path.join(root_img, f"rmse_msr_combined_vs_snr_{sa_key}")
-        # plt.savefig(f"{fpath}.eps", dpi=300)
-        # plt.savefig(f"{fpath}.png", dpi=300)
+        # Save the combined figure
+        fpath = os.path.join(root_img, f"rmse_msr_combined_vs_snr_{sa_key}")
+        plt.savefig(f"{fpath}.eps", dpi=300)
+        plt.savefig(f"{fpath}.png", dpi=300)
 
         plt.close("all")
 
@@ -2549,6 +2562,291 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
         plt.savefig(f"{fpath}.png", dpi=300)
 
         plt.close("all")
+
+
+def study_perf_vs_snr_publi_lfm_wgn(
+    subarrays_list, root_img, root_data_lfm, root_data_wgn
+):
+    """Plot metrics (MSR, RMSE) vs SNR for both DCF and RTF for LFM and WGN"""
+
+    # Load results (all available snrs)
+    msr_lfm, dr_lfm, rmse_lfm = load_msr_rmse_res_subarrays(
+        subarrays_list, root_data=root_data_lfm
+    )
+    msr_wgn, dr_wgn, rmse_wgn = load_msr_rmse_res_subarrays(
+        subarrays_list, root_data=root_data_wgn
+    )
+
+    pfig = PubFigure(
+        label_fontsize=25,
+        ticks_fontsize=25,
+        labelpad=15,
+        legend_fontsize=14,
+        title_fontsize=14,
+    )
+
+    for sa_key in msr_lfm.keys():
+        # Extract info dataframes for current subarray
+        rcv_ids = [f"{id[0]}_{id[1]}" for id in sa_key.split("_")]
+        rcv_str = "$" + ", \,".join(rcv_ids) + "$"
+        dr_sa_lfm = dr_lfm[sa_key]
+        msr_sa_lfm = msr_lfm[sa_key]
+        rmse_sa_lfm = rmse_lfm[sa_key]
+
+        dr_sa_wgn = dr_wgn[sa_key]
+        msr_sa_wgn = msr_wgn[sa_key]
+        rmse_sa_wgn = rmse_wgn[sa_key]
+
+        sig_labels = ["LFM", "WGN"]
+        # Plot msr
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        for i_sig, msr_sa in enumerate([msr_sa_lfm, msr_sa_wgn]):
+            ax.errorbar(
+                msr_sa.index,
+                msr_sa.dcf_mean,
+                yerr=msr_sa.dcf_std,
+                # color="tab:red",
+                capsize=4,
+                fmt="o-",
+                label="DCF " + sig_labels[i_sig],
+                markersize=4,
+            )
+            ax.errorbar(
+                msr_sa.index,
+                msr_sa.rtf_mean,
+                yerr=msr_sa.rtf_std,
+                # color="tab:blue",
+                capsize=4,
+                fmt="o-",
+                label="RTF " + sig_labels[i_sig],
+                markersize=4,
+            )
+        ax.set_xlabel("SNR [dB]")
+        ax.set_ylabel("MSR [dB]")
+        ax.legend()
+        ax.grid()
+
+        plt.suptitle(f"Receivers = ({rcv_str})")
+
+        fpath = os.path.join(root_img, f"msr_snr_{sa_key}.png")
+        plt.savefig(fpath)
+        plt.close("all")
+
+        # Plot dr
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        for i_sig, dr_sa in enumerate([dr_sa_lfm, dr_sa_wgn]):
+            ax.errorbar(
+                dr_sa.index,
+                dr_sa.dcf_mean,
+                yerr=dr_sa.dcf_std,
+                # color="tab:red",
+                capsize=4,
+                fmt="o-",
+                label="DCF " + sig_labels[i_sig],
+                markersize=4,
+            )
+            ax.errorbar(
+                dr_sa.index,
+                dr_sa.rtf_mean,
+                yerr=dr_sa.rtf_std,
+                # color="tab:blue",
+                capsize=4,
+                fmt="o-",
+                label="RTF " + sig_labels[i_sig],
+                markersize=4,
+            )
+        plt.suptitle(f"Receivers = ({rcv_str})")
+        ax.set_ylabel(r"$\Delta_r$" + " [m]")
+        ax.set_xlabel("SNR [dB]")
+        ax.legend()
+        ax.grid()
+        fpath = os.path.join(root_img, f"dr_pos_snr_{sa_key}.png")
+        plt.savefig(fpath)
+
+        # Plot rmse
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        for i_sig, rmse_sa in enumerate([rmse_sa_lfm, rmse_sa_wgn]):
+            # Plot RMSE
+            ax.plot(
+                rmse_sa.index,
+                rmse_sa["dcf"],
+                "o-",
+                # color="tab:red",
+                label="DCF " + sig_labels[i_sig],
+                markersize=3,
+            )
+            ax.plot(
+                rmse_sa.index,
+                rmse_sa["rtf"],
+                "o-",
+                # color="tab:blue",
+                label="RTF " + sig_labels[i_sig],
+                markersize=3,
+            )
+        plt.suptitle(f"Receivers = ({rcv_str})")
+        ax.set_xlabel("SNR [dB]")
+        ax.set_ylabel("RMSE [m]")
+        ax.legend()
+        ax.grid()
+        fpath = os.path.join(root_img, f"rmse_snr_{sa_key}.png")
+        plt.savefig(fpath)
+
+        # # Subplot for RMSE and MSR
+        # fig, axs = plt.subplots(2, 1, figsize=(8, 6), sharex=True)
+        # # Plot RMSE
+        # axs[0].plot(
+        #     rmse_sa.index,
+        #     rmse_sa["dcf"],
+        #     "o-",
+        #     color="tab:red",
+        #     label="DCF",
+        #     markersize=3,
+        # )
+        # axs[0].plot(
+        #     rmse_sa.index,
+        #     rmse_sa["rtf"],
+        #     "o-",
+        #     color="tab:blue",
+        #     label="RTF",
+        #     markersize=3,
+        # )
+        # axs[0].set_ylabel("RMSE [m]")
+        # axs[0].legend()
+        # axs[0].grid()
+        # axs[0].set_title(f"Receivers = ({rcv_str})")
+        # # Plot MSR
+        # axs[1].errorbar(
+        #     msr_sa.index,
+        #     msr_sa.dcf_mean,
+        #     yerr=msr_sa.dcf_std,
+        #     color="tab:red",
+        #     capsize=4,
+        #     fmt="o-",
+        #     label="DCF",
+        #     markersize=3,
+        # )
+        # axs[1].errorbar(
+        #     msr_sa.index,
+        #     msr_sa.rtf_mean,
+        #     yerr=msr_sa.rtf_std,
+        #     color="tab:blue",
+        #     capsize=4,
+        #     fmt="o-",
+        #     label="RTF",
+        #     markersize=3,
+        # )
+        # axs[1].set_xlabel("SNR [dB]")
+        # axs[1].set_ylabel("MSR [dB]")
+        # axs[1].legend()
+        # axs[1].grid()
+        # fpath = os.path.join(root_img, f"rmse_msr_snr_{sa_key}_subplots.png")
+        # plt.savefig(fpath)
+
+        # ## Combined plot ##
+        # # Plot RMSE
+        # fig, ax1 = plt.subplots(figsize=(8, 6))
+        # rmse_gcc = ax1.plot(
+        #     rmse_sa.index,
+        #     rmse_sa["dcf"],
+        #     "s--",
+        #     label="RMSE DCF",
+        #     color="tab:blue",
+        #     markersize=4,
+        # )
+        # rmse_rtf = ax1.plot(
+        #     rmse_sa.index,
+        #     rmse_sa["rtf"],
+        #     "o-",
+        #     label="RMSE RTF",
+        #     color="tab:blue",
+        #     markersize=4,
+        # )
+        # ax1.set_xlabel("SNR [dB]")
+        # ax1.set_ylabel("RMSE [m]", color="tab:blue")
+        # ax1.tick_params(axis="y", labelcolor="tab:blue")
+        # ax1.legend(
+        #     loc="upper right",
+        #     frameon=False,
+        #     bbox_to_anchor=(0.69, 0.98),
+        # )
+
+        # # Create a second y-axis for MSR
+        # ax2 = ax1.twinx()
+        # msr_gcc = ax2.errorbar(
+        #     msr_sa.index,
+        #     msr_sa.dcf_mean,
+        #     yerr=msr_sa.dcf_std,
+        #     color="tab:red",
+        #     capsize=4,
+        #     fmt="s--",
+        #     label="MSR DCF",
+        #     markersize=4,
+        # )
+        # msr_rtf = ax2.errorbar(
+        #     msr_sa.index,
+        #     msr_sa.rtf_mean,
+        #     yerr=msr_sa.rtf_std,
+        #     color="tab:red",
+        #     capsize=4,
+        #     fmt="o-",
+        #     label="MSR RTF",
+        #     markersize=4,
+        # )
+
+        # ax2.set_ylabel("MSR [dB]", color="tab:red")
+        # ax2.tick_params(axis="y", labelcolor="tab:red")
+        # ax2.legend(
+        #     loc="upper right",
+        #     frameon=False,
+        #     bbox_to_anchor=(0.98, 0.98),
+        # )
+
+        # # Save the combined figure
+        # fpath = os.path.join(root_img, f"rmse_msr_combined_vs_snr_{sa_key}")
+        # plt.savefig(f"{fpath}.eps", dpi=300)
+        # plt.savefig(f"{fpath}.png", dpi=300)
+
+        # plt.close("all")
+
+        # # Plot delta quantities
+        # delta_rmse = rmse_sa["rtf"] - rmse_sa["dcf"]
+        # delta_msr = msr_sa["rtf_mean"] - msr_sa["dcf_mean"]
+        # delta_dr = dr_sa["rtf_mean"] - dr_sa["dcf_mean"]
+
+        # # Plot combined plot with delta_msr and delta_rmse
+        # fig, ax1 = plt.subplots(figsize=(8, 6))
+        # delta_rmse_plot = ax1.plot(
+        #     rmse_sa.index,
+        #     delta_rmse,
+        #     "o-",
+        #     label="RMSE",
+        #     color="tab:blue",
+        #     markersize=4,
+        # )
+        # ax1.set_xlabel("SNR [dB]")
+        # ax1.set_ylabel(r"$\Delta$" + "RMSE [m]", color="tab:blue")
+        # ax1.tick_params(axis="y", labelcolor="tab:blue")
+
+        # # Create a second y-axis for MSR
+        # ax2 = ax1.twinx()
+
+        # delta_msr_plot = ax2.plot(
+        #     msr_sa.index,
+        #     delta_msr,
+        #     "o-",
+        #     label="MSR",
+        #     color="tab:red",
+        #     markersize=4,
+        # )
+        # ax2.set_ylabel(r"$\Delta$" + "MSR [dB]", color="tab:red")
+        # ax2.tick_params(axis="y", labelcolor="tab:red")
+
+        # # Save the combined figure
+        # fpath = os.path.join(root_img, f"delta_rmse_msr_combined_vs_snr_{sa_key}")
+        # plt.savefig(f"{fpath}.eps", dpi=300)
+        # plt.savefig(f"{fpath}.png", dpi=300)
+
+        # plt.close("all")
 
 
 def study_perf_vs_snr_compare_arrays_publi(subarrays_list, root_img, root_data):

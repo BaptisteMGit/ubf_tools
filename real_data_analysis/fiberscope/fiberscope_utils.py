@@ -20,13 +20,17 @@ import matplotlib.pyplot as plt
 
 from publication.publication_figure import PubFigure
 from propa.rtf.rtf_utils import D_hermitian_angle_fast
-from real_data_analysis.fiberscope.read_tdms import load_fiberscope_data
+from real_data_analysis.fiberscope.src.read_tdms import load_fiberscope_data
 from real_data_analysis.deconvolution_utils import crosscorr_deconvolution
 from propa.rtf.rtf_estimation.rtf_estimation_utils import (
-    rtf_cs,
-    rtf_cw,
+    # rtf_cs,
+    # rtf_cw,
     get_stft_array,
     get_csdm_from_signal,
+)
+
+from propa.rtf.rtf_localisation.zhang_et_al_testcase.src.feature_builder import (
+    FeatureProcessor,
 )
 
 # Set figure properties
@@ -82,6 +86,10 @@ def derive_rtf(
     else:
         process_recording(recording_name, recording_props, processing_props)
         data = xr.open_dataset(fpath)
+
+    # Create folder to store imgs
+    if not os.path.exists(data.attrs["img_path"]):
+        os.makedirs(data.attrs["img_path"])
 
     # Unpack usefull properties
     # By default the reference hydrophone is the fifth one located in the water column
@@ -175,6 +183,7 @@ def split_signal_noise(data, recording_props, processing_props):
     n_hydro = data.sizes["h_index"]
     ts = data.ts
 
+    print(f"t_interp_pulse {t_interp_pulse}")
     # Derive the split time for the first emission received by the hydrophone n°4 (the one which is likely to received the highest number of echoes)
     # The goal of choosing a common split time is that the simultaneity of received signals is preserved (essential to derive csdm)
     hydro_for_split_time_calibration = 4
@@ -182,15 +191,22 @@ def split_signal_noise(data, recording_props, processing_props):
         h_index=hydro_for_split_time_calibration
     )
 
+    split_method = "rolling_power"
     if split_method == "rolling_power":
         rolling_power = y.rolling(time=1000, center=True).var().dropna("time")
         power_threshold = rolling_power.max() * alpha_th
+        # power_threshold = rolling_power[-1]
+        power_threshold = rolling_power[-1] * (1 + 0.5)
         # Detect last instant where the power is above the threshold
         time_with_power_above_threshold = rolling_power.time.values[
             rolling_power.values > power_threshold.values
         ]
-        split_time_0 = time_with_power_above_threshold[0]
+        # split_time_0 = time_with_power_above_threshold[0]
+        split_time_0 = 0
         split_time_1 = time_with_power_above_threshold[-1]
+
+        # split_time_1 = 0.27
+        # print(f"Split_time1 {split_time_1}")
 
     elif split_method == "band_energy":
         # Other approach : use the energy level in the frequency band of interest to split signal and noise
@@ -243,6 +259,7 @@ def split_signal_noise(data, recording_props, processing_props):
     )  # Integrate over the frequency band -> energy in V^2
 
     # Detect impulsions : from below to above threshold
+    energy_threshold = np.max(energy_band[tt > tt.max() * 0.9]) * 4
     impulsions = energy_band > energy_threshold
 
     # Count impulsions
@@ -381,20 +398,12 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
         # illustrate_signal_noise_split_process(data, recording_props, processing_props)
         data = split_signal_noise(data, recording_props, processing_props)
 
-    # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
-    idx_pos_ref_hydro = np.argmin(np.abs(data.h_index.values - ref_hydro))
-    npos_to_roll = data.sizes["h_index"] - idx_pos_ref_hydro
-    data = data.roll(
-        h_index=npos_to_roll,
-        roll_coords=True,
-    )
-
-    # Input to cs and cw functions must be array of shape (nt, n_rcv)
+    # (nt, n_rcv)
     x = data.signal_plus_noise.T.values
-    tx = data.signal_plus_noise_time.values
     v = data.only_noise.T.values
-    tv = data.only_noise_time.values
+
     # Covariance substraction
+    # tau_ir = 0.5  # Until 18/04/2025
     tau_ir = 0.5
     nperseg = int(tau_ir / ts)
     # Get closer upper power of 2
@@ -405,11 +414,42 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
     )
     # nperseg = 2**12
     noverlap = nperseg // 2
-    ff, Rx = get_csdm_from_signal(tx, x, nperseg, noverlap)
-    ff, Rv = get_csdm_from_signal(tv, v, nperseg, noverlap)
+
+    idx_hydro_ref = np.argmin(np.abs(data.h_index.values - ref_hydro))
+    # Feature processor to handle rtf_estimator and gcc_estimator
+    fp = FeatureProcessor(
+        fs=1 / ts,
+        idx_rcv_ref=idx_hydro_ref,
+        nperseg=nperseg,
+        noverlap=noverlap,
+        window="hann",
+    )
+
+    f, rtf, Rx, Rv = fp.rtf_estimator.covariance_subtraction(
+        noisy_signal=x,
+        noise_only=v,
+        use_first_column=False,
+        add_id_x=False,
+        add_id_v=False,
+    )
+
+    # f, rtf, Rx, Rv = fp.rtf_estimator.covariance_whitening(
+    #     noisy_signal=x,
+    #     noise_only=v,
+    # )
+
+    data.coords["f_rtf_cs"] = f
+    data["rtf_amp_cs"] = (
+        ["h_index", "f_rtf_cs"],
+        np.abs(rtf).T,
+    )
+    data["rtf_phase_cs"] = (
+        ["h_index", "f_rtf_cs"],
+        np.angle(rtf).T,
+    )
 
     # Add Rx and R_v to the dataset
-    data.coords["f_csdm"] = ff
+    data.coords["f_csdm"] = f
     # Create h_index bis to avoid duplicate coordinates
     data.coords["h_index_bis"] = data.h_index
     data["Rx"] = (
@@ -421,35 +461,65 @@ def derive_rtf_from_recordings(data, recording_props, processing_props):
         np.abs(Rv),
     )
 
-    if method in ["cs", "both"]:
-        f, rtf = rtf_cs(ff, n_hydro, Rx, Rv)
-        # Add frequency and estimated rtf to the dataset
-        data.coords["f_rtf_cs"] = f
-        data["rtf_amp_cs"] = (
-            ["h_index", "f_rtf_cs"],
-            np.abs(rtf).T,
-        )
-        data["rtf_phase_cs"] = (
-            ["h_index", "f_rtf_cs"],
-            np.angle(rtf).T,
-        )
-    if method in ["cw", "both"]:
-        # nperseg /= 2
-        # noverlap /= 2
-        x = data.signal.T.values
-        ff, _, stft_x = get_stft_array(x, 1 / ts, nperseg, noverlap)
+    # # By default rtf estimation method assumed the first receiver as the reference -> need to roll along the receiver axis
+    # idx_pos_ref_hydro = np.argmin(np.abs(data.h_index.values - ref_hydro))
+    # npos_to_roll = data.sizes["h_index"] - idx_pos_ref_hydro
+    # data = data.roll(
+    #     h_index=npos_to_roll,
+    #     roll_coords=True,
+    # )
 
-        f, rtf = rtf_cw(ff, n_hydro, stft_x, Rv)
-        # Add frequency and estimated rtf to the dataset
-        data.coords["f_rtf_cw"] = f
-        data["rtf_amp_cw"] = (
-            ["h_index", "f_rtf_cw"],
-            np.abs(rtf).T,
-        )
-        data["rtf_phase_cw"] = (
-            ["h_index", "f_rtf_cw"],
-            np.angle(rtf).T,
-        )
+    # # Input to cs and cw functions must be array of shape (nt, n_rcv)
+    # x = data.signal_plus_noise.T.values
+    # tx = data.signal_plus_noise_time.values
+    # v = data.only_noise.T.values
+    # tv = data.only_noise_time.values
+
+    # ff, Rx = get_csdm_from_signal(tx, x, nperseg, noverlap)
+    # ff, Rv = get_csdm_from_signal(tv, v, nperseg, noverlap)
+
+    # # Add Rx and R_v to the dataset
+    # data.coords["f_csdm"] = ff
+    # # Create h_index bis to avoid duplicate coordinates
+    # data.coords["h_index_bis"] = data.h_index
+    # data["Rx"] = (
+    #     ["f_csdm", "h_index", "h_index_bis"],
+    #     np.abs(Rx),
+    # )
+    # data["Rv"] = (
+    #     ["f_csdm", "h_index", "h_index_bis"],
+    #     np.abs(Rv),
+    # )
+
+    # if method in ["cs", "both"]:
+    #     f, rtf = rtf_cs(ff, n_hydro, Rx, Rv)
+    #     # Add frequency and estimated rtf to the dataset
+    #     data.coords["f_rtf_cs"] = f
+    #     data["rtf_amp_cs"] = (
+    #         ["h_index", "f_rtf_cs"],
+    #         np.abs(rtf).T,
+    #     )
+    #     data["rtf_phase_cs"] = (
+    #         ["h_index", "f_rtf_cs"],
+    #         np.angle(rtf).T,
+    #     )
+    # if method in ["cw", "both"]:
+    #     # nperseg /= 2
+    #     # noverlap /= 2
+    #     x = data.signal.T.values
+    #     ff, _, stft_x = get_stft_array(x, 1 / ts, nperseg, noverlap)
+
+    #     f, rtf = rtf_cw(ff, n_hydro, stft_x, Rv)
+    #     # Add frequency and estimated rtf to the dataset
+    #     data.coords["f_rtf_cw"] = f
+    #     data["rtf_amp_cw"] = (
+    #         ["h_index", "f_rtf_cw"],
+    #         np.abs(rtf).T,
+    #     )
+    #     data["rtf_phase_cw"] = (
+    #         ["h_index", "f_rtf_cw"],
+    #         np.angle(rtf).T,
+    #     )
 
     return data
 
@@ -498,16 +568,19 @@ def illustrate_signal_noise_split_process(data, recording_props, processing_prop
         "split_method", "band_energy"
     )  # Method to split signal and noise "band_energy" or "rolling_power"
 
+    split_method = "rolling_power"
     if split_method == "rolling_power":
         rolling_power = y.rolling(time=1000, center=True).var().dropna("time")
 
         alpha_th = 0.01 * 1e-2  # 0.01% of the maximum power
-        power_threshold = rolling_power.max() * alpha_th
+        # power_threshold = rolling_power.max() * alpha_th
+        power_threshold = rolling_power[-1] * (1 + 0.4)
         # Detect last instant where the power is above the threshold
         time_with_power_above_threshold = rolling_power.time.values[
             rolling_power.values > power_threshold.values
         ]
-        split_time = time_with_power_above_threshold[-1]
+        split_time_0 = time_with_power_above_threshold[0]
+        split_time_1 = time_with_power_above_threshold[-1]
 
         # Plot signal and rolling power on two subfigures to illustrate the signal / noise split process
         fig, axs = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
@@ -521,28 +594,37 @@ def illustrate_signal_noise_split_process(data, recording_props, processing_prop
         axs[1].set_xlabel("")
         fig.supxlabel(r"$t \, \textrm{[s]}$")
         # Add vertical line to illustrate the last instant where the power is above the threshold
-        annotation = (
-            f"$t_c = {np.round(split_time, 2)}"
+        annotation_0 = (
+            f"$t_c = {np.round(split_time_0, 2)}"
             + r"\, \textrm{s}$ \,"
             + r"$(\sigma^2 >"
             + f"{alpha_th * 1e2} \% \,"
             + r"\sigma^2_{\textrm{max}})$"
         )
-        axs[0].axvline(split_time, color="k", linestyle="--")
-        axs[1].axvline(split_time, color="k", linestyle="--")
-        # Annotate the vertical line
-        axs[0].annotate(
-            annotation,
-            xy=(split_time, 0),
-            xytext=(split_time * 1.05, y.max() * 0.8),
-            # arrowprops=dict(facecolor="black", arrowstyle="->"),
+        annotation_1 = (
+            f"$t_c = {np.round(split_time_1, 2)}"
+            + r"\, \textrm{s}$ \,"
+            + r"$(\sigma^2 >"
+            + f"{alpha_th * 1e2} \% \,"
+            + r"\sigma^2_{\textrm{max}})$"
         )
-        axs[1].annotate(
-            annotation,
-            xy=(split_time, 0),
-            xytext=(split_time * 1.05, rolling_power.max() * 0.8),
-            # arrowprops=dict(facecolor="black", arrowstyle="->"),
-        )
+
+        for ax in axs:
+            ax.axvline(split_time_0, color="k", linestyle="--")
+            ax.axvline(split_time_1, color="k", linestyle="--")
+            # Annotate the vertical line
+            ax.annotate(
+                annotation_0,
+                xy=(split_time_0, 0),
+                xytext=(split_time_0 * 1.05, y.max() * 0.8),
+                # arrowprops=dict(facecolor="black", arrowstyle="->"),
+            )
+            ax.annotate(
+                annotation_1,
+                xy=(split_time_1, 0),
+                xytext=(split_time_1 * 1.05, rolling_power.max() * 0.8),
+                # arrowprops=dict(facecolor="black", arrowstyle="->"),
+            )
 
         fpath = os.path.join(
             img_root, "method_illustration", "signal_noise_split_process_var_sig.png"
@@ -783,7 +865,7 @@ def analyse_rtf_estimation_results(recording_name, processing_props, verbose=Fal
         plt.xlabel(r"$f \, \textrm{[Hz]}$")
         plt.ylabel(r"$\left| \Pi \right|$")
         plt.xlim(10 * 1e3, 13 * 1e3)
-        # plt.ylim([1e-1, 1e1])
+        plt.ylim([1e-2, 1e2])
         plt.yscale("log")
         plt.legend()
         plt.savefig(

@@ -25,7 +25,7 @@ from publication.publication_figure import PubFigure
 PubFigure()
 
 
-def load_fiberscope_data(file_path):
+def load_fiberscope_data(file_path, subsampling_factor=None):
     # Load data from tdms file
     group_of_interrest = "Acquisition Hydros - Données"
 
@@ -94,6 +94,14 @@ def load_fiberscope_data(file_path):
     # Add attributes to variables
     ds["signal"].attrs["long_name"] = r"$u$"
     ds["signal"].attrs["unit"] = r"$\textrm{V}$"
+
+    # Apply subsampling is required
+    if subsampling_factor is not None:
+        # Subsample the signal
+        ds = ds.isel(time=slice(0, None, subsampling_factor))
+        # Update sampling frequency
+        ds.attrs["ts"] = ds.ts * subsampling_factor
+        ds.attrs["fs"] = 1 / ds.ts
 
     # Derive stft of the signal
     stft = []

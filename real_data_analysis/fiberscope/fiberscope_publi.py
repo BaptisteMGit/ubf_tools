@@ -178,8 +178,6 @@ def process_dyn_analysis(recording_names_dynamic):
 
 
 # ## Localise
-
-
 def process_dyn_loc(records_to_loc, gcc_methods=["scot"], run_a=False):
     dict_loc_dynamic = {}
     for recording_name_to_loc in records_to_loc:
@@ -557,13 +555,16 @@ if __name__ == "__main__":
 
     ROOT_IMG_PUBLI = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope\imgs"
 
+    # Run analysis on dyn recordings
+    process_dyn_analysis(recording_names_dynamic)
+
     # records_to_loc = ["10-10-2024T16-53-43-200271_PR_N1_346_P1_r20.25m_P4"]
     em_lvl_to_loc = "N5"
     records_to_loc = sweep_1["recording_names"][em_lvl_to_loc]
     gcc_methods = ["scot"]
 
     # Process dynamic recording
-    dict_loc_dynamic = process_dyn_loc(records_to_loc, gcc_methods, run_a=True)
+    dict_loc_dynamic = process_dyn_loc(records_to_loc, gcc_methods, run_a=False)
 
     # Build matrix containing the localization results
     for loc_method in ["d_gcc", "d_rtf"]:
@@ -600,7 +601,7 @@ if __name__ == "__main__":
             d_max = d_max.T
             d_min = d_min.T
 
-        # Normalized distance for each time step
+        # Normalize
         q = (d - d_min) / (d_max - d_min)
 
         # In dB

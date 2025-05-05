@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 
 from signals.signals import lfm_chirp
 from publication.publication_figure import PubFigure
-from real_data_analysis.fiberscope.read_tdms import load_fiberscope_data
+from real_data_analysis.fiberscope.src.read_tdms import load_fiberscope_data
 from real_data_analysis.signal_processing_utils import get_bifrequency_spectrum
 
 PubFigure()

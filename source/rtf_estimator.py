@@ -220,7 +220,9 @@ class RTFEstimator:
         """
 
         if use_first_column:
-            rtf = self.covariance_subtraction_first_column(clean_signal_csdm)
+            rtf = self.covariance_subtraction_first_column(
+                clean_signal_csdm, self.index_reference_rcv
+            )
         else:
             rtf = self.covariance_subtraction_major_eigen_vector(
                 clean_signal_csdm, self.index_reference_rcv
@@ -253,7 +255,7 @@ class RTFEstimator:
 
     @staticmethod
     def covariance_subtraction_first_column(
-        clean_signal_csdm: np.ndarray,
+        clean_signal_csdm: np.ndarray, idx_rcv_ref: int = 0
     ) -> np.ndarray:
         """
         Estimate the RTF using the covariance subtraction method with the first column of the CSDM.
@@ -262,6 +264,8 @@ class RTFEstimator:
         ----------
         clean_signal_csdm : np.ndarray
             Clean speech CSDM (num_frequency_bins x num_receivers x num_receivers).
+        idx_rcv_ref : int, optional
+            Index of the reference receiver.
 
         Returns
         -------
@@ -269,7 +273,7 @@ class RTFEstimator:
             Estimated RTF (num_frequency_bins x num_receivers).
 
         """
-        e1 = np.eye(clean_signal_csdm.shape[-1])[:, 0]
+        e1 = np.eye(clean_signal_csdm.shape[-1])[:, idx_rcv_ref]
 
         # Vectorized computation of rtf across all frequencies
         clean_signal_csdm_e1 = (

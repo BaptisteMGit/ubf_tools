@@ -5,7 +5,7 @@ import scipy.io as sio
 import matplotlib.pyplot as plt
 
 from cst import SAND_PROPERTIES, RHO_W
-from propa.kraken_toolbox.kraken_env import (
+from propa.kraken_toolbox.src.kraken_env import (
     KrakenEnv,
     KrakenTopHalfspace,
     KrakenMedium,
@@ -830,11 +830,11 @@ class TestCase3_1(TestCase3):
 if __name__ == "__main__":
 
     # Test class
-    # tc1_0 = TestCase1_0(mode="show")
+    tc1_0 = TestCase1_0(mode="show")
     # tc1_1 = TestCase1_1(mode="show")
     # tc1_2 = TestCase1_2(mode="show")
     # tc1_3 = TestCase1_3(mode="show")
-    tc1_4 = TestCase1_4(mode="show")
+    # tc1_4 = TestCase1_4(mode="show")
     # tc2_0 = TestCase2_0(mode="show")
 
     # tc_varin = {

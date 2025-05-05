@@ -28,6 +28,7 @@ import propa.rtf.rtf_localisation.zhang_et_al_testcase.src.params as p
 from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_plot_utils import (
     perf_threshold,
     study_perf_vs_snr_publi,
+    study_perf_vs_snr_publi_lfm_wgn,
     study_perf_vs_snr_compare_arrays_publi,
     plot_fullarray_ambiguity_surfaces_publi,
     plot_performance_vs_number_of_rcv_in_subarray_publi,
@@ -111,17 +112,35 @@ def perf_vs_snr(root_data):
     study_perf_vs_snr_publi(subarrays_list, root_img, root_data=root_data)
 
 
+def study_lfm_vs_wgn_snr(root_data_lfm, root_data_wgn):
+    # Root img
+    root_img = os.path.join(p.root_img_publi, "performance_against_snr", "lfm_vs_wgn")
+    if not os.path.exists(root_img):
+        os.makedirs(root_img)
+
+    best_subarray = [0, 1, 4]
+    worst_subarray = [0, 1, 3]
+    subarrays_list = [[0, 1, 2, 3, 4, 5], worst_subarray, best_subarray]
+
+    # study_perf_vs_snr_publi(subarrays_list, root_img, root_data=root_data)
+    study_perf_vs_snr_publi_lfm_wgn(
+        subarrays_list, root_img, root_data_lfm, root_data_wgn
+    )
+
+
 if __name__ == "__main__":
     # no_noise_amb_surf()
 
     root_backup = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\zhang_et_al_testcase\data\backups"
 
     # Library source = LFM
-    # data_name = "rtf_zhang_backup_07041041"
+    data_name = "rtf_zhang_backup_07041041"
+    root_data_lfm = os.path.join(root_backup, data_name, "data")
 
     # Library source = WGN
-    data_name = "rtf_zhang_backup_11042025"
-    root_data = os.path.join(root_backup, data_name, "data")
+    # data_name = "rtf_zhang_backup_11042025"
+    data_name = "rtf_zhang_backup_05052025"
+    root_data_wgn = os.path.join(root_backup, data_name, "data")
 
     p1 = np.arange(-15, -10, 1)
     p2 = np.arange(-5, 5, 1)
@@ -133,6 +152,8 @@ if __name__ == "__main__":
     # perf_vs_nb_rcv(root_data=root_data, snrs=p2)
     # perf_vs_nb_rcv(root_data=root_data, snrs=p3)
     # perf_vs_nb_rcv(root_data=root_data, snrs=p4)
-    perf_vs_nb_rcv(root_data=root_data, snrs=p5)
+    # perf_vs_nb_rcv(root_data=root_data, snrs=[-10])
 
-    perf_vs_snr(root_data=root_data)
+    # perf_vs_snr(root_data=root_data)
+
+    study_lfm_vs_wgn_snr(root_data_lfm=root_data_lfm, root_data_wgn=root_data_wgn)

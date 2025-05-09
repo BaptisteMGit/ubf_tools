@@ -278,7 +278,7 @@ class SignalGenerator:
             idx_stop = int((start_offset_seconds + i * (Tz + ici) + Tz) * fs)
             s_whale[idx_start:idx_stop] = single_z_call
 
-        return s_whale, t
+        return t, s_whale
 
     @staticmethod
     def normalize_to_sl(sig, sl):
@@ -291,9 +291,9 @@ class SignalGenerator:
         return sig
 
     @classmethod
-    def generate_ship_signal(
+    def ship_signal(
         cls,
-        Ttot,
+        T,
         f0,
         std_fi=None,
         tau_corr_fi=None,
@@ -316,9 +316,9 @@ class SignalGenerator:
             A_harmonics = np.ones(Nh)
 
         # signal variables
-        t = np.arange(0, Ttot, 1 / fs)
-        f = np.arange(0, fs, 1 / Ttot)
-        Nt = len(t)
+        t = np.arange(0, T, 1 / fs)
+        # f = np.arange(0, fs, 1 / Ttot)
+        # Nt = len(t)
 
         # random instant frequency perturbation delta_fi with Gaussian power spectrum
         freq = np.fft.fftfreq(len(t), 1 / fs)
@@ -353,7 +353,7 @@ class SignalGenerator:
         # Normalize
         s = cls.normalize_sig(s, normalize, sl)
 
-        return s, t
+        return t, s
 
     @staticmethod
     def ship_spectrum(f):
@@ -479,11 +479,12 @@ class SignalGenerator:
 
     @staticmethod
     def lfm_chirp(f0, f1, fs, T, phi=0):
-        """LFM chirp signal"""
+        """This is just a wrapper to scipy chirp function"""
         t = np.arange(0, T, 1 / fs)
-        s = np.cos(2 * np.pi * (f0 + (f1 - f0) / (2 * T) * t) * t + phi)
+        s = sp.chirp(t=t, f0=f0, f1=f1, t1=T, method="linear", phi=phi)
+        # s = np.cos(2 * np.pi * (f0 + (f1 - f0) / (2 * T) * t) * t + phi)
 
-        return s, t
+        return t, s
 
     @staticmethod
     def lfm_chirp_train(f0, f1, fs, T_chirp, T, interpulse_delay=None, start_delay=0):

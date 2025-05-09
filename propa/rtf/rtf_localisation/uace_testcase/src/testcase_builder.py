@@ -14,7 +14,7 @@
 # ======================================================================================================================
 
 
-class TestCaseBuilder:
+class TestCase:
     """
     Class to build the test case env files
     """

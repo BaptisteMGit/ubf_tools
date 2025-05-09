@@ -41,7 +41,7 @@ class DataBuilder:
         fs: float = p.fs,
         signal_duration: float = p.duration,
         antenna_type: str = p.antenna_type,
-        library_stype: str = p.antenna_type,
+        library_stype: str = p.library_stype,
         event_stype: str = p.event_stype,
         debug: bool = False,
         verbose: bool = False,

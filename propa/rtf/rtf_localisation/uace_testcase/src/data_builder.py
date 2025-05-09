@@ -167,7 +167,7 @@ class DataBuilder:
             coords=dict(
                 f=ds.f.values,
                 y=self.simulation.grid_y,
-                x=self.simulation.grid_y,
+                x=self.simulation.grid_x,
                 idx_rcv=self.simulation.antenna.rcv_idx,
             ),
             attrs=dict(
@@ -430,11 +430,11 @@ if __name__ == "__main__":
     # Test the class
     debug = False
     antenna = SparseAntenna(
-        name="Test_sparse_antenna", n_elements=3, random_radius=5e3, rng_seed=42
+        name="Test_sparse_antenna", n_elements=6, random_radius=5e3, rng_seed=42
     )
     simu = Simulation(debug=debug, antenna=antenna)
     db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
+    # db.build_tf_dataset()
     db.grid_dataset()
     db.build_signal()
 

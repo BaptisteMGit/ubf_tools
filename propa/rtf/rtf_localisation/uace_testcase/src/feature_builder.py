@@ -135,8 +135,7 @@ class FeatureBuilder:
                     dx=dx,
                     dy=dy,
                     root_img=os.path.join(
-                        p.root_img,
-                        f"from_signal_dx{dx}m_dy{dy}m",
+                        self.simulation.root_img_from_sig,
                         f"snr_{snr_dB:.1f}dB",
                     ),
                 ),

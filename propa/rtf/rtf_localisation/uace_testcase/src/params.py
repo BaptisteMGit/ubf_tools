@@ -97,8 +97,21 @@ search_area_length = 1e3
 cmin = 1488  # Min speed in SwellEx96 mean profile
 
 # Localization params
+monte_carlo_iterations = 100
 frequency_drawing_method = "equally_spaced"  # "equally_spaced" / "random"
 number_of_drawn_frequencies = 100
+
+# Plot results from loc params
+plot_args = {
+    "plot_array": True,
+    "plot_single_cpl_surf": False,
+    "plot_fullarray_surf": True,
+    "plot_cpl_surf_comparison": False,
+    "plot_fullarray_surf_comparison": False,
+    "plot_surf_dist_comparison": False,
+    "plot_mainlobe_contour": False,
+    "plot_msr_estimation": False,
+}
 
 # Signal general properties
 fmin = 5

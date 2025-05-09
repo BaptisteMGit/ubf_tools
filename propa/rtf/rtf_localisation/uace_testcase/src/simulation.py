@@ -33,6 +33,7 @@ class Simulation:
     def __init__(
         self,
         name: str = p.name,
+        root_img: str = p.root_img,
         root_tmp: str = p.root_tmp,
         root_data: str = p.root_data,
         fmin: float = p.fmin,
@@ -49,6 +50,7 @@ class Simulation:
         dy: float = p.dy,
         search_area_length: float = p.search_area_length,
         cmin: float = p.cmin,
+        monte_carlo_iterations: int = p.monte_carlo_iterations,
         frequency_drawing_method: str = p.frequency_drawing_method,
         number_of_drawn_frequencies: int = p.number_of_drawn_frequencies,
         check_features: bool = False,
@@ -59,6 +61,7 @@ class Simulation:
         Constructor
         """
         self.name = name
+        self.root_img = root_img
         self.root_tmp = root_tmp
         self.root_data = root_data
         self.fs = fs
@@ -88,10 +91,17 @@ class Simulation:
         self.grid_res_label = f"dx{dx}m_dy{dy}m"
         self.search_area_length = search_area_length
 
+        # Init grid properties
+        self.grid_x = None
+        self.grid_y = None
+        self.grid_rmax = None
+        self.grid_ranges_from_rcv = None
+
         # Environment properties
         self.cmin = cmin
 
         # Localization params
+        self.monte_carlo_iterations = monte_carlo_iterations
         self.frequency_drawing_method = frequency_drawing_method
         self.number_of_drawn_frequencies = number_of_drawn_frequencies
 
@@ -171,10 +181,14 @@ class Simulation:
             localization_dataset_fname = (
                 f"{self.name}_localization_{self.grid_res_label}"
             )
-
+        self.localization_dataset_fname = localization_dataset_fname
         self.localization_dataset_fpath = os.path.join(
             self.root_data, localization_dataset_fname + ".nc"
         )
+
+        self.from_sig_foldername = f"from_signal_{self.grid_res_label}"
+        # Folder to store img derived from signal
+        self.root_img_from_sig = os.path.join(self.root_img, self.from_sig_foldername)
 
     def init_grid(self):
         # Derive range from each receiver
@@ -220,6 +234,7 @@ class Simulation:
 
         # Set debug parameters
         self.search_area_length = 200
+        self.monte_carlo_iterations = 2
 
 
 if __name__ == "__main__":

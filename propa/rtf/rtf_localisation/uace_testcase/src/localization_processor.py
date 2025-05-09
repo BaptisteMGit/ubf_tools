@@ -18,27 +18,16 @@ import xarray as xr
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from misc import compute_hyperbola
-import propa.rtf.rtf_localisation.uace_testcase.src.params as p
+from itertools import combinations
+from misc import compute_hyperbola, cast_matrix_to_target_shape
 from propa.rtf.rtf_localisation.uace_testcase.src.feature_builder import FeatureBuilder
-
-from misc import cast_matrix_to_target_shape
-from propa.rtf.rtf_localisation.zhang_et_al_testcase.zhang_misc import (
-    estimate_msr,
-    # get_subarrays,
-    get_rcv_couples,
-    # get_array_label,
-    # build_subarrays_args,
-    load_msr_rmse_res_subarrays,
-    get_axis_order,
-)
-
 from propa.rtf.rtf_utils import D_hermitian_angle_fast, normalize_metric_contrast
 from publication.publication_figure import PubFigure
 
-PubFigure(ticks_fontsize=22, use_tex=p.use_tex)
+import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 
 # Libraries to handle main lobe detection
+from skimage import measure  # Import for contour detection
 from scipy import ndimage as ndi
 from skimage.filters import rank
 from sklearn import preprocessing
@@ -47,6 +36,8 @@ from sklearn.cluster import KMeans
 from skimage.morphology import disk
 from skimage.util import img_as_ubyte
 from scipy.ndimage import binary_dilation, label
+
+PubFigure(ticks_fontsize=22, use_tex=p.use_tex)
 
 
 class LocalizationProcessor:
@@ -348,7 +339,7 @@ class LocalizationProcessor:
         ds_fa = ds.sel(idx_rcv=rcv_in_fullarray).sel(idx_rcv_ref=rcv_in_fullarray)
 
         # Build full array gcc with all required couples
-        rcv_couples_fa = get_rcv_couples(idx_receivers=ds_fa.idx_rcv.values)
+        rcv_couples_fa = self.get_rcv_couples(idx_receivers=ds_fa.idx_rcv.values)
 
         ###### Two sensor pairs ######
         # # Select receivers to build the sub-array
@@ -807,7 +798,7 @@ class LocalizationProcessor:
             )
 
         ###### Two sensor pairs ######
-        rcv_couples = get_rcv_couples(ds_fa.idx_rcv)
+        rcv_couples = self.get_rcv_couples(ds_fa.idx_rcv)
 
         if plot_single_cpl_surf:
             cpl_foldername = "ambiguity_surface_receivers_pair"
@@ -818,7 +809,7 @@ class LocalizationProcessor:
                 # Load data for rcv_cpl
                 fpath = (
                     self.current_snr_dataset_rootpath
-                    + f"s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
+                    + f"_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
                 )
                 ds_cpl = xr.open_dataset(fpath)
 
@@ -911,52 +902,38 @@ class LocalizationProcessor:
         y_src = self.simulation.event_ship_y
 
         ###### Figure 4 : Subplot in Zhang et al 2023 ######
-        # if len(ds_fa.idx_rcv) == 6 and not np.isnan(ds_fa.snr):
-        #     rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
-        # else:  # Full simu case
+        rcv_couples = self.get_rcv_couples(ds_fa.idx_rcv)
 
-        # TODO : adapt this code
-        # rcv_couples = get_rcv_couples(ds_fa.idx_rcv)
+        if plot_cpl_surf_comparison:
+            self.plot_subarrays_ambiguity_surfaces(
+                rcv_couples,
+                vmin,
+                vmax,
+                xticks_pos_m,
+                yticks_pos_m,
+                cmap=cmap,
+            )
 
-        # if plot_cpl_surf_comparison:
-        #     self.plot_subarrays_ambiguity_surfaces(
-        #         root_img,
-        #         rcv_couples,
-        #         data_fname,
-        #         root_data,
-        #         grid,
-        #         x_src,
-        #         y_src,
-        #         vmin,
-        #         vmax,
-        #         xticks_pos_m,
-        #         yticks_pos_m,
-        #         cmap=cmap,
-        #     )
+        ###### Figure 5 : Subplot in Zhang et al 2023 ######
+        if plot_fullarray_surf_comparison:
+            self.plot_fullarray_ambiguity_surfaces(
+                ds_fa,
+                vmin,
+                vmax,
+                xticks_pos_m,
+                yticks_pos_m,
+                cmap=cmap,
+            )
 
-        # ###### Figure 5 : Subplot in Zhang et al 2023 ######
-        # if plot_fullarray_surf_comparison:
-        #     self.plot_fullarray_ambiguity_surfaces(
-        #         ds_fa,
-        #         root_img,
-        #         x_src,
-        #         y_src,
-        #         vmin,
-        #         vmax,
-        #         xticks_pos_m,
-        #         yticks_pos_m,
-        #         cmap=cmap,
-        #     )
+        ###### Figure 5 distribution ######
+        if plot_surf_dist_comparison:
+            self.plot_ambiguity_surface_distribution(ds_fa)
 
-        # ###### Figure 5 distribution ######
-        # if plot_surf_dist_comparison:
-        #     self.plot_ambiguity_surface_distribution(ds_fa, root_img)
-
-        # ###### Figure 5 showing pixels selected as the mainlobe ######
-        # if plot_mainlobe_contour:
-        #     self.plot_ambiguity_surface_mainlobe_contour(
-        #         ds_fa, root_img, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap=cmap
-        #     )
+        ###### Figure 5 showing pixels selected as the mainlobe ######
+        if plot_mainlobe_contour:
+            self.plot_ambiguity_surface_mainlobe_contour(
+                ds_fa, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap=cmap
+            )
 
         # estimate_msr(ds=ds_fa, verbose=True)
 
@@ -984,7 +961,7 @@ class LocalizationProcessor:
         rcv_x = np.append(self.simulation.antenna.x, self.simulation.antenna.x[0])
         rcv_y = np.append(self.simulation.antenna.y, self.simulation.antenna.y[0])
 
-        x_src, y_src = self.simulation.event_ship_x, self.simulation.event_ship_x
+        x_src, y_src = self.simulation.event_ship_x, self.simulation.event_ship_y
         true_pos_label = (
             r"$X_{src} = ( "
             + f"{x_src:.0f}\,"
@@ -1055,13 +1032,8 @@ class LocalizationProcessor:
         plt.savefig(fpath, dpi=300)
 
     def plot_subarrays_ambiguity_surfaces(
-        root_img,
+        self,
         rcv_couples,
-        data_fname,
-        root_data,
-        grid,
-        x_src,
-        y_src,
         vmin,
         vmax,
         xticks_pos_m,
@@ -1071,9 +1043,9 @@ class LocalizationProcessor:
 
         true_pos_label = (
             r"$X_{src} = ( "
-            + f"{x_src:.0f}\,"
+            + f"{self.simulation.event_ship_x:.0f}\,"
             + r"\textrm{m},\,"
-            + f"{y_src:.0f}\,"
+            + f"{self.simulation.event_ship_y:.0f}\,"
             + r"\textrm{m})$"
         )
 
@@ -1087,14 +1059,18 @@ class LocalizationProcessor:
         for i_cpl, rcv_cpl in enumerate(rcv_couples):
 
             # Load data
-            if data_fname is None:
-                data_fname_cpl = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
-            else:
-                data_fname_cpl = f"{data_fname}_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
+            # if data_fname is None:
+            #     data_fname_cpl = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
+            # else:
+            #     data_fname_cpl = f"{data_fname}_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
 
-            fpath = os.path.join(
-                root_data,
-                data_fname_cpl,
+            # fpath = os.path.join(
+            #     root_data,
+            #     data_fname_cpl,
+            # )
+            fpath = (
+                self.current_snr_dataset_rootpath
+                + f"_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
             )
             ds_cpl = xr.open_dataset(fpath)
 
@@ -1126,8 +1102,8 @@ class LocalizationProcessor:
                 )
 
                 ax.scatter(
-                    x_src,
-                    y_src,
+                    self.simulation.event_ship_x,
+                    self.simulation.event_ship_y,
                     color="k",
                     # facecolors="none",
                     # edgecolors="k",
@@ -1154,8 +1130,8 @@ class LocalizationProcessor:
                     ax.set_ylabel("")
 
                 # # Set xticks
-                ax.set_xticks(xticks_pos_m)
-                ax.set_yticks(yticks_pos_m)
+                # ax.set_xticks(xticks_pos_m)
+                # ax.set_yticks(yticks_pos_m)
 
         # Sup title with SNR
         all_rcv_idx = np.unique(all_rcv_idx)
@@ -1163,23 +1139,23 @@ class LocalizationProcessor:
         plt.suptitle(f"SNR = {ds_cpl.snr} dB, Receivers = ({rcv_str})")
 
         # Save figure
-        root_subarrays_comparison = os.path.join(root_img, "subarrays_comparison")
+        root_subarrays_comparison = os.path.join(
+            self.current_snr_root_img, "subarrays_comparison"
+        )
         if not os.path.exists(root_subarrays_comparison):
             os.makedirs(root_subarrays_comparison)
 
         rcv_lab = "_".join([f"s{id+1}" for id in all_rcv_idx])
         fpath = os.path.join(
             root_subarrays_comparison,
-            f"loc_zhang2023_fig4_snr{ds_cpl.snr}dB_rcvs_{rcv_lab}.png",
+            f"{self.simulation.name}_snr{ds_cpl.snr}dB_rcvs_{rcv_lab}.png",
         )
         plt.savefig(fpath, dpi=300, bbox_inches="tight")
         plt.close("all")
 
     def plot_fullarray_ambiguity_surfaces(
+        self,
         ds_fa,
-        root_img,
-        x_src,
-        y_src,
         vmin,
         vmax,
         xticks_pos_m,
@@ -1189,9 +1165,9 @@ class LocalizationProcessor:
 
         true_pos_label = (
             r"$X_{src} = ( "
-            + f"{x_src:.0f}\,"
+            + f"{self.simulation.event_ship_x:.0f}\,"
             + r"\textrm{m},\,"
-            + f"{y_src:.0f}\,"
+            + f"{self.simulation.event_ship_y:.0f}\,"
             + r"\textrm{m})$"
         )
 
@@ -1219,8 +1195,8 @@ class LocalizationProcessor:
 
             # Add colorbar
             ax.scatter(
-                x_src,
-                y_src,
+                self.simulation.event_ship_x,
+                self.simulation.event_ship_y,
                 color="k",
                 label=true_pos_label,
                 marker="2",
@@ -1236,23 +1212,25 @@ class LocalizationProcessor:
                 ax.set_ylabel("")
 
             # Set xticks
-            ax.set_xticks(xticks_pos_m)
-            ax.set_yticks(yticks_pos_m)
+            # ax.set_xticks(xticks_pos_m)
+            # ax.set_yticks(yticks_pos_m)
 
-        root_fullarray_comparison = os.path.join(root_img, "fullarray_comparison")
+        root_fullarray_comparison = os.path.join(
+            self.current_snr_root_img, "fullarray_comparison"
+        )
         if not os.path.exists(root_fullarray_comparison):
             os.makedirs(root_fullarray_comparison)
 
         rcv_lab = "_".join([f"s{id+1}" for id in ds_fa.idx_rcv])
         fpath = os.path.join(
             root_fullarray_comparison,
-            f"loc_zhang2023_fig5_snr{ds_fa.snr}dB_rcvs_{rcv_lab}.png",
+            f"{self.simulation.name}_snr{ds_fa.snr}dB_rcvs_{rcv_lab}.png",
         )
         plt.savefig(fpath, dpi=300, bbox_inches="tight")
         plt.close("all")
 
     def plot_ambiguity_surface_mainlobe_contour(
-        self, ds_fa, root_img, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap="jet"
+        self, ds_fa, vmin, vmax, xticks_pos_m, yticks_pos_m, cmap="jet"
     ):
         # Find mainlobe contours
         masks = self.get_mainlobe_mask(ds_fa)
@@ -1267,7 +1245,7 @@ class LocalizationProcessor:
             ax = axs[i]
             amb_surf = ds_fa[dist]
 
-            ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+            ax_order = self.get_axis_order(da=amb_surf, ax_names=["x", "y"])
 
             amb_surf.plot(
                 x="x",
@@ -1299,24 +1277,24 @@ class LocalizationProcessor:
                 ax.set_ylabel("")
 
             # Set xticks
-            ax.set_xticks(xticks_pos_m)
-            ax.set_yticks(yticks_pos_m)
+            # ax.set_xticks(xticks_pos_m)
+            # ax.set_yticks(yticks_pos_m)
 
         # Save figure
-        root_mainlobe = os.path.join(root_img, "mainlobe")
+        root_mainlobe = os.path.join(self.current_snr_root_img, "mainlobe")
         if not os.path.exists(root_mainlobe):
             os.makedirs(root_mainlobe)
 
         rcv_lab = "_".join([f"s{id+1}" for id in ds_fa.idx_rcv])
         fpath = os.path.join(
             root_mainlobe,
-            f"loc_zhang2023_mainlobe__snr{ds_fa.snr}dB_rcvs_{rcv_lab}.png",
+            f"{self.simulation.name}_mainlobe__snr{ds_fa.snr}dB_rcvs_{rcv_lab}.png",
         )
         plt.legend()
         plt.savefig(fpath, dpi=300, bbox_inches="tight")
         plt.close("all")
 
-    def plot_ambiguity_surface_distribution(ds_fa, root_img):
+    def plot_ambiguity_surface_distribution(self, ds_fa):
         """
         Plot the distribution of the ambiguity surfaces for d_gcc and d_rtf
         """
@@ -1348,11 +1326,13 @@ class LocalizationProcessor:
             ax.set_xlabel("[dB]")
 
         # Save figure
-        root_dist = os.path.join(root_img, "ambiguity_surf_distribution")
+        root_dist = os.path.join(
+            self.current_snr_root_img, "ambiguity_surf_distribution"
+        )
         if not os.path.exists(root_dist):
             os.makedirs(root_dist)
 
-        fpath = os.path.join(root_dist, "loc_zhang2023_fig5_dist.png")
+        fpath = os.path.join(root_dist, f"{self.simulation.name}_dist.png")
         plt.savefig(fpath, dpi=300, bbox_inches="tight")
         plt.close("all")
 
@@ -1382,18 +1362,19 @@ class LocalizationProcessor:
         # Source position
         x_src = self.simulation.event_ship_x
         y_src = self.simulation.event_ship_y
-        print("True source position: ", x_src, y_src)
 
         # get estimated source position
         _, _, x_src_hat, y_src_hat = self.get_estimated_src_pos(
-            amb_surf=amb_surf, loc_arg="max"
+            amb_surf=amb_surf, loc_arg=loc_arg
         )
 
-        print(
-            "Estimated source position: ",
-            np.round(x_src_hat.values, 1),
-            np.round(y_src_hat.values, 1),
-        )
+        if self.simulation.verbose:
+            print("True source position: ", x_src, y_src)
+            print(
+                "Estimated source position: ",
+                np.round(x_src_hat.values, 1),
+                np.round(y_src_hat.values, 1),
+            )
 
         cmap = self.get_amb_surf_cmap(loc_arg)
 
@@ -1492,7 +1473,7 @@ class LocalizationProcessor:
             if hyperbola_cpls is None:
                 # Compute hyperbola for each pair of receivers
                 # default_cpls = [[0, 2], [1, 4], [3, 5]]
-                hyperbola_cpls = get_rcv_couples(self.simulation.antenna.rcv_idx)
+                hyperbola_cpls = self.get_rcv_couples(self.simulation.antenna.rcv_idx)
 
             for i, sa in enumerate(hyperbola_cpls):
                 receiver1 = (
@@ -1573,10 +1554,10 @@ class LocalizationProcessor:
         plt.savefig(fpath)
         plt.close("all")
 
-    @staticmethod
-    def get_estimated_src_pos(amb_surf, loc_arg):
+    @classmethod
+    def get_estimated_src_pos(cls, amb_surf, loc_arg):
 
-        ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+        ax_order = cls.get_axis_order(da=amb_surf, ax_names=["x", "y"])
 
         # Estimated source position defined as one of the extremum of the ambiguity surface
         if loc_arg == "max":
@@ -1713,10 +1694,10 @@ class LocalizationProcessor:
 
         return msr, pos_hat
 
-    @staticmethod
-    def get_estimated_src_pos(amb_surf, loc_arg):
+    @classmethod
+    def get_estimated_src_pos(cls, amb_surf, loc_arg):
 
-        ax_order = get_axis_order(da=amb_surf, ax_names=["x", "y"])
+        ax_order = cls.get_axis_order(da=amb_surf, ax_names=["x", "y"])
 
         # Estimated source position defined as one of the extremum of the ambiguity surface
         if loc_arg == "max":
@@ -1733,6 +1714,41 @@ class LocalizationProcessor:
         y_src_hat = amb_surf.y[y_idx]
 
         return x_idx, y_idx, x_src_hat, y_src_hat
+
+    @staticmethod
+    def get_rcv_couples(idx_receivers):
+        """
+        Get all possible receiver couples
+        """
+        # rcv_couples = []
+        # for i in idx_receivers:
+        #     for j in idx_receivers:
+        #         if j > i:
+        #             rcv_couples.append([i, j])
+        # rcv_couples = np.array(rcv_couples)
+
+        rcv_couples = np.array(list(combinations(idx_receivers, 2)))
+        rcv_couples = np.atleast_2d(rcv_couples)  # In case only two receivers
+
+        return rcv_couples
+
+    @classmethod
+    def get_mainlobe_contours(cls, amb_surf, mask):
+        x_idx, y_idx, _, _ = cls.get_estimated_src_pos(amb_surf=amb_surf, loc_arg="max")
+        ax_order = cls.get_axis_order(da=amb_surf, ax_names=["x", "y"])
+
+        # Find contours of src_hat_class and select the contour corresponding to the estimated position
+        contours = measure.find_contours(mask, level=0.5)
+        for contour in contours:
+            # Check if src_hat is within the contour
+            idx_x_min = np.min(contour[:, ax_order["x"]].astype(int))
+            idx_x_max = np.max(contour[:, ax_order["x"]].astype(int))
+            idx_y_min = np.min(contour[:, ax_order["y"]].astype(int))
+            idx_y_max = np.max(contour[:, ax_order["y"]].astype(int))
+            if (idx_x_min <= x_idx <= idx_x_max) and (idx_y_min <= y_idx <= idx_y_max):
+                break
+
+        return contour
 
 
 if __name__ == "__main__":

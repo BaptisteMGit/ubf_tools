@@ -1207,6 +1207,9 @@ def check_rtf_features(ds_rtf_cs, folder, antenna_type="zhang", debug=False):
             plt.xlabel(r"$f$" + " [Hz]")
             plt.ylabel(r"$|\Pi(f)|$")
 
+            if i_rcv == i_rcv_ref:
+                plt.ylim(1e-1, 1e1)
+
             # Save figure
             fname = f"check_rtf_rcv{i_rcv}_x{x_i}_y{y_i}.png"
             fpath = os.path.join(root_img, fname)

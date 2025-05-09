@@ -57,9 +57,7 @@ class Antenna:
         """
         self._rcv_idx = np.arange(self.n_elements)
         return self._rcv_idx
-    
-    
-    
+
     def plot_antenna(self):
         """
         Plot the antenna
@@ -142,7 +140,9 @@ class SparseAntenna(Antenna):
     Sparse antenna class
     """
 
-    def __init__(self, name: str, n_elements: int, random_radius: float, rng_seed: int = 42):
+    def __init__(
+        self, name: str, n_elements: int, random_radius: float, rng_seed: int = 42
+    ):
         """
         Constructor
         :param name: Name of the antenna
@@ -156,7 +156,15 @@ class SparseAntenna(Antenna):
         self.x = rng.uniform(-random_radius, random_radius, n_elements)
         self.y = rng.uniform(-random_radius, random_radius, n_elements)
 
-    
+        self.order_receivers()
+
+    def order_receivers(self):
+        """Order receivers according to their coordinates"""
+
+        theta = np.arctan2(self.y, self.x)
+        idx = np.argsort(theta)
+        self.x = self.x[idx]
+        self.y = self.y[idx]
 
 
 class LinearAntenna(Antenna):

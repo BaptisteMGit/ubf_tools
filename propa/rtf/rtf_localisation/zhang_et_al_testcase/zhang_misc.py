@@ -296,7 +296,7 @@ def library_src_spectrum(stype="lfm", fs=1200, T=10, fmin=100, fmax=500, plot=Tr
     # Keep frequencies between 50 and 550 Hz
     idx_in_band = (f_library >= fmin - 50) & (f_library <= fmax + 50)
 
-    # Right frequencies in band in a txt file
+    # Write frequencies in band in a txt file
     f_in_band = f_library[idx_in_band]
     txt = " ".join([f"{f:.2f}" for f in f_in_band])
     fpath = os.path.join(p.root_tmp, "f_in_band.txt")

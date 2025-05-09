@@ -754,31 +754,6 @@ class LocalizationProcessor:
         plot_mainlobe_contour = self.plot_args.get("plot_mainlobe_contour", False)
         plot_msr_estimation = self.plot_args.get("plot_msr_estimation", False)
 
-        # # Define folder to store images
-        # root_img = os.path.join(self.simulation.root_img, self.current_snr_foldername)
-        # if not os.path.exists(root_img):
-        #     os.makedirs(root_img)
-
-        # Define folder to store data
-        # root_data = os.path.join(p.root_data, folder)
-        # if not os.path.exists(root_data):
-        #     os.makedirs(root_data)
-
-        # Load fullarray data
-        # array_label = self.get_array_label(rcv_in_fullarray)
-        # if data_fname is None:
-        #     data_fname_fa = (
-        #         f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray_{array_label}.nc"
-        #     )
-        # else:
-        #     data_fname_fa = f"{data_fname}_fullarray_{array_label}.nc"
-
-        # fpath = os.path.join(
-        #     root_data,
-        #     # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_fullarray.nc",
-        #     data_fname_fa,
-        # )
-        # fpath = os.path.join(self.current_snr_fullarray_dataset_fpath),
         ds_fa = xr.open_dataset(self.current_snr_fullarray_dataset_fpath)
 
         vmin_dB = np.round(
@@ -840,18 +815,7 @@ class LocalizationProcessor:
             # rcv_couples = np.array([[0, 2], [1, 4], [3, 5]])  # s1s3, s2s5, s4s6
 
             for rcv_cpl in rcv_couples:
-
-                # # Load data
-                # if data_fname is None:
-                #     data_fname_cpl = f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
-                # else:
-                #     data_fname_cpl = f"{data_fname}_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
-
-                # fpath = os.path.join(
-                #     root_data,
-                #     # f"loc_zhang_dx{grid['dx']}m_dy{grid['dy']}m_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
-                #     data_fname_cpl,
-                # )
+                # Load data for rcv_cpl
                 fpath = (
                     self.current_snr_dataset_rootpath
                     + f"s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc",
@@ -1148,10 +1112,6 @@ class LocalizationProcessor:
             for i, dist in enumerate(["d_gcc", "d_rtf"]):
                 ax = axs[i, i_cpl]
                 amb_surf = ds_cpl[dist]
-                # # Estimated source position defined as one of the extremum of the ambiguity surface
-                # x_idx, y_idx = np.unravel_index(np.argmax(amb_surf.values), amb_surf.shape)
-                # x_src_hat = amb_surf.x[x_idx]
-                # y_src_hat = amb_surf.y[y_idx]
 
                 im = amb_surf.plot(
                     x="x",
@@ -1164,19 +1124,6 @@ class LocalizationProcessor:
                     cbar_kwargs=cbar_kwargs,
                     add_colorbar=add_colorbar,
                 )
-                # im = ax.pcolormesh(
-                #     ds_cpl["x"].values * 1e-3,
-                #     ds_cpl["y"].values * 1e-3,
-                #     amb_surf.values,
-                #     cmap=cmap,
-                #     vmin=vmin,
-                #     vmax=vmax,
-                #     # extend="neither",
-                #     # cbar_kwargs={"label": ""},
-                # )
-
-                # Add colorbar
-                # cbar = plt.colorbar(im, ax=ax, label=r"$\textrm{[dB]}$")
 
                 ax.scatter(
                     x_src,
@@ -1207,12 +1154,8 @@ class LocalizationProcessor:
                     ax.set_ylabel("")
 
                 # # Set xticks
-                # ax.set_xticks([3500, 4000, 4500])
-                # ax.set_yticks([6400, 6900, 7400])
                 ax.set_xticks(xticks_pos_m)
                 ax.set_yticks(yticks_pos_m)
-                # ax.set_xticklabels(xticks_label_km, fontsize=22)
-                # ax.set_yticklabels(yticks_label_km, fontsize=22)
 
         # Sup title with SNR
         all_rcv_idx = np.unique(all_rcv_idx)
@@ -1295,8 +1238,6 @@ class LocalizationProcessor:
             # Set xticks
             ax.set_xticks(xticks_pos_m)
             ax.set_yticks(yticks_pos_m)
-            # ax.set_xticklabels(xticks_label_km, fontsize=22)
-            # ax.set_yticklabels(yticks_label_km, fontsize=22)
 
         root_fullarray_comparison = os.path.join(root_img, "fullarray_comparison")
         if not os.path.exists(root_fullarray_comparison):
@@ -1469,18 +1410,29 @@ class LocalizationProcessor:
             cbar_kwargs={"label": dist_label},
             # cbar_kwargs={"label": r"$\textrm{[dB]}$"},
         )
-        # amb_surf.plot.contourf(
-        #     x="x",
-        #     y="y",
-        #     cmap=cmap,
-        #     vmin=vmin,
-        #     vmax=vmax,
-        #     extend="neither",
-        #     levels=20,
-        #     # robust=True,
-        #     cbar_kwargs={"label": dist_label},
-        # )
 
+        # Estimated source position
+        estimated_pos_label = (
+            r"$\hat{X}_{src} = ( "
+            + f"{x_src_hat:.0f}\,"
+            + r"\textrm{m},\,"
+            + f"{y_src_hat:.0f}\,"
+            + r"\textrm{m})$"
+        )
+        estimated_pos_label = (
+            r"$\hat{X}_{src}" + f" = ({x_src_hat:.2f}, {y_src_hat:.2f})$"
+        )
+        plt.scatter(
+            x_src_hat,
+            y_src_hat,
+            color="w",
+            marker="o",
+            label=estimated_pos_label,
+            s=400,
+            linewidths=4,
+        )
+
+        # True source position
         true_pos_label = (
             r"$X_{src} = ( "
             + f"{x_src:.0f}\,"
@@ -1488,26 +1440,6 @@ class LocalizationProcessor:
             + f"{y_src:.0f}\,"
             + r"\textrm{m})$"
         )
-        # estimated_pos_label = (
-        #     r"$\hat{X}_{src} = ( "
-        #     + f"{x_src_hat:.0f}\,"
-        #     + r"\textrm{m},\,"
-        #     + f"{y_src_hat:.0f}\,"
-        #     + r"\textrm{m})$"
-        # )
-        # estimated_pos_label = r"$\hat{X}_{src}" + f" = ({r_src_hat:.2f}, {z_src_hat:.2f})$"
-        # plt.scatter(
-        #     x_src_hat, y_src_hat, color="w", marker="o", label=estimated_pos_label, s=100
-        # )  # Estimated source position
-        # plt.scatter(
-        #     x_src,
-        #     y_src,
-        #     facecolors="none",
-        #     edgecolors="k",
-        #     label=true_pos_label,
-        #     s=200,
-        #     linewidths=3,
-        # )  # True source position
 
         plt.scatter(
             x_src,

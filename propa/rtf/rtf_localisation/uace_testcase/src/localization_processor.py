@@ -91,7 +91,7 @@ class LocalizationProcessor:
     def init_msr_file(self, run_mode, subarrays_args):
 
         root_msr = os.path.join(
-            self.simulation.root_data, self.simulation.from_sig_foldername, "msr"
+            self.simulation.data_folder, self.simulation.from_sig_foldername, "msr"
         )
         if not os.path.exists(root_msr):
             os.makedirs(root_msr)
@@ -114,7 +114,7 @@ class LocalizationProcessor:
     def init_dr_file(self, run_mode, subarrays_args):
 
         root_dr = os.path.join(
-            self.simulation.root_data, self.simulation.from_sig_foldername, "dr_pos"
+            self.simulation.data_folder, self.simulation.from_sig_foldername, "dr_pos"
         )
         if not os.path.exists(root_dr):
             os.makedirs(root_dr)
@@ -154,7 +154,7 @@ class LocalizationProcessor:
                 self.simulation.from_sig_foldername, f"snr_{snr:.1f}dB"
             )
             self.current_snr_folderpath = os.path.join(
-                self.simulation.root_data, self.current_snr_foldername
+                self.simulation.data_folder, self.current_snr_foldername
             )
             if not os.path.exists(self.current_snr_folderpath):
                 os.makedirs(self.current_snr_folderpath)
@@ -165,7 +165,7 @@ class LocalizationProcessor:
 
             # Init img folder
             self.current_snr_root_img = os.path.join(
-                self.simulation.root_img, self.current_snr_foldername
+                self.simulation.img_folder, self.current_snr_foldername
             )
             if not os.path.exists(self.current_snr_root_img):
                 os.makedirs(self.current_snr_root_img)
@@ -324,10 +324,15 @@ class LocalizationProcessor:
         # Define distance to use
         dist_func = D_hermitian_angle_fast
 
+        if self.simulation.use_weighted_rtf:
+            # Load weigths
+            ds_rtf_weights = xr.open_dataset(self.simulation.rtf_weights_dataset_fpath)
+
         dist_kwargs = {
             "ax_rcv": ax_rcv,
             "unit": "deg",
             "apply_mean": True,
+            "weights": None,
             "ax_f": ax_f,
         }
 
@@ -367,6 +372,15 @@ class LocalizationProcessor:
             rtf_event = (
                 ds_cpl_rtf.rtf_event_real.values + 1j * ds_cpl_rtf.rtf_event_imag.values
             )  # (n_cpl=2, nf)
+
+            # Select weigths
+            if self.simulation.use_weighted_rtf:
+                rtf_weights_cpl = (
+                    ds_rtf_weights.rtf_weights.sel(f=f_loc_rtf)
+                    .sel(idx_rcv=i_ref)
+                    .values
+                )
+                dist_kwargs["weights"] = rtf_weights_cpl
 
             theta = dist_func(rtf_event, rtf_grid, **dist_kwargs)
 
@@ -565,7 +579,9 @@ class LocalizationProcessor:
         """Plot metrics (MSR, RMSE) vs SNR for both DCF and RTF"""
 
         root_img = os.path.join(
-            self.simulation.root_img, self.simulation.from_sig_foldername, "perf_vs_snr"
+            self.simulation.img_folder,
+            self.simulation.from_sig_foldername,
+            "perf_vs_snr",
         )
         if not os.path.exists(root_img):
             os.makedirs(root_img)
@@ -1065,7 +1081,7 @@ class LocalizationProcessor:
             #     data_fname_cpl = f"{data_fname}_s{rcv_cpl[0]+1}_s{rcv_cpl[1]+1}.nc"
 
             # fpath = os.path.join(
-            #     root_data,
+            #     data_folder,
             #     data_fname_cpl,
             # )
             fpath = (

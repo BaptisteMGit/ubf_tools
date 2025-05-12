@@ -333,7 +333,7 @@ class FeatureBuilder:
                 xs=self.simulation.event_ship_x,
                 ys=self.simulation.event_ship_y,
                 root_img=os.path.join(
-                    p.root_img, f"from_signal_dx{dx}m_dy{dy}m", f"snr_{snr_dB:.1f}dB"
+                    self.simulation.root_img_from_sig, f"snr_{snr_dB:.1f}dB"
                 ),
             )
         )
@@ -372,6 +372,45 @@ class FeatureBuilder:
             attrs=attrs,
         )
 
+        # Derive and save weights to use when deriving the mean hermitian angle
+        if self.simulation.use_weighted_rtf:
+            # Derive weights
+            fpsd, psd = sp.welch(
+                ds_feature_estimate.x_l.values,
+                fs=self.simulation.fs,
+                window="hann",
+                nperseg=nperseg,
+                noverlap=noverlap,
+                axis=1,
+            )
+            psd_db = 10 * np.log10(psd)
+            psd_db_shift = psd_db + np.abs(np.min(psd_db, axis=1, keepdims=True))
+            psd_norm = psd_db_shift / np.max(psd_db_shift, axis=1, keepdims=True)
+            rtf_weights = psd_norm
+
+            # Save weights as netcdf
+            ds_weights = xr.Dataset(
+                data_vars=dict(
+                    rtf_weights=(["idx_rcv", "f", "y", "x"], rtf_weights),
+                ),
+                coords=dict(
+                    f=fpsd,
+                    x=ds_sig.x,
+                    y=ds_sig.y,
+                    idx_rcv=ds_sig.idx_rcv,
+                ),
+            )
+            ds_weights = ds_weights.sel(
+                f=ds_res_from_sig.f_rtf.values, method="nearest"
+            )
+            ds_weights.to_netcdf(self.simulation.rtf_weights_dataset_fpath)
+
+            # plt.figure(figsize=(12, 6))
+            # # plt.plot(fpsd, psd_db[0, :, 0, 0], label="db")
+            # # plt.plot(fpsd, psd_db_shift[0, :, 0, 0], label="psd_db_shift")
+            # plt.plot(fpsd, psd_norm[0, :, 0, 0], label="psd_norm")
+            # plt.savefig("test")
+            # print()
         # Subsample frequency to save memory
         # subsample_idx = np.arange(0, ds_res_from_sig.sizes["f"])[::5]
         # ds_res_from_sig = ds_res_from_sig.isel(f=subsample_idx)
@@ -890,7 +929,7 @@ if __name__ == "__main__":
     # Class test
     from propa.rtf.rtf_localisation.uace_testcase.src.antenna import SparseAntenna
 
-    debug = False
+    debug = True
     antenna = SparseAntenna(
         name="Test_sparse_antenna", n_elements=3, random_radius=5e3, rng_seed=42
     )

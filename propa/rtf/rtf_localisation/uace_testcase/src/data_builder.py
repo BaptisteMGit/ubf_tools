@@ -56,7 +56,7 @@ class DataBuilder:
             lines = file.readlines()
 
         cwd = os.getcwd()
-        os.chdir(self.simulation.root_tmp)
+        os.chdir(self.simulation.tmp_folder)
 
         first_iter = True
         while idx_start < len(f):
@@ -188,9 +188,10 @@ class DataBuilder:
         )
         r_grid_all_rcv_unique = np.unique(np.round(r_grid_all_rcv.flatten(), 0))
 
-        tf_vect = ds.tf_real.sel(
-            r=r_grid_all_rcv_unique, method="nearest"
-        ) + 1j * ds.tf_imag.sel(r=r_grid_all_rcv_unique, method="nearest")
+        # tf_vect = ds.tf_real.sel(
+        #     r=r_grid_all_rcv_unique, method="nearest"
+        # ) + 1j * ds.tf_imag.sel(r=r_grid_all_rcv_unique, method="nearest")
+        tf_vect = ds.tf_real + 1j * ds.tf_imag  # No preprocessing = longuer but safer
 
         gridded_tf = []
         grid_shape = (ds_grid.sizes["f"],) + self.simulation.grid_ranges_from_rcv.shape[

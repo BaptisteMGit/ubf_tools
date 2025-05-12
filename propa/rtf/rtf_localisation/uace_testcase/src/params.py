@@ -14,6 +14,7 @@
 # ======================================================================================================================
 import os
 import numpy as np
+import source.global_constants as g
 from propa.rtf.rtf_localisation.uace_testcase.src.ship_signal import ShipSignal
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import SparseAntenna
 
@@ -88,6 +89,16 @@ antenna = SparseAntenna(
     name="default_antenna", n_elements=6, random_radius=5e3, rng_seed=42
 )
 
+# Waveguide properties
+bott_hs_properties = {
+    "rho": 1.5 * g.rho_w * 1e-3,  # Density (g/cm^3)
+    "c_p": 1550,  # P-wave celerity (m/s)
+    "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+    "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
+    "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
+    "z": None,
+}
+
 # Grid properties
 dx = 20
 dy = 20
@@ -103,7 +114,7 @@ number_of_drawn_frequencies = 100
 
 # Plot results from loc params
 plot_args = {
-    "plot_array": True,
+    "plot_array": False,
     "plot_single_cpl_surf": False,
     "plot_fullarray_surf": True,
     "plot_cpl_surf_comparison": True,
@@ -128,7 +139,6 @@ std_fi_max = 1e-1
 tau_corr_fi_min = 1e-3
 tau_corr_fi_max = 0.5
 
-
 # Plot params
 nperseg = 2**8
 noverlap = 2**7
@@ -149,14 +159,14 @@ library_ship = ShipSignal(
     root_img=root_img_ship_sigs,
 )
 
-library_ship.plot_signal(tmin=tmin, tmax=tmax)
-library_ship.plot_spectrum(fmin=0, fmax=fmax)
-library_ship.plot_psd(
-    window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
-)
-library_ship.plot_stft(
-    window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
-)
+# library_ship.plot_signal(tmin=tmin, tmax=tmax)
+# library_ship.plot_spectrum(fmin=0, fmax=fmax)
+# library_ship.plot_psd(
+#     window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
+# )
+# library_ship.plot_stft(
+#     window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
+# )
 
 # Event ship signal -> signal 19 de la base de signaux
 f0_e = 4.629
@@ -172,20 +182,23 @@ event_ship = ShipSignal(
     root_img=root_img_ship_sigs,
 )
 
-event_ship.plot_signal(tmin=tmin, tmax=tmax)
-event_ship.plot_spectrum(fmin=0, fmax=fmax)
-event_ship.plot_psd(
-    window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
-)
-event_ship.plot_stft(
-    window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
-)
+# event_ship.plot_signal(tmin=tmin, tmax=tmax)
+# event_ship.plot_spectrum(fmin=0, fmax=fmax)
+# event_ship.plot_psd(
+#     window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
+# )
+# event_ship.plot_stft(
+#     window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
+# )
 
 # Position of the ship to localize
-event_ship_x = 7500
-event_ship_y = 8000
+# event_ship_x = 7500
+# event_ship_y = 8000
+event_ship_x = 30000
+event_ship_y = 18000
 event_ship_z = 5
 
+use_weighted_rtf = True
 antenna_type = "random"
 library_stype = "ship"
 event_stype = "ship"

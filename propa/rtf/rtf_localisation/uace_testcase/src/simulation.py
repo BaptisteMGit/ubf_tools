@@ -17,7 +17,7 @@ import numpy as np
 import xarray as xr
 
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import Antenna, SparseAntenna
-
+from propa.kraken_toolbox.src.kraken_env import KrakenEnv, KrakenFlp
 import source.global_constants as g
 from source.signal_generator import SignalGenerator
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
@@ -54,6 +54,8 @@ class Simulation:
         frequency_drawing_method: str = p.frequency_drawing_method,
         number_of_drawn_frequencies: int = p.number_of_drawn_frequencies,
         use_weighted_rtf: bool = p.use_weighted_rtf,
+        kraken_env: KrakenEnv = None,
+        kraken_flp: KrakenFlp = None,
         check_features: bool = False,
         debug: bool = False,
         verbose: bool = False,
@@ -107,6 +109,12 @@ class Simulation:
         self.frequency_drawing_method = frequency_drawing_method
         self.number_of_drawn_frequencies = number_of_drawn_frequencies
 
+        # Kraken env and flp (only need to be provided for rd simulations)
+        self.kraken_env = kraken_env
+        self.kraken_flp = kraken_flp
+        self._is_range_dependent = None
+
+        # Paths
         self._env_file = None
         self._data_folder = None
         self._img_folder = None
@@ -180,6 +188,25 @@ class Simulation:
         :param value: path
         """
         self._tmp_folder = value
+
+    @property
+    def is_range_dependent(self):
+        """
+        Return True if the environment is range dependent
+        :return: bool
+        """
+        if self.kraken_env is None:
+            return False
+        else:
+            return self.kraken_env.range_dependent_env
+
+    @is_range_dependent.setter
+    def is_range_dependent(self, value):
+        """
+        Set the range dependent flag
+        :param value: bool
+        """
+        self._is_range_dependent = value
 
     def init_file_paths(self):
 

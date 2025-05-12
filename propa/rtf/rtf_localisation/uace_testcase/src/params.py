@@ -194,8 +194,8 @@ event_ship = ShipSignal(
 # Position of the ship to localize
 # event_ship_x = 7500
 # event_ship_y = 8000
-event_ship_x = 30000
-event_ship_y = 18000
+event_ship_x = 25000
+event_ship_y = 12000
 event_ship_z = 5
 
 use_weighted_rtf = True

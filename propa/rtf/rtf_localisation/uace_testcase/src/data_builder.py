@@ -38,6 +38,52 @@ class DataBuilder:
     # Build data
     # =======================================================================================================================
     def build_tf_dataset(self):
+        """
+        Wrapper to build_tf_dataset_range_dependent or build_tf_dataset_range_independent
+        depending on the simulation range dependency
+        """
+        if self.simulation.is_range_dependent:
+            self.build_tf_dataset_range_dependent()
+        else:
+            self.build_tf_dataset_range_independent()
+
+    def build_tf_dataset_range_dependent(self):
+        km = KrakenManager(parallel=True, n_workers=p.n_workers, verbose=True)
+
+        freq = self.simulation.library_ship.freq
+        f = freq[(freq >= self.simulation.fmin) & (freq <= self.simulation.fmax)]
+        pressure_field, field_pos = km.runkraken(
+            env=self.simulation.kraken_env,
+            flp=self.simulation.kraken_flp,
+            frequencies=f,
+        )
+
+        tf = np.squeeze(pressure_field, axis=(1, 2, 3))  # (nf, nr)
+        # Pad h_grid with 0 for frequencies outside the fmin, fmax band
+        pad_before = np.sum(freq < self.simulation.fmin)
+        pad_after = np.sum(freq > self.simulation.fmax)
+        h_grid = np.pad(tf, ((pad_before, pad_after), (0, 0)))
+
+        # Build xarray dataset
+        tf_dataset = xr.Dataset(
+            data_vars=dict(
+                tf_real=(
+                    ["f", "r"],
+                    np.real(h_grid),
+                ),
+                tf_imag=(["f", "r"], np.imag(h_grid)),
+            ),
+            coords={
+                "f": freq,
+                "r": field_pos["r"]["r"],
+            },
+        )
+
+        # Save as netcdf
+        tf_dataset.to_netcdf(self.simulation.tf_dataset_fpath)
+        tf_dataset.close()
+
+    def build_tf_dataset_range_independent(self):
         """Step 1 : use Kraken propagation model to derive the broadband transfert function of the testcase waveguide"""
 
         km = KrakenManager()
@@ -428,14 +474,45 @@ class DataBuilder:
 
 
 if __name__ == "__main__":
-    # Test the class
-    debug = False
+    # # Test the class
+    # debug = False
+    # antenna = SparseAntenna(
+    #     name="Test_sparse_antenna", n_elements=6, random_radius=5e3, rng_seed=42
+    # )
+    # simu = Simulation(debug=debug, antenna=antenna)
+    # db = DataBuilder(simulation=simu)
+    # db.build_tf_dataset()
+    # db.grid_dataset()
+    # db.build_signal()
+
+    # Test build tf broadband and rangeindependent
+    from propa.rtf.rtf_localisation.uace_testcase.src.testcase_builder import (
+        DeepWaterRealEnv,
+    )
+
     antenna = SparseAntenna(
         name="Test_sparse_antenna", n_elements=6, random_radius=5e3, rng_seed=42
     )
-    simu = Simulation(debug=debug, antenna=antenna)
+
+    debug = False
+    check = True
+    n_mc = 1
+    use_weighted_rtf = True
+    name = "dw_real_env"
+
+    search_area_length = 1 * 1e3
+    simu = Simulation(
+        name=name,
+        debug=debug,
+        antenna=antenna,
+        check_features=check,
+        monte_carlo_iterations=n_mc,
+        use_weighted_rtf=use_weighted_rtf,
+        search_area_length=search_area_length,
+    )
+    test_case = DeepWaterRealEnv(simulation=simu, mode="run")
     db = DataBuilder(simulation=simu)
-    # db.build_tf_dataset()
+    db.build_tf_dataset()
     db.grid_dataset()
     db.build_signal()
 

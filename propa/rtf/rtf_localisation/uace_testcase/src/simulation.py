@@ -53,6 +53,7 @@ class Simulation:
         monte_carlo_iterations: int = p.monte_carlo_iterations,
         frequency_drawing_method: str = p.frequency_drawing_method,
         number_of_drawn_frequencies: int = p.number_of_drawn_frequencies,
+        use_weighted_rtf: bool = p.use_weighted_rtf,
         check_features: bool = False,
         debug: bool = False,
         verbose: bool = False,
@@ -76,6 +77,7 @@ class Simulation:
         self.event_stype = "ship"
 
         # Usefull flags
+        self.use_weighted_rtf = use_weighted_rtf
         self.debug = debug
         self.verbose = verbose
         self.check_features = check_features
@@ -105,6 +107,11 @@ class Simulation:
         self.frequency_drawing_method = frequency_drawing_method
         self.number_of_drawn_frequencies = number_of_drawn_frequencies
 
+        self._env_file = None
+        self._data_folder = None
+        self._img_folder = None
+        self._tmp_folder = None
+
         self.init()
 
     # =======================================================================================================================
@@ -122,73 +129,131 @@ class Simulation:
         # Set grid
         self.init_grid()
 
-        # Kraken env file
-        self.env_file = os.path.join(self.root_tmp, f"{self.name}.env")
+    @property
+    def env_file(self):
+        self._env_file = os.path.join(self.tmp_folder, f"{self.name}.env")
+        return self._env_file
+
+    @env_file.setter
+    def env_file(self, value):
+        """
+        Set path to kraken env file
+        :param value: path
+        """
+        self._env_file = value
+
+    @property
+    def data_folder(self):
+        self._data_folder = os.path.join(self.root_data, self.name)
+        return self._data_folder
+
+    @data_folder.setter
+    def data_folder(self, value):
+        """
+        Path to data folder
+        :param value: path
+        """
+        self._data_folder = value
+
+    @property
+    def img_folder(self):
+        self._img_folder = os.path.join(self.root_img, self.name)
+        return self._img_folder
+
+    @img_folder.setter
+    def img_folder(self, value):
+        """
+        Path to the img folder
+        :param value: path
+        """
+        self._img_folder = value
+
+    @property
+    def tmp_folder(self):
+        self._tmp_folder = os.path.join(self.root_tmp, self.name, "io_files")
+        return self._tmp_folder
+
+    @tmp_folder.setter
+    def tmp_folder(self, value):
+        """
+        Path to the tmp folder
+        :param value: path
+        """
+        self._tmp_folder = value
 
     def init_file_paths(self):
+
+        # Create folders if they do not exist
+        for folder in [self.tmp_folder, self.data_folder, self.img_folder]:
+            if not os.path.exists(folder):
+                os.makedirs(folder)
+
         # tf dataset
-        self.tf_dataset_fpath = os.path.join(self.root_data, f"{self.name}_tf.nc")
+        self.tf_dataset_fpath = os.path.join(self.data_folder, f"tf.nc")
 
         # Gridded tf dataset
         if self.debug:
-            tf_grid_dataset_fname = f"{self.name}_tf_grid_{self.grid_res_label}_debug"
+            tf_grid_dataset_fname = f"tf_grid_{self.grid_res_label}_debug"
         else:
-            tf_grid_dataset_fname = f"{self.name}_tf_grid_{self.grid_res_label}"
+            tf_grid_dataset_fname = f"tf_grid_{self.grid_res_label}"
         self.tf_grid_dataset_fpath = os.path.join(
-            self.root_data, tf_grid_dataset_fname + ".nc"  #
+            self.data_folder, tf_grid_dataset_fname + ".nc"  #
         )
 
         # Library dataset
         if self.debug:
-            library_dataset_fname = f"{self.name}_library_{self.grid_res_label}_debug"
+            library_dataset_fname = f"library_{self.grid_res_label}_debug"
         else:
-            library_dataset_fname = f"{self.name}_library_{self.grid_res_label}"
+            library_dataset_fname = f"library_{self.grid_res_label}"
 
         self.library_dataset_fpath = os.path.join(
-            self.root_data, library_dataset_fname + ".nc"
+            self.data_folder, library_dataset_fname + ".nc"
         )
 
         # Feature dataset
         if self.debug:
-            feature_dataset_fname = f"{self.name}_features_{self.grid_res_label}_debug"
+            feature_dataset_fname = f"features_{self.grid_res_label}_debug"
         else:
-            feature_dataset_fname = f"{self.name}_features_{self.grid_res_label}"
+            feature_dataset_fname = f"features_{self.grid_res_label}"
 
         self.feature_dataset_fpath = os.path.join(
-            self.root_data, feature_dataset_fname + ".nc"
+            self.data_folder, feature_dataset_fname + ".nc"
+        )
+
+        # Rtf weights dataset
+        if self.debug:
+            rtf_weights_dataset_fname = f"rtf_weights_{self.grid_res_label}_debug"
+        else:
+            rtf_weights_dataset_fname = f"rtf_weights_{self.grid_res_label}"
+        self.rtf_weights_dataset_fpath = os.path.join(
+            self.data_folder, rtf_weights_dataset_fname + ".nc"
         )
 
         # Feature kraken dataset
         if self.debug:
             kraken_feature_dataset_fname = (
-                f"{self.name}_kraken_features_{self.grid_res_label}_debug"
+                f"kraken_features_{self.grid_res_label}_debug"
             )
         else:
-            kraken_feature_dataset_fname = (
-                f"{self.name}_kraken_features_{self.grid_res_label}"
-            )
+            kraken_feature_dataset_fname = f"kraken_features_{self.grid_res_label}"
 
         self.kraken_feature_dataset_fpath = os.path.join(
-            self.root_data, kraken_feature_dataset_fname + ".nc"
+            self.data_folder, kraken_feature_dataset_fname + ".nc"
         )
 
         # Localization dataset
         if self.debug:
-            localization_dataset_fname = (
-                f"{self.name}_localization_{self.grid_res_label}_debug"
-            )
+            localization_dataset_fname = f"localization_{self.grid_res_label}_debug"
         else:
-            localization_dataset_fname = (
-                f"{self.name}_localization_{self.grid_res_label}"
-            )
+            localization_dataset_fname = f"localization_{self.grid_res_label}"
         self.localization_dataset_fname = localization_dataset_fname
         self.localization_dataset_fpath = os.path.join(
-            self.root_data, localization_dataset_fname + ".nc"
+            self.data_folder, localization_dataset_fname + ".nc"
         )
 
         self.from_sig_foldername = f"from_signal_{self.grid_res_label}"
         # Folder to store img derived from signal
-        self.root_img_from_sig = os.path.join(self.root_img, self.from_sig_foldername)
+        self.root_img_from_sig = os.path.join(self.img_folder, self.from_sig_foldername)
 
     def init_grid(self):
         # Derive range from each receiver

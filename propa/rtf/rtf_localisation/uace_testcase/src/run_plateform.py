@@ -47,19 +47,24 @@ db = DataBuilder(simulation=simu)
 
 
 # First run to make sure everything is ok 
-snrs = [0]
-simu.monte_carlo_iterations = 1
-simu.check_features = 100*14
-lp = LocalizationProcessor(simulation=simu, use_dask=True)
-lp.process_multiple_snrs(snrs=snrs, run_mode="w")
+# snrs = [0]
+# simu.monte_carlo_iterations = 1
+# simu.check_features = True
+# lp = LocalizationProcessor(simulation=simu, use_dask=True)
+# lp.process_multiple_snrs(snrs=snrs, run_mode="w")
 
+# with Client(
+#     n_workers=p.n_workers,
+#     threads_per_worker=1,
+#     memory_limit=f"{p.max_ram_per_worker_gb}GB",
+# ) as client:
 # Second run to derive perf vs snrs 
 snrs = np.arange(-10, 17, 2)[::-1]
 simu.monte_carlo_iterations = 100
 simu.check_features = False
 print(f"Processing snrs : {snrs}")
-lp = LocalizationProcessor(simulation=simu)
-lp.process_multiple_snrs(snrs=snrs, run_mode="a")
+lp = LocalizationProcessor(simulation=simu, use_dask=False)
+lp.process_multiple_snrs(snrs=snrs, run_mode="w")
 
 
 # with Client(

@@ -12,6 +12,7 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import os
 import numpy as np
 import source.global_constants as g
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
@@ -367,8 +368,9 @@ class DeepWaterRealEnv(KrakenTestCase):
         zs = 5
 
         # Set bathy
+        fpath_parts = os.path.normpath(p.bathy_fpath).split("\\")
         bathy = Bathymetry(
-            data_file=r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\bathy\mmdpm\PVA_RR48\mmdpm_test_PVA_RR48_360.csv",
+            data_file=os.path.join(p.project_root, *fpath_parts),
             units="km",  # Units of the bathy file
         )
 
@@ -377,8 +379,9 @@ class DeepWaterRealEnv(KrakenTestCase):
         bathy.bathy_range = bathy.bathy_range[idx_in_range_domain]
         bathy.bathy_depth = bathy.bathy_depth[idx_in_range_domain]
         # Subsample bathy profile
-        bathy.bathy_range = bathy.bathy_range[::10]
-        bathy.bathy_depth = bathy.bathy_depth[::10]
+        nsubsample = 5
+        bathy.bathy_range = bathy.bathy_range[::nsubsample]
+        bathy.bathy_depth = bathy.bathy_depth[::nsubsample]
 
         # Add off set to bathy depth to reach approximate zmax
         z_offset = bathy.bathy_depth.max() - zmax

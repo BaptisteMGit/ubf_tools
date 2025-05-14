@@ -226,13 +226,13 @@ class DataBuilder:
 
         # Grid tf to the desired resolution
         # Preprocess tf to decrease the number of point for further interpolation
-        r_grid_all_rcv = np.array(
-            [
-                self.simulation.grid_ranges_from_rcv[i_rcv].flatten()
-                for i_rcv in self.simulation.antenna.rcv_idx
-            ]
-        )
-        r_grid_all_rcv_unique = np.unique(np.round(r_grid_all_rcv.flatten(), 0))
+        # r_grid_all_rcv = np.array(
+        #     [
+        #         self.simulation.grid_ranges_from_rcv[i_rcv].flatten()
+        #         for i_rcv in self.simulation.antenna.rcv_idx
+        #     ]
+        # )
+        # r_grid_all_rcv_unique = np.unique(np.round(r_grid_all_rcv.flatten(), 0))
 
         # tf_vect = ds.tf_real.sel(
         #     r=r_grid_all_rcv_unique, method="nearest"

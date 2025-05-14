@@ -35,3 +35,12 @@ sand_properties = {
     "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
     "a_s": 2.5,
 }  # Shear wave attenuation (dB/wavelength) # Sand properties from Jensen et al. (2000) p.39
+
+# Boulders and bedrock (Folegot 2017 / Emodnet)
+boulders_bedrock_properties = {
+    "rho": 2.5,  # Sand density (g/cm3) (Ton.m-3)
+    "c_p": 3820,  # P-wave celerity (m/s)
+    "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+    "a_p": 0.75,  # Compression wave attenuation (dB/wavelength)
+    "a_s": 0.0, # Shear wave attenuation (dB/wavelength)
+}  

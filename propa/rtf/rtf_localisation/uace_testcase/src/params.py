@@ -50,7 +50,7 @@ else:  # Linux
     root_img = os.path.join(data_folder, "img")
 
 # Ensure folders exist
-for folder in [root_tmp, root_data, root_img, root_img_publi]:
+for folder in [root_tmp, root_data, root_img]:
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -90,6 +90,14 @@ antenna = SparseAntenna(
 )
 
 # Waveguide properties
+bott_hs_properties = {
+    "rho": 1.5 * g.rho_w * 1e-3,  # Density (g/cm^3)
+    "c_p": 1550,  # P-wave celerity (m/s)
+    "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+    "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
+    "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
+    "z": None,
+}
 bott_hs_properties = {
     "rho": 1.5 * g.rho_w * 1e-3,  # Density (g/cm^3)
     "c_p": 1550,  # P-wave celerity (m/s)

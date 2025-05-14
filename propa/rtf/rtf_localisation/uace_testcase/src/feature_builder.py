@@ -269,26 +269,33 @@ class FeatureBuilder:
 
         else:
             ### RTF ###
+            # TODO debug dims order missing 
             # t0 = time()
             xl_4D = ds_feature_estimate.x_l.values
             vl_4D = ds_feature_estimate.n_l_bis.values
 
+            dims_order = {"r": 0, "t": 1, "y": 2, "x": 3}
             ff, rtf_library = (
                 fp.rtf_estimator.covariance_subtraction_major_eigen_vector_4D(
                     x_4D=xl_4D,
                     v_4D=vl_4D,
+                    dims_order=dims_order,
                     idx_rcv_refs=idx_rcv_refs,
+                    return_csdm=False,
                 )
             )
 
             # We will use the same 4D function for the event signal so we need to add dimensions (single positions x, y)
             xe_4D = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaxis]
             ve_4D = ds_feature_estimate.n_e_bis.values[..., np.newaxis, np.newaxis]
+            dims_order = {"r": 0, "t": 1, "y": 2, "x": 3}
             ff, rtf_event = (
                 fp.rtf_estimator.covariance_subtraction_major_eigen_vector_4D(
                     x_4D=xe_4D,
                     v_4D=ve_4D,
+                    dims_order=dims_order,
                     idx_rcv_refs=idx_rcv_refs,
+                    return_csdm=False,
                 )
             )
 

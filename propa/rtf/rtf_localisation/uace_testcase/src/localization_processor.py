@@ -45,7 +45,7 @@ class LocalizationProcessor:
     Class to process localization from library / event features
     """
 
-    def __init__(self, simulation, plot_args: dict = p.plot_args):
+    def __init__(self, simulation, plot_args: dict = p.plot_args, use_dask: bool = False):
         """
         Constructor
         :param simulation: instance of the Simulation class
@@ -54,7 +54,7 @@ class LocalizationProcessor:
         self.plot_args = plot_args
 
         self.n_monte_carlo = self.simulation.monte_carlo_iterations
-        self.fb = FeatureBuilder(simulation=self.simulation)
+        self.fb = FeatureBuilder(simulation=self.simulation, use_dask=use_dask)
 
         # Init filepath
         self.current_snr_foldername = None

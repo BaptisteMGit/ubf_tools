@@ -51,7 +51,7 @@ else:  # Linux
     root_img_publi = os.path.join(data_folder, "img", "publication")
 
 # Ensure folders exist
-for folder in [root_tmp, root_data, root_img, root_img_publi]:
+for folder in [root_tmp, root_data, root_img]:
     if not os.path.exists(folder):
         os.makedirs(folder)
 
@@ -69,7 +69,7 @@ if os.name == "nt":
     }
 else:
     # Linux
-    n_workers = 20
+    n_workers = 35
     max_ram_gb = 80
     max_ram_per_worker_gb = np.ceil(max_ram_gb / n_workers)
     block_sizes = {
@@ -82,6 +82,7 @@ else:
 # ======================================================================================================================
 # Simulation params
 # ======================================================================================================================
+
 # name = "uace_testcase"
 name = "testcase_zhang2023"
 
@@ -99,6 +100,12 @@ bott_hs_properties = {
     "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
     "z": None,
 }
+
+
+# Path to real bathymetry file 
+bathy_fpath = r"data\bathy\mmdpm\PVA_RR48\mmdpm_test_PVA_RR48_360.csv"
+# Path to real ssp file 
+ssp_fpath = ""
 
 # Grid properties
 dx = 20

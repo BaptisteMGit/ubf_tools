@@ -3,7 +3,7 @@
 """
 @File    :   utils.py
 @Time    :   2024/03/11 10:23:35
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Kraken toolbox utilities.
@@ -14,7 +14,9 @@
 # ======================================================================================================================
 
 import numpy as np
-from cst import C0
+
+# from cst import C0
+import source.global_constants as gc
 from propa.kraken_toolbox.read_shd import readshd
 from scipy.optimize import minimize
 
@@ -71,12 +73,12 @@ def default_nb_rcv_z(fmax, max_depth, n_per_l=7):
     # elif n_per_l > 10:
     #     n_per_l = 10
 
-    lmin = C0 / fmax
+    lmin = gc.c0 / fmax
     nz = int(np.ceil(max_depth / lmin * n_per_l))
     return nz
 
 
-def waveguide_cutoff_freq(waveguide_depth, c0=C0):
+def waveguide_cutoff_freq(waveguide_depth, c0=gc.c0):
     fc = c0 / (4 * waveguide_depth)
     minimum_kraken_freq = 0.15
     return max(minimum_kraken_freq, fc)

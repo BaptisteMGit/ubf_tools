@@ -22,6 +22,8 @@ import matplotlib.pyplot as plt
 
 from time import time
 
+from propa.rtf.rtf_utils import D_hermitian_angle_fast
+
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 from source.feature_processor import FeatureProcessor
 from propa.rtf.rtf_localisation.uace_testcase.src.simulation import Simulation
@@ -417,6 +419,9 @@ class FeatureBuilder:
 
         if self.check:
             self.check_rtf_features(ds_res_from_sig)
+            if self.simulation.use_weighted_rtf:
+                self.check_rtf_weights(ds_res_from_sig, ds_weights)
+
             # check_gcc_features(ds_res_from_sig, folder=ds_sig_noise.attrs["root_img"])
 
         # Add snr to the feature dataset filepath
@@ -519,6 +524,118 @@ class FeatureBuilder:
 
                 # Save figure
                 fname = f"check_rtf_rcv{i_rcv}_x{x_i}_y{y_i}.png"
+                fpath = os.path.join(root_img, fname)
+                plt.savefig(fpath)
+                plt.close("all")
+
+        ds_tf.close()
+
+    def check_rtf_weights(self, ds_rtf, ds_weights):
+
+        # Define folder to store images
+        root_img = os.path.join(ds_rtf.root_img, "check_rtf_weights")
+        if not os.path.exists(root_img):
+            os.makedirs(root_img)
+
+        # Load dataset with KRAKEN TF to derive reference RTF
+        ds_tf = xr.open_dataset(self.simulation.tf_grid_dataset_fpath)
+        # Build complex tf
+        tf = ds_tf.tf_real + 1j * ds_tf.tf_imag
+        # Extract tf between fmin and fmax from ds_rtf
+        tf = tf.sel(f=slice(ds_rtf.f_rtf.min(), ds_rtf.f_rtf.max()))
+
+        # Define reference receiver to use
+        i_rcv_ref = 0
+        ds_rtf = ds_rtf.sel(idx_rcv_ref=i_rcv_ref)
+        rtf_cs = ds_rtf.rtf_real + 1j * ds_rtf.rtf_imag
+
+        # Define tf_ref
+        tf_ref = tf.sel(idx_rcv=i_rcv_ref)
+
+        # List position where we want to compare estimated RTF to ref RTF (KRAKEN)
+        # Source position + the 4 corners of the grid + one position inside the grid
+        x_check = [
+            self.simulation.event_ship_x,
+            ds_tf.x.min().values,
+            ds_tf.x.min().values,
+            ds_tf.x.max().values,
+            ds_tf.x.max().values,
+            ds_tf.x.values[int(ds_tf.sizes["x"] * 2 / 3)],
+        ]
+
+        y_check = [
+            self.simulation.event_ship_y,
+            ds_tf.y.min().values,
+            ds_tf.y.max().values,
+            ds_tf.y.max().values,
+            ds_tf.y.min().values,
+            ds_tf.y.values[int(ds_tf.sizes["y"] * 1 / 3)],
+        ]
+
+        dist_func = D_hermitian_angle_fast
+
+        # Iterate over receivers
+        for i_rcv in tf.idx_rcv.values:
+
+            # Build "true" RTF
+            rtf_true = tf.sel(idx_rcv=i_rcv) / tf_ref
+
+            # Iterate over positions to check
+            for i_check in range(len(x_check)):
+                x_i = x_check[i_check]
+                y_i = y_check[i_check]
+
+                # Extract data at required position
+                rtf_cs_pos = rtf_cs.sel(idx_rcv=i_rcv).sel(
+                    y=y_i, x=x_i, method="nearest"
+                )
+                rtf_true_pos = rtf_true.sel(y=y_i, x=x_i, method="nearest")
+                rtf_weights_pos = ds_weights.rtf_weights.sel(idx_rcv=i_rcv).sel(
+                    y=y_i, x=x_i, method="nearest"
+                )
+
+                # Derive theta
+                # ax_order = self.get_axis_order(
+                #     da=tf_ref, ax_names=["idx_rcv", "f_rtf", "y", "x"]
+                # )
+                # ax_rcv = ax_order["idx_rcv"]
+                # ax_f = ax_order["f_rtf"]
+
+                ax_rcv = 1
+                ax_f = 0
+                dist_kwargs = {
+                    "ax_rcv": ax_rcv,
+                    "unit": "deg",
+                    "apply_mean": False,
+                    "weights": None,
+                    "ax_f": ax_f,
+                }
+                rtf_true_pos = np.atleast_2d(rtf_true_pos).T
+                rtf_cs_pos = np.atleast_2d(rtf_cs_pos).T
+                theta = dist_func(rtf_true_pos, rtf_cs_pos, **dist_kwargs)
+
+                plt.figure(figsize=(12, 6))
+                plt.plot(rtf_true.f.values, theta, label=r"$\theta_k$")
+                rtf_weights_pos.plot(label=r"$w_k$")
+                # abs_cs.plot(
+                #     # x="f",
+                #     linestyle="-",
+                #     label=r"$\Pi_{" + str(i_rcv) + r"}^{(CS)}$",
+                #     color="r",
+                #     marker="o",
+                #     linewidth=0.2,
+                #     markersize=3,
+                # )
+                # plt.legend()
+                # plt.yscale("log")
+                # plt.xlabel(r"$f$" + " [Hz]")
+                # plt.ylabel(r"$|\Pi(f)|$")
+
+                if i_rcv == i_rcv_ref:
+                    plt.ylim(1e-1, 1e1)
+
+                # Save figure
+                fname = f"check_rtf_weigths_rcv{i_rcv}_x{x_i}_y{y_i}.png"
                 fpath = os.path.join(root_img, fname)
                 plt.savefig(fpath)
                 plt.close("all")

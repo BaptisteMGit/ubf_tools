@@ -134,6 +134,7 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
     unit = kwargs.get("unit", "deg")
     apply_mean = kwargs.get("apply_mean", True)
     apply_median = kwargs.get("apply_median", False)
+    weights = kwargs.get("weights", None)
     apply_sum = kwargs.get("apply_sum", False)
     ax_rcv = kwargs.get("ax_rcv", 3 if rtf.ndim == 4 else 1)
     ax_f = kwargs.get("ax_f", 1)
@@ -162,7 +163,26 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
 
         # Take mean along frequency axis if needed
         if apply_mean:
-            dist = np.nanmean(dist, axis=0)
+            # Check if weights are provided
+            if weights is None:
+                # If no weights are provided, use uniform weights
+                weights = np.ones_like(dist)
+            if weights.ndim == 1:
+                # If weights are 1D, expand them to match the shape of dist
+                weights = cast_matrix_to_target_shape(weights, dist.shape)
+
+            # We can either use ma.average or do it by manually
+            idx_nan = np.isnan(dist)
+            weights[idx_nan] = np.nan
+            dist = np.nansum(dist * weights, axis=0) * 1 / (np.nansum(weights, axis=0))
+
+            # # Convert to mask array to handle NaN values with the ma.average function
+            # dist = np.ma.MaskedArray(dist, mask=np.isnan(dist))
+            # # Derive weighted average
+            # dist = np.ma.average(dist, axis=0, weights=weights)
+            # # Convert back to regular numpy array
+            # dist = dist.filled(np.nan)
+
         elif apply_median:
             dist = np.nanmedian(dist, axis=0)
         elif apply_sum:

@@ -3,7 +3,7 @@
 """
 @File    :   plot_utils.py
 @Time    :   2024/03/12 08:48:09
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Utility functions to plot kraken outputs
@@ -384,12 +384,12 @@ def plot_attenuation(ap, ash, z, z_bottom=None, ax=None):
     if plot_ap:
         col1 = "red"
         ax.plot(ap, z, color=col1, label="C-wave")
-    ax.set_xlabel(r"$\alpha$ " + r"[$dB.\lambda^{-1}$]")
 
     if plot_as:
         col2 = "blue"
         ax.plot(ash, z, color=col2, label="S-wave")
 
+    ax.set_xlabel(r"$\alpha$ " + r"[$dB.\lambda^{-1}$]")
     # Color domains with water and sediment
     min_x = np.nanmin([min_ap, min_as])
     max_x = np.nanmax([max_ap, max_as])

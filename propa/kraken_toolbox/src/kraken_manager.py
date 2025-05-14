@@ -66,18 +66,18 @@ class KrakenManager:
                 if self.clear:
                     self.clear_kraken_parallel_working_dir(root=env.root)
 
-                if n_workers is None:
-                    n_workers = min(len(frequencies), N_CORES)
+                if self.n_workers is None:
+                    self.n_workers = min(len(frequencies), N_CORES)
                 else:
-                    n_workers = min(len(frequencies), n_workers)
+                    self.n_workers = min(len(frequencies), self.n_workers)
 
                 # Get optimal frequencies intervals bounds
                 frequencies_intervalls, nb_used_workers = (
                     self.assign_frequency_intervalls(
-                        frequencies, n_workers, mode="optimal"
+                        frequencies, self.n_workers, mode="optimal"
                     )
                 )
-                n_workers = nb_used_workers
+                self.n_workers = nb_used_workers
 
                 # Build the parameter pool
                 param_pool = [
@@ -352,9 +352,8 @@ class KrakenManager:
         frequencies,
         parallel=False,
     ):
-        """KRAKEN is capable of running broadband simulations with range independent environments
-        and single frequency simulations with range dependent environments. Yet, the available version is not capable of
-        running broadband simulations with range dependent environments.
+        """KRAKEN can run broadband simulations with range dependent environments yet it seems version of field we are using is not capable of
+        computing the broadband and range-independent pressure field.
         This function is a workaround to this issue. It runs KRAKEN with a range dependent environment
         for each frequency of the broadband simulation and then merge the results in a single pressure field.
         """
@@ -376,6 +375,7 @@ class KrakenManager:
                 kraken_field=env.field,
                 kraken_bathy=env.bathy,
                 rModes=env.modes_range,
+                nmedia=env.nmedia,
             )
 
             cls.init_parallel_kraken_working_dirs(env, env_root, worker_pid)

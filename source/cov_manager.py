@@ -303,6 +303,35 @@ class CovManager:
             eigve, idx[..., np.newaxis, :], axis=-1
         )  # (nf, ny, nx, nrcv, nrcv)
 
+        # TODO remove this
+        # Save the eigenvalues and eigenvectors to check the eigendecomposition
+        eigva_sorted = np.take_along_axis(eigva, idx, axis=-1)
+
+        eigva_real = np.real(eigva_sorted)
+        eigve_real = np.real(eigve_sorted)
+        eigva_imag = np.imag(eigva_sorted)
+        eigve_imag = np.imag(eigve_sorted)
+        # Save as netcdf
+        import xarray as xr
+
+        ds = xr.Dataset(
+            {
+                "eigva_real": (["nf", "ny", "nx", "nrcv"], eigva_real),
+                "eigve_real": (["nf", "ny", "nx", "nrcv", "nrcv1"], eigve_real),
+                "eigva_imag": (["nf", "ny", "nx", "nrcv"], eigva_imag),
+                "eigve_imag": (["nf", "ny", "nx", "nrcv", "nrcv1"], eigve_imag),
+            },
+            coords={
+                "nf": np.arange(eigva.shape[0]),
+                "ny": np.arange(eigve.shape[1]),
+                "nx": np.arange(eigve.shape[2]),
+                "nrcv": np.arange(eigve.shape[-1]),
+                "nrcv1": np.arange(eigve.shape[-1]),
+            },
+        )
+        fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\dw_real_env\eigve.nc"
+        ds.to_netcdf(fpath)
+
         # # Assert it is still a valid eigendecomposition
         # assert np.alltrue(
         #     [

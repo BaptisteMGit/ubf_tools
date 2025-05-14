@@ -3,7 +3,7 @@
 """
 @File    :   cst.py
 @Time    :   2024/07/08 09:12:59
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Define useful constants.
@@ -52,6 +52,6 @@ SUPLABEL_FONTSIZE = 22
 
 # Parrallel processing
 if os.name == "nt":
-    N_CORES = 10  # Windows PC
+    N_CORES = 6  # Windows PC
 else:
-    N_CORES = 100  # Linux plateforme TIM
+    N_CORES = 20  # Linux plateforme TIM

@@ -163,7 +163,14 @@ class TestCase:
             "flp_rcv_z_max": None,
             "phase_speed_limits": None,
             "bottom_boundary_condition": "acousto_elastic",
-            "bott_hs_properties": None,
+            "bott_hs_properties": {
+                "rho": 1.9 * RHO_W * 1e-3,  # Density (g/cm^3)
+                "c_p": 1650,  # P-wave celerity (m/s)
+                "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+                "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
+                "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
+                "z": None,
+            },
         }
 
         # Set env directory

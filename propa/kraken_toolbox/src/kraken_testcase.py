@@ -42,7 +42,7 @@ class DomainProperties:
     Class to handle kraken simulation domain properties
     """
 
-    def __init__(self, zmin=0, zmax=1000, rmin=0, rmax=5 * 1e3, unit="m"):
+    def __init__(self, zmin=0, zmax=1000, rmin=0, rmax=10 * 1e3, unit="m"):
         """
         Initialize the DomainProperties object.
 
@@ -66,7 +66,7 @@ class SourceProperties:
     Class to handle kraken simulation source properties
     """
 
-    def __init__(self, src_type="point_source", src_depth=500, freq=50):
+    def __init__(self, src_type="point_source", src_depth=100, freq=50):
         """
         Initialize the SourceProperties object.
 
@@ -79,6 +79,28 @@ class SourceProperties:
         self.freq = np.atleast_1d(freq)
 
 
+class ReceiverProperties:
+    """
+    Class to handle kraken simulation receiver properties
+    """
+
+    def __init__(self, zmin=0, zmax=1000, rmin=0, rmax=10 * 1e3, unit="m"):
+        """
+        Initialize the ReceiverProperties object.
+        """
+        if unit == "m":
+            alpha_z = 1
+            alpha_r = 1e-3
+        elif unit == "km":
+            alpha_z = 1e3
+            alpha_r = 1
+
+        self.zmin_m = zmin * alpha_z
+        self.zmax_m = zmax * alpha_z
+        self.rmin_km = rmin * alpha_r
+        self.rmax_km = rmax * alpha_r
+
+
 class KrakenProperties:
     """
     Class to handle kraken simulation properties
@@ -89,15 +111,20 @@ class KrakenProperties:
         mode_coupling="adiabatic",
         mode_addition="coherent",
         n_mode=100,
-        min_phase_speed=1000,
-        max_phase_speed=20000,
         nr=1000,
         nz=1000,
         nmedia=2,
         top_hs=KrakenTopHalfspace(),
         bott_hs=KrakenBottomHalfspace(),
         att=KrakenAttenuation(),
-        medium=KrakenMedium(),
+        medium=KrakenMedium(z_ssp=[0, DomainProperties().zmax_m]),
+        field=KrakenField(
+            n_rcv_z=1000,
+            src_depth=SourceProperties().depth,
+            rcv_z_max=DomainProperties().zmax_m
+            + KrakenBottomHalfspace().sedim_layer_depth,
+            phase_speed_limits=[1000, 20000],
+        ),
     ):
         """
         Initialize the KrakenProperties object.
@@ -107,9 +134,6 @@ class KrakenProperties:
         self.mode_coupling = mode_coupling
         self.mode_addition = mode_addition
         self.n_mode = n_mode
-        self.min_phase_speed = min_phase_speed
-        self.max_phase_speed = max_phase_speed
-        # self.phase_speed_limits = [self.min_phase_speed, self.max_phase_speed]
         self.nr = nr
         self.nz = nz
         self.nmedia = nmedia
@@ -118,13 +142,7 @@ class KrakenProperties:
         self.bott_hs = bott_hs
         self.att = att
         self.medium = medium
-
-        self.field = KrakenField(
-            n_rcv_z=self.nz,
-            src_depth=SourceProperties().depth,
-            rcv_z_max=DomainProperties().zmax_m,
-            phase_speed_limits=[self.min_phase_speed, self.max_phase_speed],
-        )
+        self.field = field
 
 
 class KrakenTestCase:
@@ -134,11 +152,13 @@ class KrakenTestCase:
 
     def __init__(
         self,
-        name,
-        root_dir,
-        domain_properties=DomainProperties(),
-        src_properties=SourceProperties(),
-        kraken_properties=KrakenProperties(),
+        name: str,
+        root_dir: str,
+        domain_properties: DomainProperties = DomainProperties(),
+        src_properties: SourceProperties = SourceProperties(),
+        rcv_properties: ReceiverProperties = ReceiverProperties(),
+        kraken_properties: KrakenProperties = KrakenProperties(),
+        bathy: Bathymetry = None,
         title="Default testcase",
     ):
         """
@@ -158,13 +178,16 @@ class KrakenTestCase:
         # Source properties
         self.src = src_properties
 
+        # Receiver properties
+        self.rcv = rcv_properties
+
         # Domain properties
         self.domain = domain_properties
 
         # Kraken properties
         self.kraken = kraken_properties
 
-        self.bathy = Bathymetry()
+        self.bathy = bathy
 
         # Plotting flags
         self.plot_medium = True
@@ -175,11 +198,37 @@ class KrakenTestCase:
         self.pre_process_testcase()
 
     def set_bathy(self):
-        # Define flat bathymetry
-        r_km = [self.domain.rmin_km, self.domain.rmax_km]
-        h_m = [self.domain.zmax_m, self.domain.zmax_m]
+        if self.bathy is None:
+            # Define flat bathymetry
+            r_km = [self.domain.rmin_km, self.domain.rmax_km]
+            h_m = [self.domain.zmax_m, self.domain.zmax_m]
+        else:
+            r_km = self.bathy.bathy_range
+            h_m = self.bathy.bathy_depth
 
-        # Save bathymetry
+            # Limit to range domain
+            idx_in_range_domain = r_km <= self.domain.rmax_km
+            r_km = r_km[idx_in_range_domain]
+            h_m = h_m[idx_in_range_domain]
+
+            # Update domain depth limit
+            self.domain.zmax_m = np.max(h_m)
+
+            # Update field depth limit and resolution
+            max_domain_depth = (
+                np.round(
+                    (self.domain.zmax_m + self.kraken.bott_hs.sedim_layer_depth) * 1e-2,
+                    0,
+                )
+                * 1e2
+            )  # Round to closet 100m
+            n_rcv_z = default_nb_rcv_z(
+                fmax=np.max(self.src.freq), max_depth=max_domain_depth
+            )
+            self.kraken.field.n_rcv_z = n_rcv_z
+            self.kraken.field.rcv_depth_max = max_domain_depth
+
+        # Save or copy bathymetry to io_files directory for clarity
         bathy_path = os.path.join(self.io_files_dir, "bathy.csv")
         pd.DataFrame({"r": np.round(r_km, 3), "h": np.round(h_m, 3)}).to_csv(
             bathy_path, index=False, header=False
@@ -200,6 +249,8 @@ class KrakenTestCase:
             kraken_bathy=self.bathy,
             nmedia=self.kraken.nmedia,
         )
+        # Dummy write env to set range_dependent_env flag
+        self.env.write_env()
 
     def set_flp(self):
         self.flp = KrakenFlp(
@@ -209,10 +260,10 @@ class KrakenTestCase:
             mode_theory=self.kraken.mode_coupling,
             mode_addition=self.kraken.mode_addition,
             nb_modes=self.kraken.n_mode,
-            rcv_r_min=self.domain.rmin_km,
-            rcv_r_max=self.domain.rmax_km,
-            rcv_z_min=self.domain.zmin_m,
-            rcv_z_max=self.domain.zmax_m + 50,
+            rcv_r_min=self.rcv.rmin_km,
+            rcv_r_max=self.rcv.rmax_km,
+            rcv_z_min=self.rcv.zmin_m,
+            rcv_z_max=self.rcv.zmax_m,
             n_rcv_r=self.kraken.nr,
             n_rcv_z=self.kraken.nz,
         )
@@ -296,24 +347,20 @@ class KrakenTestCase:
 
     def run(self):
         manager = KrakenManager()
-        pwd = os.getcwd()
-        os.chdir(self.io_files_dir)
-        manager.run_kraken_exec(self.env.filename)
-        manager.run_field_exec(self.env.filename)
-        os.chdir(pwd)
+        manager.runkraken(env=self.env, flp=self.flp, frequencies=self.src.freq)
 
-    def plot_diags(self):
+    def plot_diags(self, tl_min=None, tl_max=None, modes=[1, 2, 3, 4]):
         # Plotting diagnostics
         fpath = os.path.join(self.io_files_dir, self.env.filename)
-        plotmode(fpath, freq=self.src.freq, modes=[1, 2, 3, 4])
+        plotmode(fpath, freq=self.src.freq, modes=modes)
         plt.savefig(os.path.join(self.imgs_outputs_dir, "modes.png"))
 
         plotshd(
             fpath + ".shd",
-            title=f"Downslope test - f={self.src.freq}Hz",
+            title=f"{self.name} - f={self.src.freq}Hz",
             bathy=self.bathy,
-            tl_min=60,
-            tl_max=150,
+            tl_min=tl_min,
+            tl_max=tl_max,
         )
         plt.savefig(os.path.join(self.imgs_outputs_dir, "tl.png"))
 
@@ -322,7 +369,8 @@ if __name__ == "__main__":
     root_dir = (
         r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\testcases"
     )
-    k_tc = KrakenTestCase(name="testcase_test", root_dir=root_dir)
+
+    k_tc = KrakenTestCase(name="default", root_dir=root_dir)
 
     k_tc.run()
     k_tc.plot_diags()

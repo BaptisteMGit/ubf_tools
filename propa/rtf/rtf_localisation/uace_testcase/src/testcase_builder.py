@@ -361,10 +361,8 @@ class DeepWaterRealEnv(KrakenTestCase):
         rmax = 50 * 1e3
         min_phase_speed = 1000
         max_phase_speed = 20000
-
         # bott_props = g.sand_properties
-        bott_props = g.sand_properties
-
+        bott_props = g.boulders_bedrock_properties
         bott_props["a_s"] = 0.0  # No shear wave
         zs = 5
 
@@ -516,7 +514,7 @@ class DeepWaterRealEnv(KrakenTestCase):
         # Run and plot diags if "demo" mode is selected
         if mode == "demo":
             self.run()
-            self.plot_diags(tl_min=80, tl_max=130, modes=[1, 30, 90])
+            self.plot_diags(tl_min=60, tl_max=120, modes=[1, 30, 90])
             # self.plot_diags(modes=[1, 30, 90])
 
 

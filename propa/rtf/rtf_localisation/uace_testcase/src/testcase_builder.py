@@ -347,13 +347,12 @@ class DeepWaterPekerisRhumrumSSP(KrakenTestCase):
 
 class DeepWaterRealEnv(KrakenTestCase):
 
-    def __init__(self, simulation: Simulation = Simulation(), mode="run"):
+    def __init__(self, simulation: Simulation = Simulation(), mode="run", name:str = "dw_real_env"):
         """
         Constructor
         """
 
         # Set name and title
-        name = "dw_real_env"
         title = "Deep Water waveguide with real bathy profile and real ssp"
 
         # Common properties

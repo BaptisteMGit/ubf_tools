@@ -48,6 +48,7 @@ else:  # Linux
     root_tmp = os.path.join(data_folder, "tmp_kraken")
     root_data = os.path.join(data_folder, "data")
     root_img = os.path.join(data_folder, "img")
+    root_img_publi = os.path.join(data_folder, "img", "publication")
 
 # Ensure folders exist
 for folder in [root_tmp, root_data, root_img, root_img_publi]:

@@ -159,7 +159,8 @@ class KrakenTestCase:
         rcv_properties: ReceiverProperties = ReceiverProperties(),
         kraken_properties: KrakenProperties = KrakenProperties(),
         bathy: Bathymetry = None,
-        title="Default testcase",
+        title: str ="Default testcase",
+        mode: str ="run",
     ):
         """
         Initialize the TestCase object.
@@ -171,6 +172,7 @@ class KrakenTestCase:
         self.name = name
         self.root_dir = root_dir
         self.title = title
+        self.mode = mode
 
         # Initialize directories
         self.init_testcase_dirs()
@@ -273,8 +275,9 @@ class KrakenTestCase:
         self.load()
         # Write flp and env files
         self.write_kraken_files()
-        # Plot env
-        self.plot_testcase_env()
+        if self.mode == "demo":
+            # Plot env
+            self.plot_testcase_env()
 
     def plot_testcase_env(self):
         if self.plot_medium:

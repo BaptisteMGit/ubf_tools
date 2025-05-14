@@ -12,6 +12,7 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import source.global_constants as g
@@ -75,7 +76,12 @@ class SSPProfile:
         self.name = "Munk profile"
 
     def set_rhumrum_ssp(self, zmin, zmax, nz=None):
-        rr48_ssp_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ssp\mmdpm\PVA_RR48\mmdpm_test_PVA_RR48_ssp.mat"
+
+        # Make sure data path fits the current os 
+        fpath = r"data\ssp\mmdpm\PVA_RR48\mmdpm_test_PVA_RR48_ssp.mat"
+        fpath_parts = os.path.normpath(fpath).split("\\")
+        rr48_ssp_path = os.path.join(g.project_root, *fpath_parts)
+
         # Load .mat file
         ssp = loadmat(rr48_ssp_path)["ssp"]
         zp = ssp["z"][0][0][:, 0]

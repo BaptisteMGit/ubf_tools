@@ -38,13 +38,18 @@ from propa.kraken_toolbox.utils import default_nb_rcv_z
 
 class DeepWaterPekerisMunk(KrakenTestCase):
 
-    def __init__(self, simulation: Simulation = Simulation(), mode="run"):
+    def __init__(
+        self,
+        simulation: Simulation = Simulation(),
+        mode="run",
+        name: str = "dw_pekeris_munk",
+    ):
         """
         Constructor
         """
 
         # Initialize the simulation object
-        name = "dw_pekeris_munk"
+        # name = "dw_pekeris_munk"
 
         # Common properties
         zmin = 0
@@ -189,6 +194,8 @@ class DeepWaterPekerisMunk(KrakenTestCase):
         # Update simulation
         simulation.name = name
         simulation.init()
+        simulation.kraken_env = self.env
+        simulation.kraken_flp = self.flp
         self.simulation = simulation
 
         # Run and plot diags if "demo" mode is selected
@@ -200,13 +207,18 @@ class DeepWaterPekerisMunk(KrakenTestCase):
 
 class DeepWaterPekerisRhumrumSSP(KrakenTestCase):
 
-    def __init__(self, simulation: Simulation = Simulation(), mode="run"):
+    def __init__(
+        self,
+        simulation: Simulation = Simulation(),
+        mode="run",
+        name: str = "dw_pekeris_rhumrum_ssp",
+    ):
         """
         Constructor
         """
 
         # Initialize the simulation object
-        name = "dw_pekeris_rhumrum_ssp"
+        # name = "dw_pekeris_rhumrum_ssp"
 
         # Common properties
         zmin = 0
@@ -336,6 +348,8 @@ class DeepWaterPekerisRhumrumSSP(KrakenTestCase):
         # Update simulation
         simulation.name = name
         simulation.init()
+        simulation.kraken_env = self.env
+        simulation.kraken_flp = self.flp
         self.simulation = simulation
 
         # Run and plot diags if "demo" mode is selected
@@ -347,7 +361,12 @@ class DeepWaterPekerisRhumrumSSP(KrakenTestCase):
 
 class DeepWaterRealEnv(KrakenTestCase):
 
-    def __init__(self, simulation: Simulation = Simulation(), mode="run", name:str = "dw_real_env"):
+    def __init__(
+        self,
+        simulation: Simulation = Simulation(),
+        mode="run",
+        name: str = "dw_real_env",
+    ):
         """
         Constructor
         """

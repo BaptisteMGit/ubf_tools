@@ -63,10 +63,10 @@ if __name__ == "__main__":
     # test_case = DeepWaterPekerisMunk(simulation=simu, mode="run", name=name)
 
     db = DataBuilder(simulation=simu)
-    # db.build_tf_dataset()
+    db.build_tf_dataset()
     # print("Grid dataset")
-    # db.grid_dataset()
-    # db.build_signal()
+    db.grid_dataset()
+    db.build_signal()
 
     # First run to make sure everything is ok
     snrs = [50]

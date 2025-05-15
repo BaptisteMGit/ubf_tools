@@ -102,9 +102,9 @@ bott_hs_properties = {
 }
 
 
-# Path to real bathymetry file 
+# Path to real bathymetry file
 bathy_fpath = r"data\bathy\mmdpm\PVA_RR48\mmdpm_test_PVA_RR48_360.csv"
-# Path to real ssp file 
+# Path to real ssp file
 ssp_fpath = ""
 
 # Grid properties
@@ -136,7 +136,9 @@ plot_args = {
 fmin = 5
 fmax = 50
 fs = 200
-duration = 10
+# duration = 10
+duration = 20
+
 # nfft = 1024
 
 # Ship signal params

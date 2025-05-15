@@ -151,7 +151,10 @@ class FeatureBuilder:
             self.simulation.antenna.rcv_idx
         )  # General case -> all receivers are used as reference to build the ambiguity surface for all couples in array (required for DCF method)
 
-        nperseg = 2**11
+        # nperseg = 2**11
+        # noverlap = nperseg // 2
+
+        nperseg = 2**10
         noverlap = nperseg // 2
 
         ds_feature_estimate = xr.Dataset(
@@ -269,7 +272,7 @@ class FeatureBuilder:
 
         else:
             ### RTF ###
-            # TODO debug dims order missing 
+            # TODO debug dims order missing
             # t0 = time()
             xl_4D = ds_feature_estimate.x_l.values
             vl_4D = ds_feature_estimate.n_l_bis.values
@@ -550,6 +553,7 @@ class FeatureBuilder:
         tf = ds_tf.tf_real + 1j * ds_tf.tf_imag
         # Extract tf between fmin and fmax from ds_rtf
         tf = tf.sel(f=slice(ds_rtf.f_rtf.min(), ds_rtf.f_rtf.max()))
+        tf = tf.sel(f=ds_rtf.f_rtf.values, method="nearest")
 
         # Define reference receiver to use
         i_rcv_ref = 0
@@ -582,70 +586,65 @@ class FeatureBuilder:
         dist_func = D_hermitian_angle_fast
 
         # Iterate over receivers
-        for i_rcv in tf.idx_rcv.values:
+        # for i_rcv in tf.idx_rcv.values:
 
-            # Build "true" RTF
-            rtf_true = tf.sel(idx_rcv=i_rcv) / tf_ref
+        # Build "true" RTF
+        rtf_true = tf / tf_ref
+        # rtf_true = tf.sel(idx_rcv=i_rcv) / tf_ref
 
-            # Iterate over positions to check
-            for i_check in range(len(x_check)):
-                x_i = x_check[i_check]
-                y_i = y_check[i_check]
+        # Iterate over positions to check
+        for i_check in range(len(x_check)):
+            x_i = x_check[i_check]
+            y_i = y_check[i_check]
 
-                # Extract data at required position
-                rtf_cs_pos = rtf_cs.sel(idx_rcv=i_rcv).sel(
-                    y=y_i, x=x_i, method="nearest"
-                )
-                rtf_true_pos = rtf_true.sel(y=y_i, x=x_i, method="nearest")
-                rtf_weights_pos = ds_weights.rtf_weights.sel(idx_rcv=i_rcv).sel(
-                    y=y_i, x=x_i, method="nearest"
-                )
+            # Extract data at required position
+            rtf_cs_pos = rtf_cs.sel(y=y_i, x=x_i, method="nearest")
+            # rtf_cs_pos = rtf_cs.sel(idx_rcv=i_rcv).sel(
+            #     y=y_i, x=x_i, method="nearest"
+            # )
+            rtf_true_pos = rtf_true.sel(y=y_i, x=x_i, method="nearest")
+            # rtf_true_pos = rtf_true_pos.sel(
+            #     f=rtf_cs_pos.f_rtf.values, method="nearest"
+            # )
+            i_rcv = 0
+            rtf_weights_pos = ds_weights.rtf_weights.sel(idx_rcv=i_rcv).sel(
+                y=y_i, x=x_i, method="nearest"
+            )
 
-                # Derive theta
-                # ax_order = self.get_axis_order(
-                #     da=tf_ref, ax_names=["idx_rcv", "f_rtf", "y", "x"]
-                # )
-                # ax_rcv = ax_order["idx_rcv"]
-                # ax_f = ax_order["f_rtf"]
+            # Derive theta
+            # ax_order = self.get_axis_order(
+            #     da=tf_ref, ax_names=["idx_rcv", "f_rtf", "y", "x"]
+            # )
+            # ax_rcv = ax_order["idx_rcv"]
+            # ax_f = ax_order["f_rtf"]
 
-                ax_rcv = 1
-                ax_f = 0
-                dist_kwargs = {
-                    "ax_rcv": ax_rcv,
-                    "unit": "deg",
-                    "apply_mean": False,
-                    "weights": None,
-                    "ax_f": ax_f,
-                }
-                rtf_true_pos = np.atleast_2d(rtf_true_pos).T
-                rtf_cs_pos = np.atleast_2d(rtf_cs_pos).T
-                theta = dist_func(rtf_true_pos, rtf_cs_pos, **dist_kwargs)
+            ax_rcv = 1
+            ax_f = 0
+            dist_kwargs = {
+                "ax_rcv": ax_rcv,
+                "unit": "deg",
+                "apply_mean": False,
+                "weights": None,
+                "ax_f": ax_f,
+            }
+            rtf_true_pos = np.atleast_2d(rtf_true_pos).T
+            rtf_cs_pos = np.atleast_2d(rtf_cs_pos).T
+            theta = dist_func(rtf_true_pos, rtf_cs_pos, **dist_kwargs)
 
-                plt.figure(figsize=(12, 6))
-                plt.plot(rtf_true.f.values, theta, label=r"$\theta_k$")
-                rtf_weights_pos.plot(label=r"$w_k$")
-                # abs_cs.plot(
-                #     # x="f",
-                #     linestyle="-",
-                #     label=r"$\Pi_{" + str(i_rcv) + r"}^{(CS)}$",
-                #     color="r",
-                #     marker="o",
-                #     linewidth=0.2,
-                #     markersize=3,
-                # )
-                # plt.legend()
-                # plt.yscale("log")
-                # plt.xlabel(r"$f$" + " [Hz]")
-                # plt.ylabel(r"$|\Pi(f)|$")
+            theta = theta / np.max(theta)
+            plt.figure(figsize=(12, 6))
+            plt.plot(rtf_cs.f_rtf.values, theta, label=r"$\theta_k$")
+            rtf_weights_pos.plot(marker=".", color="r", label=r"$w_k$")
+            plt.legend()
 
-                if i_rcv == i_rcv_ref:
-                    plt.ylim(1e-1, 1e1)
+            # if i_rcv == i_rcv_ref:
+            #     plt.ylim(1e-1, 1e1)
 
-                # Save figure
-                fname = f"check_rtf_weigths_rcv{i_rcv}_x{x_i}_y{y_i}.png"
-                fpath = os.path.join(root_img, fname)
-                plt.savefig(fpath)
-                plt.close("all")
+            # Save figure
+            fname = f"check_rtf_weigths_x{x_i}_y{y_i}.png"
+            fpath = os.path.join(root_img, fname)
+            plt.savefig(fpath)
+            plt.close("all")
 
         ds_tf.close()
 

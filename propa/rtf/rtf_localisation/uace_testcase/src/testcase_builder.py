@@ -381,7 +381,8 @@ class DeepWaterRealEnv(KrakenTestCase):
         min_phase_speed = 1000
         max_phase_speed = 20000
         # bott_props = g.sand_properties
-        bott_props = g.boulders_bedrock_properties
+        # bott_props = g.boulders_bedrock_propertiesc
+        bott_props = g.coarse_sediment_properties
         bott_props["a_s"] = 0.0  # No shear wave
         zs = 5
 

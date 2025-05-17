@@ -14,6 +14,9 @@
 # ======================================================================================================================
 import os
 import numpy as np
+import matplotlib.pyplot as plt
+
+
 import source.global_constants as g
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 from source.ssp_profiles import SSPProfile
@@ -366,6 +369,7 @@ class DeepWaterRealEnv(KrakenTestCase):
         simulation: Simulation = Simulation(),
         mode="run",
         name: str = "dw_real_env",
+        depth_offset: float = 0,
     ):
         """
         Constructor
@@ -403,8 +407,8 @@ class DeepWaterRealEnv(KrakenTestCase):
         bathy.bathy_depth = bathy.bathy_depth[::nsubsample]
 
         # Add off set to bathy depth to reach approximate zmax
-        z_offset = bathy.bathy_depth.max() - zmax
-        bathy.bathy_depth = bathy.bathy_depth - z_offset
+        # z_offset = bathy.bathy_depth.max() - zmax
+        bathy.bathy_depth = bathy.bathy_depth - depth_offset
         zmax = bathy.bathy_depth.max()
 
         # Set domain properties
@@ -524,6 +528,7 @@ class DeepWaterRealEnv(KrakenTestCase):
             kraken_properties=kraken_properties,
             bathy=bathy,
             title=title,
+            mode=mode,
         )
 
         # Update simulation
@@ -545,9 +550,9 @@ if __name__ == "__main__":
 
     # test_case = DeepWaterPekerisMunk(mode="demo")
     # test_case = DeepWaterPekerisRhumrumSSP(mode="demo")
-    test_case = DeepWaterRealEnv(mode="demo")
-
-    # test_case = DeepWaterRealEnv(mode="run")
+    # test_case = DeepWaterRealEnv(mode="demo", depth_offset=0)
+    test_case = DeepWaterRealEnv(mode="run", depth_offset=0)
+    test_case.plot_ssp_tl()
     # test_case.run()
 
 

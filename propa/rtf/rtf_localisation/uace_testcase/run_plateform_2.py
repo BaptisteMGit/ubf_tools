@@ -25,7 +25,7 @@ if __name__ == "__main__":
     # antenna.plot_antenna()
     # plt.savefig("antenna")
 
-    debug = True
+    debug = False
     check = True
     n_mc = 1
     use_weighted_rtf = True
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         monte_carlo_iterations=n_mc,
         use_weighted_rtf=use_weighted_rtf,
     )
-    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
+    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name, depth_offset=0)
     # test_case = DeepWaterPekerisMunk(simulation=simu, mode="run", name=name)
 
     db = DataBuilder(simulation=simu)

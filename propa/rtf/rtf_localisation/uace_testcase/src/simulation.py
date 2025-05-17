@@ -56,6 +56,8 @@ class Simulation:
         use_weighted_rtf: bool = p.use_weighted_rtf,
         kraken_env: KrakenEnv = None,
         kraken_flp: KrakenFlp = None,
+        feature_nperseg: int = p.nperseg,
+        feature_overlap_ratio: float = p.alpha_overlap,
         check_features: bool = False,
         debug: bool = False,
         verbose: bool = False,
@@ -71,6 +73,11 @@ class Simulation:
         self.fmin = fmin
         self.fmax = fmax
         self.signal_duration = signal_duration
+
+        # Window length used to derive features
+        self.feature_nperseg = feature_nperseg
+        self.feature_overlap_ratio = feature_overlap_ratio
+        self.feature_noverlap = int(feature_nperseg * feature_overlap_ratio)
 
         self.antenna = antenna
         self.library_ship = library_ship

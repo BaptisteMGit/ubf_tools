@@ -154,8 +154,12 @@ class FeatureBuilder:
         # nperseg = 2**11
         # noverlap = nperseg // 2
 
-        nperseg = 2**10
-        noverlap = nperseg // 2
+        # nperseg = 2**10
+        # # noverlap = nperseg // 2
+        # nperseg = 2**11
+        # noverlap = int(nperseg * 3/4)
+        nperseg = self.simulation.feature_nperseg
+        noverlap = self.simulation.feature_noverlap
 
         ds_feature_estimate = xr.Dataset(
             data_vars=dict(
@@ -471,20 +475,20 @@ class FeatureBuilder:
         # Source position + the 4 corners of the grid + one position inside the grid
         x_check = [
             self.simulation.event_ship_x,
-            ds_tf.x.min().values,
-            ds_tf.x.min().values,
-            ds_tf.x.max().values,
-            ds_tf.x.max().values,
-            ds_tf.x.values[int(ds_tf.sizes["x"] * 2 / 3)],
+            # ds_tf.x.min().values,
+            # ds_tf.x.min().values,
+            # ds_tf.x.max().values,
+            # ds_tf.x.max().values,
+            # ds_tf.x.values[int(ds_tf.sizes["x"] * 2 / 3)],
         ]
 
         y_check = [
             self.simulation.event_ship_y,
-            ds_tf.y.min().values,
-            ds_tf.y.max().values,
-            ds_tf.y.max().values,
-            ds_tf.y.min().values,
-            ds_tf.y.values[int(ds_tf.sizes["y"] * 1 / 3)],
+            # ds_tf.y.min().values,
+            # ds_tf.y.max().values,
+            # ds_tf.y.max().values,
+            # ds_tf.y.min().values,
+            # ds_tf.y.values[int(ds_tf.sizes["y"] * 1 / 3)],
         ]
 
         # Iterate over receivers
@@ -723,8 +727,8 @@ class FeatureBuilder:
 
         # Set stft params
         fs = 1 / ds_sig_noise.t.diff("t").values[0]
-        nperseg = 2**8
-        noverlap = nperseg // 2
+        nperseg = self.simulation.feature_nperseg
+        noverlap = self.simulation.feature_noverlap
         # Derive stfts
         ff, tt, s_l_stft = sp.stft(
             s_l.values, fs=fs, nperseg=nperseg, noverlap=noverlap, axis=1

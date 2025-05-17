@@ -309,6 +309,9 @@ class DataBuilder:
         # tau = ds_gridded_tf.delay_rcv.min(dim="idx_rcv")
         f = ds_gridded_tf.f
         tau = np.min(delay_rcv, axis=0)  # (ny, nx)
+        # Aplly small offset to avoid wrapping a small part of the signal around
+        tau_offset = 0.2
+        tau = tau - tau_offset
         da_tau = xr.DataArray(
             data=tau, coords=dict(y=ds_gridded_tf.y, x=ds_gridded_tf.x)
         )

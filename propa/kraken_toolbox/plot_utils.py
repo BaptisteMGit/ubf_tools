@@ -87,6 +87,8 @@ def plotshd(
     tl_min=None,
     tl_max=None,
     bathy=None,
+    axis=None,
+    rasterized=True,
 ):
     """Plot Transmission loss field read from '.shd' binary file produced by FIELD.exe.
     Usage :  plotshd(filename, freq, m, n, p, units)
@@ -103,12 +105,16 @@ def plotshd(
 
     pressure = np.squeeze(pressure, axis=(0, 1))
 
-    if m is not None and n is not None and p is not None:
-        # Create a subplot
-        plt.figure()
-        plt.subplot(m, n, p)
-    else:
-        plt.figure(figsize=(16, 8))
+    return_fig_handle = False
+    if axis is None:
+        if m is not None and n is not None and p is not None:
+            # Create a subplot
+            plt.figure()
+            plt.subplot(m, n, p)
+            return_fig_handle = True
+        else:
+            plt.figure(figsize=(16, 8))
+            axis = plt.gca()
 
     # Calculate caxis limits
     tlt = np.abs(pressure).astype(float)
@@ -143,7 +149,7 @@ def plotshd(
     # tlmax_plot = 80
     # Plot the data
     tej = plt.get_cmap("jet", 256).reversed()
-    plt.pcolor(
+    im = axis.pcolor(
         Pos["r"]["r"],
         Pos["r"]["z"],
         tlt,
@@ -151,36 +157,37 @@ def plotshd(
         cmap=tej,
         vmin=tlmin_plot,
         vmax=tlmax_plot,
+        rasterized=rasterized,
     )
 
     # plt.clim(tlmin_plot, tlmax_plot)
 
     if bathy is not None:
-        plt.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k")
+        axis.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k", linewidth=2)
 
-    plt.gca().invert_yaxis()
-    plt.gca().tick_params(direction="out")
+    axis.invert_yaxis()
+    axis.tick_params(direction="out")
 
-    cbar = plt.colorbar()
+    cbar = plt.colorbar(im)
     cbar.set_label("TL [dB]")
     cbar.ax.invert_yaxis()
 
-    plt.xlabel(xlab, fontsize=LABEL_FONTSIZE)
-    plt.ylabel("Depth [m]", fontsize=LABEL_FONTSIZE)
-    plt.yticks(fontsize=TICKS_FONTSIZE)
-    plt.xticks(fontsize=TICKS_FONTSIZE)
+    axis.set_xlabel(xlab)
+    axis.set_ylabel("Depth [m]")
+    # axis.yticks(fontsize=TICKS_FONTSIZE)
+    # plt.xticks(fontsize=TICKS_FONTSIZE)
 
     if title is None:
         title = (
             PlotTitle.replace("_", " ")
             + f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
         )
-    plt.title(title, fontsize=TITLE_FONTSIZE)
+    axis.set_title(title, fontsize=TITLE_FONTSIZE)
 
-    plt.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
+    axis.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
 
     # If a subplot is created, return a handle to the figure
-    if m is not None and n is not None and p is not None:
+    if return_fig_handle:
         return plt.gcf()
 
 

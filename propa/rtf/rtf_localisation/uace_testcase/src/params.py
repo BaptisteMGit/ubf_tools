@@ -48,6 +48,7 @@ else:  # Linux
     root_tmp = os.path.join(data_folder, "tmp_kraken")
     root_data = os.path.join(data_folder, "data")
     root_img = os.path.join(data_folder, "img")
+    root_img_publi = os.path.join(data_folder, "img", "publication")
 
 # Ensure folders exist
 for folder in [root_tmp, root_data, root_img]:
@@ -101,9 +102,9 @@ bott_hs_properties = {
 }
 
 
-# Path to real bathymetry file 
+# Path to real bathymetry file
 bathy_fpath = r"data\bathy\mmdpm\PVA_RR48\mmdpm_test_PVA_RR48_360.csv"
-# Path to real ssp file 
+# Path to real ssp file
 ssp_fpath = ""
 
 # Grid properties
@@ -135,7 +136,9 @@ plot_args = {
 fmin = 5
 fmax = 50
 fs = 200
-duration = 10
+# duration = 10
+duration = 20
+
 # nfft = 1024
 
 # Ship signal params
@@ -204,6 +207,10 @@ event_ship = ShipSignal(
 event_ship_x = 25000
 event_ship_y = 12000
 event_ship_z = 5
+
+# Window parameters to derive rtfs
+nperseg = 2**11
+alpha_overlap = 3/4
 
 use_weighted_rtf = True
 antenna_type = "random"

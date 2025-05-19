@@ -14,6 +14,9 @@
 # ======================================================================================================================
 import os
 import numpy as np
+import matplotlib.pyplot as plt
+
+
 import source.global_constants as g
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 from source.ssp_profiles import SSPProfile
@@ -38,13 +41,18 @@ from propa.kraken_toolbox.utils import default_nb_rcv_z
 
 class DeepWaterPekerisMunk(KrakenTestCase):
 
-    def __init__(self, simulation: Simulation = Simulation(), mode="run"):
+    def __init__(
+        self,
+        simulation: Simulation = Simulation(),
+        mode="run",
+        name: str = "dw_pekeris_munk",
+    ):
         """
         Constructor
         """
 
         # Initialize the simulation object
-        name = "dw_pekeris_munk"
+        # name = "dw_pekeris_munk"
 
         # Common properties
         zmin = 0
@@ -189,6 +197,8 @@ class DeepWaterPekerisMunk(KrakenTestCase):
         # Update simulation
         simulation.name = name
         simulation.init()
+        simulation.kraken_env = self.env
+        simulation.kraken_flp = self.flp
         self.simulation = simulation
 
         # Run and plot diags if "demo" mode is selected
@@ -200,13 +210,18 @@ class DeepWaterPekerisMunk(KrakenTestCase):
 
 class DeepWaterPekerisRhumrumSSP(KrakenTestCase):
 
-    def __init__(self, simulation: Simulation = Simulation(), mode="run"):
+    def __init__(
+        self,
+        simulation: Simulation = Simulation(),
+        mode="run",
+        name: str = "dw_pekeris_rhumrum_ssp",
+    ):
         """
         Constructor
         """
 
         # Initialize the simulation object
-        name = "dw_pekeris_rhumrum_ssp"
+        # name = "dw_pekeris_rhumrum_ssp"
 
         # Common properties
         zmin = 0
@@ -336,6 +351,8 @@ class DeepWaterPekerisRhumrumSSP(KrakenTestCase):
         # Update simulation
         simulation.name = name
         simulation.init()
+        simulation.kraken_env = self.env
+        simulation.kraken_flp = self.flp
         self.simulation = simulation
 
         # Run and plot diags if "demo" mode is selected
@@ -347,7 +364,13 @@ class DeepWaterPekerisRhumrumSSP(KrakenTestCase):
 
 class DeepWaterRealEnv(KrakenTestCase):
 
-    def __init__(self, simulation: Simulation = Simulation(), mode="run", name:str = "dw_real_env"):
+    def __init__(
+        self,
+        simulation: Simulation = Simulation(),
+        mode="run",
+        name: str = "dw_real_env",
+        depth_offset: float = 0,
+    ):
         """
         Constructor
         """
@@ -362,7 +385,8 @@ class DeepWaterRealEnv(KrakenTestCase):
         min_phase_speed = 1000
         max_phase_speed = 20000
         # bott_props = g.sand_properties
-        bott_props = g.boulders_bedrock_properties
+        # bott_props = g.boulders_bedrock_propertiesc
+        bott_props = g.coarse_sediment_properties
         bott_props["a_s"] = 0.0  # No shear wave
         zs = 5
 
@@ -383,8 +407,8 @@ class DeepWaterRealEnv(KrakenTestCase):
         bathy.bathy_depth = bathy.bathy_depth[::nsubsample]
 
         # Add off set to bathy depth to reach approximate zmax
-        z_offset = bathy.bathy_depth.max() - zmax
-        bathy.bathy_depth = bathy.bathy_depth - z_offset
+        # z_offset = bathy.bathy_depth.max() - zmax
+        bathy.bathy_depth = bathy.bathy_depth - depth_offset
         zmax = bathy.bathy_depth.max()
 
         # Set domain properties
@@ -504,6 +528,7 @@ class DeepWaterRealEnv(KrakenTestCase):
             kraken_properties=kraken_properties,
             bathy=bathy,
             title=title,
+            mode=mode,
         )
 
         # Update simulation
@@ -525,9 +550,9 @@ if __name__ == "__main__":
 
     # test_case = DeepWaterPekerisMunk(mode="demo")
     # test_case = DeepWaterPekerisRhumrumSSP(mode="demo")
-    test_case = DeepWaterRealEnv(mode="demo")
-
-    # test_case = DeepWaterRealEnv(mode="run")
+    # test_case = DeepWaterRealEnv(mode="demo", depth_offset=0)
+    test_case = DeepWaterRealEnv(mode="run", depth_offset=0)
+    test_case.plot_ssp_tl()
     # test_case.run()
 
 

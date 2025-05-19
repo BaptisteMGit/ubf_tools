@@ -24,9 +24,9 @@ debug = False
 check = True
 n_mc = 1
 use_weighted_rtf = True
-name = "dw_real_env_3km"
+name = "dw_real_env_2km"
 
-search_area_length = 3 * 1e3
+search_area_length = 2 * 1e3
 simu = Simulation(
     name=name,
     debug=debug,
@@ -38,11 +38,11 @@ simu = Simulation(
 )
 test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
-# db = DataBuilder(simulation=simu)
-# db.build_tf_dataset()
-# print("Grid dataset")
-# db.grid_dataset()
-# db.build_signal()
+db = DataBuilder(simulation=simu)
+db.build_tf_dataset()
+print("Grid dataset")
+db.grid_dataset()
+db.build_signal()
 
 
 # First run to make sure everything is ok 

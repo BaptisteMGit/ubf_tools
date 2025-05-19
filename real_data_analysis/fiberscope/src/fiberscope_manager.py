@@ -578,7 +578,7 @@ class FiberscopeManager:
                 y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_v
             )
         rtf = fp.rtf_estimator.estimate_rtf_covariance_subtraction(
-            Rx - Rv, use_first_column=True
+            Rx - Rv, use_first_column=False
         )
 
         xr_data.coords["f_rtf"] = f
@@ -817,18 +817,18 @@ if __name__ == "__main__":
     # # preSplit the dynamic recording
     fsm.presplit_dynamic_record(
         fs_dynamic_recording=fs_dr,
-        n_sweep=3,
+        n_sweep=8,
         n_records=95,
     )
 
     # # Split dynamic records and save as nc
     fsm.split_dynamic_record(fs_dynamic_recording=fs_dr)
 
-    # # Derive features
-    # fsm.process_dyn_analysis(
-    #     fs_dynamic_recording=fs_dr,
-    #     use_global_noise_csdm=False,
-    # )
+    # Derive features
+    fsm.process_dyn_analysis(
+        fs_dynamic_recording=fs_dr,
+        use_global_noise_csdm=False,
+    )
 
     # Load and preprocess static record
     fs_sweep1 = FiberscopeSweep1()

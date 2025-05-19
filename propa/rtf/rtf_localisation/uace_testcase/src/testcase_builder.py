@@ -552,7 +552,7 @@ if __name__ == "__main__":
     # test_case = DeepWaterPekerisRhumrumSSP(mode="demo")
     # test_case = DeepWaterRealEnv(mode="demo", depth_offset=0)
     test_case = DeepWaterRealEnv(mode="run", depth_offset=0)
-    test_case.plot_ssp_tl()
+    test_case.plot_ssp_tl(publi=True)
     # test_case.run()
 
 

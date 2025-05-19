@@ -132,9 +132,11 @@ def plotshd(
     tlmin = tlmax - 50
 
     xlab = "Range [m]"
+    bathy_mult = 1e3
     if units == "km":
         Pos["r"]["r"] = Pos["r"]["r"] / 1000.0
         xlab = "Range [km]"
+        bathy_mult = 1
 
     if tl_min is not None:
         tlmin_plot = tl_min
@@ -160,15 +162,18 @@ def plotshd(
         rasterized=rasterized,
     )
 
+    # Set xticks
+    # axis.set_xticks(xticks)
+
     # plt.clim(tlmin_plot, tlmax_plot)
 
     if bathy is not None:
-        axis.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k", linewidth=2)
+        axis.plot(bathy.bathy_range * bathy_mult, bathy.bathy_depth, "k", linewidth=2)
 
     axis.invert_yaxis()
     axis.tick_params(direction="out")
 
-    cbar = plt.colorbar(im)
+    cbar = plt.colorbar(im, pad=0.005)
     cbar.set_label("TL [dB]")
     cbar.ax.invert_yaxis()
 

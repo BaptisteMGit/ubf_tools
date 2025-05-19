@@ -159,8 +159,8 @@ class KrakenTestCase:
         rcv_properties: ReceiverProperties = ReceiverProperties(),
         kraken_properties: KrakenProperties = KrakenProperties(),
         bathy: Bathymetry = None,
-        title: str ="Default testcase",
-        mode: str ="run",
+        title: str = "Default testcase",
+        mode: str = "run",
     ):
         """
         Initialize the TestCase object.
@@ -366,6 +366,46 @@ class KrakenTestCase:
             tl_max=tl_max,
         )
         plt.savefig(os.path.join(self.imgs_outputs_dir, "tl.png"))
+
+    def plot_ssp_tl(self, tl_min=None, tl_max=None, publi=False):
+        fpath = os.path.join(self.io_files_dir, self.env.filename)
+        fig, axs = plt.subplots(
+            nrows=1,
+            ncols=2,
+            sharey=True,
+            gridspec_kw={"width_ratios": [1, 6]},
+            figsize=(16, 8),
+        )
+        # Plot transmission loss map
+        plotshd(
+            fpath + ".shd",
+            title="",
+            bathy=self.bathy,
+            tl_min=tl_min,
+            tl_max=tl_max,
+            axis=axs[1],
+            rasterized=False,
+        )
+        axs[1].set_ylabel("")
+
+        # Add ssp beside transmission loss
+        axs[0].plot(
+            self.kraken.medium.cp_ssp, self.kraken.medium.z_ssp, color="k", linewidth=1
+        )
+        axs[0].set_xlabel(r"Celerity [$ms^{-1}$]")
+        axs[0].set_xlim(
+            [self.kraken.medium.cp_ssp.min() - 5, self.kraken.medium.cp_ssp.max() + 5]
+        )
+        plt.ylim([self.bathy.bathy_depth.max() * 1.15, 0])
+
+        # Adjust spacing
+        plt.subplots_adjust(
+            wspace=0.05,
+        )
+
+        plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.png"))
+        if publi:
+            plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.png"))
 
 
 if __name__ == "__main__":

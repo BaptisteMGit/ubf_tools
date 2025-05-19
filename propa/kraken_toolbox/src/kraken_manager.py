@@ -92,19 +92,24 @@ class KrakenManager:
 
                 # t0 = time.time()
                 # Spawn processes
-                pool = multiprocessing.Pool(processes=self.n_workers)
+                # pool = multiprocessing.Pool(processes=self.n_workers)
 
-                # Run parallel processes
-                result = pool.starmap(
-                    self.runkraken_broadband_range_dependent, param_pool, chunksize=1
-                )
-                field_pos = result[0][1]
-                pressure_field = np.concatenate([r[0] for r in result], axis=0)
+                # # Run parallel processes
+                # result = pool.starmap(
+                #     self.runkraken_broadband_range_dependent, param_pool, chunksize=1
+                # )
+                # field_pos = result[0][1]
+                # pressure_field = np.concatenate([r[0] for r in result], axis=0)
+                # # Close pool
+                # pool.close()
+                # # Wait for all processes to finish
+                # pool.join()
 
-                # Close pool
-                pool.close()
-                # Wait for all processes to finish
-                pool.join()
+                with multiprocessing.Pool(processes=self.n_workers) as pool:
+                    result = pool.starmap(self.runkraken_broadband_range_dependent, param_pool, chunksize=1)
+                    field_pos = result[0][1]
+                    pressure_field = np.concatenate([r[0] for r in result], axis=0)
+
 
                 # cpu_time = time.time() - t0
                 # print(f"CPU time (Map): {cpu_time:.2f} s")
@@ -620,3 +625,7 @@ class KrakenManager:
         fid.close()
 
         return title, PlotType, freqVec, freq0, read_freq, atten, Pos, pressure
+
+
+if __name__ == "__main__":
+    pass

@@ -50,7 +50,7 @@ class DataBuilder:
     def build_tf_dataset_range_dependent(self):
         km = KrakenManager(parallel=True, n_workers=p.n_workers, verbose=True)
 
-        freq = self.simulation.library_ship.freq
+        freq = self.simulation.library_ship[0].freq
         f = freq[(freq >= self.simulation.fmin) & (freq <= self.simulation.fmax)]
         pressure_field, field_pos = km.runkraken(
             env=self.simulation.kraken_env,

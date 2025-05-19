@@ -38,8 +38,8 @@ if __name__ == "__main__":
     # plt.savefig("antenna")
 
     debug = False
-    check = True
-    n_mc = 1
+    check = False
+    n_mc = 10
     use_weighted_rtf = True
     name = "dw_real_env_700m"
 
@@ -55,19 +55,21 @@ if __name__ == "__main__":
     )
     test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
-    db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
-    print("Grid dataset")
-    db.grid_dataset()
-    db.build_signal()
+    # db = DataBuilder(simulation=simu)
+    # db.build_tf_dataset()
+    # print("Grid dataset")
+    # db.grid_dataset()
+    # db.build_signal()
 
     ### Test different window sizes ###
     import shutil
 
     # mode = "analysis"
     mode = "run"
-    # snrs = [-8, -6, -4, -2, 0, 2]
-    snrs = [0]
+    # snrs = [-8, -4, 0, 4]
+    snrs = [0, 4]
+
+    # snrs = [0]
 
 
     # real_env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\dw_real_env"
@@ -201,6 +203,9 @@ if __name__ == "__main__":
             plt.suptitle(f"Receivers = ({rcv_str})")
 
             img_folder = os.path.join(simu.root_img, "window_params_comparison")
+            if not os.path.exists(img_folder):
+                os.makedirs(img_folder)
+
             fpath = os.path.join(img_folder, f"nperseg_{nperseg}")
             plt.savefig(fpath)
 

@@ -36,6 +36,8 @@ from propa.kraken_toolbox.utils import default_nb_rcv_z
 from propa.kraken_toolbox.run_kraken import get_subprocess_working_dir
 from propa.kraken_toolbox.plot_utils import plotshd, plotmode
 
+from publication.publication_figure import PubFigure
+
 
 class DomainProperties:
     """
@@ -369,12 +371,14 @@ class KrakenTestCase:
 
     def plot_ssp_tl(self, tl_min=None, tl_max=None, publi=False):
         fpath = os.path.join(self.io_files_dir, self.env.filename)
+        pfig = PubFigure(label_fontsize=30)
         fig, axs = plt.subplots(
             nrows=1,
             ncols=2,
             sharey=True,
             gridspec_kw={"width_ratios": [1, 6]},
             figsize=(16, 8),
+            # wspace=0.05,
         )
         # Plot transmission loss map
         plotshd(
@@ -384,6 +388,7 @@ class KrakenTestCase:
             tl_min=tl_min,
             tl_max=tl_max,
             axis=axs[1],
+            units="km",
             rasterized=False,
         )
         axs[1].set_ylabel("")
@@ -396,16 +401,20 @@ class KrakenTestCase:
         axs[0].set_xlim(
             [self.kraken.medium.cp_ssp.min() - 5, self.kraken.medium.cp_ssp.max() + 5]
         )
+        # Rotate x ticks for better readability
+        axs[0].tick_params(axis="x", rotation=30)
+        axs[1].tick_params(axis="x", rotation=30)
         plt.ylim([self.bathy.bathy_depth.max() * 1.15, 0])
 
-        # Adjust spacing
-        plt.subplots_adjust(
-            wspace=0.05,
-        )
+        axs[0].set_ylabel("Depth [m]")
+        # # Adjust spacing
+        # plt.subplots_adjust(
+        #     wspace=0.05,
+        # )
 
         plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.png"))
         if publi:
-            plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.png"))
+            plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.pdf"))
 
 
 if __name__ == "__main__":

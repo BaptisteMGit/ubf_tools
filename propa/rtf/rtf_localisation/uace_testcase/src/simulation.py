@@ -17,6 +17,8 @@ import numpy as np
 import xarray as xr
 
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import Antenna, SparseAntenna
+from propa.rtf.rtf_localisation.uace_testcase.src.ship_signal import ShipSignal
+
 from propa.kraken_toolbox.src.kraken_env import KrakenEnv, KrakenFlp
 import source.global_constants as g
 from source.signal_generator import SignalGenerator
@@ -41,8 +43,8 @@ class Simulation:
         fs: float = p.fs,
         signal_duration: float = p.duration,
         antenna: Antenna = p.antenna,
-        library_ship: str = p.library_ship,
-        event_ship: str = p.event_ship,
+        library_ship: np.ndarray[ShipSignal] = p.library_ship,
+        event_ship: ShipSignal = p.event_ship,
         event_ship_x: float = p.event_ship_x,
         event_ship_y: float = p.event_ship_y,
         event_ship_z: float = p.event_ship_z,
@@ -80,7 +82,7 @@ class Simulation:
         self.feature_noverlap = int(feature_nperseg * feature_overlap_ratio)
 
         self.antenna = antenna
-        self.library_ship = library_ship
+        self.library_ship = np.atleast_1d(library_ship)
         self.event_ship = event_ship
         self.library_stype = "ship"
         self.event_stype = "ship"

@@ -571,20 +571,20 @@ class FeatureBuilder:
         # Source position + the 4 corners of the grid + one position inside the grid
         x_check = [
             self.simulation.event_ship_x,
-            ds_tf.x.min().values,
-            ds_tf.x.min().values,
-            ds_tf.x.max().values,
-            ds_tf.x.max().values,
-            ds_tf.x.values[int(ds_tf.sizes["x"] * 2 / 3)],
+            # ds_tf.x.min().values,
+            # ds_tf.x.min().values,
+            # ds_tf.x.max().values,
+            # ds_tf.x.max().values,
+            # ds_tf.x.values[int(ds_tf.sizes["x"] * 2 / 3)],
         ]
 
         y_check = [
             self.simulation.event_ship_y,
-            ds_tf.y.min().values,
-            ds_tf.y.max().values,
-            ds_tf.y.max().values,
-            ds_tf.y.min().values,
-            ds_tf.y.values[int(ds_tf.sizes["y"] * 1 / 3)],
+            # ds_tf.y.min().values,
+            # ds_tf.y.max().values,
+            # ds_tf.y.max().values,
+            # ds_tf.y.min().values,
+            # ds_tf.y.values[int(ds_tf.sizes["y"] * 1 / 3)],
         ]
 
         dist_func = D_hermitian_angle_fast
@@ -656,6 +656,11 @@ class FeatureBuilder:
         """
         Plot library signal at source position and event signal as well as associated noise signals to check that the dataset is built as required.
         """
+        img_check_path = os.path.join(ds_sig_noise.root_img, "check")
+        if not os.path.exists(img_check_path):
+            os.makedirs(img_check_path)
+
+        # Check at event source position
         s_l = ds_sig_noise.s_l.sel(
             x=ds_sig_noise.xs, y=ds_sig_noise.ys, method="nearest"
         )
@@ -668,10 +673,6 @@ class FeatureBuilder:
         s_e = ds_sig_noise.s_e
         x_e = ds_sig_noise.x_e
         n_e = ds_sig_noise.n_e
-
-        img_check_path = os.path.join(ds_sig_noise.root_img, "check")
-        if not os.path.exists(img_check_path):
-            os.makedirs(img_check_path)
 
         for i_rcv in ds_sig_noise.idx_rcv.values:
 
@@ -703,8 +704,81 @@ class FeatureBuilder:
                     axs[irow, icol].set_xlabel("")
 
             plt.suptitle(f"SNR = {ds_sig_noise.snr} dB")
-            fpath = os.path.join(img_check_path, f"sig_noise_ircv{i_rcv}.png")
+            fpath = os.path.join(img_check_path, f"sig_noise_ircv{i_rcv}_event_pos.png")
             plt.savefig(fpath)
+
+        plt.close("all")
+
+        # Check at a few random positions
+        npos = 4
+        x_id = np.random.randint(low=0, high=ds_sig_noise.sizes["x"], size=npos)
+        x_check = ds_sig_noise.x.values[x_id]
+        y_id = np.random.randint(low=0, high=ds_sig_noise.sizes["y"], size=npos)
+        y_check = ds_sig_noise.y.values[y_id]
+        ircv_check = 0
+
+        f, axs = plt.subplots(4, 2, figsize=(20, 12), sharex=True, sharey=False)
+
+        # Iterate over positions to check
+        for i_check in range(len(x_check)):
+            x_i = x_check[i_check]
+            y_i = y_check[i_check]
+            pos_label = f" - (x={np.round(x_i, 1)}, y={np.round(y_i, 1)})"
+
+            s_l = ds_sig_noise.s_l.sel(
+                idx_rcv=ircv_check, x=x_i, y=y_i, method="nearest"
+            )
+
+            # STFTs
+            fs = 1 / ds_sig_noise.t.diff("t").values[0]
+            # nperseg = self.simulation.feature_nperseg
+            # noverlap = self.simulation.feature_noverlap
+            # Derive stfts
+            ff, tt, s_l_stft = sp.stft(
+                s_l.values, fs=fs, nperseg=2**7, noverlap=int(2**7 * 3 / 4)
+            )
+
+            # Store stfts in xarray to use plot api
+            stft_ds = xr.Dataset(
+                {
+                    "s_l_stft": (["f", "t"], np.abs(s_l_stft)),
+                    # "x_l_stft": (["f", "t"], np.abs(x_l_stft)),
+                    # "n_l_stft": (["f", "t"], np.abs(n_l_stft)),
+                },
+                coords={"f": ff, "t": tt},
+            )
+
+            cmap = "jet"
+            vmin = 0
+            vmax = np.max([stft_ds[v].max() for v in list(stft_ds.keys())])
+
+            # First column -> signals
+            s_l.plot(ax=axs[i_check, 0])
+            axs[i_check, 0].set_title("$z(t)$" + pos_label)
+
+            # Second column -> stfts
+            stft_ds.s_l_stft.plot(ax=axs[i_check, 1], cmap=cmap, vmin=vmin, vmax=vmax)
+            axs[i_check, 1].set_title("$z(t)$" + pos_label)
+            axs[i_check, 1].set_ylim([0, 50])
+
+            # stft_ds.n_l_stft.plot(
+            #     ax=axs[1, 0], cmap=cmap, vmin=vmin, vmax=vmax
+            # )
+            # axs[1, 0].set_title("$v(t)$")
+
+            # stft_ds.x_l_stft.plot(
+            #     ax=axs[2, 0], cmap=cmap, vmin=vmin, vmax=vmax
+            # )
+            # axs[2, 0].set_title("$x(t) = z(t) + v(t)$")
+
+        # Remove xlabel for row 0, 1, 2
+        for irow in [0, 1, 2]:
+            for icol in [0, 1]:
+                axs[irow, icol].set_xlabel("")
+
+        plt.suptitle(f"SNR = {ds_sig_noise.snr} dB")
+        fpath = os.path.join(img_check_path, "library_signal_check.png")
+        plt.savefig(fpath)
 
         plt.close("all")
 

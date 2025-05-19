@@ -142,12 +142,6 @@ duration = 20
 # nfft = 1024
 
 # Ship signal params
-f0_min = 4
-f0_max = 5
-std_fi_min = 1e-3
-std_fi_max = 1e-1
-tau_corr_fi_min = 1e-3
-tau_corr_fi_max = 0.5
 
 # Plot params
 nperseg = 2**8
@@ -211,6 +205,39 @@ event_ship_z = 5
 # Window parameters to derive rtfs
 nperseg = 2**11
 alpha_overlap = 3 / 4
+
+### Mutliple ship library ### 
+# f0_min = 4
+# f0_max = 5
+# std_fi_min = 1e-3
+# std_fi_max = 1e-1
+# tau_corr_fi_min = 1e-3
+# tau_corr_fi_max = 0.5
+f0_min = 3
+f0_max = 6
+std_fi_min = 1e-3
+std_fi_max = 5 * 1e-1
+tau_corr_fi_min = 1e-3
+tau_corr_fi_max = 5 * 1e-1
+
+nl_ship = 20
+library_ship = []
+for iship in range(nl_ship):
+    f0_l = np.random.uniform(low=f0_min, high=f0_max + 5)
+    std_fi_l = np.random.uniform(low=std_fi_min, high=std_fi_max) * f0_l
+    tau_corr_fi_l = (
+        np.random.uniform(low=tau_corr_fi_min, high=tau_corr_fi_max) * 1 / f0_l
+    )
+    library_ship_i = ShipSignal(
+        name=f"library_ship_{iship}",
+        f0=f0_l,
+        fs=fs,
+        duration=duration,
+        std_fi=std_fi_l,
+        tau_corr_fi=tau_corr_fi_l,
+        root_img=root_img_ship_sigs,
+    )
+    library_ship.append(library_ship_i)
 
 use_weighted_rtf = True
 antenna_type = "random"

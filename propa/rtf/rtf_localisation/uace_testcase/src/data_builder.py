@@ -295,7 +295,32 @@ class DataBuilder:
         ds_gridded_tf = ds_gridded_tf.sel(f=slice(0, self.simulation.fs / 2))
 
         # Library / event spectrum
-        S_f_library = self.simulation.library_ship.spectrum
+        # S_f_library = self.simulation.library_ship.spectrum
+
+        # Update 17/05/2025 -> multiple library sources
+        # Build 3d array buy randomly picking library ship from the given list of ship
+        target_shape = ds_gridded_tf.tf_real.sel(idx_rcv=0).shape
+        nf, ny, nx = target_shape
+        num_lib_sources = self.simulation.library_ship.shape[0]
+        # Step 1: generate random indices for each (x, y)
+        random_indices = np.random.randint(
+            0, num_lib_sources, size=target_shape[1:]
+        )  # shape (ny, nx)
+
+        # Step 2: reshape for indexing — flatten the index grid
+        flat_indices = random_indices.ravel()  # shape (ny*nx,)
+
+        # Step 3: extract the selected vectors — result shape: (ny*nx, nf)
+        spectrums_vector = np.array(
+            [l_ship.spectrum for l_ship in self.simulation.library_ship]
+        )
+        selected_vectors = spectrums_vector[flat_indices]  # shape (ny*nx, nf)
+
+        # Step 4: reshape to (nf, ny, nx)
+        S_f_library_mat = np.moveaxis(
+            selected_vectors.reshape(ny, nx, nf), 2, 0
+        )  # (nf, ny, nx)
+
         S_f_event = self.simulation.event_ship.spectrum
 
         # Derive delay for each receiver
@@ -346,7 +371,11 @@ class DataBuilder:
             k0 = 2 * np.pi * f / g.c0
             norm_factor = np.exp(1j * k0) / (4 * np.pi)
 
-            y_f_library = mult_along_axis(tf_library, S_f_library * norm_factor, axis=0)
+            # y_f_library = mult_along_axis(tf_library, S_f_library * norm_factor, axis=0)
+            y_f_library = mult_along_axis(
+                tf_library * S_f_library_mat, norm_factor, axis=0
+            )
+
             y_f_event = tf_event * S_f_event * norm_factor
 
             # Derive delay factor to take into account the propagation time
@@ -370,7 +399,7 @@ class DataBuilder:
 
         # Build dataset to save
         # t = np.arange(0, self.simulation., 1 / library_props["fs"])
-        t = self.simulation.library_ship.time  # (nt,)
+        t = self.simulation.library_ship[0].time  # (nt,)
 
         ds_sig = xr.Dataset(
             coords=dict(
@@ -503,20 +532,43 @@ if __name__ == "__main__":
     use_weighted_rtf = True
     name = "dw_real_env"
 
-    search_area_length = 1 * 1e3
+    # Test multiple library ship
+    from propa.rtf.rtf_localisation.uace_testcase.src.ship_signal import ShipSignal
+
+    nl_ship = 10
+    library_ship = []
+    for iship in range(nl_ship):
+        f0_l = np.random.uniform(low=p.f0_min, high=p.f0_max)
+        std_fi_l = np.random.uniform(low=p.std_fi_min, high=p.std_fi_max) * f0_l
+        tau_corr_fi_l = (
+            np.random.uniform(low=p.tau_corr_fi_min, high=p.tau_corr_fi_max) * 1 / f0_l
+        )
+        library_ship_i = ShipSignal(
+            name="library_ship",
+            f0=f0_l,
+            fs=p.fs,
+            duration=p.duration,
+            std_fi=std_fi_l,
+            tau_corr_fi=tau_corr_fi_l,
+            root_img=p.root_img_ship_sigs,
+        )
+        library_ship.append(library_ship_i)
+
+    search_area_length = 0.5 * 1e3
     simu = Simulation(
         name=name,
         debug=debug,
         antenna=antenna,
         check_features=check,
+        library_ship=library_ship,
         monte_carlo_iterations=n_mc,
         use_weighted_rtf=use_weighted_rtf,
         search_area_length=search_area_length,
     )
-    test_case = DeepWaterRealEnv(simulation=simu, mode="run")
+    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name="dw_real_env")
     db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
-    db.grid_dataset()
+    # db.build_tf_dataset()
+    # db.grid_dataset()
     db.build_signal()
 
     # # Load dataset

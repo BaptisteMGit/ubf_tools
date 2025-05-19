@@ -210,7 +210,7 @@ event_ship_z = 5
 
 # Window parameters to derive rtfs
 nperseg = 2**11
-alpha_overlap = 3/4
+alpha_overlap = 3 / 4
 
 use_weighted_rtf = True
 antenna_type = "random"

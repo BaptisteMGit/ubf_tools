@@ -17,7 +17,8 @@ import matplotlib.pyplot as plt
 
 import scipy.signal as sp
 from source.signal_generator import SignalGenerator
-import propa.rtf.rtf_localisation.uace_testcase.src.params as p
+
+# import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 
 
 class ShipSignal:

@@ -84,7 +84,10 @@ if __name__ == "__main__":
     db.build_signal()
 
     ideal_nperseg = 7 * 200
-    npersegs = [ideal_nperseg, 2**11, 2**10, 2**9]
+    # npersegs = [ideal_nperseg, 2**11, 2**10, 2**9]
+    # alpha_ov = [0.5, 0.75, 0.9]
+
+    npersegs = [2**11, 2**10, 2**9]
     alpha_ov = [0.5, 0.75, 0.9]
 
     if mode == "run":
@@ -119,7 +122,7 @@ if __name__ == "__main__":
                     simu.library_dataset_fpath,
                 )
 
-                lp.process_multiple_snrs(snrs=snrs, run_mode="w")
+                lp.process_multiple_snrs(snrs=snrs, run_mode="a")
         mode = "analysis"
 
     msr_ = [[] for i in range(len(npersegs))]

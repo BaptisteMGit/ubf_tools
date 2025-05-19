@@ -39,9 +39,9 @@ if __name__ == "__main__":
 
     debug = False
     check = True
-    n_mc = 20
+    n_mc = 1
     use_weighted_rtf = True
-    name = "dw_real_env"
+    name = "dw_real_env_700m"
 
     search_area_length = 0.7 * 1e3
     simu = Simulation(
@@ -66,7 +66,9 @@ if __name__ == "__main__":
 
     # mode = "analysis"
     mode = "run"
-    snrs = [-8, -6, -4, -2, 0, 2]
+    # snrs = [-8, -6, -4, -2, 0, 2]
+    snrs = [0]
+
 
     # real_env_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\dw_real_env"
     real_env_root = simu.data_folder
@@ -103,8 +105,6 @@ if __name__ == "__main__":
                 lp = LocalizationProcessor(simulation=simu, use_dask=False)
 
                 # Copy dataset from real_env to avoid rerunning DataBuilder
-                # shutil.copyfile(os.path.join(real_env_root, "tf.nc"), simu.tf_dataset_fpath)
-
                 shutil.copyfile(
                     os.path.join(real_env_root, "tf_grid_dx20m_dy20m.nc"),
                     simu.tf_grid_dataset_fpath,
@@ -115,7 +115,10 @@ if __name__ == "__main__":
                     simu.library_dataset_fpath,
                 )
 
+                # Process loc for current window props 
                 lp.process_multiple_snrs(snrs=snrs, run_mode="a")
+
+        # Switch to analysis mode once done 
         mode = "analysis"
 
     msr_ = [[] for i in range(len(npersegs))]

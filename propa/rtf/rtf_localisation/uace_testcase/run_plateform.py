@@ -37,14 +37,16 @@ if __name__ == "__main__":
     # Library ships used
     library_ship = p.library_ship
     # Plot library ships 
+    nperseg_plot = 2**9
+    noverlap_plot = 2**8
     for library_ship_i in library_ship:
         library_ship_i.plot_signal(tmax=2)
         library_ship_i.plot_spectrum()
         library_ship_i.plot_psd()
-        library_ship_i.plot_stft()
+        library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
 
     # Flags
-    check = True
+    check = False
     debug = False
     use_weighted_rtf = True
 
@@ -62,21 +64,14 @@ if __name__ == "__main__":
     test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
     db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
-    print("Grid dataset")
-    db.grid_dataset()
+    # db.build_tf_dataset()
+    # # print("Grid dataset")
+    # db.grid_dataset()
     db.build_signal()
 
-    # First run to make sure everything is ok
-    snrs = [0]
-    simu.monte_carlo_iterations = 1
-    simu.check_features = True
-    lp = LocalizationProcessor(simulation=simu, use_dask=True)
-    lp.process_multiple_snrs(snrs=snrs, run_mode="w")
-
-    snrs = [-6, -4, -2, 0]
-    simu.monte_carlo_iterations = 10
-    simu.check_features = False
+    # snrs = [-6, -4, -2, 0]
+    snrs = [50]
+    # snrs = np.arange(-10, 15, 1)[::-1]
     print(f"Processing snrs : {snrs}")
     lp = LocalizationProcessor(simulation=simu, use_dask=False)
     lp.process_multiple_snrs(snrs=snrs, run_mode="w")

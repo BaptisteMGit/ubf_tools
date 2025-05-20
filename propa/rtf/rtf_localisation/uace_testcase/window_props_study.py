@@ -64,10 +64,10 @@ if __name__ == "__main__":
     ### Test different window sizes ###
     import shutil
 
-    # mode = "analysis"
-    mode = "run"
-    # snrs = [-8, -4, 0, 4]
-    snrs = [0, 4]
+    mode = "analysis"
+    # mode = "run"
+    snrs = [-8, -4, 0, 4]
+    # snrs = [0, 4]
 
     # snrs = [0]
 
@@ -84,7 +84,9 @@ if __name__ == "__main__":
     # db.build_signal()
 
     ideal_nperseg = 7 * 200
-    npersegs = [ideal_nperseg, 2**11, 2**10, 2**9]
+    # npersegs = [ideal_nperseg, 2**11, 2**10, 2**9]
+    # alpha_ov = [0.5, 0.75, 0.9]
+    npersegs = [ideal_nperseg, 2**11, 2**10]
     alpha_ov = [0.5, 0.75, 0.9]
 
     if mode == "run":
@@ -161,8 +163,10 @@ if __name__ == "__main__":
             fig, axs = plt.subplots(2, 1, figsize=(12, 8))
             # RMSE
             ax_rmse = axs[0]
+            ax_rmse.set_ylim([0, 100])
             # MSR
             ax_msr = axs[1]
+            ax_msr.set_ylim([-2, 0])
             for j, alpha in enumerate(alpha_ov):
                 test_id = (
                     r"$n_{perseg} = "
@@ -213,8 +217,10 @@ if __name__ == "__main__":
         fig, axs = plt.subplots(2, 1, figsize=(12, 8))
         # RMSE
         ax_rmse = axs[0]
+        ax_rmse.set_ylim([0, 100])
         # MSR
         ax_msr = axs[1]
+        ax_msr.set_ylim([-2, 0])
         for i, nperseg in enumerate(npersegs):
             test_id = (
                 r"$n_{perseg} = "

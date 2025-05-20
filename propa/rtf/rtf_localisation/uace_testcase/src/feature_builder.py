@@ -610,10 +610,6 @@ class FeatureBuilder:
             # rtf_true_pos = rtf_true_pos.sel(
             #     f=rtf_cs_pos.f_rtf.values, method="nearest"
             # )
-            i_rcv = 0
-            rtf_weights_pos = ds_weights.rtf_weights.sel(idx_rcv=i_rcv).sel(
-                y=y_i, x=x_i, method="nearest"
-            )
 
             # Derive theta
             # ax_order = self.get_axis_order(
@@ -638,7 +634,13 @@ class FeatureBuilder:
             theta = theta / np.max(theta)
             plt.figure(figsize=(12, 6))
             plt.plot(rtf_cs.f_rtf.values, theta, label=r"$\theta_k$")
-            rtf_weights_pos.plot(marker=".", color="r", label=r"$w_k$")
+
+            for i_rcv in tf.idx_rcv.values:
+                rtf_weights_pos = ds_weights.rtf_weights.sel(idx_rcv=i_rcv).sel(
+                    y=y_i, x=x_i, method="nearest"
+                )
+                rtf_weights_pos.plot(marker=".", label=r"$w_k$" + f" - rcv n°{i_rcv}")
+
             plt.legend()
 
             # if i_rcv == i_rcv_ref:

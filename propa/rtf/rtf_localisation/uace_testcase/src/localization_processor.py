@@ -494,12 +494,13 @@ class LocalizationProcessor:
 
         ## RTF ##
         # Select reference receiver (by default the first receiver of the array is selected)
-        rtf_weights_fa = (
-            ds_rtf_weights.rtf_weights.sel(f=f_loc_rtf)
-            .mean(dim="idx_rcv")
-            .values
-        )
-        dist_kwargs["weights"] = rtf_weights_fa
+        if self.simulation.use_weighted_rtf:
+            rtf_weights_fa = (
+                ds_rtf_weights.rtf_weights.sel(f=f_loc_rtf)
+                .mean(dim="idx_rcv")
+                .values
+            )
+            dist_kwargs["weights"] = rtf_weights_fa
 
         # dist_kwargs["weights"] =
         i_ref = rcv_in_fullarray[0]

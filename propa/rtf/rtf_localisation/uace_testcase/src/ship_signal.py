@@ -12,6 +12,7 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -50,6 +51,9 @@ class ShipSignal:
         self.duration = duration
         self.std_fi = std_fi
         self.tau_corr_fi = tau_corr_fi
+
+        if not os.path.exists(root_img):
+            os.makedirs(root_img)
         self.root_img = root_img
 
         self.sg = SignalGenerator()

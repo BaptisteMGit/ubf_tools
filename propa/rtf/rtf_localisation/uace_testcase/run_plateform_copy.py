@@ -27,8 +27,8 @@ if __name__ == "__main__":
     # plt.savefig("antenna")
 
     name = "dw_real_env"
-    n_mc = 100
-    search_area_length = 1 * 1e3
+    n_mc = 1
+    search_area_length = 0.7 * 1e3
 
     # Window properties set to the best properties according to the results from window_props_study.py
     nperseg = 2**10
@@ -36,14 +36,13 @@ if __name__ == "__main__":
 
     # Library ships used
     library_ship = p.library_ship
+    # plot_nperseg = 
     # Plot library ships 
-    nperseg_plot = 2**9
-    noverlap_plot = 2**8
     for library_ship_i in library_ship:
         library_ship_i.plot_signal(tmax=2)
         library_ship_i.plot_spectrum()
         library_ship_i.plot_psd()
-        library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
+        library_ship_i.plot_stft()
 
     # Flags
     check = False
@@ -63,15 +62,14 @@ if __name__ == "__main__":
     )
     test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
-    db = DataBuilder(simulation=simu)
+    # db = DataBuilder(simulation=simu)
     # db.build_tf_dataset()
-    # # print("Grid dataset")
+    # print("Grid dataset")
     # db.grid_dataset()
-    db.build_signal()
+    # db.build_signal()
 
-    # snrs = [-6, -4, -2, 0]
-    snrs = [50]
+    snrs = [-5, -3, -1, 1]
     # snrs = np.arange(-10, 15, 1)[::-1]
     print(f"Processing snrs : {snrs}")
     lp = LocalizationProcessor(simulation=simu, use_dask=False)
-    lp.process_multiple_snrs(snrs=snrs, run_mode="w")
+    lp.process_multiple_snrs(snrs=snrs, run_mode="a")

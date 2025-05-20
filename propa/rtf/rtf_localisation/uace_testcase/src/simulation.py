@@ -61,6 +61,7 @@ class Simulation:
         feature_nperseg: int = p.nperseg,
         feature_overlap_ratio: float = p.alpha_overlap,
         check_features: bool = False,
+        plot_library_ship_distribution: bool = True,
         debug: bool = False,
         verbose: bool = False,
     ):
@@ -92,6 +93,7 @@ class Simulation:
         self.debug = debug
         self.verbose = verbose
         self.check_features = check_features
+        self.plot_library_ship_distribution = plot_library_ship_distribution
 
         # Position of the event ship to localize
         self.event_ship_x = event_ship_x

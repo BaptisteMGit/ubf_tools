@@ -36,18 +36,20 @@ if __name__ == "__main__":
 
     # Library ships used
     library_ship = p.library_ship
-    # Plot library ships 
-    nperseg_plot = 2**9
-    noverlap_plot = 2**8
-    for library_ship_i in library_ship:
-        library_ship_i.plot_signal(tmax=2)
-        library_ship_i.plot_spectrum()
-        library_ship_i.plot_psd()
-        library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
+    # # Plot library ships 
+    # nperseg_plot = 2**9
+    # noverlap_plot = 2**8
+    # for library_ship_i in library_ship:
+    #     library_ship_i.plot_signal(tmax=2)
+    #     library_ship_i.plot_spectrum()
+    #     library_ship_i.plot_psd()
+    #     library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
+    #     plt.close("all")
 
     # Flags
     check = False
     debug = False
+    verbose = True
     use_weighted_rtf = True
 
     simu = Simulation(
@@ -60,18 +62,41 @@ if __name__ == "__main__":
         feature_overlap_ratio=alpha_overlap,
         use_weighted_rtf=use_weighted_rtf,
         search_area_length=search_area_length,
+        verbose=verbose,
     )
     test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
-    db = DataBuilder(simulation=simu)
+    # db = DataBuilder(simulation=simu)
     # db.build_tf_dataset()
-    # # print("Grid dataset")
+    # # # print("Grid dataset")
     # db.grid_dataset()
-    db.build_signal()
+    # db.build_signal()
+
 
     # snrs = [-6, -4, -2, 0]
-    snrs = [50]
-    # snrs = np.arange(-10, 15, 1)[::-1]
+    # snrs = [50]
+    snrs = np.arange(-10, 16, 1)[::-1]
     print(f"Processing snrs : {snrs}")
     lp = LocalizationProcessor(simulation=simu, use_dask=False)
     lp.process_multiple_snrs(snrs=snrs, run_mode="w")
+
+    # # # TODO : remove this 
+    # import xarray as xr 
+    # ship_dist = xr.open_dataset(os.path.join(simu.data_folder, "library_ship_distribution.nc"))
+    # amb_surf_fa = xr.open_dataset(os.path.join(simu.data_folder, "from_signal_dx20m_dy20m", 
+    #                                            "snr_50.0dB", "localization_dx20m_dy20m_fullarray_s1_s2_s3_s4_s5_s6.nc"))
+
+    # fig, axs = plt.subplots(nrows=2, ncols=3, sharey=True)
+    # axs = axs.flatten()
+    # ships_idx = np.unique(ship_dist.library_ship_id.values)
+    # for iship in ships_idx:
+    #     mask_i = np.where(ship_dist.library_ship_id.values == iship, 1, np.nan)
+    #     # mask_i = (ship_dist.library_ship_id.values == iship).astype(int)
+    #     amb_surf_fa_i = amb_surf_fa.d_rtf * mask_i
+    #     amb_surf_fa_i.plot(x="x", y="y", cmap="jet", ax=axs[iship], vmin=-6, vmax=0)
+    #     axs[iship].set_title(f"ship n°{iship}")
+
+    # amb_surf_fa.d_rtf.plot(x="x", y="y", cmap="jet", ax=axs[-1],  vmin=-6, vmax=0)
+    # axs[-1].set_title("Ambiguity surface")
+    # fpath = os.path.join(simu.img_folder, "q_rtf_masked.png")
+    # plt.savefig(fpath)

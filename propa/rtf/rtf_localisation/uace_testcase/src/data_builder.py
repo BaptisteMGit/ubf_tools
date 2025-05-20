@@ -15,6 +15,7 @@
 import os
 import numpy as np
 import xarray as xr
+import matplotlib.pyplot as plt 
 
 from propa.rtf.rtf_localisation.uace_testcase.src.simulation import Simulation
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import Antenna, SparseAntenna
@@ -306,6 +307,30 @@ class DataBuilder:
         random_indices = np.random.randint(
             0, num_lib_sources, size=target_shape[1:]
         )  # shape (ny, nx)
+
+        # Plot ship distributuion for analysis 
+        if self.simulation.plot_library_ship_distribution:
+            # Define associated dataset for easy plot 
+            ds_rng_idx = xr.Dataset(
+                coords=dict(
+                    y=ds_gridded_tf.y,
+                    x=ds_gridded_tf.x,
+                ),
+                data_vars=dict(
+                    library_ship_id=(["y", "x"], random_indices),
+                ),
+            )
+            # Plot distribution
+            plt.figure()
+            ds_rng_idx.library_ship_id.plot(x="x", y="y")
+            plt.xlabel(r"$x$" + " [m]")
+            plt.ylabel(r"$y$" + " [m]")
+            plt.gca().set_aspect('equal')
+            fpath = os.path.join(self.simulation.img_folder, "library_ship_distribution.png")
+            plt.savefig(fpath)
+
+            # Save distibution for further analysis 
+            ds_rng_idx.to_netcdf(os.path.join(self.simulation.data_folder, "library_ship_distribution.nc"))
 
         # Step 2: reshape for indexing — flatten the index grid
         flat_indices = random_indices.ravel()  # shape (ny*nx,)

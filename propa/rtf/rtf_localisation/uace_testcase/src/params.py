@@ -135,8 +135,8 @@ plot_args = {
 # Signal general properties
 fmin = 5
 fmax = 50
-# fs = 200
-fs = 100
+fs = 200
+# fs = 100
 # duration = 10
 duration = 20
 
@@ -231,26 +231,27 @@ tau_corr_fi_max = 0.5
 # tau_corr_fi_min = 1e-3
 # tau_corr_fi_max = 3 * 1e-1
 
-rng_seed = 65
-rng = np.random.default_rng(seed=rng_seed)
-nl_ship = 5
-library_ship = []
-for iship in range(nl_ship):
-    f0_l = rng.uniform(low=f0_min, high=f0_max + 5)
-    std_fi_l = rng.uniform(low=std_fi_min, high=std_fi_max) * f0_l
-    tau_corr_fi_l = (
-        rng.uniform(low=tau_corr_fi_min, high=tau_corr_fi_max) * 1 / f0_l
-    )
-    library_ship_i = ShipSignal(
-        name=f"library_ship_{iship}",
-        f0=f0_l,
-        fs=fs,
-        duration=duration,
-        std_fi=std_fi_l,
-        tau_corr_fi=tau_corr_fi_l,
-        root_img=root_img_ship_sigs,
-    )
-    library_ship.append(library_ship_i)
+library_ship = [library_ship]
+# rng_seed = 65
+# rng = np.random.default_rng(seed=rng_seed)
+# nl_ship = 5
+# library_ship = []
+# for iship in range(nl_ship):
+#     f0_l = rng.uniform(low=f0_min, high=f0_max + 5)
+#     std_fi_l = rng.uniform(low=std_fi_min, high=std_fi_max) * f0_l
+#     tau_corr_fi_l = (
+#         rng.uniform(low=tau_corr_fi_min, high=tau_corr_fi_max) * 1 / f0_l
+#     )
+#     library_ship_i = ShipSignal(
+#         name=f"library_ship_{iship}",
+#         f0=f0_l,
+#         fs=fs,
+#         duration=duration,
+#         std_fi=std_fi_l,
+#         tau_corr_fi=tau_corr_fi_l,
+#         root_img=root_img_ship_sigs,
+#     )
+#     library_ship.append(library_ship_i)
 
 use_weighted_rtf = True
 antenna_type = "random"

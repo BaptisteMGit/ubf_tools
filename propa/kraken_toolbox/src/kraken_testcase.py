@@ -392,6 +392,7 @@ class KrakenTestCase:
             rasterized=False,
         )
         axs[1].set_ylabel("")
+        axs[1].set_title("(b)")
 
         # Add ssp beside transmission loss
         axs[0].plot(
@@ -407,6 +408,8 @@ class KrakenTestCase:
         plt.ylim([self.bathy.bathy_depth.max() * 1.15, 0])
 
         axs[0].set_ylabel("Depth [m]")
+        axs[0].set_title("(a)")
+
         # # Adjust spacing
         # plt.subplots_adjust(
         #     wspace=0.05,

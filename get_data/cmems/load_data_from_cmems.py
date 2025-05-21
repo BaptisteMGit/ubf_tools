@@ -3,7 +3,7 @@
 """
 @File    :   load_data_from_cmems.py
 @Time    :   2024/06/25 18:02:52
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None

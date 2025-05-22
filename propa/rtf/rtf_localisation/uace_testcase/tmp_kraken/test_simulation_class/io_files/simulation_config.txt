@@ -1,0 +1,149 @@
+SIMULATION CONFIGURATION LOG
+==================================================
+
+[General Settings]
+------------------
+name: test_simulation_class
+root_img: C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\uace_testcase
+root_tmp: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\tmp_kraken
+root_data: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data
+fs: 200
+fmin: 5
+fmax: 50
+signal_duration: 20
+
+[Feature Extraction]
+--------------------
+feature_nperseg: 1024
+feature_overlap_ratio: 0.5
+feature_noverlap: 512
+check_features: False
+
+[Environment & Grid]
+--------------------
+dx: 20
+dy: 20
+search_area_length: 1000.0
+cmin: 1488
+grid_rmax: 33000.0
+
+[Simulation Parameters]
+-----------------------
+monte_carlo_iterations: 100
+frequency_drawing_method: equally_spaced
+number_of_drawn_frequencies: 100
+use_weighted_rtf: True
+plot_library_ship_distribution: True
+debug: False
+verbose: False
+
+[Event Ship Configuration]
+--------------------------
+event_ship_x: 25000
+event_ship_y: 12000
+event_ship_z: 5
+event_stype: ship
+library_stype: ship
+
+[Environment Modules]
+---------------------
+kraken_env: None
+kraken_flp: None
+is_range_dependent: False
+
+[Paths]
+-------
+data_folder: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\test_simulation_class
+img_folder: C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\uace_testcase\test_simulation_class
+tmp_folder: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\tmp_kraken\test_simulation_class\io_files
+tf_dataset_fpath: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\test_simulation_class\tf.nc
+tf_grid_dataset_fpath: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\test_simulation_class\tf_grid_dx20m_dy20m.nc
+library_dataset_fpath: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\test_simulation_class\library_dx20m_dy20m.nc
+feature_dataset_fpath: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\test_simulation_class\features_dx20m_dy20m.nc
+rtf_weights_dataset_fpath: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\test_simulation_class\rtf_weights_dx20m_dy20m.nc
+kraken_feature_dataset_fpath: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\test_simulation_class\kraken_features_dx20m_dy20m.nc
+localization_dataset_fpath: C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_localisation\uace_testcase\data\test_simulation_class\localization_dx20m_dy20m.nc
+root_img_from_sig: C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\uace_testcase\test_simulation_class\from_signal_dx20m_dy20m
+
+[Antenna Configuration]
+------------------------
+name: default_antenna
+n_elements: 6
+antenna_radius: 6390.187611357159
+x: [-4058.22652112,  3585.97919911,  1973.68029059,  4756.22351637,
+  2739.56048556,  -611.21560248]
+y: [-1292.01975767, -3718.86367324,  -496.14062104,  4267.64988849,
+  2611.3970199 ,  2860.64305277]
+rcv_idx: [0, 1, 2, 3, 4, 5]
+
+[Event Ship Signal]
+-------------------
+name: event_ship
+f0 (Hz): 4.629
+fs (Hz): 200
+duration (s): 20
+std_fi: 0.3332879999999999
+tau_corr_fi: 0.06567293151868654
+n_samples: 4000
+signal: available
+spectrum: available
+
+[Ship Signal Library]
+---------------------
+--- Ship #1 ---
+name: library_ship_0
+f0 (Hz): 4.6160893110251235
+fs (Hz): 200
+duration (s): 20
+std_fi: 0.5006712654608148
+tau_corr_fi: 0.041280611363750434
+n_samples: 4000
+signal: available
+spectrum: available
+
+--- Ship #2 ---
+name: library_ship_1
+f0 (Hz): 6.972820803081064
+fs (Hz): 200
+duration (s): 20
+std_fi: 1.3173569518339272
+tau_corr_fi: 0.04292068793583251
+n_samples: 4000
+signal: available
+spectrum: available
+
+--- Ship #3 ---
+name: library_ship_2
+f0 (Hz): 7.625060971098227
+fs (Hz): 200
+duration (s): 20
+std_fi: 0.1387175590762995
+tau_corr_fi: 0.010019378848236875
+n_samples: 4000
+signal: available
+spectrum: available
+
+--- Ship #4 ---
+name: library_ship_3
+f0 (Hz): 4.138475594213945
+fs (Hz): 200
+duration (s): 20
+std_fi: 0.289187809581963
+tau_corr_fi: 0.004284665894815299
+n_samples: 4000
+signal: available
+spectrum: available
+
+--- Ship #5 ---
+name: library_ship_4
+f0 (Hz): 16.276812384881637
+fs (Hz): 200
+duration (s): 20
+std_fi: 1.6972285735512178
+tau_corr_fi: 0.011705371916263868
+n_samples: 4000
+signal: available
+spectrum: available
+
+==================================================
+End of simulation log

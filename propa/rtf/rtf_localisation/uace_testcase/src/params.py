@@ -216,8 +216,8 @@ event_ship_y = 12000
 event_ship_z = 5
 
 # Window parameters to derive rtfs
-nperseg = 2**11
-alpha_overlap = 3 / 4
+nperseg = 2**10
+alpha_overlap = 0.5
 
 ### Mutliple ship library ###
 # Default set

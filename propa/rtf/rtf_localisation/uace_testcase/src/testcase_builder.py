@@ -540,11 +540,17 @@ class DeepWaterRealEnv(KrakenTestCase):
         simulation.kraken_flp = self.flp
         self.simulation = simulation
 
+        self.simulation.write_logs()
+
         # Run and plot diags if "demo" mode is selected
         if mode == "demo":
             t0 = time.time()
             self.run()
-            print("Ellapsed time to derive single frequency tl profile : {:.2f} s".format(time.time() - t0))
+            print(
+                "Ellapsed time to derive single frequency tl profile : {:.2f} s".format(
+                    time.time() - t0
+                )
+            )
             self.plot_diags(tl_min=60, tl_max=120, modes=[1, 30, 90])
             # self.plot_diags(modes=[1, 30, 90])
 

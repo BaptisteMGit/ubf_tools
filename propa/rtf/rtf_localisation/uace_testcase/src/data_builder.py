@@ -15,7 +15,7 @@
 import os
 import numpy as np
 import xarray as xr
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 
 from propa.rtf.rtf_localisation.uace_testcase.src.simulation import Simulation
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import Antenna, SparseAntenna
@@ -299,7 +299,7 @@ class DataBuilder:
         # S_f_library = self.simulation.library_ship.spectrum
 
         # Update 17/05/2025 -> multiple library sources
-        # Build 3d array buy randomly picking library ship from the given list of ship
+        # Build 3d array by randomly picking library ship from the given list of ship
         target_shape = ds_gridded_tf.tf_real.sel(idx_rcv=0).shape
         nf, ny, nx = target_shape
         num_lib_sources = self.simulation.library_ship.shape[0]
@@ -308,9 +308,9 @@ class DataBuilder:
             0, num_lib_sources, size=target_shape[1:]
         )  # shape (ny, nx)
 
-        # Plot ship distributuion for analysis 
+        # Plot ship distributuion for analysis
         if self.simulation.plot_library_ship_distribution:
-            # Define associated dataset for easy plot 
+            # Define associated dataset for easy plot
             ds_rng_idx = xr.Dataset(
                 coords=dict(
                     y=ds_gridded_tf.y,
@@ -325,12 +325,18 @@ class DataBuilder:
             ds_rng_idx.library_ship_id.plot(x="x", y="y")
             plt.xlabel(r"$x$" + " [m]")
             plt.ylabel(r"$y$" + " [m]")
-            plt.gca().set_aspect('equal')
-            fpath = os.path.join(self.simulation.img_folder, "library_ship_distribution.png")
+            plt.gca().set_aspect("equal")
+            fpath = os.path.join(
+                self.simulation.img_folder, "library_ship_distribution.png"
+            )
             plt.savefig(fpath)
 
-            # Save distibution for further analysis 
-            ds_rng_idx.to_netcdf(os.path.join(self.simulation.data_folder, "library_ship_distribution.nc"))
+            # Save distibution for further analysis
+            ds_rng_idx.to_netcdf(
+                os.path.join(
+                    self.simulation.data_folder, "library_ship_distribution.nc"
+                )
+            )
 
         # Step 2: reshape for indexing — flatten the index grid
         flat_indices = random_indices.ravel()  # shape (ny*nx,)
@@ -349,7 +355,6 @@ class DataBuilder:
         S_f_event = self.simulation.event_ship.spectrum
 
         # Derive delay for each receiver
-
         delay_rcv = (
             self.simulation.grid_ranges_from_rcv / self.simulation.cmin
         )  # (nrcv, ny, nx)
@@ -421,6 +426,8 @@ class DataBuilder:
 
         y_t_library = np.array(y_t_library)  # (nrcv, nt, ny, nx)
         y_t_event = np.array(y_t_event)  # (nrcv, nt)
+
+        # TODO : think about adding propagated interference signal here !
 
         # Build dataset to save
         # t = np.arange(0, self.simulation., 1 / library_props["fs"])

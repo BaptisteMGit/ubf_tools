@@ -26,6 +26,8 @@ if __name__ == "__main__":
     # antenna.plot_antenna()
     # plt.savefig("antenna")
 
+    ### Simulation 1 
+
     name = "dw_real_env"
     n_mc = 100
     search_area_length = 1 * 1e3
@@ -66,11 +68,11 @@ if __name__ == "__main__":
     )
     test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
-    # db = DataBuilder(simulation=simu)
+    db = DataBuilder(simulation=simu)
     # db.build_tf_dataset()
     # # # print("Grid dataset")
     # db.grid_dataset()
-    # db.build_signal()
+    db.build_signal()
 
 
     # snrs = [-6, -4, -2, 0]

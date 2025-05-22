@@ -45,7 +45,9 @@ class LocalizationProcessor:
     Class to process localization from library / event features
     """
 
-    def __init__(self, simulation, plot_args: dict = p.plot_args, use_dask: bool = False):
+    def __init__(
+        self, simulation, plot_args: dict = p.plot_args, use_dask: bool = False
+    ):
         """
         Constructor
         :param simulation: instance of the Simulation class
@@ -141,7 +143,6 @@ class LocalizationProcessor:
         subarrays_list=None,
     ):
 
-        #
         if subarrays_list is None:
             subarrays_list = np.atleast_2d(self.simulation.antenna.rcv_idx)  # Fullarray
 
@@ -496,9 +497,7 @@ class LocalizationProcessor:
         # Select reference receiver (by default the first receiver of the array is selected)
         if self.simulation.use_weighted_rtf:
             rtf_weights_fa = (
-                ds_rtf_weights.rtf_weights.sel(f=f_loc_rtf)
-                .mean(dim="idx_rcv")
-                .values
+                ds_rtf_weights.rtf_weights.sel(f=f_loc_rtf).mean(dim="idx_rcv").values
             )
             dist_kwargs["weights"] = rtf_weights_fa
 

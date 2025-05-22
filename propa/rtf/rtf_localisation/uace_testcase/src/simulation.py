@@ -13,6 +13,8 @@
 # Import
 # ======================================================================================================================
 import os
+import inspect
+
 import numpy as np
 import xarray as xr
 
@@ -339,6 +341,49 @@ class Simulation:
         self.search_area_length = 200
         self.monte_carlo_iterations = 2
 
+    def log_properties_to_file(self, filename: str = "simulation_config.txt"):
+        """
+        Logs all simulation properties to a text file for documentation and reproducibility.
+
+        Parameters
+        ----------
+        filename : str
+            Name of the output text file (placed in tmp_folder).
+        """
+        log_path = os.path.join(self.data_folder, filename)
+
+        def safe_serialize(value):
+            if isinstance(value, (int, float, str, bool, type(None))):
+                return value
+            elif isinstance(value, np.ndarray):
+                return f"ndarray, shape={value.shape}, dtype={value.dtype}"
+            elif hasattr(value, "__class__"):
+                return f"{value.__class__.__name__}"
+            else:
+                return str(value)
+
+        # Get all attributes that are not callable and not private (skip functions and properties)
+        attributes = {
+            name: safe_serialize(value)
+            for name, value in inspect.getmembers(self)
+            if not name.startswith("_")
+            and not inspect.isroutine(value)
+            and not inspect.isbuiltin(value)
+            and not inspect.ismethoddescriptor(value)
+        }
+
+        # Write to file
+        with open(log_path, "w") as f:
+            f.write("Simulation Configuration Log\n")
+            f.write("=" * 40 + "\n")
+            for key, val in attributes.items():
+                f.write(f"{key}: {val}\n")
+
+        if self.verbose:
+            print(f"Simulation properties logged to {log_path}")
+
 
 if __name__ == "__main__":
-    simu = Simulation()
+    name = "test_simulation_class"
+    simu = Simulation(name=name)
+    simu.log_properties_to_file()

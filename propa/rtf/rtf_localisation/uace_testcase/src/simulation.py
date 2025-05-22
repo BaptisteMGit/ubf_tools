@@ -13,7 +13,9 @@
 # Import
 # ======================================================================================================================
 import os
-import inspect
+import shutil
+
+# import inspect
 
 import numpy as np
 import xarray as xr
@@ -149,6 +151,9 @@ class Simulation:
 
         # Set grid
         self.init_grid()
+
+        # Write logs
+        self.write_logs()
 
     @property
     def env_file(self):
@@ -341,16 +346,17 @@ class Simulation:
         self.search_area_length = 200
         self.monte_carlo_iterations = 2
 
-    def log_properties_to_file(self, filename: str = "simulation_config.txt"):
+    def write_logs(self, filename: str = "simulation_config.txt"):
         """
-        Logs all simulation properties to a text file for documentation and reproducibility.
+        Logs structured simulation properties to a formatted text file.
 
         Parameters
         ----------
         filename : str
             Name of the output text file (placed in tmp_folder).
         """
-        log_path = os.path.join(self.data_folder, filename)
+
+        log_path_data = os.path.join(self.data_folder, filename)
 
         def safe_serialize(value):
             if isinstance(value, (int, float, str, bool, type(None))):
@@ -362,28 +368,154 @@ class Simulation:
             else:
                 return str(value)
 
-        # Get all attributes that are not callable and not private (skip functions and properties)
-        attributes = {
-            name: safe_serialize(value)
-            for name, value in inspect.getmembers(self)
-            if not name.startswith("_")
-            and not inspect.isroutine(value)
-            and not inspect.isbuiltin(value)
-            and not inspect.ismethoddescriptor(value)
+        def format_array(arr):
+            if arr is None:
+                return "None"
+            if isinstance(arr, np.ndarray):
+                return np.array2string(arr, separator=", ", threshold=5)
+            return str(arr)
+
+        sections = {
+            "General Settings": [
+                "name",
+                "root_img",
+                "root_tmp",
+                "root_data",
+                "fs",
+                "fmin",
+                "fmax",
+                "signal_duration",
+            ],
+            "Feature Extraction": [
+                "feature_nperseg",
+                "feature_overlap_ratio",
+                "feature_noverlap",
+                "check_features",
+            ],
+            "Environment & Grid": [
+                "dx",
+                "dy",
+                "search_area_length",
+                "cmin",
+                "grid_rmax",
+            ],
+            "Simulation Parameters": [
+                "monte_carlo_iterations",
+                "frequency_drawing_method",
+                "number_of_drawn_frequencies",
+                "use_weighted_rtf",
+                "plot_library_ship_distribution",
+                "debug",
+                "verbose",
+            ],
+            "Event Ship Configuration": [
+                "event_ship_x",
+                "event_ship_y",
+                "event_ship_z",
+                "event_stype",
+                "library_stype",
+            ],
+            "Environment Modules": ["kraken_env", "kraken_flp", "is_range_dependent"],
+            "Paths": [
+                "data_folder",
+                "img_folder",
+                "tmp_folder",
+                "tf_dataset_fpath",
+                "tf_grid_dataset_fpath",
+                "library_dataset_fpath",
+                "feature_dataset_fpath",
+                "rtf_weights_dataset_fpath",
+                "kraken_feature_dataset_fpath",
+                "localization_dataset_fpath",
+                "root_img_from_sig",
+            ],
         }
 
-        # Write to file
-        with open(log_path, "w") as f:
-            f.write("Simulation Configuration Log\n")
-            f.write("=" * 40 + "\n")
-            for key, val in attributes.items():
-                f.write(f"{key}: {val}\n")
+        with open(log_path_data, "w") as f:
+            f.write("SIMULATION CONFIGURATION LOG\n")
+            f.write("=" * 50 + "\n\n")
+
+            for section_title, keys in sections.items():
+                f.write(f"[{section_title}]\n")
+                f.write("-" * (len(section_title) + 2) + "\n")
+                for key in keys:
+                    val = getattr(self, key, "N/A")
+                    f.write(f"{key}: {safe_serialize(val)}\n")
+                f.write("\n")
+
+            # Dedicated Antenna Section
+            f.write("[Antenna Configuration]\n")
+            f.write("------------------------\n")
+            if self.antenna is not None:
+                f.write(f"name: {self.antenna.name}\n")
+                f.write(f"n_elements: {self.antenna.n_elements}\n")
+                f.write(
+                    f"antenna_radius: {safe_serialize(self.antenna.antenna_radius)}\n"
+                )
+                f.write(f"x: {format_array(self.antenna.x)}\n")
+                f.write(f"y: {format_array(self.antenna.y)}\n")
+                f.write(f"rcv_idx: {format_array(self.antenna.rcv_idx)}\n")
+            else:
+                f.write("No antenna configuration provided.\n")
+            f.write("\n")
+
+            # Event Ship Signal Section
+            f.write("[Event Ship Signal]\n")
+            f.write("-------------------\n")
+            if self.event_ship is not None:
+                s = self.event_ship
+                f.write(f"name: {s.name}\n")
+                f.write(f"f0 (Hz): {s.f0}\n")
+                f.write(f"fs (Hz): {s.fs}\n")
+                f.write(f"duration (s): {s.duration}\n")
+                f.write(f"std_fi: {s.std_fi}\n")
+                f.write(f"tau_corr_fi: {s.tau_corr_fi}\n")
+                f.write(f"n_samples: {s.n_samples}\n")
+                f.write(
+                    f"signal: {'available' if s.signal is not None else 'not generated'}\n"
+                )
+                f.write(
+                    f"spectrum: {'available' if s.spectrum is not None else 'not generated'}\n"
+                )
+            else:
+                f.write("No event ship signal provided.\n")
+            f.write("\n")
+
+            # Ship Library Section
+            f.write("[Ship Signal Library]\n")
+            f.write("---------------------\n")
+            if self.library_ship.size > 0:
+                for i, s in enumerate(self.library_ship):
+                    f.write(f"--- Ship #{i + 1} ---\n")
+                    f.write(f"name: {s.name}\n")
+                    f.write(f"f0 (Hz): {s.f0}\n")
+                    f.write(f"fs (Hz): {s.fs}\n")
+                    f.write(f"duration (s): {s.duration}\n")
+                    f.write(f"std_fi: {s.std_fi}\n")
+                    f.write(f"tau_corr_fi: {s.tau_corr_fi}\n")
+                    f.write(f"n_samples: {s.n_samples}\n")
+                    f.write(
+                        f"signal: {'available' if s.signal is not None else 'not generated'}\n"
+                    )
+                    f.write(
+                        f"spectrum: {'available' if s.spectrum is not None else 'not generated'}\n"
+                    )
+                    f.write("\n")
+            else:
+                f.write("No ship library signals provided.\n\n")
+
+            # Optional log footer
+            f.write("=" * 50 + "\n")
+            f.write("End of simulation log\n")
+
+        # Copy the log file to the img folder
+        log_path_img = os.path.join(self.img_folder, filename)
+        shutil.copy(log_path_data, log_path_img)
 
         if self.verbose:
-            print(f"Simulation properties logged to {log_path}")
+            print(f"Structured simulation properties logged to {log_path_data}")
 
 
 if __name__ == "__main__":
     name = "test_simulation_class"
     simu = Simulation(name=name)
-    simu.log_properties_to_file()

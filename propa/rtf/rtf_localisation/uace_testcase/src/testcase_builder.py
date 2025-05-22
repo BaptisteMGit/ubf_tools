@@ -13,6 +13,7 @@
 # Import
 # ======================================================================================================================
 import os
+import time
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -402,7 +403,8 @@ class DeepWaterRealEnv(KrakenTestCase):
         bathy.bathy_range = bathy.bathy_range[idx_in_range_domain]
         bathy.bathy_depth = bathy.bathy_depth[idx_in_range_domain]
         # Subsample bathy profile
-        nsubsample = 5
+        # nsubsample = 5
+        nsubsample = 1
         bathy.bathy_range = bathy.bathy_range[::nsubsample]
         bathy.bathy_depth = bathy.bathy_depth[::nsubsample]
 
@@ -540,7 +542,9 @@ class DeepWaterRealEnv(KrakenTestCase):
 
         # Run and plot diags if "demo" mode is selected
         if mode == "demo":
+            t0 = time.time()
             self.run()
+            print("Ellapsed time to derive single frequency tl profile : {:.2f} s".format(time.time() - t0))
             self.plot_diags(tl_min=60, tl_max=120, modes=[1, 30, 90])
             # self.plot_diags(modes=[1, 30, 90])
 
@@ -551,7 +555,7 @@ if __name__ == "__main__":
     # test_case = DeepWaterPekerisMunk(mode="demo")
     # test_case = DeepWaterPekerisRhumrumSSP(mode="demo")
     # test_case = DeepWaterRealEnv(mode="demo", depth_offset=0)
-    test_case = DeepWaterRealEnv(mode="run", depth_offset=0)
+    test_case = DeepWaterRealEnv(mode="demo", depth_offset=0)
     test_case.plot_ssp_tl(publi=True)
     # test_case.run()
 

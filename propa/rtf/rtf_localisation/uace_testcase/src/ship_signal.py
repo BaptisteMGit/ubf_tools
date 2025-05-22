@@ -188,3 +188,57 @@ class ShipSignal:
             f"{self.root_img}/{self.name}_psd.png",
             dpi=300,
         )
+
+
+def plot_demo_ship(root_img: str):
+    # Properties of the demo signal (essentially for publication purposes)
+    # f0 = 4.629
+    # std_fi = 0.072 * f0
+    # tau_corr_fi = 0.304 * 1 / f0
+
+    f0 = 4.5
+    std_fi = 0.07 * f0
+    tau_corr_fi = 0.3 * 1 / f0
+
+    # f0 = 4.889
+    # std_fi = 0.058 * f0
+    # tau_corr_fi = 0.067 * 1 / f0
+
+    duration = 60 * 30  # 30 minutes
+    fs = 100
+    ship = ShipSignal(
+        name="DemoShipSignal",
+        f0=f0,
+        fs=fs,
+        duration=duration,
+        std_fi=std_fi,
+        tau_corr_fi=tau_corr_fi,
+        root_img=root_img,
+    )
+
+    # Plot PSD and spectrom side by side
+    fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+    f, Pxx = ship.get_psd(window="hann", nperseg=2**11, noverlap=2**10)
+    axs[0].plot(10 * np.log10(Pxx), f)
+    axs[0].set_xlabel("Power Spectral Density [dB]")
+    axs[0].set_ylabel("Frequency [Hz]")
+    axs[0].set_title("(a)")
+
+    ff, tt, sxx = ship.get_stft(window="hann", nperseg=2**11, noverlap=2**10)
+    axs[1].pcolormesh(tt, ff, 10 * np.log10(np.abs(sxx)), shading="gouraud")
+    axs[1].set_xlabel("Time [s]")
+    axs[1].set_title("(b)")
+
+    fpath = os.path.join(
+        root_img,
+        f"{ship.name}_psd_stft_{f0:.2f}_{std_fi/f0:.2f}_{tau_corr_fi*f0:.2f}.png",
+    )
+    plt.savefig(fpath)
+
+
+if __name__ == "__main__":
+    from publication.publication_figure import PubFigure
+
+    pfig = PubFigure(label_fontsize=22, ticks_fontsize=20)
+    root_publi = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\uace_testcase\publication\uace_proceedings_ship_signal_illustration"
+    plot_demo_ship(root_publi)

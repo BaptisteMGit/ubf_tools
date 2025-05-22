@@ -151,9 +151,16 @@ tmin, tmax = 1, 2
 root_img_ship_sigs = os.path.join(root_img, "ship_signals")
 
 # Library ship signal
-f0_l = 4.889
-std_fi_l = 0.058 * f0_l
-tau_corr_fi_l = 0.067 * 1 / f0_l
+# Parametres Samuel
+f0_l = 10
+std_fi_l = 0.15 * f0_l
+tau_corr_fi_l = 1 / np.sqrt(2 * np.pi) * 1 / f0_l
+
+# # My params
+# f0_l = 4.889
+# std_fi_l = 0.058 * f0_l
+# tau_corr_fi_l = 0.067 * 1 / f0_l
+
 library_ship = ShipSignal(
     name="library_ship",
     f0=f0_l,
@@ -164,14 +171,17 @@ library_ship = ShipSignal(
     root_img=root_img_ship_sigs,
 )
 
-# library_ship.plot_signal(tmin=tmin, tmax=tmax)
-# library_ship.plot_spectrum(fmin=0, fmax=fmax)
-# library_ship.plot_psd(
-#     window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
-# )
-# library_ship.plot_stft(
-#     window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
-# )
+library_ship.plot_signal(tmin=tmin, tmax=tmax)
+library_ship.plot_spectrum(fmin=0, fmax=fmax)
+library_ship.plot_psd(
+    window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
+)
+library_ship.plot_stft(
+    window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
+)
+import matplotlib.pyplot as plt
+
+plt.show()
 
 # Event ship signal -> signal 19 de la base de signaux
 f0_e = 4.629
@@ -207,8 +217,8 @@ event_ship_z = 5
 nperseg = 2**11
 alpha_overlap = 3 / 4
 
-### Mutliple ship library ### 
-# Default set 
+### Mutliple ship library ###
+# Default set
 # f0_min = 4
 # f0_max = 5
 # std_fi_min = 1e-3
@@ -216,11 +226,12 @@ alpha_overlap = 3 / 4
 # tau_corr_fi_min = 1e-3
 # tau_corr_fi_max = 0.5
 
-# Small variations allowed 
+# Small variations allowed
 f0_min = 4
-f0_max = 4.5
-std_fi_min = 5 * 1e-3
-std_fi_max = 1e-2
+f0_max = 12
+std_fi_min = 1e-2  # 1 %
+std_fi_max = 20 * 1e-2  # 20 %
+# std_fi_max = 1e-2
 tau_corr_fi_min = 5 * 1e-3
 tau_corr_fi_max = 0.5
 
@@ -231,27 +242,25 @@ tau_corr_fi_max = 0.5
 # tau_corr_fi_min = 1e-3
 # tau_corr_fi_max = 3 * 1e-1
 
-library_ship = [library_ship]
-# rng_seed = 65
-# rng = np.random.default_rng(seed=rng_seed)
-# nl_ship = 5
-# library_ship = []
-# for iship in range(nl_ship):
-#     f0_l = rng.uniform(low=f0_min, high=f0_max + 5)
-#     std_fi_l = rng.uniform(low=std_fi_min, high=std_fi_max) * f0_l
-#     tau_corr_fi_l = (
-#         rng.uniform(low=tau_corr_fi_min, high=tau_corr_fi_max) * 1 / f0_l
-#     )
-#     library_ship_i = ShipSignal(
-#         name=f"library_ship_{iship}",
-#         f0=f0_l,
-#         fs=fs,
-#         duration=duration,
-#         std_fi=std_fi_l,
-#         tau_corr_fi=tau_corr_fi_l,
-#         root_img=root_img_ship_sigs,
-#     )
-#     library_ship.append(library_ship_i)
+# library_ship = [library_ship]
+rng_seed = 65
+rng = np.random.default_rng(seed=rng_seed)
+nl_ship = 5
+library_ship = []
+for iship in range(nl_ship):
+    f0_l = rng.uniform(low=f0_min, high=f0_max + 5)
+    std_fi_l = rng.uniform(low=std_fi_min, high=std_fi_max) * f0_l
+    tau_corr_fi_l = rng.uniform(low=tau_corr_fi_min, high=tau_corr_fi_max) * 1 / f0_l
+    library_ship_i = ShipSignal(
+        name=f"library_ship_{iship}",
+        f0=f0_l,
+        fs=fs,
+        duration=duration,
+        std_fi=std_fi_l,
+        tau_corr_fi=tau_corr_fi_l,
+        root_img=root_img_ship_sigs,
+    )
+    library_ship.append(library_ship_i)
 
 use_weighted_rtf = True
 antenna_type = "random"

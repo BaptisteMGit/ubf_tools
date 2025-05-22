@@ -381,7 +381,7 @@ class DeepWaterRealEnv(KrakenTestCase):
 
         # Common properties
         zmin = 0
-        zmax = 2000
+        # zmax = 2000
         rmax = 50 * 1e3
         min_phase_speed = 1000
         max_phase_speed = 20000

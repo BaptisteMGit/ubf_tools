@@ -151,15 +151,15 @@ tmin, tmax = 1, 2
 root_img_ship_sigs = os.path.join(root_img, "ship_signals")
 
 # Library ship signal
-# Parametres Samuel
-f0_l = 10
-std_fi_l = 0.15 * f0_l
-tau_corr_fi_l = 1 / np.sqrt(2 * np.pi) * 1 / f0_l
+# # Parametres Samuel
+# f0_l = 10
+# std_fi_l = 0.15 * f0_l
+# tau_corr_fi_l = 1 / np.sqrt(2 * np.pi) * 1 / f0_l
 
-# # My params
-# f0_l = 4.889
-# std_fi_l = 0.058 * f0_l
-# tau_corr_fi_l = 0.067 * 1 / f0_l
+# My params
+f0_l = 4.889
+std_fi_l = 0.058 * f0_l
+tau_corr_fi_l = 0.067 * 1 / f0_l
 
 library_ship = ShipSignal(
     name="library_ship",
@@ -171,17 +171,19 @@ library_ship = ShipSignal(
     root_img=root_img_ship_sigs,
 )
 
-library_ship.plot_signal(tmin=tmin, tmax=tmax)
-library_ship.plot_spectrum(fmin=0, fmax=fmax)
-library_ship.plot_psd(
-    window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
-)
-library_ship.plot_stft(
-    window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
-)
-import matplotlib.pyplot as plt
+# library_ship.plot_signal(tmin=tmin, tmax=tmax)
+# library_ship.plot_spectrum(fmin=0, fmax=fmax)
+# library_ship.plot_psd(
+#     window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
+# )
+# library_ship.plot_stft(
+#     window="hann", nperseg=nperseg, noverlap=noverlap, fmin=0, fmax=fmax
+# )
+# import matplotlib.pyplot as plt
+# plt.show()
 
-plt.show()
+unique_library_ship = library_ship
+
 
 # Event ship signal -> signal 19 de la base de signaux
 f0_e = 4.629

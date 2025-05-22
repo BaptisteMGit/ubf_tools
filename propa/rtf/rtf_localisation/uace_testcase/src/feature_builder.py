@@ -438,6 +438,12 @@ class FeatureBuilder:
 
             # check_gcc_features(ds_res_from_sig, folder=ds_sig_noise.attrs["root_img"])
 
+        # Update number_of_drawn_frequencies in case it was set to None
+        if self.simulation.number_of_drawn_frequencies is None:
+            self.simulation.number_of_drawn_frequencies = ds_res_from_sig.sizes["f_rtf"]
+            # Update log file 
+            self.simulation.write_logs()
+
         # Add snr to the feature dataset filepath
         fpath = (
             self.simulation.feature_dataset_fpath.split(".nc")[0]

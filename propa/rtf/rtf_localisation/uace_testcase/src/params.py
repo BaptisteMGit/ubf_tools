@@ -118,7 +118,9 @@ cmin = 1488  # Min speed in SwellEx96 mean profile
 # Localization params
 monte_carlo_iterations = 100
 frequency_drawing_method = "equally_spaced"  # "equally_spaced" / "random"
-number_of_drawn_frequencies = 100
+
+# number_of_drawn_frequencies = 100
+number_of_drawn_frequencies = None  # Use all frequencies in the range
 
 # Plot results from loc params
 plot_args = {

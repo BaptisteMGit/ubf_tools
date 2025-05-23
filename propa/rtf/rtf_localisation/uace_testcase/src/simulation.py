@@ -21,7 +21,7 @@ import numpy as np
 import xarray as xr
 
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import Antenna, SparseAntenna
-from propa.rtf.rtf_localisation.uace_testcase.src.ship_signal import ShipSignal
+from propa.rtf.rtf_localisation.uace_testcase.src.source import Ship
 
 from propa.kraken_toolbox.src.kraken_env import KrakenEnv, KrakenFlp
 import source.global_constants as g
@@ -47,8 +47,8 @@ class Simulation:
         fs: float = p.fs,
         signal_duration: float = p.duration,
         antenna: Antenna = p.antenna,
-        library_ship: np.ndarray[ShipSignal] = p.library_ship,
-        event_ship: ShipSignal = p.event_ship,
+        library_ship: np.ndarray[Ship] = p.library_ship,
+        event_ship: Ship = p.event_ship,
         event_ship_x: float = p.event_ship_x,
         event_ship_y: float = p.event_ship_y,
         event_ship_z: float = p.event_ship_z,

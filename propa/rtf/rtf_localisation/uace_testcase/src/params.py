@@ -15,7 +15,7 @@
 import os
 import numpy as np
 import source.global_constants as g
-from propa.rtf.rtf_localisation.uace_testcase.src.ship_signal import ShipSignal
+from propa.rtf.rtf_localisation.uace_testcase.src.source import Ship
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import SparseAntenna
 
 # ======================================================================================================================
@@ -163,7 +163,7 @@ f0_l = 4.889
 std_fi_l = 0.058 * f0_l
 tau_corr_fi_l = 0.067 * 1 / f0_l
 
-library_ship = ShipSignal(
+library_ship = Ship(
     name="library_ship",
     f0=f0_l,
     fs=fs,
@@ -191,7 +191,7 @@ unique_library_ship = library_ship
 f0_e = 4.629
 std_fi_e = 0.072 * f0_e
 tau_corr_fi_e = 0.304 * 1 / f0_e
-event_ship = ShipSignal(
+event_ship = Ship(
     name="event_ship",
     f0=f0_e,
     fs=fs,
@@ -255,7 +255,7 @@ for iship in range(nl_ship):
     f0_l = rng.uniform(low=f0_min, high=f0_max + 5)
     std_fi_l = rng.uniform(low=std_fi_min, high=std_fi_max) * f0_l
     tau_corr_fi_l = rng.uniform(low=tau_corr_fi_min, high=tau_corr_fi_max) * 1 / f0_l
-    library_ship_i = ShipSignal(
+    library_ship_i = Ship(
         name=f"library_ship_{iship}",
         f0=f0_l,
         fs=fs,

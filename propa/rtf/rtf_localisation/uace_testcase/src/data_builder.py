@@ -290,6 +290,8 @@ class DataBuilder:
             self.simulation.tf_grid_dataset_fpath
         )  # (nf, ny, nx, nrcv)
 
+        t = self.simulation.library_ship[0].time  # (nt,)
+
         # Limit max frequency to speed up
         # fs_target = 1200
         # fmax = fs_target / 2
@@ -353,6 +355,10 @@ class DataBuilder:
         )  # (nf, ny, nx)
 
         S_f_event = self.simulation.event_ship.spectrum
+
+        if self.simulation.interferer is not None:
+            S_f_interferer = self.simulation.interferer.spectrum
+            y_t_interferer = []
 
         # Derive delay for each receiver
         delay_rcv = (
@@ -424,14 +430,66 @@ class DataBuilder:
             y_t_library.append(y_t_l)
             y_t_event.append(y_t_e)
 
+            # Use interferer if available
+            if self.simulation.interferer is not None:
+                tf_interferer = tf_library.sel(
+                    y=self.simulation.interferer.y,
+                    x=self.simulation.interferer.x,
+                    method="nearest",
+                )  # (nf,)
+                y_f_interferer = tf_interferer * S_f_interferer * norm_factor
+                y_f_interferer *= delay_event  # (nf,)
+                y_t_i = np.fft.irfft(y_f_interferer)  # (nt,)
+                y_t_interferer.append(y_t_i)
+
+        # Stack to get the final shape
         y_t_library = np.array(y_t_library)  # (nrcv, nt, ny, nx)
         y_t_event = np.array(y_t_event)  # (nrcv, nt)
 
-        # TODO : think about adding propagated interference signal here !
+        if self.simulation.interferer is not None:
+            y_t_interferer = np.array(y_t_interferer)  # (nrcv, nt)
+
+            # Normalize to required snr if provided
+            if self.simulation.sir is not None:
+                std_interference_rcv0 = np.std(y_t_interferer[0, :])
+                std_library_sig_rcv0 = np.std(y_t_library[0, :, 0, 0])
+                # Normalize to account for the reference signal power to reach required snr at receiver n°0
+                std_target_sir = std_library_sig_rcv0 * np.sqrt(
+                    10 ** (-self.simulation.sir / 10)
+                )
+                y_t_interferer *= std_target_sir / std_interference_rcv0
+                y_t_interferer_0 = y_t_interferer
+
+                # print to check
+                y_t_i_var = np.var(y_t_interferer[0, :])
+                y_t_l_var = np.var(y_t_library[0, :, 0, 0])
+                sir = 10 * np.log10(y_t_l_var / y_t_i_var)
+                print(
+                    f"SIR receiver n°0 : {np.round(sir, 2)} dB (required {self.simulation.sir}dB)"
+                )
+
+            # Cast to y_t_library
+            y_t_interferer = cast_matrix_to_target_shape(
+                y_t_interferer, y_t_library.shape
+            )
+
+            plt.figure()
+            plt.plot(t, y_t_interferer[0, :, 0, 0], label="zcall")
+            plt.plot(t, y_t_interferer_0[0, :], linestyle="--", label="zcall-notcasted")
+            plt.plot(t, y_t_library[0, :, 0, 0], label="ship")
+            plt.legend()
+            plt.savefig("test")
+
+            plt.figure()
+            plt.plot(f, y_f_interferer, label="zcall")
+            plt.legend()
+            plt.savefig("test_f")
+
+            # Add it to library signal
+            y_t_library += y_t_interferer
 
         # Build dataset to save
         # t = np.arange(0, self.simulation., 1 / library_props["fs"])
-        t = self.simulation.library_ship[0].time  # (nt,)
 
         ds_sig = xr.Dataset(
             coords=dict(
@@ -562,10 +620,13 @@ if __name__ == "__main__":
     check = True
     n_mc = 1
     use_weighted_rtf = True
-    name = "dw_real_env"
+    name = "dw_real_env_single_ship_fs_100_demodataset"
 
     # Test multiple library ship
-    from propa.rtf.rtf_localisation.uace_testcase.src.source import Ship
+    from propa.rtf.rtf_localisation.uace_testcase.src.acoustic_source import (
+        Ship,
+        ZcallInterferer,
+    )
 
     nl_ship = 10
     library_ship = []
@@ -597,7 +658,27 @@ if __name__ == "__main__":
         use_weighted_rtf=use_weighted_rtf,
         search_area_length=search_area_length,
     )
-    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name="dw_real_env")
+
+    # Define interferer ABW
+    rng = np.random.default_rng(seed=36)
+    x_abw = simu.grid_x[rng.integers(low=0, high=len(simu.grid_x), size=1)[0]]
+    y_abw = simu.grid_y[rng.integers(low=0, high=len(simu.grid_y), size=1)[0]]
+    z_abw = 25
+    interferer = ZcallInterferer(
+        name="ABW_zcall",
+        fs=p.fs,
+        duration=p.duration,
+        root_img=p.root_img_ship_sigs,
+        x=x_abw,
+        y=y_abw,
+        z=z_abw,
+        start_offset_seconds=0,
+        stop_offset_seconds=0,
+    )
+
+    simu.interferer = interferer
+
+    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
     db = DataBuilder(simulation=simu)
     # db.build_tf_dataset()
     # db.grid_dataset()

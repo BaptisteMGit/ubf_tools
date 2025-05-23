@@ -21,14 +21,19 @@ import numpy as np
 import xarray as xr
 
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import Antenna, SparseAntenna
-from propa.rtf.rtf_localisation.uace_testcase.src.source import Ship
+from propa.rtf.rtf_localisation.uace_testcase.src.acoustic_source import (
+    AcousticSource,
+    Ship,
+)
 
 from propa.kraken_toolbox.src.kraken_env import KrakenEnv, KrakenFlp
-import source.global_constants as g
-from source.signal_generator import SignalGenerator
+
+# import source.global_constants as g
+# from source.signal_generator import SignalGenerator
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
-from propa.kraken_toolbox.src.kraken_manager import KrakenManager
-from misc import cast_matrix_to_target_shape, mult_along_axis
+
+# from propa.kraken_toolbox.src.kraken_manager import KrakenManager
+# from misc import cast_matrix_to_target_shape, mult_along_axis
 
 
 class Simulation:
@@ -52,6 +57,8 @@ class Simulation:
         event_ship_x: float = p.event_ship_x,
         event_ship_y: float = p.event_ship_y,
         event_ship_z: float = p.event_ship_z,
+        interferer: AcousticSource = None,
+        sir: float = None,
         dx: float = p.dx,
         dy: float = p.dy,
         search_area_length: float = p.search_area_length,
@@ -103,6 +110,11 @@ class Simulation:
         self.event_ship_x = event_ship_x
         self.event_ship_y = event_ship_y
         self.event_ship_z = event_ship_z
+
+        # Interferer
+        self.interferer = interferer
+        # Signal to interference ratio
+        self.sir = sir
 
         # Grid properties
         self.dx = dx

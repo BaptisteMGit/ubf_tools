@@ -22,7 +22,7 @@ from source.signal_generator import SignalGenerator
 # import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 
 
-class Source:
+class AcousticSource:
     """Mother class for sources used in simulation"""
 
     def __init__(
@@ -208,7 +208,7 @@ class Source:
         )
 
 
-class Ship(Source):
+class Ship(AcousticSource):
     """
     Class to handle ship signal properties
     """
@@ -310,7 +310,7 @@ class Ship(Source):
         plt.savefig(fpath)
 
 
-class ZcallInterferer(Source):
+class ZcallInterferer(AcousticSource):
     """Class representing an interference source emmiting a Z-call signal"""
 
     def __init__(
@@ -444,6 +444,18 @@ class ZcallInterferer(Source):
         fpath = os.path.join(
             root_img,
             f"{abw.name}_psd_stft.png",
+        )
+        plt.savefig(fpath)
+
+        # Plot time signal
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.plot(abw.time, abw.signal)
+        ax.set_title(abw.name)
+        ax.set_xlabel("Time [s]")
+        ax.set_ylabel("Amplitude")
+        fpath = os.path.join(
+            root_img,
+            f"{abw.name}_sig.png",
         )
         plt.savefig(fpath)
 

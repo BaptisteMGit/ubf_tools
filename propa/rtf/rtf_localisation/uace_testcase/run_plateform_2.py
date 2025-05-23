@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import SparseAntenna
 from propa.rtf.rtf_localisation.uace_testcase.src.simulation import Simulation
-from propa.rtf.rtf_localisation.uace_testcase.src.source import Ship
+from propa.rtf.rtf_localisation.uace_testcase.src.acoustic_source import Ship
 from propa.rtf.rtf_localisation.uace_testcase.src.data_builder import DataBuilder
 from propa.rtf.rtf_localisation.uace_testcase.src.feature_builder import FeatureBuilder
 from propa.rtf.rtf_localisation.uace_testcase.src.localization_processor import (

@@ -371,6 +371,7 @@ class DeepWaterRealEnv(KrakenTestCase):
         mode="run",
         name: str = "dw_real_env",
         depth_offset: float = 0,
+        n_bathy_subsample: int = 1,
     ):
         """
         Constructor
@@ -411,9 +412,8 @@ class DeepWaterRealEnv(KrakenTestCase):
 
         # Subsample bathy profile
         # nsubsample = 5
-        nsubsample = 1
-        bathy.bathy_range = bathy.bathy_range[::nsubsample]
-        bathy.bathy_depth = bathy.bathy_depth[::nsubsample]
+        bathy.bathy_range = bathy.bathy_range[::n_bathy_subsample]
+        bathy.bathy_depth = bathy.bathy_depth[::n_bathy_subsample]
 
         # Add off set to bathy depth to reach approximate zmax
         # z_offset = bathy.bathy_depth.max() - zmax

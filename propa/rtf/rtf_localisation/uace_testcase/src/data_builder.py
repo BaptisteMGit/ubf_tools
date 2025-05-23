@@ -565,7 +565,7 @@ if __name__ == "__main__":
     name = "dw_real_env"
 
     # Test multiple library ship
-    from propa.rtf.rtf_localisation.uace_testcase.src.ship_signal import ShipSignal
+    from propa.rtf.rtf_localisation.uace_testcase.src.source import Ship
 
     nl_ship = 10
     library_ship = []
@@ -575,7 +575,7 @@ if __name__ == "__main__":
         tau_corr_fi_l = (
             np.random.uniform(low=p.tau_corr_fi_min, high=p.tau_corr_fi_max) * 1 / f0_l
         )
-        library_ship_i = ShipSignal(
+        library_ship_i = Ship(
             name="library_ship",
             f0=f0_l,
             fs=p.fs,

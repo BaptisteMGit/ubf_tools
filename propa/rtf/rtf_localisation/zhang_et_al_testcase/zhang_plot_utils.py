@@ -1472,7 +1472,8 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi_violin(
     # Here we consider all the potential subarrays containing from 3 to 6 receivers
     subarrays_list = []
     # n_rcv = [2, 3, 4, 5, 6]
-    n_rcv = [3, 4, 5, 6]
+    # n_rcv = [3, 4, 5, 6]
+    n_rcv = [6]
 
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
@@ -1863,7 +1864,8 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
     # Here we consider all the potential subarrays containing from 3 to 6 receivers
     subarrays_list = []
     # n_rcv = [2, 3, 4, 5, 6]
-    n_rcv = [3, 4, 5, 6]
+    # n_rcv = [3, 4, 5, 6]
+    n_rcv = [6]
 
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
@@ -2861,6 +2863,9 @@ def study_perf_vs_snr_compare_arrays_publi(subarrays_list, root_img, root_data):
     # Subplot for RMSE and MSR
     nb_arrays = len(msr.keys())
     fig, axs = plt.subplots(2, nb_arrays, figsize=(12, 6), sharex=True, sharey="row")
+
+    if nb_arrays == 1:
+        axs = np.atleast_2d(axs).T
 
     for i_sa, sa_key in enumerate(msr.keys()):
         # Extract info dataframes for current subarray

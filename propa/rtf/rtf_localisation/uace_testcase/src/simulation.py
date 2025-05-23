@@ -114,6 +114,7 @@ class Simulation:
         self.grid_x = None
         self.grid_y = None
         self.grid_rmax = None
+        self.grid_rmin = None
         self.grid_ranges_from_rcv = None
 
         # Environment properties
@@ -334,6 +335,7 @@ class Simulation:
             )
 
         # Set grid parameters
+        self.grid_rmin = np.floor(np.min(r_grid) * 1e-3) * 1e3
         self.grid_rmax = np.ceil(np.max(r_grid) * 1e-3) * 1e3
         self.grid_x = x_search_area
         self.grid_y = y_search_area

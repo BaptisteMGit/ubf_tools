@@ -1,8 +1,8 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from dask.distributed import Client
 
+from time import time
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import SparseAntenna
 from propa.rtf.rtf_localisation.uace_testcase.src.simulation import Simulation
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # plt.savefig("antenna")
 
     n_mc = 100
-    search_area_length = 1 * 1e3
+    search_area_length = 0.15 * 1e3
 
     # Window properties set to the best properties according to the results from window_props_study.py
     nperseg = 2**10
@@ -48,10 +48,9 @@ if __name__ == "__main__":
     Library ships = 1
     Sediment = coarse sediment 
     dr_bathy = 100 m 
-
     """
 
-    name = "dw_real_env_single_ship_fs_100"
+    name = "dw_real_env_single_ship_fs_100_demodataset"
     fs = 100
 
     # Use single library ship
@@ -89,190 +88,192 @@ if __name__ == "__main__":
     test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
     # Build dataset
+    t0 = time()
     db = DataBuilder(simulation=simu)
     db.build_tf_dataset()
     print("Grid dataset")
     db.grid_dataset()
     db.build_signal()
+    print(f"Time to build dataset : {time() - t0:.2f} s")
 
-    # Process localization
-    snrs = np.arange(-10, 16, 1)[::-1]
-    print(f"Processing snrs : {snrs}")
-    lp = LocalizationProcessor(simulation=simu, use_dask=False)
-    lp.process_multiple_snrs(snrs=snrs, run_mode="w")
+    # # Process localization
+    # snrs = np.arange(-10, 16, 1)[::-1]
+    # print(f"Processing snrs : {snrs}")
+    # lp = LocalizationProcessor(simulation=simu, use_dask=False)
+    # lp.process_multiple_snrs(snrs=snrs, run_mode="w")
 
-    """ Simulation 2 : multi-ship library 
-    Library ships = 1
-    Sediment = coarse sediment 
-    dr_bathy = 100 m
-    fs = 100 Hz
-    """
+    # """ Simulation 2 : multi-ship library
+    # Library ships = 1
+    # Sediment = coarse sediment
+    # dr_bathy = 100 m
+    # fs = 100 Hz
+    # """
 
-    name = "dw_real_env_multi_ships_fs_100"
-    fs = 100
+    # name = "dw_real_env_multi_ships_fs_100"
+    # fs = 100
 
-    # Library ships used
-    library_ship = p.library_ship
+    # # Library ships used
+    # library_ship = p.library_ship
 
-    # Build simulation object
-    simu = Simulation(
-        name=name,
-        fs=fs,
-        debug=debug,
-        antenna=antenna,
-        check_features=check,
-        monte_carlo_iterations=n_mc,
-        feature_nperseg=nperseg,
-        feature_overlap_ratio=alpha_overlap,
-        use_weighted_rtf=use_weighted_rtf,
-        search_area_length=search_area_length,
-        verbose=verbose,
-    )
+    # # Build simulation object
+    # simu = Simulation(
+    #     name=name,
+    #     fs=fs,
+    #     debug=debug,
+    #     antenna=antenna,
+    #     check_features=check,
+    #     monte_carlo_iterations=n_mc,
+    #     feature_nperseg=nperseg,
+    #     feature_overlap_ratio=alpha_overlap,
+    #     use_weighted_rtf=use_weighted_rtf,
+    #     search_area_length=search_area_length,
+    #     verbose=verbose,
+    # )
 
-    # Plot library ships
-    root_img_library_ship = os.path.join(simu.img_folder, "library_sources")
-    if not os.path.exists(root_img_library_ship):
-        os.makedirs(root_img_library_ship)
+    # # Plot library ships
+    # root_img_library_ship = os.path.join(simu.img_folder, "library_sources")
+    # if not os.path.exists(root_img_library_ship):
+    #     os.makedirs(root_img_library_ship)
 
-    for library_ship_i in library_ship:
-        library_ship_i.root_img = root_img_library_ship
-        library_ship_i.plot_signal(tmax=2)
-        library_ship_i.plot_spectrum()
-        library_ship_i.plot_psd()
-        library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
-        plt.close("all")
+    # for library_ship_i in library_ship:
+    #     library_ship_i.root_img = root_img_library_ship
+    #     library_ship_i.plot_signal(tmax=2)
+    #     library_ship_i.plot_spectrum()
+    #     library_ship_i.plot_psd()
+    #     library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
+    #     plt.close("all")
 
-    # Set testcase environment
-    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
+    # # Set testcase environment
+    # test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
-    # Build dataset
-    db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
-    print("Grid dataset")
-    db.grid_dataset()
-    db.build_signal()
+    # # Build dataset
+    # db = DataBuilder(simulation=simu)
+    # db.build_tf_dataset()
+    # print("Grid dataset")
+    # db.grid_dataset()
+    # db.build_signal()
 
-    # Process localization
-    snrs = np.arange(-10, 16, 1)[::-1]
-    print(f"Processing snrs : {snrs}")
-    lp = LocalizationProcessor(simulation=simu, use_dask=False)
-    lp.process_multiple_snrs(snrs=snrs, run_mode="w")
+    # # Process localization
+    # snrs = np.arange(-10, 16, 1)[::-1]
+    # print(f"Processing snrs : {snrs}")
+    # lp = LocalizationProcessor(simulation=simu, use_dask=False)
+    # lp.process_multiple_snrs(snrs=snrs, run_mode="w")
 
-    # Same as above but with fs=200
-    """ Simulation 1 : single library ship 
-    Library ships = 1
-    Sediment = coarse sediment 
-    dr_bathy = 100 m 
-    fs = 200 Hz
+    # # Same as above but with fs=200
+    # """ Simulation 1 : single library ship
+    # Library ships = 1
+    # Sediment = coarse sediment
+    # dr_bathy = 100 m
+    # fs = 200 Hz
 
-    """
+    # """
 
-    name = "dw_real_env_single_ship_fs_200"
-    fs = 200
+    # name = "dw_real_env_single_ship_fs_200"
+    # fs = 200
 
-    # Use single library ship
-    library_ship = [p.unique_library_ship]
+    # # Use single library ship
+    # library_ship = [p.unique_library_ship]
 
-    # Build simulation object
-    simu = Simulation(
-        name=name,
-        fs=fs,
-        debug=debug,
-        antenna=antenna,
-        check_features=check,
-        monte_carlo_iterations=n_mc,
-        feature_nperseg=nperseg,
-        feature_overlap_ratio=alpha_overlap,
-        use_weighted_rtf=use_weighted_rtf,
-        search_area_length=search_area_length,
-        verbose=verbose,
-    )
+    # # Build simulation object
+    # simu = Simulation(
+    #     name=name,
+    #     fs=fs,
+    #     debug=debug,
+    #     antenna=antenna,
+    #     check_features=check,
+    #     monte_carlo_iterations=n_mc,
+    #     feature_nperseg=nperseg,
+    #     feature_overlap_ratio=alpha_overlap,
+    #     use_weighted_rtf=use_weighted_rtf,
+    #     search_area_length=search_area_length,
+    #     verbose=verbose,
+    # )
 
-    # Plot library ships
-    root_img_library_ship = os.path.join(simu.img_folder, "library_sources")
-    if not os.path.exists(root_img_library_ship):
-        os.makedirs(root_img_library_ship)
+    # # Plot library ships
+    # root_img_library_ship = os.path.join(simu.img_folder, "library_sources")
+    # if not os.path.exists(root_img_library_ship):
+    #     os.makedirs(root_img_library_ship)
 
-    for library_ship_i in library_ship:
-        library_ship_i.root_img = root_img_library_ship
-        library_ship_i.plot_signal(tmax=2)
-        library_ship_i.plot_spectrum()
-        library_ship_i.plot_psd()
-        library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
-        plt.close("all")
+    # for library_ship_i in library_ship:
+    #     library_ship_i.root_img = root_img_library_ship
+    #     library_ship_i.plot_signal(tmax=2)
+    #     library_ship_i.plot_spectrum()
+    #     library_ship_i.plot_psd()
+    #     library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
+    #     plt.close("all")
 
-    # Set testcase environment
-    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
+    # # Set testcase environment
+    # test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
-    # Build dataset
-    db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
-    print("Grid dataset")
-    db.grid_dataset()
-    db.build_signal()
+    # # Build dataset
+    # db = DataBuilder(simulation=simu)
+    # db.build_tf_dataset()
+    # print("Grid dataset")
+    # db.grid_dataset()
+    # db.build_signal()
 
-    # Process localization
-    snrs = np.arange(-10, 16, 1)[::-1]
-    print(f"Processing snrs : {snrs}")
-    lp = LocalizationProcessor(simulation=simu, use_dask=False)
-    lp.process_multiple_snrs(snrs=snrs, run_mode="w")
+    # # Process localization
+    # snrs = np.arange(-10, 16, 1)[::-1]
+    # print(f"Processing snrs : {snrs}")
+    # lp = LocalizationProcessor(simulation=simu, use_dask=False)
+    # lp.process_multiple_snrs(snrs=snrs, run_mode="w")
 
-    """ Simulation 2 : multi-ship library 
-    Library ships = 5
-    Sediment = coarse sediment 
-    dr_bathy = 100 m
-    fs = 200 Hz
-    """
+    # """ Simulation 2 : multi-ship library
+    # Library ships = 5
+    # Sediment = coarse sediment
+    # dr_bathy = 100 m
+    # fs = 200 Hz
+    # """
 
-    name = "dw_real_env_multi_ships_fs_200"
-    fs = 200
+    # name = "dw_real_env_multi_ships_fs_200"
+    # fs = 200
 
-    # Library ships used
-    library_ship = p.library_ship
+    # # Library ships used
+    # library_ship = p.library_ship
 
-    # Build simulation object
-    simu = Simulation(
-        name=name,
-        fs=fs,
-        debug=debug,
-        antenna=antenna,
-        check_features=check,
-        monte_carlo_iterations=n_mc,
-        feature_nperseg=nperseg,
-        feature_overlap_ratio=alpha_overlap,
-        use_weighted_rtf=use_weighted_rtf,
-        search_area_length=search_area_length,
-        verbose=verbose,
-    )
+    # # Build simulation object
+    # simu = Simulation(
+    #     name=name,
+    #     fs=fs,
+    #     debug=debug,
+    #     antenna=antenna,
+    #     check_features=check,
+    #     monte_carlo_iterations=n_mc,
+    #     feature_nperseg=nperseg,
+    #     feature_overlap_ratio=alpha_overlap,
+    #     use_weighted_rtf=use_weighted_rtf,
+    #     search_area_length=search_area_length,
+    #     verbose=verbose,
+    # )
 
-    # Plot library ships
-    root_img_library_ship = os.path.join(simu.img_folder, "library_sources")
-    if not os.path.exists(root_img_library_ship):
-        os.makedirs(root_img_library_ship)
+    # # Plot library ships
+    # root_img_library_ship = os.path.join(simu.img_folder, "library_sources")
+    # if not os.path.exists(root_img_library_ship):
+    #     os.makedirs(root_img_library_ship)
 
-    for library_ship_i in library_ship:
-        library_ship_i.root_img = root_img_library_ship
-        library_ship_i.plot_signal(tmax=2)
-        library_ship_i.plot_spectrum()
-        library_ship_i.plot_psd()
-        library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
-        plt.close("all")
+    # for library_ship_i in library_ship:
+    #     library_ship_i.root_img = root_img_library_ship
+    #     library_ship_i.plot_signal(tmax=2)
+    #     library_ship_i.plot_spectrum()
+    #     library_ship_i.plot_psd()
+    #     library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
+    #     plt.close("all")
 
-    # Set testcase environment
-    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
+    # # Set testcase environment
+    # test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
 
-    # Build dataset
-    db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
-    print("Grid dataset")
-    db.grid_dataset()
-    db.build_signal()
+    # # Build dataset
+    # db = DataBuilder(simulation=simu)
+    # db.build_tf_dataset()
+    # print("Grid dataset")
+    # db.grid_dataset()
+    # db.build_signal()
 
-    # Process localization
-    snrs = np.arange(-10, 16, 1)[::-1]
-    print(f"Processing snrs : {snrs}")
-    lp = LocalizationProcessor(simulation=simu, use_dask=False)
-    lp.process_multiple_snrs(snrs=snrs, run_mode="w")
+    # # Process localization
+    # snrs = np.arange(-10, 16, 1)[::-1]
+    # print(f"Processing snrs : {snrs}")
+    # lp = LocalizationProcessor(simulation=simu, use_dask=False)
+    # lp.process_multiple_snrs(snrs=snrs, run_mode="w")
 
     # # # TODO : remove this
     # import xarray as xr

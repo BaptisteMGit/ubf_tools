@@ -90,7 +90,9 @@ if __name__ == "__main__":
     rng = np.random.default_rng(seed=36)
     x_abw = simu.grid_x[rng.integers(low=0, high=len(simu.grid_x), size=1)[0]]
     y_abw = simu.grid_y[rng.integers(low=0, high=len(simu.grid_y), size=1)[0]]
-    z_abw = 25
+    z_abw = 5
+
+    print("Interferer position : x={}m, y={}m, z={}m".format(x_abw, y_abw, z_abw))
     interferer = ZcallInterferer(
         name="ABW_zcall",
         fs=p.fs,

@@ -458,32 +458,20 @@ class DataBuilder:
                     10 ** (-self.simulation.sir / 10)
                 )
                 y_t_interferer *= std_target_sir / std_interference_rcv0
-                y_t_interferer_0 = y_t_interferer
 
+                # y_t_interferer_0 = y_t_interferer
                 # print to check
-                y_t_i_var = np.var(y_t_interferer[0, :])
-                y_t_l_var = np.var(y_t_library[0, :, 0, 0])
-                sir = 10 * np.log10(y_t_l_var / y_t_i_var)
-                print(
-                    f"SIR receiver n°0 : {np.round(sir, 2)} dB (required {self.simulation.sir}dB)"
-                )
+                # y_t_i_var = np.var(y_t_interferer[0, :])
+                # y_t_l_var = np.var(y_t_library[0, :, 0, 0])
+                # sir = 10 * np.log10(y_t_l_var / y_t_i_var)
+                # print(
+                #     f"SIR receiver n°0 : {np.round(sir, 2)} dB (required {self.simulation.sir}dB)"
+                # )
 
             # Cast to y_t_library
             y_t_interferer = cast_matrix_to_target_shape(
                 y_t_interferer, y_t_library.shape
             )
-
-            plt.figure()
-            plt.plot(t, y_t_interferer[0, :, 0, 0], label="zcall")
-            plt.plot(t, y_t_interferer_0[0, :], linestyle="--", label="zcall-notcasted")
-            plt.plot(t, y_t_library[0, :, 0, 0], label="ship")
-            plt.legend()
-            plt.savefig("test")
-
-            plt.figure()
-            plt.plot(f, y_f_interferer, label="zcall")
-            plt.legend()
-            plt.savefig("test_f")
 
             # Add it to library signal
             y_t_library += y_t_interferer

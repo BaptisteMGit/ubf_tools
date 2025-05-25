@@ -1439,7 +1439,6 @@ def plot_fullarray_ambiguity_surfaces_publi(
             rasterized=True,
         )
 
-        # Add colorbar
         ax.scatter(
             x_src,
             y_src,

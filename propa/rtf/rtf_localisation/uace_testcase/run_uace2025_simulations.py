@@ -317,7 +317,6 @@ def run_interferer_simulation(mode="demo"):
         z=z_abw,
         start_offset_seconds=0,
         stop_offset_seconds=0,
-        sl=5,
         M=15,
     )
     interferer.plot_signal()

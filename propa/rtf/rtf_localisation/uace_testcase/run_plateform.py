@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 # from dask.distributed import Client
 from time import time
 
+from time import time
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
+from propa.rtf.rtf_localisation.uace_testcase.src.acoustic_source import ZcallInterferer
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import SparseAntenna
 from propa.rtf.rtf_localisation.uace_testcase.src.simulation import Simulation
 from propa.rtf.rtf_localisation.uace_testcase.src.data_builder import DataBuilder
@@ -36,7 +38,7 @@ if __name__ == "__main__":
     alpha_overlap = 0.5
 
     # Flags
-    check = False
+    check = True
     debug = False
     verbose = True
     use_weighted_rtf = True
@@ -194,31 +196,18 @@ if __name__ == "__main__":
         verbose=verbose,
     )
 
-    # Plot library ships
-    root_img_library_ship = os.path.join(simu.img_folder, "library_sources")
-    if not os.path.exists(root_img_library_ship):
-        os.makedirs(root_img_library_ship)
-
-    for library_ship_i in library_ship:
-        library_ship_i.root_img = root_img_library_ship
-        library_ship_i.plot_signal(tmax=2)
-        library_ship_i.plot_spectrum()
-        library_ship_i.plot_psd()
-        library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
-        plt.close("all")
-
-    # Set testcase environment
-    test_case = DeepWaterRealEnv(simulation=simu, mode="run", name=name)
-
     # Build dataset
+    t0 = time()
     db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
-    print("Grid dataset")
-    db.grid_dataset()
+    # db.build_tf_dataset()
+    # print("Grid dataset")
+    # db.grid_dataset()
     db.build_signal()
+    print(f"Time to build dataset : {time() - t0:.2f} s")
 
-    # Process localization
-    snrs = np.arange(-10, 16, 1)[::-1]
+    # # Process localization
+    # snrs = np.arange(-10, 16, 1)[::-1]
+    snrs = [10]
     print(f"Processing snrs : {snrs}")
     lp = LocalizationProcessor(simulation=simu, use_dask=False)
     lp.process_multiple_snrs(snrs=snrs, run_mode="w")

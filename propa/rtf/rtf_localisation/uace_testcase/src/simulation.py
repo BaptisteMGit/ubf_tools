@@ -21,14 +21,19 @@ import numpy as np
 import xarray as xr
 
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import Antenna, SparseAntenna
-from propa.rtf.rtf_localisation.uace_testcase.src.ship_signal import ShipSignal
+from propa.rtf.rtf_localisation.uace_testcase.src.acoustic_source import (
+    AcousticSource,
+    Ship,
+)
 
 from propa.kraken_toolbox.src.kraken_env import KrakenEnv, KrakenFlp
-import source.global_constants as g
-from source.signal_generator import SignalGenerator
+
+# import source.global_constants as g
+# from source.signal_generator import SignalGenerator
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
-from propa.kraken_toolbox.src.kraken_manager import KrakenManager
-from misc import cast_matrix_to_target_shape, mult_along_axis
+
+# from propa.kraken_toolbox.src.kraken_manager import KrakenManager
+# from misc import cast_matrix_to_target_shape, mult_along_axis
 
 
 class Simulation:
@@ -47,11 +52,13 @@ class Simulation:
         fs: float = p.fs,
         signal_duration: float = p.duration,
         antenna: Antenna = p.antenna,
-        library_ship: np.ndarray[ShipSignal] = p.library_ship,
-        event_ship: ShipSignal = p.event_ship,
+        library_ship: np.ndarray[Ship] = p.library_ship,
+        event_ship: Ship = p.event_ship,
         event_ship_x: float = p.event_ship_x,
         event_ship_y: float = p.event_ship_y,
         event_ship_z: float = p.event_ship_z,
+        interferer: AcousticSource = None,
+        sir: float = None,
         dx: float = p.dx,
         dy: float = p.dy,
         search_area_length: float = p.search_area_length,
@@ -104,6 +111,11 @@ class Simulation:
         self.event_ship_y = event_ship_y
         self.event_ship_z = event_ship_z
 
+        # Interferer
+        self.interferer = interferer
+        # Signal to interference ratio
+        self.sir = sir
+
         # Grid properties
         self.dx = dx
         self.dy = dy
@@ -114,6 +126,7 @@ class Simulation:
         self.grid_x = None
         self.grid_y = None
         self.grid_rmax = None
+        self.grid_rmin = None
         self.grid_ranges_from_rcv = None
 
         # Environment properties
@@ -334,6 +347,7 @@ class Simulation:
             )
 
         # Set grid parameters
+        self.grid_rmin = np.floor(np.min(r_grid) * 1e-3) * 1e3
         self.grid_rmax = np.ceil(np.max(r_grid) * 1e-3) * 1e3
         self.grid_x = x_search_area
         self.grid_y = y_search_area
@@ -503,6 +517,36 @@ class Simulation:
                     f.write("\n")
             else:
                 f.write("No ship library signals provided.\n\n")
+
+            # Interferer Section
+            f.write("[Interferer Configuration]\n")
+            f.write("-------------------------\n")
+            if self.interferer is not None:
+                interf = self.interferer
+                f.write(f"name: {interf.name}\n")
+                f.write(f"fs (Hz): {interf.fs}\n")
+                f.write(f"duration (s): {interf.duration}\n")
+                f.write(f"x (m): {interf.x}\n")
+                f.write(f"y (m): {interf.y}\n")
+                f.write(f"z (m): {interf.z}\n")
+                f.write(f"fc (Hz): {interf.fc}\n")
+                f.write(f"Tz (s): {interf.Tz}\n")
+                f.write(f"L (Hz): {interf.L}\n")
+                f.write(f"U (Hz): {interf.U}\n")
+                f.write(f"M (s): {interf.M}\n")
+                f.write(f"alpha (Hz): {interf.alpha}\n")
+                f.write(f"ici (s): {interf.ici}\n")
+                f.write(f"nz: {interf.nz}\n")
+                f.write(f"start_offset_seconds (s): {interf.start_offset_seconds}\n")
+                f.write(f"stop_offset_seconds (s): {interf.stop_offset_seconds}\n")
+                f.write(f"sl (dB re 1uPa @ 1m): {interf.sl}\n")
+                f.write(f"target signal to interference ratio (SIR) (dB): {self.sir}\n")
+                f.write(
+                    f"signal: {'available' if interf.signal is not None else 'not generated'}\n"
+                )
+                f.write("\n")
+            else:
+                f.write("No interferer defined in this simulation.\n\n")
 
             # Optional log footer
             f.write("=" * 50 + "\n")

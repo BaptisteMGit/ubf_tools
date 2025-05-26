@@ -518,6 +518,36 @@ class Simulation:
             else:
                 f.write("No ship library signals provided.\n\n")
 
+            # Interferer Section
+            f.write("[Interferer Configuration]\n")
+            f.write("-------------------------\n")
+            if self.interferer is not None:
+                interf = self.interferer
+                f.write(f"name: {interf.name}\n")
+                f.write(f"fs (Hz): {interf.fs}\n")
+                f.write(f"duration (s): {interf.duration}\n")
+                f.write(f"x (m): {interf.x}\n")
+                f.write(f"y (m): {interf.y}\n")
+                f.write(f"z (m): {interf.z}\n")
+                f.write(f"fc (Hz): {interf.fc}\n")
+                f.write(f"Tz (s): {interf.Tz}\n")
+                f.write(f"L (Hz): {interf.L}\n")
+                f.write(f"U (Hz): {interf.U}\n")
+                f.write(f"M (s): {interf.M}\n")
+                f.write(f"alpha (Hz): {interf.alpha}\n")
+                f.write(f"ici (s): {interf.ici}\n")
+                f.write(f"nz: {interf.nz}\n")
+                f.write(f"start_offset_seconds (s): {interf.start_offset_seconds}\n")
+                f.write(f"stop_offset_seconds (s): {interf.stop_offset_seconds}\n")
+                f.write(f"sl (dB re 1uPa @ 1m): {interf.sl}\n")
+                f.write(f"target signal to interference ratio (SIR) (dB): {self.sir}\n")
+                f.write(
+                    f"signal: {'available' if interf.signal is not None else 'not generated'}\n"
+                )
+                f.write("\n")
+            else:
+                f.write("No interferer defined in this simulation.\n\n")
+
             # Optional log footer
             f.write("=" * 50 + "\n")
             f.write("End of simulation log\n")

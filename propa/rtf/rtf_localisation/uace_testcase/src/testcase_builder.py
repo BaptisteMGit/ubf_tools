@@ -458,7 +458,7 @@ class DeepWaterRealEnv(KrakenTestCase):
             # z_rcv = (
             #     bathy.bathy_depth.min() - 1
             # )  # Ensure rcv is not lying inside sediment
-            z_rcv = 5  # Reciprocity principle -> set the receiver depth at the true source depth
+            z_rcv = simulation.event_ship_z  # Reciprocity principle -> set the receiver depth at the true source depth
             rcv_z_min = z_rcv
             rcv_z_max = z_rcv
             # Number of receiver depths / ranges (flp file)

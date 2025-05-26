@@ -37,10 +37,10 @@ def run_wgn_simulation(mode="demo"):
 
     """
 
-    print("Start running the interferer test case !")
+    print("Start running the wgn test case !")
 
     ### Common properties ###
-    name = f"dw_real_interferer_testcase_{mode}"
+    name = f"dw_real_wgn_testcase_{mode}"
     fs = 100
     duration = 20
     n_bathy_subsample = (
@@ -351,15 +351,15 @@ def run_interferer_simulation(mode="demo"):
 if __name__ == "__main__":
 
     # Select run mode
-    mode = "demo"  # "demo" / "publi"
-    # mode = "publi"
+    # mode = "demo"  # "demo" / "publi"
+    mode = "publi"
 
     # Select which simulation to run
-    # testcase = "wgn"  # "wgn" / "interferer"
-    testcase = "interferer"
+    testcase = "wgn"  # "wgn" / "interferer"
+    # testcase = "interferer"
 
     if testcase == "wgn":
-        run_wgn_simulation()
+        run_wgn_simulation(mode=mode)
 
     elif testcase == "interferer":
         run_interferer_simulation(mode=mode)

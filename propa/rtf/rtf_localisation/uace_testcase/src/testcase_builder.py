@@ -396,7 +396,6 @@ class DeepWaterRealEnv(KrakenTestCase):
         # bott_props = g.boulders_bedrock_propertiesc
         bott_props = g.coarse_sediment_properties
         bott_props["a_s"] = 0.0  # No shear wave
-        zs = 5
 
         # Set bathy
         fpath_parts = os.path.normpath(p.bathy_fpath).split("\\")
@@ -430,6 +429,9 @@ class DeepWaterRealEnv(KrakenTestCase):
             freq = [20, 50]
         else:
             freq = 50
+
+        # We use the reciprocity principle to set the source depth at the true receiver depth
+        zs = bathy.bathy_depth[0] - 1
         src_properties = SourceProperties(
             src_type="point_source", src_depth=zs, freq=freq
         )
@@ -452,10 +454,11 @@ class DeepWaterRealEnv(KrakenTestCase):
 
         # Set receiver properties
         if mode == "run":
-            # In run mode we only need to derive the transfert functions at a single receiver depth
-            z_rcv = (
-                bathy.bathy_depth.min() - 1
-            )  # Ensure rcv is not lying inside sediment
+            # # In run mode we only need to derive the transfert functions at a single receiver depth
+            # z_rcv = (
+            #     bathy.bathy_depth.min() - 1
+            # )  # Ensure rcv is not lying inside sediment
+            z_rcv = 5  # Reciprocity principle -> set the receiver depth at the true source depth
             rcv_z_min = z_rcv
             rcv_z_max = z_rcv
             # Number of receiver depths / ranges (flp file)

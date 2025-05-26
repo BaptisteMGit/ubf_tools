@@ -309,8 +309,8 @@ def run_interferer_simulation(mode="demo"):
     print("Interferer position : x={}m, y={}m, z={}m".format(x_abw, y_abw, z_abw))
     interferer = ZcallInterferer(
         name="ABW_zcall",
-        fs=p.fs,
-        duration=p.duration,
+        fs=fs,
+        duration=duration,
         root_img=p.root_img_interference,
         x=x_abw,
         y=y_abw,
@@ -355,8 +355,8 @@ if __name__ == "__main__":
     mode = "publi"
 
     # Select which simulation to run
-    testcase = "wgn"  # "wgn" / "interferer"
-    # testcase = "interferer"
+    # testcase = "wgn"  # "wgn" / "interferer"
+    testcase = "interferer"
 
     if testcase == "wgn":
         run_wgn_simulation(mode=mode)

@@ -153,8 +153,16 @@ class SparseAntenna(Antenna):
 
         self.rng_seed = rng_seed
         rng = np.random.default_rng(seed=rng_seed)
-        self.x = rng.uniform(-random_radius, random_radius, n_elements)
-        self.y = rng.uniform(-random_radius, random_radius, n_elements)
+
+        # Select random radius and angles
+        rho = rng.uniform(-random_radius, random_radius, n_elements)
+        theta = rng.uniform(0, 2 * np.pi, n_elements)
+
+        # Convert to x, y coords
+        self.x = rho * np.cos(theta)
+        self.y = rho * np.sin(theta)
+        # self.x = rng.uniform(-random_radius, random_radius, n_elements)
+        # self.y = rng.uniform(-random_radius, random_radius, n_elements)
 
         self.order_receivers()
 

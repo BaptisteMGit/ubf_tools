@@ -441,7 +441,7 @@ class FeatureBuilder:
         # Update number_of_drawn_frequencies in case it was set to None
         if self.simulation.number_of_drawn_frequencies is None:
             self.simulation.number_of_drawn_frequencies = ds_res_from_sig.sizes["f_rtf"]
-            # Update log file 
+            # Update log file
             self.simulation.write_logs()
 
         # Add snr to the feature dataset filepath
@@ -548,6 +548,37 @@ class FeatureBuilder:
                 plt.savefig(fpath)
                 plt.close("all")
 
+        # Plot mean hermitian angle between estimated RTF and reference RTF over the entire grid for each frequency bin
+        rtf_true = tf / tf_ref
+        ax_rcv = 0
+        ax_f = 1
+        dist_func = D_hermitian_angle_fast
+        dist_kwargs = {
+            "ax_rcv": ax_rcv,
+            "unit": "deg",
+            "apply_mean": False,
+            "weights": None,
+            "ax_f": ax_f,
+        }
+        # Interpolate at common frequencies
+        rtf_true = rtf_true.sel(f=rtf_cs.f_rtf, method="nearest")
+        theta = dist_func(rtf_cs.values, rtf_true.values, **dist_kwargs)
+
+        # Fuse x,y dims
+        theta = theta.reshape(theta.shape[0], theta.shape[1] * theta.shape[2])
+        theta_mean_over_entire_grid = np.mean(theta, axis=1)
+        theta_mean_over_entire_grid = np.median(theta, axis=1)
+
+        plt.figure()
+        plt.plot(rtf_cs.f_rtf, theta_mean_over_entire_grid)
+        plt.xlabel("Frequency [Hz]")
+        plt.ylabel(r"$<\theta(f)>$")
+        # Save figure
+        fname = f"mean_hermitian_angle_over_grid.png"
+        fpath = os.path.join(root_img, fname)
+        plt.savefig(fpath)
+        plt.close("all")
+        
         ds_tf.close()
 
     def check_rtf_weights(self, ds_rtf, ds_weights):

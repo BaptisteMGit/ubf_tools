@@ -371,6 +371,7 @@ class DeepWaterRealEnv(KrakenTestCase):
         mode="run",
         name: str = "dw_real_env",
         depth_offset: float = 0,
+        n_bathy_subsample: int = 1,
     ):
         """
         Constructor
@@ -379,10 +380,16 @@ class DeepWaterRealEnv(KrakenTestCase):
         # Set name and title
         title = "Deep Water waveguide with real bathy profile and real ssp"
 
+        if mode == "demo":
+            rmin = 0
+            rmax = 50 * 1e3
+            name = "dw_real_env_demo"
+        else:
+            rmax = simulation.grid_rmax
+            rmin = simulation.grid_rmin
+
         # Common properties
         zmin = 0
-        # zmax = 2000
-        rmax = 50 * 1e3
         min_phase_speed = 1000
         max_phase_speed = 20000
         # bott_props = g.sand_properties
@@ -402,11 +409,11 @@ class DeepWaterRealEnv(KrakenTestCase):
         idx_in_range_domain = bathy.bathy_range <= rmax * 1e-3
         bathy.bathy_range = bathy.bathy_range[idx_in_range_domain]
         bathy.bathy_depth = bathy.bathy_depth[idx_in_range_domain]
+
         # Subsample bathy profile
         # nsubsample = 5
-        nsubsample = 1
-        bathy.bathy_range = bathy.bathy_range[::nsubsample]
-        bathy.bathy_depth = bathy.bathy_depth[::nsubsample]
+        bathy.bathy_range = bathy.bathy_range[::n_bathy_subsample]
+        bathy.bathy_depth = bathy.bathy_depth[::n_bathy_subsample]
 
         # Add off set to bathy depth to reach approximate zmax
         # z_offset = bathy.bathy_depth.max() - zmax
@@ -422,7 +429,7 @@ class DeepWaterRealEnv(KrakenTestCase):
         if mode == "run":
             freq = [20, 50]
         else:
-            freq = 20
+            freq = 50
         src_properties = SourceProperties(
             src_type="point_source", src_depth=zs, freq=freq
         )
@@ -468,7 +475,7 @@ class DeepWaterRealEnv(KrakenTestCase):
             nz_flp = int(rcv_z_max / dz) + 1
 
         rcv_properties = ReceiverProperties(
-            zmin=rcv_z_min, zmax=rcv_z_max, rmin=0, rmax=rmax, unit="m"
+            zmin=rcv_z_min, zmax=rcv_z_max, rmin=rmin, rmax=rmax, unit="m"
         )
 
         att = KrakenAttenuation(units="dB_per_wavelength", use_volume_attenuation=False)

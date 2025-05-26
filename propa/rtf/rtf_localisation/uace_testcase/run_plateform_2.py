@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import propa.rtf.rtf_localisation.uace_testcase.src.params as p
 from propa.rtf.rtf_localisation.uace_testcase.src.antenna import SparseAntenna
 from propa.rtf.rtf_localisation.uace_testcase.src.simulation import Simulation
-from propa.rtf.rtf_localisation.uace_testcase.src.ship_signal import ShipSignal
+from propa.rtf.rtf_localisation.uace_testcase.src.acoustic_source import Ship
 from propa.rtf.rtf_localisation.uace_testcase.src.data_builder import DataBuilder
 from propa.rtf.rtf_localisation.uace_testcase.src.feature_builder import FeatureBuilder
 from propa.rtf.rtf_localisation.uace_testcase.src.localization_processor import (
@@ -40,7 +40,7 @@ if __name__ == "__main__":
         tau_corr_fi_l = (
             np.random.uniform(low=p.tau_corr_fi_min, high=p.tau_corr_fi_max) * 1 / f0_l
         )
-        library_ship_i = ShipSignal(
+        library_ship_i = Ship(
             name=f"library_ship_{iship}",
             f0=f0_l,
             fs=p.fs,

@@ -225,6 +225,7 @@ class Ship(AcousticSource):
         f0: float = None,
         std_fi: float = None,
         tau_corr_fi: float = None,
+        n_harmonics: int = None,
     ):
         """
         Constructor
@@ -242,6 +243,7 @@ class Ship(AcousticSource):
         self.f0 = f0
         self.std_fi = std_fi
         self.tau_corr_fi = tau_corr_fi
+        self.n_harmonics = n_harmonics
 
         # Generate signal
         self.get_signal()
@@ -256,6 +258,7 @@ class Ship(AcousticSource):
             T=self.duration,
             std_fi=self.std_fi,
             tau_corr_fi=self.tau_corr_fi,
+            Nh=self.n_harmonics,
         )
 
         self.time = t
@@ -467,5 +470,5 @@ if __name__ == "__main__":
     root_publi = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\uace_testcase\publication\uace_proceedings_ship_signal_illustration"
 
     # Demo signals
-    # Ship.plot_demo_ship(root_publi)
-    ZcallInterferer.plot_demo_zcall(root_publi)
+    Ship.plot_demo_ship(root_publi)
+    # ZcallInterferer.plot_demo_zcall(root_publi)

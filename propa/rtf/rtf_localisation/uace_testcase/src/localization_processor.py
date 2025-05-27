@@ -1573,7 +1573,7 @@ class LocalizationProcessor:
             if sub_array is None
             else "_" + "_".join([f"s{sa+1}" for sa in sub_array])
         )
-        fname = f"{testcase}_ambiguity_surface_{dist}{sa_lab}.png"
+        fname = f"amb_surf_{dist}{sa_lab}.png"
         fpath = os.path.join(root_amb_surf, fname)
         plt.savefig(fpath)
         plt.close("all")

@@ -190,7 +190,7 @@ def run_interferer_simulation(mode="demo"):
     print("Start running the interferer test case !")
 
     ### Common properties ###
-    name = f"dw_real_interferer_testcase_{mode}"
+    name = f"dw_real_interferer_testcase_{mode}_SIR5dB"
     fs = 100
     duration = 20
     n_bathy_subsample = (
@@ -205,7 +205,7 @@ def run_interferer_simulation(mode="demo"):
         rng_seed=42,
     )
 
-    n_mc = 100
+    n_mc = 1
     search_area_length = 1 * 1e3
 
     # Window properties set to the best properties according to the results from window_props_study.py
@@ -213,7 +213,7 @@ def run_interferer_simulation(mode="demo"):
     alpha_overlap = 0.5
 
     # Flags
-    check = False
+    check = True
     debug = False
     verbose = True
     use_weighted_rtf = False
@@ -325,7 +325,7 @@ def run_interferer_simulation(mode="demo"):
     interferer.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
 
     simu.interferer = interferer
-    simu.sir = 0
+    simu.sir = 50
 
     # Set testcase environment
     test_case = DeepWaterRealEnv(
@@ -335,9 +335,9 @@ def run_interferer_simulation(mode="demo"):
     # Build dataset
     t0 = time()
     db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
+    # db.build_tf_dataset()
     print("Grid dataset")
-    db.grid_dataset()
+    # db.grid_dataset()
     db.build_signal()
     print(f"Time to build dataset : {time() - t0:.2f} s")
 

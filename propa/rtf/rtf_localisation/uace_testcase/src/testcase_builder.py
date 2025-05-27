@@ -428,10 +428,10 @@ class DeepWaterRealEnv(KrakenTestCase):
         if mode == "run":
             freq = [20, 50]
         else:
-            freq = 50
+            freq = 25
 
         # We use the reciprocity principle to set the source depth at the true receiver depth
-        zs = bathy.bathy_depth[0] - 1
+        zs = bathy.bathy_depth[0] - 0.5
         src_properties = SourceProperties(
             src_type="point_source", src_depth=zs, freq=freq
         )
@@ -458,7 +458,9 @@ class DeepWaterRealEnv(KrakenTestCase):
             # z_rcv = (
             #     bathy.bathy_depth.min() - 1
             # )  # Ensure rcv is not lying inside sediment
-            z_rcv = simulation.event_ship_z  # Reciprocity principle -> set the receiver depth at the true source depth
+            z_rcv = (
+                simulation.event_ship_z
+            )  # Reciprocity principle -> set the receiver depth at the true source depth
             rcv_z_min = z_rcv
             rcv_z_max = z_rcv
             # Number of receiver depths / ranges (flp file)

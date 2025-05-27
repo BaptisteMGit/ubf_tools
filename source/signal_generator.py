@@ -358,9 +358,14 @@ class SignalGenerator:
     @staticmethod
     def ship_spectrum(f):
         f = np.array(f)
-        fc = 15
-        # fc = 20
-        Q = 2
+        # fc = 15
+        # # fc = 20
+        # Q = 2
+        # Aship = 1 / (1 - f**2 / fc**2 + 1j * f / fc / Q)
+
+        # Update 27052025 pour UACE
+        fc = 30
+        Q = 1 / 1.1
         Aship = 1 / (1 - f**2 / fc**2 + 1j * f / fc / Q)
         return Aship
 

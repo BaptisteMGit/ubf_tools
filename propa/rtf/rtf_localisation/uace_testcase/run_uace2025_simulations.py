@@ -73,9 +73,13 @@ def run_wgn_simulation(mode="demo"):
     noverlap_plot = 2**8
 
     # Use single library ship
-    f0_l = 4.889
-    std_fi_l = 0.058 * f0_l
-    tau_corr_fi_l = 0.067 * 1 / f0_l
+    # f0_l = 4.889
+    # std_fi_l = 0.058 * f0_l
+    # tau_corr_fi_l = 0.067 * 1 / f0_l
+
+    f0_l = 4.9
+    std_fi_l = 0.09 * f0_l
+    tau_corr_fi_l = 0.07 * 1 / f0_l
 
     library_ship = Ship(
         name="library_ship",
@@ -89,9 +93,14 @@ def run_wgn_simulation(mode="demo"):
     library_ship = [library_ship]
 
     # Event ship signal -> signal 19 de la base de signaux
-    f0_e = 4.629
-    std_fi_e = 0.072 * f0_e
-    tau_corr_fi_e = 0.304 * 1 / f0_e
+    # f0_e = 4.629
+    # std_fi_e = 0.072 * f0_e
+    # tau_corr_fi_e = 0.304 * 1 / f0_e
+
+    f0_e = 4.65
+    std_fi_e = 0.12 * f0_e
+    tau_corr_fi_e = 0.30 * 1 / f0_e
+
     event_ship = Ship(
         name="event_ship",
         f0=f0_e,
@@ -101,8 +110,9 @@ def run_wgn_simulation(mode="demo"):
         tau_corr_fi=tau_corr_fi_e,
         root_img=p.root_img_ship_sigs,
     )
-    event_ship_x = 25000
-    event_ship_y = 12000
+
+    event_ship_x = 30000
+    event_ship_y = 23000
     event_ship_z = 5
 
     # If demo mode is selected - use a quicker configuration
@@ -190,7 +200,8 @@ def run_interferer_simulation(mode="demo"):
     print("Start running the interferer test case !")
 
     ### Common properties ###
-    name = f"dw_real_interferer_testcase_{mode}_SIR5dB"
+    name = f"dw_real_interferer_testcase_{mode}"
+    name = "test_interf"
     fs = 100
     duration = 20
     n_bathy_subsample = (
@@ -205,7 +216,7 @@ def run_interferer_simulation(mode="demo"):
         rng_seed=42,
     )
 
-    n_mc = 1
+    n_mc = 100
     search_area_length = 1 * 1e3
 
     # Window properties set to the best properties according to the results from window_props_study.py
@@ -213,7 +224,7 @@ def run_interferer_simulation(mode="demo"):
     alpha_overlap = 0.5
 
     # Flags
-    check = True
+    check = False
     debug = False
     verbose = True
     use_weighted_rtf = False
@@ -223,9 +234,13 @@ def run_interferer_simulation(mode="demo"):
     noverlap_plot = 2**8
 
     # Use single library ship
-    f0_l = 4.889
-    std_fi_l = 0.058 * f0_l
-    tau_corr_fi_l = 0.067 * 1 / f0_l
+    # f0_l = 4.889
+    # std_fi_l = 0.058 * f0_l
+    # tau_corr_fi_l = 0.067 * 1 / f0_l
+
+    f0_l = 4.9
+    std_fi_l = 0.09 * f0_l
+    tau_corr_fi_l = 0.07 * 1 / f0_l
 
     library_ship = Ship(
         name="library_ship",
@@ -239,9 +254,14 @@ def run_interferer_simulation(mode="demo"):
     library_ship = [library_ship]
 
     # Event ship signal -> signal 19 de la base de signaux
-    f0_e = 4.629
-    std_fi_e = 0.072 * f0_e
-    tau_corr_fi_e = 0.304 * 1 / f0_e
+    # f0_e = 4.629
+    # std_fi_e = 0.072 * f0_e
+    # tau_corr_fi_e = 0.304 * 1 / f0_e
+
+    f0_e = 4.65
+    std_fi_e = 0.12 * f0_e
+    tau_corr_fi_e = 0.30 * 1 / f0_e
+
     event_ship = Ship(
         name="event_ship",
         f0=f0_e,
@@ -251,15 +271,19 @@ def run_interferer_simulation(mode="demo"):
         tau_corr_fi=tau_corr_fi_e,
         root_img=p.root_img_ship_sigs,
     )
-    event_ship_x = 25000
-    event_ship_y = 12000
+    # event_ship_x = 25000
+    # event_ship_y = 12000
+    # event_ship_z = 5
+
+    event_ship_x = 30000
+    event_ship_y = 23000
     event_ship_z = 5
 
     # If demo mode is selected - use a quicker configuration
     if mode == "demo":
-        search_area_length = 0.5 * 1e3
+        search_area_length = 1 * 1e3
         check = True
-        n_mc = 3
+        n_mc = 1
         n_bathy_subsample = 20  # Use a lower resolution for demo mode
 
     # Build simulation object
@@ -283,17 +307,38 @@ def run_interferer_simulation(mode="demo"):
     )
 
     # Plot library ships
-    root_img_library_ship = os.path.join(simu.img_folder, "library_sources")
-    if not os.path.exists(root_img_library_ship):
-        os.makedirs(root_img_library_ship)
+    root_img_ship = os.path.join(simu.img_folder, "sources")
+    if not os.path.exists(root_img_ship):
+        os.makedirs(root_img_ship)
 
     for library_ship_i in library_ship:
-        library_ship_i.root_img = root_img_library_ship
+        library_ship_i.root_img = root_img_ship
         library_ship_i.plot_signal(tmax=2)
         library_ship_i.plot_spectrum()
         library_ship_i.plot_psd()
         library_ship_i.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
         plt.close("all")
+
+    # Plot event ship
+    event_ship.root_img = root_img_ship
+    event_ship.plot_signal(tmax=2)
+    event_ship.plot_spectrum()
+    event_ship.plot_psd()
+    event_ship.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
+    plt.close("all")
+
+    # Plot common ship sig properties
+    prod_spectrum = library_ship[0].spectrum * event_ship.spectrum
+    prod_spectrum = np.abs(prod_spectrum) / np.max(np.abs(prod_spectrum))
+    plt.figure()
+    plt.plot(library_ship[0].freq, prod_spectrum, label="Library ship * Event ship")
+    plt.xlabel("Frequency [Hz]")
+    plt.ylabel("Normalized amplitude")
+    plt.title("Product of library ship and event ship spectrum")
+    plt.legend()
+    plt.grid()
+    fpath = os.path.join(root_img_ship, "library_event_spectrum.png")
+    plt.savefig(fpath)
 
     # Plot antenna
     antenna.plot_antenna()
@@ -325,7 +370,7 @@ def run_interferer_simulation(mode="demo"):
     interferer.plot_stft(nperseg=nperseg_plot, noverlap=noverlap_plot)
 
     simu.interferer = interferer
-    simu.sir = 50
+    simu.sir = -5
 
     # Set testcase environment
     test_case = DeepWaterRealEnv(
@@ -335,9 +380,9 @@ def run_interferer_simulation(mode="demo"):
     # Build dataset
     t0 = time()
     db = DataBuilder(simulation=simu)
-    # db.build_tf_dataset()
+    db.build_tf_dataset()
     print("Grid dataset")
-    # db.grid_dataset()
+    db.grid_dataset()
     db.build_signal()
     print(f"Time to build dataset : {time() - t0:.2f} s")
 

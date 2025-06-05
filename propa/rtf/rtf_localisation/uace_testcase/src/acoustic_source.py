@@ -463,12 +463,115 @@ class ZcallInterferer(AcousticSource):
         plt.savefig(fpath)
 
 
+def plot_ship_zcall_uace2025(root_img):
+
+    # Library
+    f0 = 4.9
+    std_fi = 0.09 * f0
+    tau_corr_fi = 0.07 * 1 / f0
+
+    # # Event
+    # f0 = 4.65
+    # std_fi = 0.12 * f0
+    # tau_corr_fi = 0.30 * 1 / f0
+
+    duration = 60 * 10  # 30 minutes
+    fs = 100
+    ship = Ship(
+        name="DemoShip",
+        f0=f0,
+        fs=fs,
+        duration=duration,
+        std_fi=std_fi,
+        tau_corr_fi=tau_corr_fi,
+        root_img=root_img,
+    )
+
+    # Plot PSD and the two spectrograms side by side
+    pfig = PubFigure(
+        label_fontsize=32,
+        ticks_fontsize=30,
+        title_fontsize=32,
+    )
+    nperseg = 2**11
+    noverlap = int(nperseg * 3 / 4)
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6), sharey=True, width_ratios=[1, 3, 3])
+
+    f, Pxx = ship.get_psd(window="hann", nperseg=nperseg, noverlap=noverlap)
+    axs[0].plot(10 * np.log10(Pxx), f)
+    axs[0].set_xlabel("PSD [dB]")
+    axs[0].set_ylabel("Frequency [Hz]")
+    axs[0].set_title("(a)")
+
+    ff, tt, sxx = ship.get_stft(window="hann", nperseg=nperseg, noverlap=noverlap)
+    abs_sxx = np.abs(sxx) / np.max(np.abs(sxx))
+    im1 = axs[1].pcolormesh(
+        tt,
+        ff,
+        10 * np.log10(abs_sxx),
+        shading="gouraud",
+        cmap="jet",
+        vmin=-20,
+        vmax=0,
+        rasterized=True,
+    )
+    # plt.colorbar(im1)
+    axs[1].set_xlabel("Time [s]")
+    axs[1].set_title("(b)")
+
+    abw = ZcallInterferer(
+        name="Demo_ZcallInterferer",
+        fs=fs,
+        duration=duration,
+        root_img=root_img,
+        nz=0,
+        start_offset_seconds=10,
+        stop_offset_seconds=0,
+        # sl=130,
+    )
+
+    # # # Scale to target SIR
+    # sir = -5
+    # std_abw = np.std(abw.signal)
+    # std_ship = np.std(ship.signal)
+    # std_target_sir = std_ship * np.sqrt(10 ** (-sir / 10))
+    # abw.signal *= std_target_sir / std_abw
+    # abw.signal += ship.signal
+
+    # Add noise to the signal
+    abw.signal = (
+        1 / 10 * np.std(abw.signal) * np.random.normal(0, 1, abw.n_samples) + abw.signal
+    )
+
+    ff, tt, sxx = abw.get_stft(window="hann", nperseg=nperseg, noverlap=noverlap)
+    abs_sxx = np.abs(sxx) / np.max(np.abs(sxx))
+    im2 = axs[2].pcolormesh(
+        tt,
+        ff,
+        10 * np.log10(abs_sxx),
+        shading="gouraud",
+        cmap="jet",
+        vmin=-20,
+        vmax=0,
+        rasterized=True,
+    )
+    axs[2].set_xlabel("Time [s]")
+    axs[2].set_title("(c)")
+
+    fpath = os.path.join(root_img, "uace2025_signals")
+    plt.savefig(f"{fpath}.png", dpi=300)
+    plt.savefig(f"{fpath}.pdf", dpi=300)
+
+
 if __name__ == "__main__":
     from publication.publication_figure import PubFigure
 
-    pfig = PubFigure(label_fontsize=22, ticks_fontsize=20)
-    root_publi = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\uace_testcase\publication\uace_proceedings_ship_signal_illustration"
+    # pfig = PubFigure(label_fontsize=22, ticks_fontsize=20)
+    root_publi = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\uace_testcase\publication"
 
     # Demo signals
-    Ship.plot_demo_ship(root_publi)
+    # root_publi_
+    # Ship.plot_demo_ship(root_publi)
     # ZcallInterferer.plot_demo_zcall(root_publi)
+
+    plot_ship_zcall_uace2025(os.path.join(root_publi, "uace_2025_source_signals"))

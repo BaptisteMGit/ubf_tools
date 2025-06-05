@@ -39,6 +39,10 @@ from propa.kraken_toolbox.src.kraken_env import (
 from propa.rtf.rtf_localisation.uace_testcase.src.simulation import Simulation
 from propa.kraken_toolbox.utils import default_nb_rcv_z
 
+from propa.kraken_toolbox.plot_utils import plotmode
+
+from publication.publication_figure import PubFigure
+
 
 class DeepWaterPekerisMunk(KrakenTestCase):
 
@@ -428,10 +432,14 @@ class DeepWaterRealEnv(KrakenTestCase):
         if mode == "run":
             freq = [20, 50]
         else:
-            freq = 25
+            freq = 20
 
         # We use the reciprocity principle to set the source depth at the true receiver depth
         zs = bathy.bathy_depth[0] - 0.5
+
+        if mode == "demo":
+            zs = 5
+
         src_properties = SourceProperties(
             src_type="point_source", src_depth=zs, freq=freq
         )
@@ -474,8 +482,8 @@ class DeepWaterRealEnv(KrakenTestCase):
             rcv_z_max = zmax + bott_hs.sedim_layer_depth / 2
             rcv_z_max = np.round(rcv_z_max * 1e-2, 0) * 1e2
             # Number of receiver depths / ranges (flp file)
-            dr = 50
-            dz = 5
+            dr = 30
+            dz = 10
             nr_flp = int(rmax / dr) + 1
             nz_flp = int(rcv_z_max / dz) + 1
 
@@ -556,6 +564,8 @@ class DeepWaterRealEnv(KrakenTestCase):
 
         # Run and plot diags if "demo" mode is selected
         if mode == "demo":
+            pfig = PubFigure(label_fontsize=32, ticks_fontsize=30)
+
             t0 = time.time()
             self.run()
             print(
@@ -563,7 +573,26 @@ class DeepWaterRealEnv(KrakenTestCase):
                     time.time() - t0
                 )
             )
-            self.plot_diags(tl_min=60, tl_max=120, modes=[1, 30, 90])
+
+            # Plot modes
+            modes = [1, 2, 3]
+            for modes in [[1, 2, 3], [10, 20, 30], [80, 85, 90]]:
+                fpath = os.path.join(self.io_files_dir, self.env.filename)
+                plotmode(
+                    fpath,
+                    freq=self.src.freq,
+                    modes=modes,
+                    bathy_depth=self.bathy.bathy_depth[0],
+                )
+                modes_label = "_".join([str(m) for m in modes])
+                fig = plt.gcf()
+                fig.suptitle(f"Modes (r = 0 km, f = {freq} Hz)")
+                plt.savefig(
+                    os.path.join(self.imgs_outputs_dir, f"modes_{modes_label}.png")
+                )
+
+            #
+            # self.plot_diags(tl_min=60, tl_max=120, modes=[1, 30, 90])
             # self.plot_diags(modes=[1, 30, 90])
 
 

@@ -41,10 +41,11 @@ def run_wgn_simulation(mode="demo"):
 
     ### Common properties ###
     name = f"dw_real_wgn_testcase_{mode}"
+    name = name + "_v3"
     fs = 100
     duration = 20
     n_bathy_subsample = (
-        1  # 1 for no subsampling (original resolution), 20 for original resolution / 20
+        2  # 1 for no subsampling (original resolution), 20 for original resolution / 20
     )
 
     # Antenna
@@ -168,7 +169,7 @@ def run_wgn_simulation(mode="demo"):
     # Build dataset
     t0 = time()
     db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
+    # db.build_tf_dataset()
     print("Grid dataset")
     db.grid_dataset()
     db.build_signal()
@@ -200,13 +201,11 @@ def run_interferer_simulation(mode="demo"):
     print("Start running the interferer test case !")
 
     ### Common properties ###
-    name = f"dw_real_interferer_testcase_{mode}"
+    # name = f"dw_real_interferer_testcase_{mode}"
     name = "test_interf"
     fs = 100
     duration = 20
-    n_bathy_subsample = (
-        1  # 1 for no subsampling (original resolution), 20 for original resolution / 20
-    )
+    n_bathy_subsample = 10  # 1 for no subsampling (original resolution), 20 for original resolution / 20
 
     # Antenna
     antenna = SparseAntenna(
@@ -224,7 +223,7 @@ def run_interferer_simulation(mode="demo"):
     alpha_overlap = 0.5
 
     # Flags
-    check = False
+    check = True
     debug = False
     verbose = True
     use_weighted_rtf = False
@@ -386,7 +385,7 @@ def run_interferer_simulation(mode="demo"):
     db.build_signal()
     print(f"Time to build dataset : {time() - t0:.2f} s")
 
-    # # Process localization
+    # Process localization
     snrs = [5]
     print(f"Processing snrs : {snrs}")
     lp = LocalizationProcessor(simulation=simu, use_dask=False)
@@ -400,8 +399,8 @@ if __name__ == "__main__":
     mode = "publi"
 
     # Select which simulation to run
-    # testcase = "wgn"  # "wgn" / "interferer"
-    testcase = "interferer"
+    testcase = "wgn"  # "wgn" / "interferer"
+    # testcase = "interferer"
 
     if testcase == "wgn":
         run_wgn_simulation(mode=mode)

@@ -358,6 +358,15 @@ class KrakenTestCase:
         # Plotting diagnostics
         fpath = os.path.join(self.io_files_dir, self.env.filename)
         plotmode(fpath, freq=self.src.freq, modes=modes)
+        axs = plt.gca()
+        # Add bathy depth as a horizontal line
+        axs.axhline(
+            self.bathy.bathy_depth[0],
+            color="r",
+            linestyle="--",
+            label="Bathy depth",
+        )
+        plt.legend()
         plt.savefig(os.path.join(self.imgs_outputs_dir, "modes.png"))
 
         plotshd(
@@ -371,13 +380,18 @@ class KrakenTestCase:
 
     def plot_ssp_tl(self, tl_min=None, tl_max=None, publi=False):
         fpath = os.path.join(self.io_files_dir, self.env.filename)
-        pfig = PubFigure(label_fontsize=30)
+        # pfig = PubFigure(label_fontsize=30)
+        pfig = PubFigure(
+            label_fontsize=32,
+            ticks_fontsize=30,
+            title_fontsize=32,
+        )
         fig, axs = plt.subplots(
             nrows=1,
             ncols=2,
             sharey=True,
-            gridspec_kw={"width_ratios": [1, 6]},
-            figsize=(16, 8),
+            gridspec_kw={"width_ratios": [2, 7]},
+            figsize=(18, 6),
             # wspace=0.05,
         )
         # Plot transmission loss map
@@ -389,22 +403,22 @@ class KrakenTestCase:
             tl_max=tl_max,
             axis=axs[1],
             units="km",
-            rasterized=False,
+            # rasterized=False,
         )
         axs[1].set_ylabel("")
         axs[1].set_title("(b)")
 
         # Add ssp beside transmission loss
         axs[0].plot(
-            self.kraken.medium.cp_ssp, self.kraken.medium.z_ssp, color="k", linewidth=1
+            self.kraken.medium.cp_ssp, self.kraken.medium.z_ssp, color="k", linewidth=2
         )
-        axs[0].set_xlabel(r"Celerity [$ms^{-1}$]")
+        axs[0].set_xlabel(r"Celerity [$\textrm{m~s}^{-1}$]")
         axs[0].set_xlim(
             [self.kraken.medium.cp_ssp.min() - 5, self.kraken.medium.cp_ssp.max() + 5]
         )
         # Rotate x ticks for better readability
-        axs[0].tick_params(axis="x", rotation=30)
-        axs[1].tick_params(axis="x", rotation=30)
+        # axs[0].tick_params(axis="x", rotation=30)
+        # axs[1].tick_params(axis="x", rotation=30)
         plt.ylim([self.bathy.bathy_depth.max() * 1.15, 0])
 
         axs[0].set_ylabel("Depth [m]")
@@ -415,9 +429,9 @@ class KrakenTestCase:
         #     wspace=0.05,
         # )
 
-        plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.png"))
+        plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.png"), dpi=300)
         if publi:
-            plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.pdf"))
+            plt.savefig(os.path.join(self.imgs_outputs_dir, "ssp_tl.pdf"), dpi=300)
 
 
 if __name__ == "__main__":

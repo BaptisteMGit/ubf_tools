@@ -64,44 +64,68 @@ def plot_results_figure(mode="demo"):
     root_interf = os.path.join(root_data_publi, interf_tc, mode)
 
     # True target position
-    event_ship_x = 25000
-    event_ship_y = 12000
+    event_ship_x = 30000
+    event_ship_y = 23000
 
     # Zcall interferer position
-    x_abw = 25280
-    y_abw = 11860
-
     if mode == "demo":
         x_abw = 25180
         y_abw = 11860
+    else:
+        x_abw = 30280
+        y_abw = 22860
 
     # Load msr and rmse
     msr, _, rmse = preprocess_msr_dr(root_wgn)
 
-    # Load wgn testcase (only wgn) ambiguity surface
-    fpath = os.path.join(root_wgn, "loc_s1_s2_s3_s4_s5_s6_wgn_snr_5dB.nc")
-    ds_wgn = xr.open_dataset(fpath)
+    print("WGN Testcase Results:")
+    print(f"RMSE : {rmse['rtf']}")
+    print(f"MSR : {msr['rtf_mean']}")
+
+    if mode == "demo":
+        sir = 0
+        snr = 5
+    else:
+        sir = -5  # Signal to Interference Ratio in dB
+        snr = 0  # Signal to Noise Ratio in dB
 
     # Load interferer testcase ambiguity surface data
     fpath = os.path.join(
-        root_interf, "loc_s1_s2_s3_s4_s5_s6_wgn_snr_5dB_z_call_sir_0dB.nc"
+        root_interf, f"loc_s1_s2_s3_s4_s5_s6_wgn_snr_{snr}dB_z_call_sir_{sir}dB.nc"
     )
     ds_interf = xr.open_dataset(fpath)
+    msr_interf, _, rmse_interf = preprocess_msr_dr(root_interf)
+
+    print("Interferer Testcase Results:")
+    print(f"RMSE : {rmse_interf['rtf']}")
+    print(f"MSR : {msr_interf['rtf_mean']}")
+
+    # Load wgn testcase (only wgn) ambiguity surface
+    fpath = os.path.join(root_wgn, f"loc_s1_s2_s3_s4_s5_s6_wgn_snr_{snr}dB.nc")
+    ds_wgn = xr.open_dataset(fpath)
 
     # Build results subplots
     vmin = -5
     vmax = 0
+    target_pos_circle_size = 180
+    abw_pos_star_size = 400
+    target_pos_linewidth = 3
+    # pfig = PubFigure(
+    #     label_fontsize=20,
+    #     ticks_fontsize=18,
+    #     labelpad=12,
+    #     title_fontsize=16,
+    # )
     pfig = PubFigure(
-        label_fontsize=20,
-        ticks_fontsize=18,
-        labelpad=12,
-        title_fontsize=16,
+        label_fontsize=32,
+        ticks_fontsize=30,
+        title_fontsize=32,
     )
 
     fig, (ax1, ax2, ax3) = plt.subplots(
         1,
         3,
-        figsize=(12, 4),
+        figsize=(18, 6),
         gridspec_kw={"width_ratios": [2, 1, 1]},
     )
 
@@ -122,7 +146,7 @@ def plot_results_figure(mode="demo"):
     ax1_bis = ax1.twinx()
     msr_rtf = ax1_bis.plot(
         msr.index,
-        msr.rtf_mean,
+        -msr.rtf_mean,
         "-",
         color="red",
         markersize=3,
@@ -139,6 +163,7 @@ def plot_results_figure(mode="demo"):
         vmin=vmin,
         vmax=vmax,
         add_colorbar=False,
+        rasterized=False,
         # cbar_kwargs={"label": r"$\theta [°]$"},
     )
     # Add true target position
@@ -147,11 +172,12 @@ def plot_results_figure(mode="demo"):
         event_ship_y,
         marker="o",
         facecolors="none",
-        s=50,
-        linewidths=2,
+        s=target_pos_circle_size,
+        linewidths=target_pos_linewidth,
         color="k",
     )
     ax2.set_title("(b)")
+    ax2.tick_params(direction="out", pad=15)
 
     # Plot ambiguity surface for snr = 5dB with interference
     ds_interf.d_rtf.plot(
@@ -161,6 +187,7 @@ def plot_results_figure(mode="demo"):
         vmax=vmax,
         # cbar_kwargs={"label": r"$\theta [°]$"},
         cbar_kwargs={"label": "[dB]"},
+        rasterized=False,
     )
     # Add true target position and interferer position
     ax3.scatter(
@@ -168,28 +195,31 @@ def plot_results_figure(mode="demo"):
         event_ship_y,
         marker="o",
         facecolors="none",
-        s=50,
-        linewidths=2,
+        s=target_pos_circle_size,
+        linewidths=target_pos_linewidth,
         color="k",
     )
     ax3.scatter(
         x_abw,
         y_abw,
         marker="*",
-        # facecolors="none",
-        s=70,
-        linewidths=2,
+        facecolors="w",
+        s=abw_pos_star_size,
+        linewidths=1,
         color="k",
     )
 
     ax3.set_ylabel("")
     ax3.set_yticklabels([])
+    ax3.tick_params(direction="out", pad=15)
     ax3.set_title("(c)")
 
-    fpath = os.path.join(p.root_img_publi, "uace_2025_paper_results", "results.png")
-    plt.savefig(fpath, dpi=300)
+    fpath = os.path.join(p.root_img_publi, "uace_2025_paper_results", "results")
+    plt.savefig(fpath + ".png", dpi=300)
+    plt.savefig(fpath + ".pdf", dpi=300)
 
 
 if __name__ == "__main__":
 
-    plot_results_figure()
+    mode = "publi"
+    plot_results_figure(mode=mode)

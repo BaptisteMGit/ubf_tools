@@ -146,6 +146,14 @@ class FeatureBuilder:
             self.check_signal_noise(ds_sig_noise)
             self.check_signal_noise_stft(ds_sig_noise)
 
+            save_check = True
+            if save_check:
+                fpath = (
+                    self.simulation.feature_dataset_fpath.split(".nc")[0]
+                    + f"sig_noise_snr_{snr_dB:.1f}dB.nc"
+                )
+                ds_sig_noise.to_netcdf(fpath)
+
         # List of potential reference receivers to test
         idx_rcv_refs = (
             self.simulation.antenna.rcv_idx
@@ -578,7 +586,7 @@ class FeatureBuilder:
         fpath = os.path.join(root_img, fname)
         plt.savefig(fpath)
         plt.close("all")
-        
+
         ds_tf.close()
 
     def check_rtf_weights(self, ds_rtf, ds_weights):

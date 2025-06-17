@@ -30,6 +30,7 @@ nptdms = "*"
 imageio = {extras = ["ffmpeg"], version = "*"}
 pillow = "*"
 numba = "*"
+cdsapi = "*"
 
 [dev-packages]
 ipykernel = "*"

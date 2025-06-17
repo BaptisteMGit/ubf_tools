@@ -202,7 +202,7 @@ def run_interferer_simulation(mode="demo"):
 
     ### Common properties ###
     # name = f"dw_real_interferer_testcase_{mode}"
-    name = "test_interf"
+    name = "dw_real_interferer_presentation"
     fs = 100
     duration = 20
     n_bathy_subsample = 10  # 1 for no subsampling (original resolution), 20 for original resolution / 20
@@ -379,14 +379,14 @@ def run_interferer_simulation(mode="demo"):
     # Build dataset
     t0 = time()
     db = DataBuilder(simulation=simu)
-    db.build_tf_dataset()
+    # db.build_tf_dataset()
     print("Grid dataset")
     db.grid_dataset()
     db.build_signal()
     print(f"Time to build dataset : {time() - t0:.2f} s")
 
     # Process localization
-    snrs = [5]
+    snrs = [0]
     print(f"Processing snrs : {snrs}")
     lp = LocalizationProcessor(simulation=simu, use_dask=False)
     lp.process_multiple_snrs(snrs=snrs, run_mode="w")
@@ -399,8 +399,8 @@ if __name__ == "__main__":
     mode = "publi"
 
     # Select which simulation to run
-    testcase = "wgn"  # "wgn" / "interferer"
-    # testcase = "interferer"
+    # testcase = "wgn"  # "wgn" / "interferer"
+    testcase = "interferer"
 
     if testcase == "wgn":
         run_wgn_simulation(mode=mode)

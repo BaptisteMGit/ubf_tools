@@ -337,7 +337,7 @@ def gather_acronyms(manuscript_folder, output_file):
             f.write(acronym + "\n")
 
 
-def gather_bibliographies(manuscript_folder, output_file):
+def gather_bibliographies(manuscript_folder, output_file, verbose=False):
     bib_entries = {}
 
     # Define the regex pattern for the bibliography entry
@@ -346,8 +346,11 @@ def gather_bibliographies(manuscript_folder, output_file):
 
     # Walk through the manuscript folder
     for root, _, files in os.walk(manuscript_folder):
+        if verbose:
+            print(f"Processing folder: {root}")
+
         for file in files:
-            if file == "biblio.bib":
+            if file == "biblio.bib" or file.endswith(".bib"):
                 filepath = os.path.join(root, file)
                 with open(filepath, "r", encoding="utf-8") as f:
                     content = f.read()

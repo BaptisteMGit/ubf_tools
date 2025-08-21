@@ -3,7 +3,7 @@
 """
 @File    :   run.py
 @Time    :   2024/03/18 08:59:34
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -32,21 +32,41 @@ ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\test
 class CalibTestCase(TestCase):
     def __init__(self, src):
 
-        name = "calib_fourier_synthesis"
-        testcase_varin = {"freq": src.kraken_freq}
+        name = "calib_fourier_synthesis_bis"
+
+        bott_hs_properties = {
+            "rho": 1500 * 1e-3,  # Density (g/cm^3)
+            "c_p": 1600,  # P-wave celerity (m/s)
+            "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+            "a_p": 0.2,  # Compression wave attenuation (dB/wavelength)
+            "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
+            "z": None,
+        }
+
+        testcase_varin = {
+            "freq": src.kraken_freq,
+            "flp_n_rcv_z": 21,  # Number of receiver depths
+            "flp_rcv_z_min": 0,  # Minimum receiver depth
+            "flp_rcv_z_max": 100,  # Maximum receiver depth
+            "src_depth": 25,  # Source depth
+            "bott_hs_properties": bott_hs_properties,  # Bottom properties
+            "mode_theory": "adiabatic",
+            "dr_flp": 50,  # Receiver range step (m)
+        }
         title = "Calibration test case"
         desc = "Fourier synthesis processor calibration test case"
         mode = "prod"
+
         super().__init__(name, testcase_varin, title, desc, mode)
+
+        # # Config : Computational Ocean Acoustics
+        # self.flp_n_rcv_z = 9
+        # self.flp_rcv_z_min = 10
+        # self.flp_rcv_z_max = 90
 
         self.env_dir = ROOT
         self.isotropic = True
-        self.src_depth = 25
-
-        # Config : Computational Ocean Acoustics
-        self.flp_n_rcv_z = 9
-        self.flp_rcv_z_min = 10
-        self.flp_rcv_z_max = 90
+        # self.src_depth = 25
 
         tc_default_varin = {
             "freq": [25],
@@ -54,7 +74,7 @@ class CalibTestCase(TestCase):
             "min_depth": 100,
             "dr_flp": 5,
             "nb_modes": 100,
-            "mode_addition": "coupled",
+            "mode_addition": "coherent",
         }
         for key, default_value in tc_default_varin.items():
             self.default_varin[key] = default_value
@@ -67,7 +87,7 @@ if __name__ == "__main__":
     run_k = True
 
     # Source
-    T = 7.2
+    T = 1
     fc = 50
     fs = 200
     s, t = pulse(T=T, f=fc, fs=fs)
@@ -87,10 +107,14 @@ if __name__ == "__main__":
     plt.savefig(os.path.join(ROOT, "calib_medium.png"))
 
     z_src = calib.src_depth
+    # z_src = 25
     c0 = 1500
     rcv_range = np.array([30000])  # 30km
     # rcv_depth = np.array([z_src + i * 10 for i in range(-10, 10)])
     rcv_depth = np.linspace(calib.flp_rcv_z_min, calib.flp_rcv_z_max, calib.flp_n_rcv_z)
+
+    # rcv_depth = np.linspace(0, 100, 5)
+
     # rcv_depth = np.array([z_src + i * 10 for i in [-10, -5, 0, 5, 10]])
 
     delays = rcv_range / c0
@@ -99,6 +123,27 @@ if __name__ == "__main__":
         pf, field_pos = runkraken(
             env=calib.env, flp=calib.flp, frequencies=src.kraken_freq
         )
+        # env_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\calibrationSynthesis\calib_fourier_synthesis_AC198EBFF716.env"
+        # flp_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\tests\calibrationSynthesis\calib_fourier_synthesis_AC198EBFF716.flp"
+        # pf, field_pos = runkraken(
+        #     env=env_fpath, flp=flp_fpath, frequencies=src.kraken_freq
+        # )
+
+        # Save pressure field
+        pf_fpath = os.path.join(ROOT, "pf.nc")
+        pressure_field = np.squeeze(pf)  # Remove singleton dimensions if any
+        ds_tf = xr.Dataset(
+            data_vars=dict(
+                tf_real=(["f", "z", "r"], np.real(pressure_field)),
+                tf_imag=(["f", "z", "r"], np.imag(pressure_field)),
+            ),
+            coords=dict(
+                f=src.kraken_freq,
+                z=field_pos["r"]["z"],
+                r=field_pos["r"]["r"],
+            ),
+        )
+        ds_tf.to_netcdf(pf_fpath)
 
         # Synthesis
         (
@@ -173,7 +218,7 @@ if __name__ == "__main__":
         plt.savefig(os.path.join(ROOT, f"rcv_sig_r{r}m.png"))
 
     # Plot modes
-    plotmode(calib.env.env_fpath, freq=50, modes=[1, 2])
+    plotmode(calib.env.env_fpath, freq=50, modes=[1, 2, 3, 4])
     f = plt.gcf()
     f.set_size_inches(8, 12)
     plt.savefig(os.path.join(ROOT, f"modes.png"))

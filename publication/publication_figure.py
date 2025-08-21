@@ -38,7 +38,7 @@ class PubFigure:
         constrained_layout_hspace=0.1,
         constrained_layout_wspace=0.1,
         use_tex=True,
-        disable_backend=True,
+        disable_backend=False,
     ):
         self.size = size
         self.label_fontsize = label_fontsize
@@ -114,3 +114,47 @@ class PubFigure:
         axis.spines["right"].set_visible(False)
         axis.tick_params("x", labelsize=fontsize)
         axis.tick_params("y", labelsize=fontsize)
+
+
+class LargeFigure(PubFigure):
+    """
+    Class to handle large figures properties.
+
+    Large figures are defined as page wide figures (to be used with width=\textwith in LaTeX).
+
+    The aim is to ensure to get the same font sizes as the Latex document.
+
+    """
+
+    def __init__(self, size=(16, 5.25), **kwargs):
+        super().__init__(
+            size=size,
+            label_fontsize=30,
+            legend_fontsize=30,
+            suplabel_fontsize=30,
+            title_fontsize=30,
+            ticks_fontsize=30,
+            **kwargs
+        )
+
+
+class SmallFigure(PubFigure):
+    """
+    Class to handle small figures properties.
+
+    Small figures are defined as page narrow figures (to be used with width=\textwidth in LaTeX).
+
+    The aim is to ensure to get the same font sizes as the Latex document.
+
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            size=(7, 5.25),
+            label_fontsize=30,
+            legend_fontsize=30,
+            suplabel_fontsize=30,
+            title_fontsize=30,
+            ticks_fontsize=30,
+            **kwargs
+        )

@@ -1083,7 +1083,7 @@ class KrakenFlp:
         )
 
         self.lines.append(
-            align_var_description(f"{self.src_z.size}", "Number of source depth (m)")
+            align_var_description(f"{self.src_z.size}", "Number of source depth")
         )
         self.lines.append(
             align_var_description(
@@ -1092,7 +1092,7 @@ class KrakenFlp:
             )
         )
         self.lines.append(
-            align_var_description(f"{self.n_rcv_z}", "Number of receiver depths (m)")
+            align_var_description(f"{self.n_rcv_z}", "Number of receiver depths")
         )
         self.lines.append(
             align_var_description(

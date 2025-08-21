@@ -22,7 +22,7 @@ from propa.kraken_toolbox.utils import get_component
 from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 
 
-def plotmode(filename, freq=0, modes=None, bathy_depth=None):
+def plotmode(filename, freq=0, modes=None, bathy_depth=None, normalize_mode=False):
     """Plot modes produced by KRAKEN from a '.mod' binary file.
     Usage: plotmode(filename, freq, modes)
 
@@ -59,8 +59,15 @@ def plotmode(filename, freq=0, modes=None, bathy_depth=None):
     iskip = Modes["nb_selected_modes"] // Nplots
 
     fig, ax = plt.subplots(1, Nplots, figsize=(15, 5), sharey=True)
+    ax[0].invert_yaxis()
+
     for iplot in range(Nplots):
         imode = 1 + (iplot) * iskip
+
+        # Normalize mode
+        if normalize_mode:
+            phi[:, imode - 1] = phi[:, imode - 1] / np.max(np.abs((phi[:, imode - 1])))
+
         if iplot == 0:
             ax[iplot].plot(np.real(phi[:, imode - 1]), Modes["z"], "k", label="Real")
             ax[iplot].plot(np.imag(phi[:, imode - 1]), Modes["z"], "b--", label="Imag")
@@ -72,12 +79,15 @@ def plotmode(filename, freq=0, modes=None, bathy_depth=None):
         if bathy_depth is not None:
             ax[iplot].axhline(y=bathy_depth, color="r", linestyle="--", label="Depth")
 
+        if normalize_mode:
+            ax[iplot].set_xlim([-1.2, 1.2])
+
     if bathy_depth is not None:
         ax[0].set_ylim([0, bathy_depth * 1.4])
 
-    ax[0].set_ylabel("Depth (m)")
-    ax[0].invert_yaxis()
-    plt.suptitle([Modes["title"], f'Freq = {Modes["freqVec"][freq_index]} Hz'])
+    # ax[0].set_ylabel("Depth (m)")
+    fig.supylabel("Depth [m]")
+    fig.suptitle([Modes["title"], f'Freq = {Modes["freqVec"][freq_index]} Hz'])
     # plt.show()
 
 

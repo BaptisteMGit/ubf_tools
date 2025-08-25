@@ -3,7 +3,7 @@
 """
 @File    :   check_ideal_waveguide_properties.py
 @Time    :   2024/09/27 15:25:23
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -14,7 +14,7 @@
 # ======================================================================================================================
 import copy
 import scipy.signal as signal
-from propa.rtf.ideal_waveguide import *
+from propa.ideal_waveguide import *
 from signals.signals import ricker_pulse
 from propa.kraken_toolbox.run_kraken import runkraken
 from localisation.verlinden.testcases.testcase_envs import TestCase1_0

@@ -275,6 +275,7 @@ class TestCase:
 
     def set_field(self):
         z_max = np.ceil(self.bott_hs.sedim_layer_max_depth + 5)
+        # z_max = 3940
         n_rcv_z = default_nb_rcv_z(max(self.freq), z_max, n_per_l=12)
 
         if self.phase_speed_limits is None:
@@ -347,7 +348,7 @@ class TestCase:
         )
 
     def set_flp(self):
-        self.flp_n_rcv_r = self.max_range_m / self.dr_flp + 1
+        self.flp_n_rcv_r = int(self.max_range_m / self.dr_flp) + 1
 
         # # Source = ship radiating sound at 5m depth
         if self.flp_n_rcv_z is None:

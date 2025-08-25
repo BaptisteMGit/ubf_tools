@@ -283,7 +283,8 @@ class RTFEstimator:
             e1.T @ clean_signal_csdm @ e1
         )  # First entry of first column of CSDMs (for all freqs)
 
-        rtf = clean_signal_csdm_e1 / (clean_signal_csdm_e11[:, np.newaxis] + g.eps)
+        # rtf = clean_signal_csdm_e1 / (clean_signal_csdm_e11[:, np.newaxis] + g.eps)
+        rtf = clean_signal_csdm_e1 / (clean_signal_csdm_e11[:, np.newaxis])
 
         return rtf
 

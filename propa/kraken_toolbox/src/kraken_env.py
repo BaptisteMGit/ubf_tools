@@ -563,9 +563,7 @@ class KrakenField:
             align_var_description(f"{self.rcv_range_max}", "Maximum range (km)")
         )
         self.lines.append(
-            align_var_description(
-                f"{self.src_depth.size}", "Number of source depth (m)"
-            )
+            align_var_description(f"{self.src_depth.size}", "Number of source depths")
         )
         self.lines.append(
             align_var_description(
@@ -574,7 +572,7 @@ class KrakenField:
             )
         )
         self.lines.append(
-            align_var_description(f"{self.n_rcv_z}", "Number of receiver depths (m)")
+            align_var_description(f"{self.n_rcv_z}", "Number of receiver depths")
         )
         self.lines.append(
             align_var_description(

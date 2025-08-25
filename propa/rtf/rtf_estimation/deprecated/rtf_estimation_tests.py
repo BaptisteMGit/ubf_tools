@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import scipy as sp
 
 from misc import *
-from propa.rtf.ideal_waveguide import *
+from propa.ideal_waveguide import *
 from real_data_analysis.real_data_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_ideal_waveguide_misc import *

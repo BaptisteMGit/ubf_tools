@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 
 
 from misc import *
-from propa.rtf.ideal_waveguide import *
+from propa.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import *
 from source.rtf_estimator import RTFEstimator
 

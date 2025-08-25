@@ -18,8 +18,8 @@ import matplotlib.pyplot as plt
 import scipy.interpolate as sp_int
 
 from misc import *
-from propa.rtf.ideal_waveguide import *
-from propa.rtf.ideal_waveguide import waveguide_params
+from propa.ideal_waveguide import *
+from propa.ideal_waveguide import waveguide_params
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *
 from real_data_analysis.real_data_utils import get_csdm_snapshot_number

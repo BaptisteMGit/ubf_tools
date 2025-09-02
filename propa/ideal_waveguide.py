@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 from time import time
 from publication.publication_figure import PubFigure
 
-PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=12, ticks_fontsize=20)
+# PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=12, ticks_fontsize=20)
 
 
 # ======================================================================================================================
@@ -234,14 +234,17 @@ def g_mat(
     return f, g_matrix
 
 
-def h(f, z_src, z, r, depth, bottom_bc="pressure_release"):
+def h(f, z_src, z, r, depth, bottom_bc="pressure_release", n=None):
 
+    f = np.atleast_1d(f)
     f = f[f > cutoff_frequency(c0, depth, bottom_bc)]
 
     # t0 = time()
     h = []
-    for fi in f:
+    if n is None:
         n = nb_propagating_modes(fi, c0, depth, bottom_bc)
+
+    for fi in f:
         m = np.arange(1, n + 1)
 
         if 0 in kr(m, fi, depth, bottom_bc):
@@ -299,12 +302,19 @@ def h_mat(f, z_src, z_rcv, r_rcv, depth, bottom_bc="pressure_release"):
 
 def print_arrivals(z_src, z_rcv, r, depth, n):
     # Number of terms to include in the sum
-    m = np.arange(1, n + 1)
-    # Image source - receiver distance follwoing definitions from Jensen p.104
+    m = np.arange(0, n)
+    # Image source - receiver distance following definitions from Jensen p.104
     zm1 = 2 * depth * m - z_src + z_rcv
     zm2 = 2 * depth * (m + 1) - z_src - z_rcv
     zm3 = 2 * depth * m + z_src + z_rcv
     zm4 = 2 * depth * (m + 1) + z_src - z_rcv
+
+    # # Correction 27/08/2025
+    # zm1 = 2 * depth * m + z_src - z_rcv
+    # zm2 = 2 * depth * (m + 1) - z_src - z_rcv
+    # zm3 = 2 * depth * m + z_src + z_rcv
+    # zm4 = 2 * depth * (m + 1) + z_src - z_rcv
+
     Rm1 = np.sqrt(r**2 + zm1.astype(np.float64) ** 2)
     Rm2 = np.sqrt(r**2 + zm2.astype(np.float64) ** 2)
     Rm3 = np.sqrt(r**2 + zm3.astype(np.float64) ** 2)
@@ -312,27 +322,27 @@ def print_arrivals(z_src, z_rcv, r, depth, n):
 
     arrivals = np.empty((len(m), 4))
     for i_m in m:
-        t1 = Rm1[i_m - 1] / c0
-        t2 = Rm2[i_m - 1] / c0
-        t3 = Rm3[i_m - 1] / c0
-        t4 = Rm4[i_m - 1] / c0
+        t1 = Rm1[i_m] / c0
+        t2 = Rm2[i_m] / c0
+        t3 = Rm3[i_m] / c0
+        t4 = Rm4[i_m] / c0
 
         print(
-            f"m = {m[i_m-1]} : \n"
+            f"m = {m[i_m]} : \n"
             + f"\t t1 = {t1}s \n"
             + f"\t t2 = {t2}s \n"
             + f"\t t3 = {t3}s \n"
             + f"\t t4 = {t4}s \n"
         )
-        arrivals[i_m - 1][0] = t1
-        arrivals[i_m - 1][1] = t2
-        arrivals[i_m - 1][2] = t3
-        arrivals[i_m - 1][3] = t4
+        arrivals[i_m][0] = t1
+        arrivals[i_m][1] = t2
+        arrivals[i_m][2] = t3
+        arrivals[i_m][3] = t4
 
     return arrivals
 
 
-def image_source_ri(z_src, z_rcv, r, depth, n, t=None):
+def image_source_ri(z_src, z_rcv, r, depth, n, t=None, verbose=False):
 
     # Number of terms to include in the sum
     m = np.arange(1, n + 1)
@@ -350,6 +360,11 @@ def image_source_ri(z_src, z_rcv, r, depth, n, t=None):
         Ts = 0.001
         t = np.arange(0, 10, Ts)
 
+    # Direct arrival
+    hd = depth - z_rcv - z_src
+    rd = np.sqrt(r**2 + hd**2)
+    td = rd / c0
+
     ir = np.empty_like(t)
     for i_m in m:
         idx_1 = np.argmin(np.abs(Rm1[i_m - 1] / c0 - t))
@@ -357,6 +372,12 @@ def image_source_ri(z_src, z_rcv, r, depth, n, t=None):
         idx_3 = np.argmin(np.abs(Rm3[i_m - 1] / c0 - t))
         idx_4 = np.argmin(np.abs(Rm4[i_m - 1] / c0 - t))
 
+        if verbose:
+            print(f"Arrivals (m={i_m})")
+            i_zm = 1
+            for idx in [idx_1, idx_2, idx_3, idx_4]:
+                print(f"t(zm{i_zm}) = {t[idx]} s")
+                i_zm += 1
         ir += (
             sp.unit_impulse(t.shape, idx_1) / Rm1[i_m - 1]
             - sp.unit_impulse(t.shape, idx_2) / Rm2[i_m - 1]
@@ -383,7 +404,7 @@ def image_source_ri(z_src, z_rcv, r, depth, n, t=None):
 #         f, g_f = g(f=f, z_src=z_src, z_rcv=z_rcv, depth=depth, r_rcv_ref=r, rl=rl)
 
 
-def field(f, z_src, r, z, depth, bottom_bc="pressure_release"):
+def field(f, z_src, r, z, depth, bottom_bc="pressure_release", n=None):
     """
     Derive the pressure field for the ideal waveguide at frequencies f, ranges r and depths z
     """
@@ -392,6 +413,7 @@ def field(f, z_src, r, z, depth, bottom_bc="pressure_release"):
     z = np.atleast_1d(z)
     r = np.atleast_1d(r)
     f = np.atleast_1d(f)
+    # 2D meshgrid
     rr_2d, zz_2d = np.meshgrid(r, z)
 
     f = f[f > cutoff_frequency(c0, depth, bottom_bc)]
@@ -400,9 +422,16 @@ def field(f, z_src, r, z, depth, bottom_bc="pressure_release"):
     p_field = np.zeros((len(f),) + zz_2d.shape, dtype=np.complex64)
 
     for i, fi in enumerate(f):
-        n = nb_propagating_modes(fi, c0, depth, bottom_bc)
+        n_max = nb_propagating_modes(fi, c0, depth, bottom_bc)
+        if n is None:
+            n = n_max
+        else:
+            n = np.min([n_max, n])
+
+        # n = nb_propagating_modes(fi, c0, depth, bottom_bc)
         m = np.arange(1, n + 1)
 
+        # 3D meshgrid for r, z and m
         rr, zz, mm = np.meshgrid(r, z, m)
 
         phi = u_m(mm, fi, z_src, z=zz, depth=depth, bottom_bc=bottom_bc) * np.exp(
@@ -411,10 +440,12 @@ def field(f, z_src, r, z, depth, bottom_bc="pressure_release"):
         p_field_fi = alpha(depth, rr_2d) * np.sum(phi, axis=-1)
         p_field[i, ...] = p_field_fi
 
-    return f, rr, zz, p_field
+    return f, rr_2d, zz_2d, p_field
 
 
-def plot_tl(f, r, z, p_field, f_plot, z_src=None, r_rcv=None, z_rcv=None, show=False):
+def plot_tl(
+    f, rr, zz, p_field, f_plot, z_src=None, r_rcv=None, z_rcv=None, ax=None, show=False
+):
     # Slice to get the pressure field at the desired frequency
     f = np.atleast_1d(f)
     idx_freq = np.argmin(np.abs(f - f_plot))
@@ -422,19 +453,21 @@ def plot_tl(f, r, z, p_field, f_plot, z_src=None, r_rcv=None, z_rcv=None, show=F
     p_field = p_field[idx_freq, ...]
 
     # Derive TL from the pressure field
-    p_field[p_field == 0] = 1e-20
+    p_field[(p_field == 0) | np.isnan(p_field)] = 1e-20
     tl = -20 * np.log10(np.abs(p_field))
-    dr = r[1] - r[0]
-    dz = z[1] - z[0]
+    dr = rr[0, 1] - rr[0, 0]
+    dz = zz[1, 0] - zz[0, 0]
 
     tlmax = np.percentile(tl, 95)
     tlmin = np.percentile(tl, 1)
-    plt.figure()
-    plt.pcolormesh(r * 1e-3, z, tl, cmap="jet_r", vmin=tlmin, vmax=tlmax)
-    plt.colorbar(label=r"$\textrm{TL [dB]}$")
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+    im = ax.pcolormesh(rr * 1e-3, zz, tl, cmap="jet_r", vmin=tlmin, vmax=tlmax)
+    plt.colorbar(im, label=r"$\textrm{TL [dB]}$", ax=ax)
     # Add source position
     if z_src is not None:
-        plt.scatter(
+        ax.scatter(
             0,
             z_src,
             color="fuchsia",
@@ -443,20 +476,18 @@ def plot_tl(f, r, z, p_field, f_plot, z_src=None, r_rcv=None, z_rcv=None, show=F
         )
     # Add receiver positions
     if r_rcv is not None and z_rcv is not None:
-        plt.scatter(r_rcv * 1e-3, z_rcv, color="black", marker="x", s=300, linewidths=3)
+        ax.scatter(r_rcv * 1e-3, z_rcv, color="black", marker="x", s=300, linewidths=3)
 
-    plt.gca().invert_yaxis()
-    plt.xlabel(r"$r \, \textrm{[km]}$")
-    plt.ylabel(r"$z \, \textrm{[m]}$")
-    plt.xlim((r[0] - 1) * 1e-3, r[-1] * 1e-3)
-    plt.title(
-        r"$\textrm{TL} \,"
-        f"(f = {f_plot:.2f} "
-        + r"\textrm{Hz}, \,"
-        + f"\Delta_r = {dr:.1f} \,"
-        + r"\textrm{m}, \,"
-        + f"\Delta_z = {dz:.1f} \,"
-        + r"\textrm{m})$"
+    ax.invert_yaxis()
+    ax.set_xlabel(r"r [km]")
+    ax.set_ylabel(r"z [m]")
+    # plt.xlim((r[0] - 1) * 1e-3, r[-1] * 1e-3)
+    ax.set_title(
+        f"TL (f = {f_plot:.2f} Hz"
+        + r"$\Delta_r$"
+        + f" = {dr:.1f} m "
+        + r"$\Delta_r$"
+        + f"= {dz:.1f} m)"
     )
     if show:
         plt.show()
@@ -569,18 +600,45 @@ if __name__ == "__main__":
     #     f0 = 10
     #     plot_tl(f, r, z, p_field, f_plot=f0, z_src=z_src, r_rcv=r_rcv, z_rcv=z_rcv)
 
-    #### FIBERSCOPE CONFIG ####
-    depth = 10
-    z_src = 4
-    z_rcv = depth - 0.40
-    r = 4.5  # P1
-    r = -4.5 + 25  # P4
-    n = 100
-    t, ir = image_source_ri(z_src, z_rcv, r, depth, n, t=None)
+    # #### FIBERSCOPE CONFIG ####
+    # depth = 10
+    # z_src = 4
+    # z_rcv = depth - 0.40
+    # r = 4.5  # P1
+    # r = -4.5 + 25  # P4
+    # n = 100
+    # t, ir = image_source_ri(z_src, z_rcv, r, depth, n, t=None)
+
+    # plt.figure()
+    # plt.plot(t, ir)
+    # plt.xlim(0, 0.1)
+    # plt.xlabel(r"$t \, \textrm{[s]}$")
+    # plt.ylabel(r"$\textrm{Impulse response}$")
+    # plt.savefig("impulse_response.png")
+
+    #### UACE2025 CONFIG ####
+    depth = 5000
+    z_src = 5
+    z_rcv = depth - 0.50
+    r = 37940
+    # r = 5000
+    n = 6
+    Ts = 1 / 1e6
+    t = np.arange(25, 60, Ts)
+
+    # % Temps du rirect
+    hd = depth - z_rcv - z_rcv
+    rd = np.sqrt(r**2 + hd**2)
+    td = rd / c0
+    print(f"t(direct) = {td}s")
+
+    t, ir = image_source_ri(z_src, z_rcv, r, depth, n, t=t, verbose=True)
+    ir /= np.nanmax(np.abs(ir))
 
     plt.figure()
     plt.plot(t, ir)
-    plt.xlim(0, 0.1)
+    # plt.xlim(3.33, 3.45)
+    plt.ylim(-1.5, 1.5)
     plt.xlabel(r"$t \, \textrm{[s]}$")
     plt.ylabel(r"$\textrm{Impulse response}$")
     plt.savefig("impulse_response.png")

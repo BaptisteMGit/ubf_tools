@@ -37,7 +37,7 @@ sand_properties = {
     "c_p": 1650,  # P-wave celerity (m/s)
     "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
     "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
-    "a_s": 2.5,
+    "a_s": 0.0,  # 2.5
 }  # Shear wave attenuation (dB/wavelength)
 
 """
@@ -88,7 +88,7 @@ mud_sand_sandy_mud_properties = {
 
 
 # ======================================================================================================================
-# Set paths depending on the os 
+# Set paths depending on the os
 # ======================================================================================================================
 
 # Usefull paths

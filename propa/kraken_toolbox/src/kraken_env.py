@@ -428,8 +428,13 @@ class KrakenBottomHalfspace:
             self.use_halfspace_properties = True
 
     def derive_sedim_layer_max_depth(self, z_max):
+
         sedim_layer_z = z_max + self.sedim_layer_depth
         self.sedim_layer_max_depth = np.ceil(min(sedim_layer_z, self.sedim_layer_max_z))
+        # Round to closet 100m
+        self.sedim_layer_max_depth = (
+            np.round((self.sedim_layer_max_depth) * 1e-2, 0) * 1e2
+        )
 
     def write_lines(self, use_bathymetry=False):
         # Get bathymetry code
@@ -563,9 +568,7 @@ class KrakenField:
             align_var_description(f"{self.rcv_range_max}", "Maximum range (km)")
         )
         self.lines.append(
-            align_var_description(
-                f"{self.src_depth.size}", "Number of source depth (m)"
-            )
+            align_var_description(f"{self.src_depth.size}", "Number of source depths")
         )
         self.lines.append(
             align_var_description(
@@ -574,7 +577,7 @@ class KrakenField:
             )
         )
         self.lines.append(
-            align_var_description(f"{self.n_rcv_z}", "Number of receiver depths (m)")
+            align_var_description(f"{self.n_rcv_z}", "Number of receiver depths")
         )
         self.lines.append(
             align_var_description(
@@ -1083,7 +1086,7 @@ class KrakenFlp:
         )
 
         self.lines.append(
-            align_var_description(f"{self.src_z.size}", "Number of source depth (m)")
+            align_var_description(f"{self.src_z.size}", "Number of source depth")
         )
         self.lines.append(
             align_var_description(
@@ -1092,7 +1095,7 @@ class KrakenFlp:
             )
         )
         self.lines.append(
-            align_var_description(f"{self.n_rcv_z}", "Number of receiver depths (m)")
+            align_var_description(f"{self.n_rcv_z}", "Number of receiver depths")
         )
         self.lines.append(
             align_var_description(

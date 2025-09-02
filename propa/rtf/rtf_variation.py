@@ -21,7 +21,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 
 
-from propa.rtf.ideal_waveguide import *
+from propa.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import ROOT_RTF_DATA
 from propa.rtf.rtf_utils import (
     D_frobenius,

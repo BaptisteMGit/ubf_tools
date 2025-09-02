@@ -30,6 +30,9 @@ nptdms = "*"
 imageio = {extras = ["ffmpeg"], version = "*"}
 pillow = "*"
 numba = "*"
+cdsapi = "*"
+kneed = "*"
+matplot2tikz = "*"
 
 [dev-packages]
 ipykernel = "*"

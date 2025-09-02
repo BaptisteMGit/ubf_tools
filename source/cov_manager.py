@@ -199,6 +199,7 @@ class CovManager:
 
             # Derive the number of non-zero snapshots within the k-th block
             if mask_applied:
+                # n_mean = np.nansum(mask_tt[idx_start : idx_start + n_seg_cov])
                 n_mean = np.sum(mask_tt[idx_start : idx_start + n_seg_cov])
 
             csd_matrix[..., k] = (

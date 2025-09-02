@@ -556,7 +556,7 @@ class SignalGenerator:
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.grid()
-        plt.show()
+        # plt.show()
 
     @staticmethod
     def plot_spectrum(
@@ -569,7 +569,7 @@ class SignalGenerator:
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.grid()
-        plt.show()
+        # plt.show()
 
     @staticmethod
     def plot_spectrogram(

@@ -428,8 +428,13 @@ class KrakenBottomHalfspace:
             self.use_halfspace_properties = True
 
     def derive_sedim_layer_max_depth(self, z_max):
+
         sedim_layer_z = z_max + self.sedim_layer_depth
         self.sedim_layer_max_depth = np.ceil(min(sedim_layer_z, self.sedim_layer_max_z))
+        # Round to closet 100m
+        self.sedim_layer_max_depth = (
+            np.round((self.sedim_layer_max_depth) * 1e-2, 0) * 1e2
+        )
 
     def write_lines(self, use_bathymetry=False):
         # Get bathymetry code

@@ -302,12 +302,19 @@ def h_mat(f, z_src, z_rcv, r_rcv, depth, bottom_bc="pressure_release"):
 
 def print_arrivals(z_src, z_rcv, r, depth, n):
     # Number of terms to include in the sum
-    m = np.arange(1, n + 1)
-    # Image source - receiver distance follwoing definitions from Jensen p.104
+    m = np.arange(0, n)
+    # Image source - receiver distance following definitions from Jensen p.104
     zm1 = 2 * depth * m - z_src + z_rcv
     zm2 = 2 * depth * (m + 1) - z_src - z_rcv
     zm3 = 2 * depth * m + z_src + z_rcv
     zm4 = 2 * depth * (m + 1) + z_src - z_rcv
+
+    # # Correction 27/08/2025
+    # zm1 = 2 * depth * m + z_src - z_rcv
+    # zm2 = 2 * depth * (m + 1) - z_src - z_rcv
+    # zm3 = 2 * depth * m + z_src + z_rcv
+    # zm4 = 2 * depth * (m + 1) + z_src - z_rcv
+
     Rm1 = np.sqrt(r**2 + zm1.astype(np.float64) ** 2)
     Rm2 = np.sqrt(r**2 + zm2.astype(np.float64) ** 2)
     Rm3 = np.sqrt(r**2 + zm3.astype(np.float64) ** 2)
@@ -315,22 +322,22 @@ def print_arrivals(z_src, z_rcv, r, depth, n):
 
     arrivals = np.empty((len(m), 4))
     for i_m in m:
-        t1 = Rm1[i_m - 1] / c0
-        t2 = Rm2[i_m - 1] / c0
-        t3 = Rm3[i_m - 1] / c0
-        t4 = Rm4[i_m - 1] / c0
+        t1 = Rm1[i_m] / c0
+        t2 = Rm2[i_m] / c0
+        t3 = Rm3[i_m] / c0
+        t4 = Rm4[i_m] / c0
 
         print(
-            f"m = {m[i_m-1]} : \n"
+            f"m = {m[i_m]} : \n"
             + f"\t t1 = {t1}s \n"
             + f"\t t2 = {t2}s \n"
             + f"\t t3 = {t3}s \n"
             + f"\t t4 = {t4}s \n"
         )
-        arrivals[i_m - 1][0] = t1
-        arrivals[i_m - 1][1] = t2
-        arrivals[i_m - 1][2] = t3
-        arrivals[i_m - 1][3] = t4
+        arrivals[i_m][0] = t1
+        arrivals[i_m][1] = t2
+        arrivals[i_m][2] = t3
+        arrivals[i_m][3] = t4
 
     return arrivals
 
@@ -354,7 +361,7 @@ def image_source_ri(z_src, z_rcv, r, depth, n, t=None, verbose=False):
         t = np.arange(0, 10, Ts)
 
     # Direct arrival
-    hd = depth - z_rcv - z_rcv
+    hd = depth - z_rcv - z_src
     rd = np.sqrt(r**2 + hd**2)
     td = rd / c0
 

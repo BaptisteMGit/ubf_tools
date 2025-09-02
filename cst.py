@@ -54,4 +54,4 @@ SUPLABEL_FONTSIZE = 22
 if os.name == "nt":
     N_CORES = 6  # Windows PC
 else:
-    N_CORES = 20  # Linux plateforme TIM
+    N_CORES = 40  # Linux plateforme TIM

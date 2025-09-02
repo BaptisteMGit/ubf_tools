@@ -69,7 +69,7 @@ if os.name == "nt":
     }
 else:
     # Linux
-    n_workers = 40
+    n_workers = 50
     # n_workers = 35
     max_ram_gb = 80
     max_ram_per_worker_gb = np.ceil(max_ram_gb / n_workers)

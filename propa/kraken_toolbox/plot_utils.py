@@ -22,7 +22,14 @@ from propa.kraken_toolbox.utils import get_component
 from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 
 
-def plotmode(filename, freq=0, modes=None, bathy_depth=None, normalize_mode=False):
+def plotmode(
+    filename,
+    freq=0,
+    modes=None,
+    bathy_depth=None,
+    normalize_mode=False,
+    plot_mode_map=False,
+):
     """Plot modes produced by KRAKEN from a '.mod' binary file.
     Usage: plotmode(filename, freq, modes)
 
@@ -42,7 +49,7 @@ def plotmode(filename, freq=0, modes=None, bathy_depth=None, normalize_mode=Fals
 
     nx = phi.shape[1]  # Assuming all modes have the same length
 
-    if nx > 1:
+    if nx > 1 and plot_mode_map:
         x = np.arange(1, nx + 1)
         doo = np.real(phi)
         plt.figure()
@@ -89,6 +96,78 @@ def plotmode(filename, freq=0, modes=None, bathy_depth=None, normalize_mode=Fals
     fig.supylabel("Depth [m]")
     fig.suptitle([Modes["title"], f'Freq = {Modes["freqVec"][freq_index]} Hz'])
     # plt.show()
+
+
+def plotmode_several_freqs(
+    filename: str,
+    freq: np.ndarray = None,
+    modes: np.ndarray = None,
+    bathy_depth: float = None,
+    label_bathy: bool = False,
+    normalize_mode: bool = False,
+):
+    """
+    Plot modes produced by KRAKEN from a '.mod' binary file.
+    Usage: plotmode(filename, freq,  modes)
+
+    filename don't need to include the extension.
+
+    Adapted from plotmode()
+
+    """
+
+    for i_f, f in enumerate(freq):
+        Modes = readmodes(filename, f, modes)
+
+        if Modes["M"] == 0:
+            raise Exception("No modes in mode file")
+
+        freqdiff = np.abs(Modes["freqVec"] - f)
+        freq_index = np.argmin(freqdiff)
+        phi = get_component(Modes, "N")
+
+        Nplots = min(Modes["nb_selected_modes"], 10)
+        iskip = Modes["nb_selected_modes"] // Nplots
+
+        if i_f == 0:
+            fig, ax = plt.subplots(1, Nplots, figsize=(15, 5), sharey=True)
+            ax[0].invert_yaxis()
+
+        for iplot in range(Nplots):
+            imode = 1 + (iplot) * iskip
+
+            # Normalize mode
+            if normalize_mode:
+                phi[:, imode - 1] = phi[:, imode - 1] / np.max(
+                    np.abs((phi[:, imode - 1]))
+                )
+
+            if iplot == 0:
+                ax[iplot].plot(
+                    np.real(phi[:, imode - 1]), Modes["z"], f"C{i_f}", label=f"{f} Hz"
+                )
+                ax[iplot].plot(np.imag(phi[:, imode - 1]), Modes["z"], "b--")
+                ax[iplot].legend()
+            else:
+                ax[iplot].plot(np.real(phi[:, imode - 1]), Modes["z"], f"C{i_f}")
+                ax[iplot].plot(np.imag(phi[:, imode - 1]), Modes["z"], "b--")
+            ax[iplot].set_xlabel(f"Mode {Modes['selected_modes'][imode - 1]}")
+            if bathy_depth is not None and i_f == 0:
+                if label_bathy:
+                    ax[iplot].axhline(
+                        y=bathy_depth, color="r", linestyle="--", label="Depth"
+                    )
+                else:
+                    ax[iplot].axhline(y=bathy_depth, color="r", linestyle="--")
+
+            if normalize_mode:
+                ax[iplot].set_xlim([-1.2, 1.2])
+
+        if bathy_depth is not None and i_f == 0:
+            ax[0].set_ylim([0, bathy_depth * 1.4])
+
+    fig.supylabel("Depth [m]")
+    fig.suptitle([Modes["title"], f'Freq = {Modes["freqVec"][freq_index]} Hz'])
 
 
 def plotshd(

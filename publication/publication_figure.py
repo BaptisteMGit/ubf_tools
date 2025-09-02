@@ -73,6 +73,8 @@ class PubFigure:
         self.r_label = RangeLabel(language=language)
         self.rkm_label = RangeLabel(language=language, unit="km")
         self.pl_label = PropagationLossLabel(language=language)
+        self.tfmod_label = TransfertFunctionModuleLabel(language=language)
+        self.rtfmod_label = RTFModuleLabel(language=language)
 
     def set_full_screen(self):
         mpl.rcParams["figure.max_open_warning"] = 0
@@ -134,14 +136,23 @@ class LargeFigure(PubFigure):
 
     """
 
-    def __init__(self, size=(16, 5.25), **kwargs):
+    def __init__(
+        self,
+        size=(16, 5.25),
+        label_fontsize=30,
+        legend_fontsize=30,
+        suplabel_fontsize=30,
+        title_fontsize=30,
+        ticks_fontsize=30,
+        **kwargs,
+    ):
         super().__init__(
             size=size,
-            label_fontsize=30,
-            legend_fontsize=30,
-            suplabel_fontsize=30,
-            title_fontsize=30,
-            ticks_fontsize=30,
+            label_fontsize=label_fontsize,
+            legend_fontsize=legend_fontsize,
+            suplabel_fontsize=suplabel_fontsize,
+            title_fontsize=title_fontsize,
+            ticks_fontsize=ticks_fontsize,
             **kwargs,
         )
 
@@ -203,6 +214,22 @@ class AxisLabel:
         :param value: label string
         """
         self._label = value
+
+    @property
+    def fmt(self):
+        if len(self.unit) > 0:
+            return self._fmt
+        else:
+            self.fmt = "{}{}"
+        return self._fmt
+
+    @fmt.setter
+    def fmt(self, value):
+        """
+        Set fmt string
+        :param value: fmt string
+        """
+        self._fmt = value
 
     def set_axis_label(self, axis=None):
         # Get current axis
@@ -286,6 +313,44 @@ class RangeLabel(AxisLabel):
         unit: str = "m",
         name_fr: str = "Distance horizontale",
         name_en: str = "Range",
+        axis: str = "x",
+        language: str = "en",
+    ):
+        super().__init__(
+            unit=unit,
+            name_fr=name_fr,
+            name_en=name_en,
+            axis=axis,
+            language=language,
+        )
+
+
+class TransfertFunctionModuleLabel(AxisLabel):
+
+    def __init__(
+        self,
+        unit: str = "",
+        name_fr: str = r"$|H(f)|$",
+        name_en: str = r"$|H(f)|$",
+        axis: str = "x",
+        language: str = "en",
+    ):
+        super().__init__(
+            unit=unit,
+            name_fr=name_fr,
+            name_en=name_en,
+            axis=axis,
+            language=language,
+        )
+
+
+class RTFModuleLabel(AxisLabel):
+
+    def __init__(
+        self,
+        unit: str = "",
+        name_fr: str = r"$|\Pi(f)|$",
+        name_en: str = r"$|\Pi(f)|$",
         axis: str = "x",
         language: str = "en",
     ):

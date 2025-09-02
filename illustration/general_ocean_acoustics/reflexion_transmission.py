@@ -25,7 +25,7 @@ pfig = PubFigure()
 
 
 # Frequency
-f = 50  # Hz
+f = 1  # Hz
 # Angular frequency
 omega = 2 * np.pi * f  # rad/s
 
@@ -176,7 +176,7 @@ plt.xlabel("Angle de rasance [°]")
 plt.ylabel("Bottom loss [dB]")
 
 folder_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration\general_ocean_acoustics"
-fpath = os.path.join(folder_root, "bottom_loss.pdf")
+fpath = os.path.join(folder_root, f"bottom_loss_f{f:.1f}Hz.pdf")
 plt.savefig(fpath, dpi=300)
 
 

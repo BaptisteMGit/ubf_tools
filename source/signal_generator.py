@@ -435,13 +435,13 @@ class SignalGenerator:
         return s, t
 
     @staticmethod
-    def pulse(T, f, fs, t0=0):
+    def pulse(T, fc, fs, t0=0):
         """Generate pulse defined in Jensen et al. (2000)"""
         t = np.arange(0, T, 1 / fs)
         s = np.zeros(len(t))
-        idx_tpulse = np.logical_and(0 < t - t0, t - t0 < 4 / f)
+        idx_tpulse = np.logical_and(0 < t - t0, t - t0 < 4 / fc)
         t_pulse = t[idx_tpulse] - t0
-        omega = 2 * np.pi * f
+        omega = 2 * np.pi * fc
         s[idx_tpulse] = (
             1 / 2 * np.sin(omega * t_pulse) * (1 - np.cos(1 / 4 * omega * t_pulse))
         )
@@ -556,7 +556,7 @@ class SignalGenerator:
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.grid()
-        plt.show()
+        # plt.show()
 
     @staticmethod
     def plot_spectrum(
@@ -569,7 +569,7 @@ class SignalGenerator:
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.grid()
-        plt.show()
+        # plt.show()
 
     @staticmethod
     def plot_spectrogram(

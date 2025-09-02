@@ -381,6 +381,7 @@ class DataBuilder:
             x=self.simulation.event_ship_x,
             method="nearest",
         )
+        print(f"Tau event : {tau_event}")
         delay_event = np.exp(1j * 2 * np.pi * tau_event * f)
 
         # Cast tau gridded tf shape

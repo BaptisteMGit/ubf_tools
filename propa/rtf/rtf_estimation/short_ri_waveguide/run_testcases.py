@@ -3,7 +3,7 @@
 """
 @File    :   run_testcases.py
 @Time    :   2024/11/04 14:21:41
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -27,7 +27,7 @@ from propa.rtf.rtf_utils import (
     true_rtf,
     interp_true_rtf,
 )
-from propa.rtf.ideal_waveguide import *
+from propa.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import *
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation.rtf_estimation_plot_tools import *

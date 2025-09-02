@@ -337,7 +337,7 @@ def gather_acronyms(manuscript_folder, output_file):
             f.write(acronym + "\n")
 
 
-def gather_bibliographies(manuscript_folder, output_file):
+def gather_bibliographies(manuscript_folder, output_file, verbose=False):
     bib_entries = {}
 
     # Define the regex pattern for the bibliography entry
@@ -346,8 +346,11 @@ def gather_bibliographies(manuscript_folder, output_file):
 
     # Walk through the manuscript folder
     for root, _, files in os.walk(manuscript_folder):
+        if verbose:
+            print(f"Processing folder: {root}")
+
         for file in files:
-            if file == "biblio.bib":
+            if file == "biblio.bib" or file.endswith(".bib"):
                 filepath = os.path.join(root, file)
                 with open(filepath, "r", encoding="utf-8") as f:
                     content = f.read()
@@ -578,7 +581,47 @@ def compute_hyperbola(receiver1, receiver2, source, num_points=500, tmax=2):
     return (x_right, y_right), (x_left, y_left)
 
 
+def dms_to_deg(d, m, s):
+    """
+    Convert degrees, minutes, seconds to decimal degrees.
+
+    Parameters:
+        d (int): Degrees.
+        m (int): Minutes.
+        s (float): Seconds.
+
+    Returns:
+        float: Decimal degrees.
+    """
+    return d + m / 60 + s / 3600
+
+
+def deg_to_dms(deg):
+    """
+    Convert decimal degrees to degrees, minutes, seconds.
+
+    Parameters:
+        deg (float): Decimal degrees.
+
+    Returns:
+        tuple: (degrees, minutes, seconds).
+    """
+    d = int(deg)
+    m = int((deg - d) * 60)
+    s = (deg - d - m / 60) * 3600
+    return d, m, s
+
+
 if __name__ == "__main__":
+
+    """Test dms to deg and deg to dms"""
+    # d, m, s = 48, 23, 34.5
+    # deg = dms_to_deg(d, m, s)
+    # print(f"{d}°{m}'{s}'' = {deg}°")
+
+    # # Other way
+    # d, m, s = deg_to_dms(deg)
+    # print(f"{deg}° = {d}°{m}'{s}''")
 
     """Gather acronyms and bibliographies from a manuscript folder"""
     # # Usage

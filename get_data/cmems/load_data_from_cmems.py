@@ -52,6 +52,8 @@ def load_data(data_request):
         maximum_longitude=data_request["maximum_longitude"],
         minimum_latitude=data_request["minimum_latitude"],
         maximum_latitude=data_request["maximum_latitude"],
+        minimum_depth=data_request["minimum_depth"],
+        maximum_depth=data_request["maximum_depth"],
         start_datetime=data_request["start_datetime"],
         end_datetime=data_request["end_datetime"],
         variables=data_request["variables"],

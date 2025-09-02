@@ -42,10 +42,11 @@ def run_wgn_simulation(mode="demo"):
     ### Common properties ###
     name = f"dw_real_wgn_testcase_{mode}"
     name = name + "_v3"
+    name = name + "_v3"
     fs = 100
     duration = 20
     n_bathy_subsample = (
-        2  # 1 for no subsampling (original resolution), 20 for original resolution / 20
+        2  # 1 for no subsampling (original resolution), 20 for original resolution / 20,
     )
 
     # Antenna
@@ -172,6 +173,7 @@ def run_wgn_simulation(mode="demo"):
     t0 = time()
     db = DataBuilder(simulation=simu)
     # db.build_tf_dataset()
+    # db.build_tf_dataset()
     print("Grid dataset")
     db.grid_dataset()
     db.build_signal()
@@ -209,7 +211,7 @@ def run_interferer_simulation(mode="demo"):
     fs = 100
     duration = 20
     n_bathy_subsample = (
-        2  # 1 for no subsampling (original resolution), 20 for original resolution / 20
+        1  # 1 for no subsampling (original resolution), 20 for original resolution / 20
     )
 
     # Antenna
@@ -384,6 +386,7 @@ def run_interferer_simulation(mode="demo"):
     # Build dataset
     t0 = time()
     db = DataBuilder(simulation=simu)
+    # db.build_tf_dataset()
     # db.build_tf_dataset()
     print("Grid dataset")
     db.grid_dataset()

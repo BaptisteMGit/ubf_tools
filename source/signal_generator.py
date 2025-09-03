@@ -507,7 +507,7 @@ class SignalGenerator:
         s = np.zeros_like(s0)
         t = np.arange(0, T, 1 / fs)
         shift = int((interpulse_delay + T_chirp) * fs)
-        print(shift * 1 / fs)
+        # print(shift * 1 / fs)
         for i in range(n_lfm):
             si = np.roll(s0, shift=i * shift)
             s += si

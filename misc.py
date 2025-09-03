@@ -62,17 +62,20 @@ def mult_along_axis(A, B, axis):
     return A * B_brc
 
 
-def cast_matrix_to_target_shape(matrix, target_shape):
+def cast_matrix_to_target_shape(matrix, target_shape, missing_dims_axis=None):
 
     # print(f"Matrix to transform : {matrix.shape}")
     # print(f"target shape: {target_shape}")
     # Cast matrix to target shape
-    # 1) Identify missing dimensions
-    missing_dims = [dim for dim in target_shape if dim not in matrix.shape]
-    # Link missing dimensions to the corresponding axis
-    missing_dims_axis = [
-        i for i in range(len(target_shape)) if target_shape[i] in missing_dims
-    ]
+
+    if missing_dims_axis is None:
+        # 1) Identify missing dimensions
+        missing_dims = [dim for dim in target_shape if dim not in matrix.shape]
+        # Link missing dimensions to the corresponding axis
+        missing_dims_axis = [
+            i for i in range(len(target_shape)) if target_shape[i] in missing_dims
+        ]
+
     # 2) Add missing dimensions
     matrix_target_shape = np.expand_dims(matrix, axis=missing_dims_axis)
     # print(f"matrix target shape {matrix_target_shape.shape}")

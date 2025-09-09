@@ -25,7 +25,7 @@
 
 # %%
 # Kraken compute opion
-run_kraken = False
+run_kraken = True
 # run_kraken = True
 
 # %%
@@ -242,7 +242,7 @@ k_tc = KrakenTestCase(
 
 # %%
 if run_kraken:
-    km = KrakenManager()
+    km = KrakenManager(parallel=True, n_workers=params.n_workers)
 
     # Because of the large number of frequencies we need to split the calculation into frequency chunks -> field does not work with broadband simulation using
     # nf > 1000 frequencies

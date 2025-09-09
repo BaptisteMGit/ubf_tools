@@ -60,8 +60,14 @@ src_signal_duration = 5  # s
 # Paramètres de la simulation Kraken
 # ======================================================================================================================
 
-kraken_simu_name = "perekis_short_ir_waveguide"
+kraken_simu_name = "pekeris_short_ir_waveguide"
 kraken_title = "Pekeris waveguide with short impulse response"
+
+if os.name == "nt":  # Windows
+    n_workers = 4
+else:  # Linux
+    n_workers = 30
+
 
 
 # ======================================================================================================================
@@ -74,6 +80,11 @@ folder_root = os.path.join(
 tc_root_dir = os.path.join(g.project_root, "propa", "kraken_toolbox", "testcases")
 img_folder_path = os.path.join(folder_root, "img")
 data_folder_path = os.path.join(folder_root, "data")
+
+# Ensure all folders exist 
+for fpath in [tc_root_dir, img_folder_path, data_folder_path]:
+    if not os.path.exists(fpath):
+        os.makedirs(fpath)
 
 # Dataset path
 tf_demo_fpath = os.path.join(data_folder_path, "tf_demo.nc")

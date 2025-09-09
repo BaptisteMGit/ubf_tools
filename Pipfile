@@ -33,6 +33,7 @@ numba = "*"
 cdsapi = "*"
 kneed = "*"
 matplot2tikz = "*"
+pygeoda = "*"
 
 [dev-packages]
 ipykernel = "*"

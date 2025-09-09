@@ -74,6 +74,7 @@ class PubFigure:
         self.rkm_label = RangeLabel(language=language, unit="km")
         self.pl_label = PropagationLossLabel(language=language)
         self.tfmod_label = TransfertFunctionModuleLabel(language=language)
+        self.tfphase_label = TransfertFunctionPhaseLabel(language=language)
         self.rtfmod_label = RTFModuleLabel(language=language)
 
     def set_full_screen(self):
@@ -332,6 +333,25 @@ class TransfertFunctionModuleLabel(AxisLabel):
         unit: str = "",
         name_fr: str = r"$|H(f)|$",
         name_en: str = r"$|H(f)|$",
+        axis: str = "x",
+        language: str = "en",
+    ):
+        super().__init__(
+            unit=unit,
+            name_fr=name_fr,
+            name_en=name_en,
+            axis=axis,
+            language=language,
+        )
+
+
+class TransfertFunctionPhaseLabel(AxisLabel):
+
+    def __init__(
+        self,
+        unit: str = "",
+        name_fr: str = r"$\phi_H(f)$",
+        name_en: str = r"$\phi_H(f)$",
         axis: str = "x",
         language: str = "en",
     ):

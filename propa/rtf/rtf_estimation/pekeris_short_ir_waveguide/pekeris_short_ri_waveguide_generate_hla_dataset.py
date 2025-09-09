@@ -265,10 +265,6 @@ if run_kraken:
     # Concatenate the pressure fields from all chunks
     pressure_field = np.concatenate(pressure_field, axis=0)
 
-    # pressure_field, field_pos = km.runkraken(
-    #     env=k_tc.env, flp=k_tc.flp, frequencies=k_tc.src.freq
-    # )
-
     # Store pressure field as netcdf using xarray
     pressure_field = np.squeeze(pressure_field)  # Remove singleton dimensions if any
     ds_tf = xr.Dataset(

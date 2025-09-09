@@ -25,7 +25,7 @@ pfig = PubFigure()
 
 
 # Frequency
-f = 1  # Hz
+f = 10  # Hz
 # Angular frequency
 omega = 2 * np.pi * f  # rad/s
 

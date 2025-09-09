@@ -25,8 +25,8 @@
 
 # %%
 # Kraken compute opion
-run_kraken = True
 # run_kraken = True
+run_kraken = False
 
 # %%
 import os
@@ -64,7 +64,10 @@ import propa.rtf.rtf_estimation.pekeris_short_ir_waveguide.pekeris_short_ri_wave
 # ## Paramètres de la source
 
 # %%
-output_fs = 4 * params.src_fs  # Output sampling frequency after propagation
+# output_fs = 4 * params.src_fs  # Output sampling frequency after propagation
+output_fs = (
+    params.src_fs
+)  # Output sampling frequency after propagation = source sampling frequency
 
 # Derive N_ir <=> length of the impulse duration
 N_ir = int(params.tau_th * output_fs)
@@ -113,8 +116,8 @@ src = AcousticSource(
 # ## Paramètres du domaine de calcul
 
 # %%
-max_range_km = 45
-min_range_km = 15
+# max_range_km = 45
+# min_range_km = 15
 
 # %% [markdown]
 # ## Définition du cas test avant calcul Kraken
@@ -128,8 +131,10 @@ title = (
 # Common properties
 zmin = 0
 zmax = params.waveguide_depth
-rmax = max_range_km * 1e3
-rmin = min_range_km * 1e3
+# rmax = max_range_km * 1e3
+# rmin = min_range_km * 1e3
+rmin = params.rcv_rmin
+rmax = params.rcv_rmax
 
 min_phase_speed = 1000
 max_phase_speed = 20000
@@ -152,12 +157,12 @@ src_properties = SourceProperties(
     src_type="point_source", src_depth=src_depth, freq=src.kraken_freq
 )
 # Set receiver properties : needs to cover the whole water domain
-rcv_z_min = zmin
-rcv_z_max = params.waveguide_depth
+rcv_z_min = params.rcv_zmin
+rcv_z_max = params.rcv_zmax
 
 # Number of receiver depths / ranges (flp file) : sufficient resolution for later use (can be easily downsampled afterwards)
-dr = 50
-dz = 5
+dr = params.rcv_dr
+dz = params.rcv_dz
 nr_flp = int((rmax - rmin) / dr) + 1
 nz_flp = int(rcv_z_max / dz) + 1
 

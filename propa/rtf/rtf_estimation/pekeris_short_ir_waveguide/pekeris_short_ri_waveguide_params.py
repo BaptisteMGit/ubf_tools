@@ -72,23 +72,28 @@ else:  # Linux
 # Paramètres antenne linéaire horizontale HLA
 # ======================================================================================================================
 idx_rcv_ref = 0
-r_rcv_hla = 30 * 1e3      # Range from source to receiver 1
+# Coords of the HLA (= coords of the first receiver of the array)
+r_rcv_hla = 30 * 1e3  # Range from source to receiver 1
 z_rcv_hla = 5
+# Geometry of the HLA
 hla_delta_r_rcv = 700  # Receiver range step in meters
 hla_nrcv = 5  # Number of receivers in the HLA
 
-# Subsample transfer function dataset to reduce memory usage
-# rcv_rmin = ds_tf.r.min().values
-rcv_rmin = r_rcv_hla - (hla_nrcv + 1) * hla_delta_r_rcv
-rcv_rmax = ds_tf.r.max().values
-rcv_dr = 100
-rcv_range = np.arange(rcv_rmin, rcv_rmax + rcv_dr, rcv_dr)
+# Range vector for HLA
+max_hla_delta_r_rcv = 3000  # Max receiver range step in meters
+rcv_rmin = r_rcv_hla
+rcv_rmax = r_rcv_hla + (hla_nrcv - 1) * hla_delta_r_rcv
+rcv_dr = 100  # This will condition the hla_delta_r_rcv value that we can use later (should be a multiple of rcv_dr)
+# Add some margin to ensure we cover the whole HLA
+rcv_min = rcv_rmin - 2 * rcv_dr
+rcv_max = rcv_rmax + 2 * rcv_dr
+rcv_range_hla = np.arange(rcv_min, rcv_max + rcv_dr, rcv_dr)
 
-# rcv_zmin = ds_tf.z.min().values
-rcv_zmin = 5
-rcv_zmax = np.max([50, z_hat, z_plot])
-rcv_dz = 10
-rcv_depth = np.arange(rcv_zmin, rcv_zmax + rcv_dz, rcv_dz)
+# Depth vector for HLA
+rcv_zmin = 1
+rcv_zmax = 10
+rcv_dz = 1
+rcv_depth_hla = np.arange(rcv_zmin, rcv_zmax + rcv_dz, rcv_dz)
 
 # ======================================================================================================================
 # Chemins d'accès
@@ -101,7 +106,7 @@ tc_root_dir = os.path.join(g.project_root, "propa", "kraken_toolbox", "testcases
 img_folder_path = os.path.join(folder_root, "img")
 data_folder_path = os.path.join(folder_root, "data")
 
-# Ensure all folders exist 
+# Ensure all folders exist
 for fpath in [tc_root_dir, img_folder_path, data_folder_path]:
     if not os.path.exists(fpath):
         os.makedirs(fpath)

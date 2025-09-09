@@ -376,7 +376,7 @@ def get_bifrequency_spectrum(
     return ff, S_f1f2
 
 
-def plot_bi_frequency_spectrum(S_f1f2, ff, root_img=None):
+def plot_bi_frequency_spectrum(S_f1f2, ff, root_img=None, save=False):
 
     # Normalize
     S_f1f2 /= np.max(np.abs(S_f1f2))
@@ -405,8 +405,10 @@ def plot_bi_frequency_spectrum(S_f1f2, ff, root_img=None):
     ax.set_xlabel("$f_1$" + " [Hz]")
     ax.set_ylabel("$f_2$" + " [Hz]")
     ax.set_title("Bi-frequency spectrum")
-    img_filepath = os.path.join(root_img, "bi_frequency_spectrum.png")
-    plt.savefig(img_filepath)
+
+    if save:
+        img_filepath = os.path.join(root_img, "bi_frequency_spectrum.png")
+        plt.savefig(img_filepath)
 
 
 if __name__ == "__main__":

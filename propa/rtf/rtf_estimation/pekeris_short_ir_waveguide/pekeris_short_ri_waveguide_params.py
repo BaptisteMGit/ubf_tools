@@ -61,7 +61,11 @@ src_signal_duration = 5  # s
 # ======================================================================================================================
 
 kraken_simu_name = "pekeris_short_ir_waveguide"
-kraken_title = "Pekeris waveguide with short impulse response"
+kraken_title = "Pekeris waveguide with short impulse response (DEMO)"
+
+kraken_simu_name_hla = "pekeris_short_ir_waveguide_hla"
+kraken_simu_title_hla = "Pekeris waveguide with short impulse response (HLA)"
+
 
 if os.name == "nt":  # Windows
     n_workers = 4
@@ -82,18 +86,23 @@ hla_nrcv = 5  # Number of receivers in the HLA
 # Range vector for HLA
 max_hla_delta_r_rcv = 3000  # Max receiver range step in meters
 rcv_rmin = r_rcv_hla
-rcv_rmax = r_rcv_hla + (hla_nrcv - 1) * hla_delta_r_rcv
+rcv_rmax = r_rcv_hla + (hla_nrcv - 1) * max_hla_delta_r_rcv
 rcv_dr = 100  # This will condition the hla_delta_r_rcv value that we can use later (should be a multiple of rcv_dr)
 # Add some margin to ensure we cover the whole HLA
-rcv_min = rcv_rmin - 2 * rcv_dr
-rcv_max = rcv_rmax + 2 * rcv_dr
-rcv_range_hla = np.arange(rcv_min, rcv_max + rcv_dr, rcv_dr)
+rcv_rmin = rcv_rmin - 2 * rcv_dr
+rcv_rmax = rcv_rmax + 2 * rcv_dr
+rcv_rmax = rcv_rmax + rcv_dr    # Ensure last point is included 
+# Round to closest thousand for compatibility with Kraken env routines 
+rcv_rmin = np.floor(rcv_rmin * 1e-3) * 1e3
+rcv_rmax = np.ceil(rcv_rmax * 1e-3) * 1e3
+rcv_range_hla = np.arange(rcv_rmin, rcv_rmax, rcv_dr)
 
 # Depth vector for HLA
 rcv_zmin = 1
 rcv_zmax = 10
 rcv_dz = 1
-rcv_depth_hla = np.arange(rcv_zmin, rcv_zmax + rcv_dz, rcv_dz)
+rcv_zmax = rcv_zmax + rcv_dz        # Ensure last point is included 
+rcv_depth_hla = np.arange(rcv_zmin, rcv_zmax, rcv_dz)
 
 # ======================================================================================================================
 # Chemins d'accès
@@ -113,6 +122,6 @@ for fpath in [tc_root_dir, img_folder_path, data_folder_path]:
 
 # Dataset path
 tf_demo_fpath = os.path.join(data_folder_path, "tf_demo.nc")
-tf_perf_fpath = os.path.join(data_folder_path, "tf_perf.nc")
+tf_hla_fpath = os.path.join(data_folder_path, "tf_hla.nc")
 
 sig_fpath = os.path.join(data_folder_path, "received_signals.nc")

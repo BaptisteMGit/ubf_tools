@@ -25,8 +25,8 @@
 
 # %%
 # Kraken compute opion
-# run_kraken = True
-run_kraken = False
+run_kraken = True
+# run_kraken = False
 
 # %%
 import os
@@ -57,12 +57,6 @@ from source.ssp_profiles import SSPProfile
 
 import propa.rtf.rtf_estimation.pekeris_short_ir_waveguide.pekeris_short_ri_waveguide_params as params
 
-# %% [markdown]
-# # Génération du jeux de données pour l'estimation des performances des méthodes de RTF
-
-# %% [markdown]
-# ## Paramètres de la source
-
 # %%
 # output_fs = 4 * params.src_fs  # Output sampling frequency after propagation
 output_fs = (
@@ -74,7 +68,7 @@ N_ir = int(params.tau_th * output_fs)
 print(f"Impulse response length: {N_ir} samples")
 
 # Derive asssociated length of STFT analysis window N_stft = m * N_ir
-m = 5  # Avargel and Cohen 2007 N_opti = 32 * Nh
+m = 10  # Avargel and Cohen 2007 N_opti = 32 * Nh
 N_stft = m * N_ir
 # Get closer power of 2
 N_stft = 2 ** int(np.log2(N_stft) + 1)
@@ -91,6 +85,10 @@ print(f"Number of STFT snapshots: {L_stft}")
 
 # Derive the signal duration to get L STFT snapshots
 signal_duration = (L_stft - 1) * R_stft / output_fs + N_stft / output_fs
+# Set to closest power of 2 for faster derivation of the propagated signal 
+ns = signal_duration * params.src_fs
+ns_closest_power2 = 2 ** int(np.log2(ns) + 1)
+signal_duration = ns_closest_power2 / params.src_fs
 print(f"Signal duration: {signal_duration} s")
 
 
@@ -109,24 +107,14 @@ src = AcousticSource(
     name="Pulse",
     waveguide_depth=params.waveguide_depth,
     window=None,
-    nfft=2 ** int(np.log2(s.size) + 1),
+    nfft=ns_closest_power2,
 )
 
 # %% [markdown]
-# ## Paramètres du domaine de calcul
 
 # %%
-# max_range_km = 45
-# min_range_km = 15
-
-# %% [markdown]
-# ## Définition du cas test avant calcul Kraken
-
-# %%
-name = "perekis_short_ir_waveguide_perf"
-title = (
-    "Pekeris waveguide with short impulse response - for RTF methods performance study"
-)
+name = params.kraken_simu_name_hla
+title = params.kraken_simu_title_hla
 
 # Common properties
 zmin = 0
@@ -164,7 +152,7 @@ rcv_z_max = params.rcv_zmax
 dr = params.rcv_dr
 dz = params.rcv_dz
 nr_flp = int((rmax - rmin) / dr) + 1
-nz_flp = int(rcv_z_max / dz) + 1
+nz_flp = int((rcv_z_max-rcv_z_min) / dz) + 1
 
 rcv_properties = ReceiverProperties(
     zmin=rcv_z_min, zmax=rcv_z_max, rmin=rmin, rmax=rmax, unit="m"
@@ -306,7 +294,7 @@ if run_kraken:
         ),
     )
     # Save to netcdf
-    ds_tf.to_netcdf(params.tf_perf_fpath)
+    ds_tf.to_netcdf(params.tf_hla_fpath)
 else:
     # Load transfer functions from netcdf
-    ds_tf = xr.open_dataset(params.tf_perf_fpath)
+    ds_tf = xr.open_dataset(params.tf_hla_fpath)

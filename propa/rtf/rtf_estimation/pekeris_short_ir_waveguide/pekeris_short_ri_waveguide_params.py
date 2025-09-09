@@ -123,5 +123,6 @@ for fpath in [tc_root_dir, img_folder_path, data_folder_path]:
 # Dataset path
 tf_demo_fpath = os.path.join(data_folder_path, "tf_demo.nc")
 tf_hla_fpath = os.path.join(data_folder_path, "tf_hla.nc")
+rtf_hla_fpath = os.path.join(data_folder_path, f"rtf_hla.nc")
 
 sig_fpath = os.path.join(data_folder_path, "received_signals.nc")

@@ -18,39 +18,8 @@ import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
 
-sys.path.append(r"C:\Users\baptiste.menetrier\Desktop\devPy\phd")
-
 # Load usefull functions
 import source.global_constants as g
-from publication.publication_figure import PubFigure, LargeFigure
-from propa.ideal_waveguide import (
-    print_arrivals,
-)
-
-from propa.kraken_toolbox.src.kraken_testcase import (
-    KrakenTestCase,
-    DomainProperties,
-    SourceProperties,
-    ReceiverProperties,
-    KrakenProperties,
-)
-from propa.kraken_toolbox.src.kraken_env import (
-    KrakenTopHalfspace,
-    KrakenMedium,
-    KrakenBottomHalfspace,
-    KrakenAttenuation,
-    KrakenField,
-)
-from propa.kraken_toolbox.src.kraken_manager import KrakenManager
-from propa.kraken_toolbox.plot_utils import plotmode, plotmode_several_freqs
-from propa.kraken_toolbox.utils import default_nb_rcv_z
-from signals.AcousticComponent import AcousticSource
-from source.signal_generator import SignalGenerator
-from source.ssp_profiles import SSPProfile
-from misc import mult_along_axis
-
-pfig = PubFigure()
-
 
 # ======================================================================================================================
 # Paramètres du guide d'onde de Pekeris
@@ -99,10 +68,10 @@ kraken_title = "Pekeris waveguide with short impulse response"
 # Chemins d'accès
 # ======================================================================================================================
 
-folder_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\rtf\rtf_estimation\pekeris_short_ir_waveguide"
-tc_root_dir = (
-    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\propa\kraken_toolbox\testcases"
+folder_root = os.path.join(
+    g.project_root, "propa", "rtf", "rtf_estimation", kraken_simu_name
 )
+tc_root_dir = os.path.join(g.project_root, "propa", "kraken_toolbox", "testcases")
 img_folder_path = os.path.join(folder_root, "img")
 data_folder_path = os.path.join(folder_root, "data")
 

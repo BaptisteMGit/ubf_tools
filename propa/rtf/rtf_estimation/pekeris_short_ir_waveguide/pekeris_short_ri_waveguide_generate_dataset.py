@@ -34,8 +34,6 @@ import sys
 import numpy as np
 import xarray as xr
 
-sys.path.append(r"C:\Users\baptiste.menetrier\Desktop\devPy\phd")
-
 # Load usefull functions
 from propa.kraken_toolbox.src.kraken_testcase import (
     KrakenTestCase,

@@ -68,7 +68,27 @@ if os.name == "nt":  # Windows
 else:  # Linux
     n_workers = 30
 
+# ======================================================================================================================
+# Paramètres antenne linéaire horizontale HLA
+# ======================================================================================================================
+idx_rcv_ref = 0
+r_rcv_hla = 30 * 1e3      # Range from source to receiver 1
+z_rcv_hla = 5
+hla_delta_r_rcv = 700  # Receiver range step in meters
+hla_nrcv = 5  # Number of receivers in the HLA
 
+# Subsample transfer function dataset to reduce memory usage
+# rcv_rmin = ds_tf.r.min().values
+rcv_rmin = r_rcv_hla - (hla_nrcv + 1) * hla_delta_r_rcv
+rcv_rmax = ds_tf.r.max().values
+rcv_dr = 100
+rcv_range = np.arange(rcv_rmin, rcv_rmax + rcv_dr, rcv_dr)
+
+# rcv_zmin = ds_tf.z.min().values
+rcv_zmin = 5
+rcv_zmax = np.max([50, z_hat, z_plot])
+rcv_dz = 10
+rcv_depth = np.arange(rcv_zmin, rcv_zmax + rcv_dz, rcv_dz)
 
 # ======================================================================================================================
 # Chemins d'accès

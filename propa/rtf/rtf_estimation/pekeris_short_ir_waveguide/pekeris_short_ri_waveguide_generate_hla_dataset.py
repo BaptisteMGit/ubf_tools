@@ -25,8 +25,8 @@
 
 # %%
 # Kraken compute opion
-run_kraken = True
-# run_kraken = False
+# run_kraken = True
+run_kraken = False
 
 # %%
 import os
@@ -85,7 +85,7 @@ print(f"Number of STFT snapshots: {L_stft}")
 
 # Derive the signal duration to get L STFT snapshots
 signal_duration = (L_stft - 1) * R_stft / output_fs + N_stft / output_fs
-# Set to closest power of 2 for faster derivation of the propagated signal 
+# Set to closest power of 2 for faster derivation of the propagated signal
 ns = signal_duration * params.src_fs
 ns_closest_power2 = 2 ** int(np.log2(ns) + 1)
 signal_duration = ns_closest_power2 / params.src_fs
@@ -152,7 +152,7 @@ rcv_z_max = params.rcv_zmax
 dr = params.rcv_dr
 dz = params.rcv_dz
 nr_flp = int((rmax - rmin) / dr) + 1
-nz_flp = int((rcv_z_max-rcv_z_min) / dz) + 1
+nz_flp = int((rcv_z_max - rcv_z_min) / dz) + 1
 
 rcv_properties = ReceiverProperties(
     zmin=rcv_z_min, zmax=rcv_z_max, rmin=rmin, rmax=rmax, unit="m"

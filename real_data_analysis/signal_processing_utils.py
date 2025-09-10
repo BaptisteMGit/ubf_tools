@@ -395,7 +395,7 @@ def plot_bi_frequency_spectrum(S_f1f2, ff, root_img=None, save=False):
         ax=ax,
         x="ff1",
         y="ff2",
-        vmin=-30,
+        vmin=np.percentile(S_f1f2_log_magnitude, 5),
         vmax=0,
         cmap="viridis",
         add_colorbar=True,

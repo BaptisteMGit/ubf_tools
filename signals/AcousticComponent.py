@@ -51,6 +51,8 @@ class AcousticSource:
             win = np.hanning(self.signal.size)
         elif self.window == "blackman":
             win = np.blackman(self.signal.size)
+        elif self.window == "tukey":
+            win = signal.windows.tukey(self.signal.size, alpha=0.5)
         else:
             raise ValueError("Unknown window type")
 

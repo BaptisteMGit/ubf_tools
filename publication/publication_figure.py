@@ -17,6 +17,36 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 
+def color(n: int):
+    """Returns a tuple of RGB values used as a figure color.
+
+    Args:
+      - n (int): color index
+
+    Returns:
+      - tuple: RGB tuple
+    """
+    figcolors = [
+        (0, 0.4470, 0.7410),  # 0, Royal blue
+        (0.8500, 0.3250, 0.0980),  # 1, Orange
+        (0.9290, 0.6940, 0.1250),  # 2, Fade yellow
+        (0.4940, 0.1840, 0.5560),  # 3, Purple
+        (0.4660, 0.6740, 0.1880),  # 4, Green
+        (0.3010, 0.7450, 0.9330),  # 5, Sky blue
+        (0.6350, 0.0780, 0.1840),  # 6, Bordeaux
+        (1, 0, 0),  # 7, Red
+        (0, 1, 0),  # 8, Lime green
+        (0, 0, 1),  # 9, Blue
+        (0, 1, 1),  # 10, Cyan
+        (1, 0, 1),  # 11, Magenta
+        (1, 1, 0),  # 12, Yellow
+        (0, 0, 0),
+    ]  # 13, Black
+
+    k = n % len(figcolors)
+    return figcolors[k][:]
+
+
 class PubFigure:
     def __init__(
         self,

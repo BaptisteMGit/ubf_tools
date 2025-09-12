@@ -400,6 +400,7 @@ def plot_bi_frequency_spectrum(S_f1f2, ff, root_img=None, save=False):
         cmap="viridis",
         add_colorbar=True,
         cbar_kwargs={"label": "Magnitude [dB]"},
+        rasterized=True,
     )
 
     ax.set_xlabel("$f_1$" + " [Hz]")

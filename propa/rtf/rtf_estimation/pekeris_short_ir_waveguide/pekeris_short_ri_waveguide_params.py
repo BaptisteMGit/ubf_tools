@@ -66,7 +66,7 @@ N_ir = int(tau_th * output_fs)
 print(f"Impulse response length: {N_ir} samples")
 
 # Derive asssociated length of STFT analysis window N_stft = m * N_ir
-m = 10  # Avargel and Cohen 2007 N_opti = 32 * Nh
+m = 5  # Avargel and Cohen 2007 N_opti = 32 * Nh
 N_stft = m * N_ir
 # Get closer power of 2
 N_stft = 2 ** int(np.log2(N_stft) + 1)
@@ -78,7 +78,7 @@ R_stft = int((1 - alpha_ov) * N_stft)
 print(f"STFT Block shift: {R_stft} samples")
 
 # Set the number of expected snapshots L
-L_stft = 20  # Number of STFT snapshots to estimate the RTF
+L_stft = 40  # Number of STFT snapshots to estimate the RTF
 print(f"Number of STFT snapshots: {L_stft}")
 
 # Derive the signal duration to get L STFT snapshots

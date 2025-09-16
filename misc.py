@@ -615,7 +615,44 @@ def deg_to_dms(deg):
     return d, m, s
 
 
+def newton(f, df, x0, eps):
+    """Newton's method for finding roots of a function.
+
+    Parameters
+    ----------
+    f : function
+        The function for which we want to find the root.
+    df : function
+        The derivative of the function f.
+    x0 : float
+        Initial guess for the root.
+    eps : float
+        Tolerance for convergence.
+
+    Returns
+    -------
+    float
+        The root of the function f.
+    """
+    x = x0  # Initial guess
+    as_converged = False  # Convergence flag
+    while not as_converged:
+        x_new = x - f(x) / df(x)  # Newton's update x_n+1 = x_n - f(x_n) / f'(x_n)
+        if abs(x_new - x) < eps:
+            as_converged = True
+        x = x_new  # Update x : x_n = x_n+1
+    return x
+
+
 if __name__ == "__main__":
+
+    """Test newton"""
+    f = lambda x: x**2 - 2
+    df = lambda x: 2 * x
+    x0 = 1.0
+    eps = 1e-6
+    root = newton(f, df, x0, eps)
+    print(f"Root: {root}, f(root): {f(root)}")
 
     """Test dms to deg and deg to dms"""
     # d, m, s = 48, 23, 34.5

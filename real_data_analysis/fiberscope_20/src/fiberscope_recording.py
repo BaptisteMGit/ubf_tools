@@ -97,6 +97,8 @@ class FiberscopeDynamicRecording:
 
         # Sweep propertes - sweep2
         self.signal = FiberscopeSweep2()
+        # Modify some properties for dynamic recording
+        self.signal.n_sweep = 270
 
         # Dynamic properties
         self.recording_name = recording_name

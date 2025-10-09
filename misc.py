@@ -22,7 +22,9 @@ import psutil
 import numpy as np
 import pandas as pd
 import multiprocessing
+import scipy.stats as sst
 import scipy.fft as sp_fft
+
 
 # import moviepy.editor as mpy
 import matplotlib.pyplot as plt
@@ -644,15 +646,156 @@ def newton(f, df, x0, eps):
     return x
 
 
+def equivalent_celerity(c_z, z):
+    dz = np.diff(z, append=z[-1] + z[-1] - z[-2])
+    t_tot = np.sum(1 / c_z * dz)
+    c_eq = np.max(z) / t_tot
+    return c_eq
+
+
+######################### Least-squares solution #######################
+def calc_wls(
+    Y, t, X_0, W, fct, jac, f_kwargs={}, jac_kwargs={}, tol=1e-3, verbose=True
+):
+    # # nombre d'observations
+    n = W.shape[0]
+    # nombre de paramètres inconnus
+    X_0 = np.atleast_1d(X_0)
+    p = X_0.size
+
+    # Init dY
+    dY_0 = Y - fct(X_0, t, **f_kwargs)
+    # Init X_k
+    X_k = X_0
+
+    if verbose:
+        print(f"Initial guess : {X_0}")
+        print(f"dY_0 : {dY_0}")
+        print(f"Weighting matrix : {W}")
+        print(f"Initial cost : {np.sum(np.diag(W) * dY_0**2)}")
+
+    # Init convergence condition
+    cost_k = np.sum(np.diag(W) * dY_0**2)
+    conv = False
+    while not conv:
+        # Derive the jacobian with Xk
+        J_k = jac(X_k, t, **jac_kwargs)
+        if verbose:
+            print(f"Jacobian : {J_k}")
+        # Derive dY_k
+        dY_k = Y - fct(X_k, t, **f_kwargs)
+        # Derive dX_k
+        N_k = J_k.T @ W @ J_k
+        if verbose:
+            print(f"N_k : {N_k}")
+        N_kinv = np.linalg.inv(N_k)
+        dX_k = (N_kinv @ J_k.T @ W) @ dY_k
+        # Update X_k
+        X_k = X_k + dX_k
+        # Derive new cost
+        r_kplusone = Y - fct(X_k, t, **f_kwargs)
+        cost_kplusone = np.sum(np.diag(W) * r_kplusone**2)
+        # Update the convergence condition
+        conv = np.abs((cost_kplusone - cost_k) / cost_k) < tol
+        # Update cost k
+        cost_k = cost_kplusone
+
+    #  Vecteur des résidus
+    Vhat = r_kplusone
+    # FUV a posteriori
+    sigma02hat = Vhat.T @ W @ Vhat / (n - p)
+    # #  Covariance a posteriori de la solution
+    SigmaXhat = sigma02hat * N_kinv
+    # #  Covariance a posteriori des observations
+    # SigmaYhat = sigma02hat * SigmaY
+    # #  Covariance a posteriori des résidus
+    # SigmaVhat = SigmaYhat - np.dot(np.dot(A, SigmaXhat), A.T)
+
+    return X_k, dY_k, cost_k, SigmaXhat, sigma02hat
+
+
+def test_calc_wls():
+    # Test on a simple model
+    a = 5
+    b = 0.5
+    t_max = 200
+    t = np.linspace(0, t_max, 1000)
+
+    # Define signal
+    def f(X, t):
+        a, b = X
+        return a**2 * t + 100 * np.cos(b * t)
+
+    def jac(X, t):
+        a, b = X
+        J = np.array([2 * a * t, -100 * t * np.sin(b * t)]).T
+        return J
+
+    X = [a, b]
+    y = f(X, t)
+
+    # Add noise
+    s = 0.01
+    vi = np.random.normal(loc=0, scale=s, size=y.shape)
+    yi = y + vi
+    plt.figure()
+    plt.scatter(t, yi)
+    plt.plot(t, y, color="r")
+
+    n = yi.size
+    W = np.eye(n) * 1 / s**2
+
+    # Initial guess
+    X_0 = [a + 0.01, b + 0.01]
+    # Apply WLS
+    X_hat, _, _, _, _ = calc_wls(Y=yi, t=t, X_0=X_0, W=W, fct=f, jac=jac, tol=1e-5)
+
+    plt.figure()
+    plt.scatter(t, yi, color="r")
+    plt.plot(t, f(X_hat, t), color="k")
+    plt.plot(t, y, color="b")
+
+
+def draw_ellipse(X, SigmaX, ddl, alpha, title, color="k", fac=1):
+
+    D, R = np.linalg.eig(SigmaX)
+    lambda_m = np.sqrt(sst.f.ppf(alpha, 2, ddl) * 2)
+    a, b = lambda_m * np.sqrt(D[0]), lambda_m * np.sqrt(D[1])
+    try:
+        theta = np.arctan(R[1, 0] / R[0, 0]) * 180 / np.pi
+    except:
+        theta = np.sign(R[1, 0]) * 90
+    # re-order semi axis of ellipse
+    if a <= b:
+        theta = theta + 90
+        a, b = lambda_m * np.sqrt(D[1]), lambda_m * np.sqrt(D[0])
+    theta = np.mod(theta, 360)
+
+    ellipse = Ellipse(
+        xy=(X[0], X[1]),
+        width=a * 2 * fac,
+        height=b * 2 * fac,
+        angle=theta,
+        edgecolor=color,
+        lw=2,
+        facecolor="none",
+        zorder=20,
+    )
+    plt.legend()
+    plt.gca().add_patch(ellipse)
+
+    return plt.gca().add_patch(ellipse)
+
+
 if __name__ == "__main__":
 
     """Test newton"""
-    f = lambda x: x**2 - 2
-    df = lambda x: 2 * x
-    x0 = 1.0
-    eps = 1e-6
-    root = newton(f, df, x0, eps)
-    print(f"Root: {root}, f(root): {f(root)}")
+    # f = lambda x: x**2 - 2
+    # df = lambda x: 2 * x
+    # x0 = 1.0
+    # eps = 1e-6
+    # root = newton(f, df, x0, eps)
+    # print(f"Root: {root}, f(root): {f(root)}")
 
     """Test dms to deg and deg to dms"""
     # d, m, s = 48, 23, 34.5

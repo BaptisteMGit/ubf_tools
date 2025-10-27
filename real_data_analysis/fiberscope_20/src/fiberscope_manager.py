@@ -19,6 +19,7 @@ import xarray as xr
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
+from scipy import stats
 import real_data_analysis.fiberscope_20.src.params as p
 
 from propa.rtf.rtf_utils import D_hermitian_angle_fast
@@ -28,6 +29,7 @@ from propa.rtf.rtf_localisation.zhang_et_al_testcase.src.feature_builder import 
     FeatureProcessor,
 )
 from source.cov_manager import CovManager
+from misc import progression_bar
 
 
 class FiberscopeManager:
@@ -45,6 +47,7 @@ class FiberscopeManager:
         subsampling_factor: float = p.subsampling_factor,
         h_index_ref: int = p.h_index_ref,
         plot_feature: bool = False,
+        theta_statistics: str = "mean",
     ):
         """
         Constructor
@@ -70,13 +73,18 @@ class FiberscopeManager:
 
         self.plot_feature = plot_feature
 
+        # Method to derive caracteristic angle representing the theta distribution
+        self.theta_statistics = theta_statistics
+
         # Define usefull objects
         self.cm = CovManager()
 
-    def presplit_dynamic_record(self, fs_dynamic_recording, n_sweep=3, n_records=91):
+    def presplit_dynamic_record(self, fs_dynamic_recording, n_sweep=3, t_max=274.6):
         # Derive time step
         time_step = n_sweep * fs_dynamic_recording.signal.interp_pulse_period
         fs_dynamic_recording.time_step = time_step
+        n_records = int(t_max / time_step)
+
         displacement_from_start_pos = [
             ((i + 1) * time_step - time_step / 2) * fs_dynamic_recording.src_speed
             for i in range(n_records)
@@ -140,14 +148,14 @@ class FiberscopeManager:
             while end_of_current_period < full_data.time.max().values:
                 # Extract the data corresponding to the current period
                 split_data = full_data.sel(
-                    time=slice(start_of_current_period, end_of_current_period)
+                    time=slice(
+                        start_of_current_period - full_data.ts, end_of_current_period
+                    )
                 )
 
                 # Update time vector to start at 0
                 split_data["time"] = split_data.time - start_of_current_period
 
-                start_of_current_period += fs_dynamic_recording.time_step
-                end_of_current_period += fs_dynamic_recording.time_step
                 ### Step 2 - Preprocess data ###
                 split_data.attrs["recording_name"] = (
                     fs_dynamic_recording.splitted_records_names[i_name]
@@ -161,6 +169,9 @@ class FiberscopeManager:
                     signal=fs_dynamic_recording.signal,
                     hydro_to_process=hydro_to_process,
                 )
+
+                start_of_current_period += fs_dynamic_recording.time_step
+                end_of_current_period += fs_dynamic_recording.time_step
                 i_name += 1
 
             if i_name < len(fs_dynamic_recording.splitted_records_names):
@@ -290,8 +301,15 @@ class FiberscopeManager:
             os.path.join(xr_data.root_data, f"{xr_data.recording_name}.nc")
         )
         xr_data.close()
+        del xr_data
 
-    def process_dyn_analysis(self, fs_dynamic_recording, use_global_noise_csdm=False):
+    def process_dyn_analysis(
+        self,
+        fs_dynamic_recording,
+        use_global_noise_csdm=False,
+        set_stft_props=True,
+        rtf_estimator="cs",
+    ):
         # Assert that the dynamic recording has been presplit
         if not fs_dynamic_recording.splitted_records_names:
             self.presplit_dynamic_record(fs_dynamic_recording)
@@ -321,7 +339,10 @@ class FiberscopeManager:
         xr_data = xr.open_dataset(fpath)
         ts = xr_data.ts
 
-        self.set_stft_params(ts=ts)
+        # If stfts props are already set we dont need to do it
+        if set_stft_props:
+            self.set_stft_params(ts=ts)
+
         idx_rcv_ref = np.argmin(
             np.abs(xr_data.h_index.values - self.h_index_ref)
         )  # Index of hydrophone might not be sorted or not start at 0
@@ -332,20 +353,38 @@ class FiberscopeManager:
         else:
             Rv_global = None
 
+        i_test = 0
+        prev_progress = 0
+        n_test = len(fs_dynamic_recording.splitted_records_names)
+        print("\nDerive RTF for each segment of the dynamic recording")
+
         for recording_name in fs_dynamic_recording.splitted_records_names:
+            i_test += 1
+            prev_progress = progression_bar(
+                index=i_test,
+                index0=0,
+                indexf=n_test,
+                prev_progress=prev_progress,
+            )
+
             self.derive_feature(
                 recording_name=recording_name,
                 records_folder=fs_dynamic_recording.splitted_records_folder,
                 signal=fs_dynamic_recording.signal,
                 Rv_global=Rv_global,
                 # signal=fs_dynamic_recording.signal,
+                rtf_estimator=rtf_estimator,
             )
 
     def set_stft_params(self, ts):
 
-        n_ir = int(self.tau_ir / ts)
+        n_ir = int(
+            self.tau_ir / ts
+        )  # Number of samples corresponding to the assumed impulse response duration
         # Get closer power of 2
-        nperseg = 2 ** int(np.log2(n_ir) + 1)
+        nperseg = 2 ** int(
+            np.log2(n_ir) + 1
+        )  # Number of sample per snapshot to use = closest power of two
         noverlap = int(nperseg * self.alpha_overlap)
 
         self.nperseg = nperseg
@@ -368,9 +407,24 @@ class FiberscopeManager:
         self,
         static_signal,
         static_records_names,
+        set_stft_props=True,
+        rtf_estimator="cs",
     ):
 
+        i_test = 0
+        prev_progress = 0
+        n_test = len(static_records_names)
+        print("\nDerive RTF for each static recording")
+
         for recording_name in static_records_names:
+            i_test += 1
+            prev_progress = progression_bar(
+                index=i_test,
+                index0=0,
+                indexf=n_test,
+                prev_progress=prev_progress,
+            )
+
             ### Step 1 - Load data from tdms ###
             xr_data = self.tdms_to_xr(
                 recording_name=recording_name,
@@ -379,7 +433,10 @@ class FiberscopeManager:
             xr_data.attrs["root_data"] = static_signal.records_folder
 
             ts = xr_data.ts
-            self.set_stft_params(ts=ts)
+            # If stfts props are already set we dont need to do it
+            if set_stft_props:
+                self.set_stft_params(ts=ts)
+
             idx_rcv_ref = np.argmin(
                 np.abs(xr_data.h_index.values - self.h_index_ref)
             )  # Index of hydrophone might not be sorted or not start at 0
@@ -397,6 +454,7 @@ class FiberscopeManager:
                 recording_name=recording_name,
                 records_folder=static_signal.records_folder,
                 signal=static_signal,
+                rtf_estimator=rtf_estimator,
             )
 
     def estimate_global_csdm(self, xr_data):
@@ -422,6 +480,8 @@ class FiberscopeManager:
         Rv_global=None,
         # gcc_methods=["blank", "scot", "phat", "ml"],
         verbose=False,
+        save=True,
+        rtf_estimator="cs",
     ):
 
         if verbose:
@@ -442,7 +502,9 @@ class FiberscopeManager:
         xr_data = xr.open_dataset(fpath)
 
         # Derive rtf from recordings
-        xr_data = self.get_rtf(xr_data=xr_data, Rv_global=Rv_global)
+        xr_data = self.get_rtf(
+            xr_data=xr_data, Rv_global=Rv_global, rtf_estimator=rtf_estimator
+        )
 
         # # Derive rtf from tf estimated by deconvolution
         xr_data = self.derive_rtf_from_tf(xr_data=xr_data)
@@ -460,10 +522,13 @@ class FiberscopeManager:
         # xr_data = derive_gcc(xr_data=xr_data, gcc_methods=gcc_methods)
 
         # Save results
-        xr_data.to_netcdf(
-            os.path.join(xr_data.root_data, f"{xr_data.recording_name}_rtf.nc")
-        )
-        xr_data.close()
+        if save:
+            xr_data.to_netcdf(
+                os.path.join(xr_data.root_data, f"{xr_data.recording_name}_rtf.nc")
+            )
+            xr_data.close()
+        else:
+            return xr_data
 
     def plot_estimated_feature(self, xr_data):
 
@@ -569,7 +634,7 @@ class FiberscopeManager:
 
         plt.close("all")
 
-    def get_rtf(self, xr_data, Rv_global=None):
+    def get_rtf(self, xr_data, Rv_global=None, rtf_estimator="cs"):
         ts = xr_data.ts
 
         # Covariance substraction
@@ -601,9 +666,17 @@ class FiberscopeManager:
             f, Rv = self.cm.get_signal_csdm(
                 y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_v
             )
-        rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
-            Rx - Rv, use_first_column=False
-        )
+
+        if rtf_estimator == "cs":
+            rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+                Rx - Rv, use_first_column=True
+            )
+        elif rtf_estimator == "cs-evd":
+            rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+                Rx - Rv, use_first_column=False
+            )
+        else:
+            print(f"{rtf_estimator} not implemented yet!")
 
         xr_data.coords["f_rtf"] = f
         xr_data["rtf_amp_hat"] = (
@@ -618,6 +691,7 @@ class FiberscopeManager:
 
         # Add Rx and R_v to the dataset
         xr_data.coords["f_csdm"] = f
+
         # Create h_index bis to avoid duplicate coordinates
         xr_data.coords["h_index_bis"] = xr_data.h_index.values
         xr_data["Rx"] = (
@@ -640,11 +714,18 @@ class FiberscopeManager:
         mask_tt_x = np.zeros_like(tt, dtype=int)
         for ircv in range(stft_x.shape[0]):
             energy = np.sum(np.abs(stft_x[ircv, ...]) ** 2, axis=0)
+
+            # Old method before 27/10/2025
             # min_height = 0.2 * np.max(energy)
-            min_height = np.median(energy)
-            idx_peaks = sp.find_peaks(energy, height=min_height)[0]
-            min_peaks = np.min(energy[idx_peaks])
-            threshold = 0.3 * min_peaks
+            # # min_height = np.median(energy)
+            # idx_peaks = sp.find_peaks(energy, height=min_height)[0]
+            # min_peaks = np.min(energy[idx_peaks])
+            # threshold = 0.3 * min_peaks
+
+            # Simpler method 27/10/2025
+            threshold = 1.1 * np.min(energy)
+
+            # Define signal presence mask
             mask_tt_i = energy > threshold
             mask_tt_x = np.logical_or(mask_tt_x, mask_tt_i)
 
@@ -678,10 +759,7 @@ class FiberscopeManager:
     def localize_dyn_recording(
         self, static_signal, static_records_names, fs_dynamic_recording
     ):
-        # # Localizing static records
-        # pos_id = recording_name_to_loc.split("_")[1]
-        # th_pos = dict_th_pos[pos_id]
-        q = []
+        # Localizing static records
         d = []
 
         # Order static records names by position order
@@ -690,7 +768,21 @@ class FiberscopeManager:
         sorted_indices = np.argsort(position_ids)
         static_records_names = [static_records_names[i] for i in sorted_indices]
 
+        # Init progress bar
+        i_test = 0
+        prev_progress = 0
+        n_test = len(static_records_names)
+        print("\nCompute distance map")
+
         for recording_name in static_records_names:
+
+            i_test += 1
+            prev_progress = progression_bar(
+                index=i_test,
+                index0=0,
+                indexf=n_test,
+                prev_progress=prev_progress,
+            )
 
             fpath = os.path.join(
                 static_signal.records_folder, recording_name + "_rtf.nc"
@@ -734,6 +826,13 @@ class FiberscopeManager:
             fs_dynamic_recording.splitted_records_names[i] for i in sorted_indices
         ]
 
+        # Set distance args to use
+        if self.theta_statistics == "mean":
+            apply_mean = True
+        elif self.theta_statistics == "expectation":
+            apply_mean = False
+        dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": apply_mean}
+
         # Iterate over dynamic recordings
         for recording_name in splitted_records_names:
             # Load data
@@ -752,12 +851,18 @@ class FiberscopeManager:
                 1j * xr_data_library_i.rtf_phase_hat
             )
 
+            # Interpolate rtf_event at rtf_library freq (dynamic recording uses smaller window to
+            # match the number of segment L )
+            rtf_event = rtf_event.sel(
+                f_rtf=rtf_library_i.f_rtf.values, method="nearest"
+            )
+
             # Derive distance using hermitian angle
-            dist_kwargs = {"ax_rcv": 0, "apply_mean": True}
-            d = D_hermitian_angle_fast(
+            theta = D_hermitian_angle_fast(
                 rtf_event.values, rtf_library_i.values, **dist_kwargs
             )
-            dist.append(d)
+            theta_c = get_theta_c(val=theta, apply_mean=apply_mean)
+            dist.append(theta_c)
 
         dist = np.array(dist)
 
@@ -769,14 +874,14 @@ class FiberscopeManager:
         d = -d_rtf
 
         if axis_norm is None:
-            d_max = np.max(d, axis=axis_norm) * np.ones_like(d)
-            d_min = np.min(d, axis=axis_norm) * np.ones_like(d)
+            d_max = np.nanmax(d, axis=axis_norm) * np.ones_like(d)
+            d_min = np.nanmin(d, axis=axis_norm) * np.ones_like(d)
             norm_label = "norm_over_entire_surface"
         else:
             d_max = np.tile(
-                np.max(d, axis=axis_norm), (d.shape[axis_norm], 1)
+                np.nanmax(d, axis=axis_norm), (d.shape[axis_norm], 1)
             )  # Cast to d shape
-            d_min = np.tile(np.min(d, axis=axis_norm), (d.shape[axis_norm], 1))
+            d_min = np.tile(np.nanmin(d, axis=axis_norm), (d.shape[axis_norm], 1))
             if axis_norm == 1:
                 norm_label = f"norm_along_time_axis"
             elif axis_norm == 0:
@@ -876,3 +981,19 @@ if __name__ == "__main__":
     fsm.plot_dyn_loc(
         d_rtf=d, axis_norm=1, time_step=fs_dr.time_step, vmin=-5, save_eps=True
     )
+
+
+def get_theta_c(val, apply_mean):
+    # We dont have anything to do we can store the mean value directly
+    if apply_mean:
+        theta_c = val
+
+    # We need to derive expectation
+    else:
+        # Step 1: estimate the probability density function associate to the observed distribution
+        kde = stats.gaussian_kde(val)
+        # Step 2: derive expectation    (note: kde.evaluate(x) is 10 times faster than kde.pdf(x))
+        expectation = np.sum(val * kde.evaluate(val)) / np.sum(kde.evaluate(val))
+        theta_c = expectation
+
+    return theta_c

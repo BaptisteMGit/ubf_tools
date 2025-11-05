@@ -249,26 +249,6 @@ def plot_dsp(data, fmin, fmax, save=False):
         plt.close()
 
 
-def load_and_preprocess_ais_data():
-    root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ais\extract-ais-pos-for-zone-ecole-navale-by-month-201305.csv"
-    fname = "extract-ais-pos-for-zone-ecole-navale-by-month-201305.csv"
-    fpath = os.path.join(root, fname)
-
-    lon_min = 65
-    lon_max = 66
-    lat_min = -28
-    lat_max = -27
-
-    # Load and pre-filter
-    df = extract_ais_area(fpath, lon_min, lon_max, lat_min, lat_max)
-    # Remove ships with less than 2 points
-    df = df.groupby("mmsi").filter(lambda x: len(x) > 1)
-    # Interpolate trajectories to have a point every 5 minutes
-    df_interp = interpolate_trajectories(df, time_step="5min")
-
-    return df_interp
-
-
 def compute_csd_matrix_fast(stfts, n_seg_cov):
     """
     Compute the Cross Spectral Density (CSD) matrix for a set of receivers using matrix operations.

@@ -710,24 +710,36 @@ class FiberscopeManager:
             x, fs=fs, nperseg=nperseg, noverlap=noverlap
         )
 
+        duration = x.time.max() - x.time.min()
         # Define the signal presence mask
         mask_tt_x = np.zeros_like(tt, dtype=int)
         for ircv in range(stft_x.shape[0]):
             energy = np.sum(np.abs(stft_x[ircv, ...]) ** 2, axis=0)
 
-            # Old method before 27/10/2025
-            # min_height = 0.2 * np.max(energy)
-            # # min_height = np.median(energy)
-            # idx_peaks = sp.find_peaks(energy, height=min_height)[0]
-            # min_peaks = np.min(energy[idx_peaks])
-            # threshold = 0.3 * min_peaks
+            if duration > 1:
+                # Old method before 27/10/2025
+                min_height = 0.2 * np.max(energy)
+                # min_height = np.median(energy)
+                idx_peaks = sp.find_peaks(energy, height=min_height)[0]
+                min_peaks = np.min(energy[idx_peaks])
+                # threshold = 0.3 * min_peaks
+                threshold = 0.005 * min_peaks
+            else:
+                # Other simple method
+                threshold = np.median(energy)
 
-            # Simpler method 27/10/2025
-            threshold = 1.1 * np.min(energy)
+            # Simpler method 27/10/2025 not working well
+            # threshold = np.max(1.1 * np.min(energy), 0.1 * np.max(energy))
 
             # Define signal presence mask
             mask_tt_i = energy > threshold
             mask_tt_x = np.logical_or(mask_tt_x, mask_tt_i)
+
+        # # For debug purpose
+        # plt.figure()
+        # plt.pcolormesh(tt, ff, np.abs(stft_x[0, ...]))
+        # plt.plot(tt, mask_tt_x.astype(int) * np.max(ff))
+        # plt.savefig("test.png")
 
         return tt, mask_tt_x
 

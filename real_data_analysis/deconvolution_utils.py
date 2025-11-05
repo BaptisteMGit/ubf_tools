@@ -3,7 +3,7 @@
 """
 @File    :   deconvolution_utils.py
 @Time    :   2024/11/13 10:43:19
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -29,11 +29,18 @@ def crosscorr_deconvolution(x, y):
     # Compute cross-correlation
     # r_xy = sp.correlate(y, x, mode="same")
     # r_xy = np.fft.irfft(np.fft.rfft(x) * np.conj(np.fft.rfft(y)))
-    r_yx = np.fft.irfft(np.fft.rfft(y) * np.conj(np.fft.rfft(x)), n=len(x))
 
+    nstft = max(x.size, y.size)
+    Xf = np.fft.rfft(x, n=nstft)
+    Yf = np.fft.rfft(y, n=nstft)
+    R_YXf = Yf * np.conj(Xf)
+    y_rec = np.fft.irfft(Xf * R_YXf, n=nstft)
+    r_yx = np.fft.irfft(R_YXf, n=nstft)
+
+    # r_yx = np.fft.irfft(np.fft.rfft(y) * np.conj(np.fft.rfft(x)), n=len(x))
     # Estime y_rec from x and r_xy
     # y_rec = sp.convolve(x, r_xy, mode="same")
-    y_rec = np.fft.irfft(np.fft.rfft(x) * np.fft.rfft(r_yx), n=len(x))
+    # y_rec = np.fft.irfft(np.fft.rfft(x) * np.fft.rfft(r_yx), n=len(x))
     sigma_y = np.std(y)
     sigma_y_rec = np.std(y_rec)
 

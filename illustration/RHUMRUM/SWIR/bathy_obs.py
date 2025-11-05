@@ -101,7 +101,7 @@ def plot_swir_bathy(contour=True):
     #         "spacing": "proportional",
     #     },
     # )
-    ds_bathy.elevation.plot(cmap="jet")
+    ds_bathy.elevation.plot(cmap="terrain")
 
     if contour:
         ds_bathy.elevation.plot.contour(levels=blevels, colors="k", linewidths=0.5)
@@ -155,7 +155,7 @@ def plot_swir_obs(ds_bathy, rcv_id, col=None):
         # Plot obs_id next to the point
         plt.text(
             rcv_info["lons"][i_obs] + 0.03,
-            rcv_info["lats"][i_obs] - 0.03,
+            rcv_info["lats"][i_obs] + 0.03,
             f"{obs_id}",
             fontsize=22,
             color="k",

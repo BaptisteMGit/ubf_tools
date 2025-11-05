@@ -655,7 +655,17 @@ def equivalent_celerity(c_z, z):
 
 ######################### Least-squares solution #######################
 def calc_wls(
-    Y, t, X_0, W, fct, jac, f_kwargs={}, jac_kwargs={}, tol=1e-3, verbose=True
+    Y,
+    t,
+    X_0,
+    W,
+    fct,
+    jac,
+    f_kwargs={},
+    jac_kwargs={},
+    tol=1e-3,
+    max_iter=100,
+    verbose=True,
 ):
     # # nombre d'observations
     n = W.shape[0]
@@ -677,7 +687,8 @@ def calc_wls(
     # Init convergence condition
     cost_k = np.sum(np.diag(W) * dY_0**2)
     conv = False
-    while not conv:
+    niter = 0
+    while not conv and niter < max_iter:
         # Derive the jacobian with Xk
         J_k = jac(X_k, t, **jac_kwargs)
         if verbose:
@@ -699,6 +710,8 @@ def calc_wls(
         conv = np.abs((cost_kplusone - cost_k) / cost_k) < tol
         # Update cost k
         cost_k = cost_kplusone
+
+        niter += 1
 
     #  Vecteur des résidus
     Vhat = r_kplusone
@@ -787,6 +800,38 @@ def draw_ellipse(X, SigmaX, ddl, alpha, title, color="k", fac=1):
     return plt.gca().add_patch(ellipse)
 
 
+def progression_bar(index: int, index0: int, indexf: int, prev_progress: int) -> int:
+    step = 1
+    no_graduations = 100
+    current_progress = int((index - index0) / (indexf - index0) * 100)
+
+    if current_progress >= prev_progress + step:
+        print("\r", end="")
+        print(
+            f"Progress: "
+            + "\u2588" * int(current_progress)
+            + "." * (no_graduations - current_progress)
+            + f" {int(current_progress)}%",
+            end="",
+        )
+        return current_progress
+
+    return prev_progress
+
+
+def filter_outliers_iqr(values, k=1.5):
+    """
+    Filtre les outliers d'un tableau de valeurs en utilisant l'IQR.
+    """
+    Q1 = np.percentile(values, 25)
+    Q3 = np.percentile(values, 75)
+    IQR = Q3 - Q1
+    lower = Q1 - k * IQR
+    upper = Q3 + k * IQR
+    filtered = values[(values >= lower) & (values <= upper)]
+    return filtered
+
+
 if __name__ == "__main__":
 
     """Test newton"""
@@ -813,10 +858,10 @@ if __name__ == "__main__":
 
     # # gather_acronyms(manuscript_folder, output_file)
 
-    # Usage
-    manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
-    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
-    gather_bibliographies(manuscript_folder, output_file)
+    # # Usage
+    # manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
+    # output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
+    # gather_bibliographies(manuscript_folder, output_file)
 
     """ Count publications per year """
     # # Exemple d'utilisation de la fonction
@@ -827,6 +872,14 @@ if __name__ == "__main__":
 
     # # Utilisation
     # export_to_dat(result_df, result_filepath)
+
+    # Test progress bar
+    index0 = 0
+    indexf = 1000000
+    prev_progress = 0
+
+    for i in range(index0, indexf + 1):
+        prev_progress = progression_bar(i, index0, indexf, prev_progress)
 
 
 # # Test plot_animation_moviepy

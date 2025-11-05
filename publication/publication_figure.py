@@ -137,6 +137,8 @@ class PubFigure:
         }
         if self.disable_backend:
             params["backend"] = "Agg"
+        if self.use_tex:
+            params["text.latex.preamble"] = r"\usepackage{amsmath}"
 
         plt.rcParams.update(params)
 

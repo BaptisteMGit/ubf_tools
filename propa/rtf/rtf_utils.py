@@ -139,7 +139,7 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
     ax_rcv = kwargs.get("ax_rcv", 3 if rtf.ndim == 4 else 1)
     ax_f = kwargs.get("ax_f", 1)
 
-    # Moveaxis to be fit with the reference order (nf, nrcv, ...)
+    # Moveaxis to fit with the reference order (nf, nrcv, ...)
     rtf = np.moveaxis(rtf, [ax_f, ax_rcv], [0, 1])
     rtf_ref = np.moveaxis(rtf_ref, [ax_f, ax_rcv], [0, 1])
 
@@ -195,9 +195,9 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
     elif rtf.ndim == 2:
         # Calculate inner product and norms along the receiver axis (axis=1)
         # ax_rcv = 1
-        inner_prod = np.abs(np.sum(rtf_ref.conj() * rtf, axis=ax_rcv))
-        norm_ref = np.linalg.norm(rtf_ref, axis=ax_rcv)
-        norm_rtf = np.linalg.norm(rtf, axis=ax_rcv)
+        inner_prod = np.abs(np.sum(rtf_ref.conj() * rtf, axis=1))
+        norm_ref = np.linalg.norm(rtf_ref, axis=1)
+        norm_rtf = np.linalg.norm(rtf, axis=1)
 
         # Cosine of Hermitian angle, clipped for stability
         cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)

@@ -1343,7 +1343,7 @@ def study_perf_vs_snr(subarrays_list):
             msr_sa.rtf_mean,
             yerr=msr_sa.rtf_std,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
         )
         ax.set_xlabel("SNR [dB]")
         ax.set_ylabel("MSR [dB]")
@@ -1370,7 +1370,7 @@ def study_perf_vs_snr(subarrays_list):
             dr_sa.rtf_mean,
             yerr=dr_sa.rtf_std,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
         )
         plt.suptitle(f"Receivers = ({rcv_str})")
         ax.set_ylabel(r"$\Delta_r$" + " [m]")
@@ -1383,7 +1383,7 @@ def study_perf_vs_snr(subarrays_list):
         # Plot rmse
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
         ax.plot(rmse_sa.index, rmse_sa["dcf"], "o-", label="DCF")
-        ax.plot(rmse_sa.index, rmse_sa["rtf"], "o-", label="RTF")
+        ax.plot(rmse_sa.index, rmse_sa["rtf"], "o-", label="RTF-MFP")
         plt.suptitle(f"Receivers = ({rcv_str})")
         ax.set_xlabel("SNR [dB]")
         ax.set_ylabel("RMSE [m]")
@@ -1447,7 +1447,8 @@ def plot_fullarray_ambiguity_surfaces_publi(
             marker="o",
             facecolors="none",
             s=900,
-            linewidths=5,
+            # linewidths=5,
+            linewidths=9,
         )
 
         ax.set_xlabel(r"$x$" + " [m]")
@@ -1457,6 +1458,7 @@ def plot_fullarray_ambiguity_surfaces_publi(
         fpath = os.path.join(root_img, f"amb_surf_{dist}")
         plt.savefig(f"{fpath}.eps", dpi=300)
         plt.savefig(f"{fpath}.png", dpi=300)
+        plt.savefig(f"{fpath}.pdf", dpi=600)
 
 
 def plot_performance_vs_number_of_rcv_in_subarray_publi_violin(
@@ -1863,8 +1865,8 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
     # Here we consider all the potential subarrays containing from 3 to 6 receivers
     subarrays_list = []
     # n_rcv = [2, 3, 4, 5, 6]
-    # n_rcv = [3, 4, 5, 6]
-    n_rcv = [6]
+    n_rcv = [3, 4, 5, 6]
+    # n_rcv = [6]
 
     for i in n_rcv:
         subarrays_list += list(get_subarrays(nr_fullarray=6, nr_subarray=i))
@@ -2012,7 +2014,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
                 yerr=rmse_rtf_std,
                 capsize=4,
                 fmt="o-",
-                label="RTF",
+                label="RTF-MFP",
                 color="tab:blue",
                 markersize=4,
             )
@@ -2044,7 +2046,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
                 yerr=dr_rtf_std,
                 capsize=4,
                 fmt="o-",
-                label="RTF",
+                label="RTF-MFP",
                 color="tab:blue",
                 markersize=4,
             )
@@ -2076,7 +2078,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
                 yerr=msr_rtf_std,
                 capsize=4,
                 fmt="o-",
-                label="RTF",
+                label="RTF-MFP",
                 color="tab:blue",
                 markersize=4,
             )
@@ -2111,7 +2113,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
                 color="tab:blue",
                 capsize=4,
                 fmt="o-",
-                label="RMSE RTF",
+                label="RMSE RTF-MFP",
                 markersize=4,
             )
             ax1.set_xlabel("Number of receivers in subarray")
@@ -2139,7 +2141,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
                 color="tab:red",
                 capsize=4,
                 fmt="o-",
-                label="MSR RTF",
+                label="MSR RTF-MFP",
                 markersize=4,
             )
             ax2.set_ylabel("MSR [dB]", color="tab:red")
@@ -2151,10 +2153,10 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
             fig.legend(
                 handles,
                 labels,
-                loc="upper right",
+                loc="lower left",
                 frameon=True,
                 # bbox_to_anchor=(0.81, 0.7),
-                bbox_to_anchor=(0.4, 0.4),
+                bbox_to_anchor=(0.16, 0.17),
                 ncol=1,
             )
 
@@ -2162,6 +2164,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
             fpath = os.path.join(root_img, f"rmse_msr_combined_snr{snr}")
             plt.savefig(f"{fpath}.eps", dpi=300)
             plt.savefig(f"{fpath}.png", dpi=300)
+            plt.savefig(f"{fpath}.pdf", dpi=600)
 
     # Plot subfigs for all snrs
 
@@ -2189,7 +2192,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
             yerr=rmse_rtf_std_allsnrs[i],
             capsize=4,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
             color="tab:blue",
             markersize=4,
         )
@@ -2231,7 +2234,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
             yerr=dr_rtf_std_allsnrs[i],
             capsize=4,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
             color="tab:blue",
             markersize=4,
         )
@@ -2275,7 +2278,7 @@ def plot_performance_vs_number_of_rcv_in_subarray_publi(
             yerr=msr_rtf_std_allsnrs[i],
             capsize=4,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
             color="tab:blue",
             markersize=4,
         )
@@ -2340,7 +2343,7 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
             color="tab:blue",
             capsize=4,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
             markersize=4,
         )
         ax.set_xlabel("SNR [dB]")
@@ -2373,7 +2376,7 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
             color="tab:blue",
             capsize=4,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
             markersize=4,
         )
         plt.suptitle(f"Receivers = ({rcv_str})")
@@ -2399,7 +2402,7 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
             rmse_sa["rtf"],
             "o-",
             color="tab:blue",
-            label="RTF",
+            label="RTF-MFP",
             markersize=3,
         )
         plt.suptitle(f"Receivers = ({rcv_str})")
@@ -2426,7 +2429,7 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
             rmse_sa["rtf"],
             "o-",
             color="tab:blue",
-            label="RTF",
+            label="RTF-MFP",
             markersize=3,
         )
         axs[0].set_ylabel("RMSE [m]")
@@ -2451,7 +2454,7 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
             color="tab:blue",
             capsize=4,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
             markersize=3,
         )
         axs[1].set_xlabel("SNR [dB]")
@@ -2462,6 +2465,9 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
         plt.savefig(fpath)
 
         ## Combined plot ##
+        # Select fewer snrs to plot
+        rmse_sa = rmse_sa.loc[rmse_sa.index >= -10]
+        msr_sa = msr_sa.loc[msr_sa.index >= -10]
         # Plot RMSE
         fig, ax1 = plt.subplots(figsize=(8, 6))
         rmse_gcc = ax1.plot(
@@ -2476,18 +2482,19 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
             rmse_sa.index,
             rmse_sa["rtf"],
             "o-",
-            label="RMSE RTF",
+            label="RMSE RTF-MFP",
             color="tab:blue",
             markersize=4,
         )
         ax1.set_xlabel("SNR [dB]")
         ax1.set_ylabel("RMSE [m]", color="tab:blue")
         ax1.tick_params(axis="y", labelcolor="tab:blue")
-        ax1.legend(
-            loc="upper right",
-            frameon=False,
-            bbox_to_anchor=(0.69, 0.98),
-        )
+        # ax1.legend(
+        #     loc="lower left",
+        #     frameon=False,
+        #     # bbox_to_anchor=(0.69, 0.98),
+        #     bbox_to_anchor=(0.58, 0.71),
+        # )
 
         # Create a second y-axis for MSR
         ax2 = ax1.twinx()
@@ -2508,22 +2515,35 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
             color="tab:red",
             capsize=4,
             fmt="o-",
-            label="MSR RTF",
+            label="MSR RTF-MFP",
             markersize=4,
         )
 
         ax2.set_ylabel("MSR [dB]", color="tab:red")
         ax2.tick_params(axis="y", labelcolor="tab:red")
-        ax2.legend(
+        # ax2.legend(
+        #     loc="lower left",
+        #     frameon=False,
+        #     bbox_to_anchor=(0.58, 0.83),
+        #     # ncols=2,
+        # )
+        handles = [rmse_gcc[0], rmse_rtf[0], msr_gcc, msr_rtf]
+        labels = [h.get_label() for h in handles]
+        fig.legend(
+            handles,
+            labels,
             loc="upper right",
-            frameon=False,
-            bbox_to_anchor=(0.98, 0.98),
+            frameon=True,
+            # bbox_to_anchor=(0.81, 0.7),
+            bbox_to_anchor=(0.85, 0.98),
+            ncol=1,
         )
 
         # Save the combined figure
         fpath = os.path.join(root_img, f"rmse_msr_combined_vs_snr_{sa_key}")
         plt.savefig(f"{fpath}.eps", dpi=300)
         plt.savefig(f"{fpath}.png", dpi=300)
+        plt.savefig(f"{fpath}.pdf", dpi=600)
 
         plt.close("all")
 
@@ -2564,6 +2584,7 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
         fpath = os.path.join(root_img, f"delta_rmse_msr_combined_vs_snr_{sa_key}")
         plt.savefig(f"{fpath}.eps", dpi=300)
         plt.savefig(f"{fpath}.png", dpi=300)
+        plt.savefig(f"{fpath}.pdf", dpi=600)
 
         plt.close("all")
 
@@ -2711,7 +2732,7 @@ def study_perf_vs_snr_publi_lfm_wgn(
         #     rmse_sa["rtf"],
         #     "o-",
         #     color="tab:blue",
-        #     label="RTF",
+        #     label="RTF-MFP",
         #     markersize=3,
         # )
         # axs[0].set_ylabel("RMSE [m]")
@@ -2736,7 +2757,7 @@ def study_perf_vs_snr_publi_lfm_wgn(
         #     color="tab:blue",
         #     capsize=4,
         #     fmt="o-",
-        #     label="RTF",
+        #     label="RTF-MFP",
         #     markersize=3,
         # )
         # axs[1].set_xlabel("SNR [dB]")
@@ -2761,7 +2782,7 @@ def study_perf_vs_snr_publi_lfm_wgn(
         #     rmse_sa.index,
         #     rmse_sa["rtf"],
         #     "o-",
-        #     label="RMSE RTF",
+        #     label="RMSE RTF-MFP",
         #     color="tab:blue",
         #     markersize=4,
         # )
@@ -2793,7 +2814,7 @@ def study_perf_vs_snr_publi_lfm_wgn(
         #     color="tab:red",
         #     capsize=4,
         #     fmt="o-",
-        #     label="MSR RTF",
+        #     label="MSR RTF-MFP",
         #     markersize=4,
         # )
 
@@ -2888,7 +2909,7 @@ def study_perf_vs_snr_compare_arrays_publi(subarrays_list, root_img, root_data):
             rmse_sa["rtf"],
             "o-",
             color="tab:blue",
-            label="RTF",
+            label="RTF-MFP",
             markersize=3,
         )
         if i_sa == 0:
@@ -2914,7 +2935,7 @@ def study_perf_vs_snr_compare_arrays_publi(subarrays_list, root_img, root_data):
             color="tab:blue",
             capsize=4,
             fmt="o-",
-            label="RTF",
+            label="RTF-MFP",
             markersize=3,
         )
         axs[1, i_sa].set_xlabel("SNR [dB]")

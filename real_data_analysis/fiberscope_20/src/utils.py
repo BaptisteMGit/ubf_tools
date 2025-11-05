@@ -289,7 +289,7 @@ def optimum_stft_params(
                             **dist_kwargs,
                         )
 
-                        theta_c = get_theta_c(val=theta)
+                        theta_c = get_theta_c(val=theta, apply_mean=apply_mean)
 
                         # Store distance
                         src_pos_label = record_name.split("_")[-4]
@@ -331,7 +331,7 @@ def optimum_stft_params(
                             **dist_kwargs,
                         )
 
-                        theta_c = get_theta_c(val=theta)
+                        theta_c = get_theta_c(val=theta, apply_mean=apply_mean)
 
                         # Store distance
                         src_pos_label = record_name.split("_")[-4]

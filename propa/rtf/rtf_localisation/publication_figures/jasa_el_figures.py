@@ -86,9 +86,9 @@ def perf_vs_nb_rcv(snrs=[0], root_data=p.root_data):
     plot_performance_vs_number_of_rcv_in_subarray_publi(
         root_img=root_img, snrs=snrs, root_data=root_data
     )
-    plot_performance_vs_number_of_rcv_in_subarray_publi_violin(
-        root_img=root_img, snrs=snrs, root_data=root_data
-    )
+    # plot_performance_vs_number_of_rcv_in_subarray_publi_violin(
+    #     root_img=root_img, snrs=snrs, root_data=root_data
+    # )
 
 
 def perf_vs_snr(root_data):
@@ -152,8 +152,15 @@ if __name__ == "__main__":
     # perf_vs_nb_rcv(root_data=root_data, snrs=p2)
     # perf_vs_nb_rcv(root_data=root_data, snrs=p3)
     # perf_vs_nb_rcv(root_data=root_data, snrs=p4)
-    # perf_vs_nb_rcv(root_data=root_data, snrs=[-10])
 
-    # perf_vs_snr(root_data=root_data)
+    # study_lfm_vs_wgn_snr(root_data_lfm=root_data_lfm, root_data_wgn=root_data_wgn)
 
-    study_lfm_vs_wgn_snr(root_data_lfm=root_data_lfm, root_data_wgn=root_data_wgn)
+    ##### FIGURE RETENU POUR LA PUBLIE JASA EL #####
+    # Cas retenu pour la publication JASA EL
+    # ATTENTION : ne pas oublier de modifier le code dans la fonction plot_performance_vs_number_of_rcv_in_subarray_publi
+    # du module zhang_plot_utils.py afin de sélection les sous antennes à 3, 4,5 ou 6 capteurs
+    # ligne 1866 ->     n_rcv = [3, 4, 5, 6]
+    # perf_vs_nb_rcv(root_data=root_data_lfm, snrs=[-10])
+    # perf_vs_snr(root_data=root_data_lfm)
+
+    no_noise_amb_surf()

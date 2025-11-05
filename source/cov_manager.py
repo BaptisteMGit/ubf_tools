@@ -87,21 +87,21 @@ class CovManager:
 
         if add_identity:
             # Option 1 : use default diagonal loading factor (the value is the one used by Bologni et al. 2025 in the open source SVD-direct package)
-            diagonal_loading_factor = g.diagonal_loading
-            diagonal_loading_matrix = (
-                diagonal_loading_factor * np.identity(csdm_y.shape[-1])[np.newaxis, ...]
-            )
+            # diagonal_loading_factor = g.diagonal_loading
+            # diagonal_loading_matrix = (
+            #     diagonal_loading_factor * np.identity(csdm_y.shape[-1])[np.newaxis, ...]
+            # )
 
             # Option 2 : derive diagonal loading based on the CSDM values following different ad-hoc rules from the litterature
             # 2.1 # Ad-hoc ule propose by ref [30] and presented in Mestre and Lagunas 2006 - Finite sample size effect on minimum variance beamformers: optimum diagonal loading factor for large arrays
-            # diag_entries = np.diagonal(
-            #     csdm_y, axis1=1, axis2=2
-            # )  # Get diagonal entries at each frequencies
-            # diagonal_loading_factor = np.std(diag_entries, axis=1)
-            # diagonal_loading_matrix = (
-            #     diagonal_loading_factor[:, np.newaxis, np.newaxis]
-            #     * np.identity(csdm_y.shape[-1])[np.newaxis, ...]
-            # )
+            diag_entries = np.diagonal(
+                csdm_y, axis1=1, axis2=2
+            )  # Get diagonal entries at each frequencies
+            diagonal_loading_factor = np.std(diag_entries, axis=1)
+            diagonal_loading_matrix = (
+                diagonal_loading_factor[:, np.newaxis, np.newaxis]
+                * np.identity(csdm_y.shape[-1])[np.newaxis, ...]
+            )
 
             csdm_y = csdm_y + diagonal_loading_matrix
             # csdm_y = (

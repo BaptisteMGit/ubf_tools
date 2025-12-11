@@ -19,6 +19,7 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from time import time
+from misc import cast_matrix_to_target_shape
 from publication.publication_figure import PubFigure
 
 # PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=12, ticks_fontsize=20)
@@ -48,12 +49,15 @@ def nb_propagating_modes(f, c, depth, bottom_bc="pressure_release"):
     """
     k = 2 * np.pi * f / c
     if bottom_bc == "perfectly_rigid":
-        limit = 1 / 2 * (1 + 4 * depth * f / c)
+        # limit = 1 / 2 * (1 + 4 * depth * f / c)
+        limit = (
+            k * depth / np.pi + 1 / 2
+        )  # Same as above but clearer formulation from the definition of k_rm
         n = np.floor(limit).astype(int)  # Perfectly rigid bottom
 
     elif bottom_bc == "pressure_release":
         limit = k * depth / np.pi
-        n = np.floor(k * depth / np.pi).astype(int)  # Pressure release bottom
+        n = np.floor(limit).astype(int)  # Pressure release bottom
 
     # Ensure that the strict condition is met
     if (np.round(limit, 12)).is_integer():
@@ -115,7 +119,12 @@ def kr(m, f, depth, bottom_bc="pressure_release"):
 
 def alpha(depth, r):
 
-    alpha_r = np.exp(-1j * np.pi / 4) * 1 / (depth * np.sqrt(2 * np.pi * r))
+    # alpha_r = np.exp(-1j * np.pi / 4) * 1 / (depth * np.sqrt(2 * np.pi * r))
+
+    # Correction 14/11/2025 le terme exponentiel dépent du choix de la fonction de Hankel
+    # (1ere ou 2eme espèce). Ici on choisit la 2eme espèce pour le choix de la convention en exp(+jwt)
+    # ce qui donne un terme en exp(j3pi/4)
+    alpha_r = np.exp(1j * 3 * np.pi / 4) * 1 / (depth * np.sqrt(2 * np.pi * r))
 
     return alpha_r
 
@@ -134,6 +143,51 @@ def A_l(r0, rl):
     return A_l
 
 
+def intensity(f, z_src, z_rcv, r, depth, bottom_bc="pressure_release", n=None):
+
+    modes = np.arange(1, n + 1)
+    Am = u_m(modes, f, z_src, z_rcv, depth, bottom_bc=bottom_bc)
+    # First sum: sum A_m^2
+    S1 = np.sum(Am**2)
+
+    # Second sum: double sum over n>m
+    S2 = 0.0
+    M = len(modes)
+    for i_m in range(M):
+        for i_n in range(i_m + 1, M):
+            delta_kmn = kr(modes[i_m], f, depth, bottom_bc=bottom_bc) - kr(
+                modes[i_n], f, depth, bottom_bc=bottom_bc
+            )
+            S2 += 2 * Am[i_m] * Am[i_n] * np.cos(delta_kmn * r)
+
+    I = 8 * np.pi / (r * depth**2) * (S1 + S2)
+
+    return I
+
+
+def intensity_1(f, z_src, z_rcv, r, depth, bottom_bc="pressure_release", n=None):
+
+    m = np.arange(1, n + 1)
+    Am = u_m(m, f, z_src, z_rcv, depth, bottom_bc=bottom_bc)
+
+    # Cast arrays to common shape for broadcasting
+    target_shape = (len(m),) + r.shape
+    Am = cast_matrix_to_target_shape(Am, target_shape=target_shape)
+    r_2D = cast_matrix_to_target_shape(r, target_shape=target_shape)
+    krm = cast_matrix_to_target_shape(
+        kr(m, f, depth, bottom_bc=bottom_bc), target_shape=target_shape
+    )
+
+    I = (
+        8
+        * np.pi
+        / (r * depth**2)
+        * np.abs(np.sum(Am * np.exp(-1j * krm * r_2D), axis=0)) ** 2
+    )
+
+    return I
+
+
 def psi(m, z, depth, bottom_bc="pressure_release"):
 
     return np.sin(kz(m, depth, bottom_bc) * z)
@@ -146,6 +200,7 @@ def psi_normalised(m, z, depth, rho, bottom_bc="pressure_release"):
 
 def u_m(m, f, z_src, z, depth, bottom_bc="pressure_release"):
 
+    m = np.atleast_1d(m)
     u = (
         psi(m, z_src, depth, bottom_bc)
         * psi(m, z, depth, bottom_bc)

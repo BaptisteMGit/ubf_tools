@@ -12,9 +12,6 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
-import sys
-
-sys.path.append(r"C:\Users\baptiste.menetrier\Desktop\devPy\phd")
 
 import dask.array as da
 import scipy.interpolate as sp_int
@@ -27,6 +24,12 @@ from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_kraken import *
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_consts import *
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_testcases import *
 
+from propa.rtf.rtf_utils import (
+    D_hermitian_angle_fast,
+    D_frobenius,
+    D_frobenius_module,
+    D_frobenius_module_phase,
+)
 
 ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\rtf\short_ri_waveguide"
 ROOT_IMG_TEST = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\short_ri_waveguide\test_implementation"
@@ -59,7 +62,7 @@ def get_target_signal(testcase, snr_dB):
     return result
 
 
-def mfp_simulated_replicas(testcase, snr_dB):
+def mfp_simulated_replicas(testcase, snr_dB, dist="hermitian_angle"):
 
     n_rcv, z_src, r_src, delta_rcv = common_params()
 
@@ -148,7 +151,7 @@ def mfp_simulated_replicas(testcase, snr_dB):
 
     ## Step 3 : Match field processing ##
     # Select dist function to apply
-    dist = "hermitian_angle"
+
     if dist == "frobenius":
         dist_func = D_frobenius
         dist_kwargs = {}
@@ -156,14 +159,37 @@ def mfp_simulated_replicas(testcase, snr_dB):
     elif dist == "hermitian_angle":
         dist_func = D_hermitian_angle_fast
         dist_kwargs = {
-            "ax_rcv": 3,
+            "ax_rcv": 1,
+            "ax_f": 0,
             "unit": "deg",
             "apply_mean": True,
         }
+        dist_label = r"$\theta$ [°]"
+    elif dist == "frobenius_module":
+        dist_func = D_frobenius_module
+        dist_kwargs = {
+            "ax_rcv": 1,
+            "ax_f": 0,
+            "apply_mean": True,
+        }
+        dist_label = r"$\lVert \lvert\hat{\Pi} \rvert - \lvert \Pi \rvert \rVert_{2}$"
+    elif dist == "frobenius_module_phase":
+        dist_func = D_frobenius_module_phase
+        dist_kwargs = {
+            "ax_rcv": 1,
+            "ax_f": 0,
+            "apply_mean": True,
+        }
+        dist_label = r"$\lVert \hat{\Pi} - \Pi \rVert_{2}$"
+
+    # Reorganise dimensions
+    rtf_grid = rtf_grid.transpose("f", "idx_rcv", "z", "r")
+    rtf_cs = rtf_cs.transpose("f", "idx_rcv")
+    rtf_cw = rtf_cw.transpose("f", "idx_rcv")
 
     # Compute distance bewteen the estimated RTF and RTF at each grid point
-    D_cs = dist_func(rtf_cs, rtf_grid, **dist_kwargs)
-    D_cw = dist_func(rtf_cw, rtf_grid, **dist_kwargs)
+    D_cs = dist_func(rtf_cs.values, rtf_grid.values, **dist_kwargs)
+    D_cw = dist_func(rtf_cw.values, rtf_grid.values, **dist_kwargs)
 
     # Add the distance to the xarray
     D_cs = xr.DataArray(
@@ -188,7 +214,7 @@ def mfp_simulated_replicas(testcase, snr_dB):
         "root_img": root_img,
         "testcase": result["tc_label"],
         "mfp_method": "simulated_replicas",
-        "dist_label": r"$\theta \, \textrm{[°]}$",
+        "dist_label": dist_label,
     }
 
     plot_args["rtf_method"] = "cs"
@@ -212,7 +238,7 @@ def mfp_simulated_replicas(testcase, snr_dB):
     return pos_hat_cs, pos_hat_cw
 
 
-def mfp_measured_replicas(testcase, snr_dB):
+def mfp_measured_replicas(testcase, snr_dB, dist="hermitian_angle"):
 
     # Load params
     n_rcv, z_src, r_src, delta_rcv = common_params()
@@ -398,8 +424,22 @@ def mfp_measured_replicas(testcase, snr_dB):
     plt.savefig(fpath)
 
     ## Step 3 : Match field processing ##
+    # # Select dist function to apply
+    # dist = "hermitian_angle"
+    # if dist == "frobenius":
+    #     dist_func = D_frobenius
+    #     dist_kwargs = {}
+
+    # elif dist == "hermitian_angle":
+    #     dist_func = D_hermitian_angle_fast
+    #     dist_kwargs = {
+    #         "ax_rcv": 3,
+    #         "unit": "deg",
+    #         "apply_mean": True,
+    #     }
+
     # Select dist function to apply
-    dist = "hermitian_angle"
+
     if dist == "frobenius":
         dist_func = D_frobenius
         dist_kwargs = {}
@@ -407,10 +447,34 @@ def mfp_measured_replicas(testcase, snr_dB):
     elif dist == "hermitian_angle":
         dist_func = D_hermitian_angle_fast
         dist_kwargs = {
-            "ax_rcv": 3,
+            "ax_rcv": 1,
+            "ax_f": 0,
             "unit": "deg",
             "apply_mean": True,
         }
+        dist_label = r"$\theta$ [°]"
+    elif dist == "frobenius_module":
+        dist_func = D_frobenius_module
+        dist_kwargs = {
+            "ax_rcv": 1,
+            "ax_f": 0,
+            "apply_mean": True,
+        }
+        dist_label = r"$\lVert \lvert\hat{\Pi} \rvert - \lvert \Pi \rvert \rVert_{2}$"
+    elif dist == "frobenius_module_phase":
+        dist_func = D_frobenius_module_phase
+        dist_kwargs = {
+            "ax_rcv": 1,
+            "ax_f": 0,
+            "apply_mean": True,
+        }
+        dist_label = r"$\lVert \hat{\Pi} - \Pi \rVert_{2}$"
+
+    # Reorganise dimensions
+    rtf_cs_xr = rtf_cs_xr.transpose("f", "idx_rcv", "z", "r")
+    rtf_cw_xr = rtf_cw_xr.transpose("f", "idx_rcv", "z", "r")
+    rtf_cs = rtf_cs.transpose("f", "idx_rcv")
+    rtf_cw = rtf_cw.transpose("f", "idx_rcv")
 
     # Compute distance bewteen the estimated RTF and RTF at each grid point
     D_cs = dist_func(rtf_cs, rtf_cs_xr, **dist_kwargs)
@@ -441,7 +505,7 @@ def mfp_measured_replicas(testcase, snr_dB):
         "root_img": root_img,
         "testcase": result["tc_label"],
         "mfp_method": "measured_replicas",
-        "dist_label": r"$\theta \, \textrm{[°]}$",
+        "dist_label": dist_label,
     }
 
     plot_args["rtf_method"] = "cs"
@@ -827,16 +891,23 @@ if __name__ == "__main__":
     tc = 1
     snr = 0
 
-    mfp_simulated_replicas(tc, snr)
-    mfp_measured_replicas(tc, snr)
+    mfp_simulated_replicas(testcase=tc, snr_dB=snr, dist="hermitian_angle")
+    mfp_simulated_replicas(testcase=tc, snr_dB=snr, dist="frobenius_module")
+    mfp_simulated_replicas(testcase=tc, snr_dB=snr, dist="frobenius_module_phase")
 
-    snrs = [-30, -20, -10, 0, 10, 20, 30]
-    # snrs = np.arange(-50, 55, 5)
+    # mfp_measured_replicas(testcase=tc, snr_dB=snr, dist="hermitian_angle")
+    # mfp_measured_replicas(testcase=tc, snr_dB=snr, dist="frobenius_module")
+    # mfp_measured_replicas(testcase=tc, snr_dB=snr, dist="frobenius_module_phase")
 
-    _, z_src, r_src, _ = common_params()
+    # mfp_measured_replicas(tc, snr)
 
-    # snrs = [0, 1]
-    n_monte_carlo = 10
+    # snrs = [-30, -20, -10, 0, 10, 20, 30]
+    # # snrs = np.arange(-50, 55, 5)
+
+    # _, z_src, r_src, _ = common_params()
+
+    # # snrs = [0, 1]
+    # n_monte_carlo = 10
 
     # pos_cs_hat_simulated_replicas = []
     # pos_cw_hat_simulated_replicas = []

@@ -39,6 +39,116 @@ from misc import cast_matrix_to_target_shape
 #     return D_frobenius
 
 
+def D_frobenius_module(rtf_ref, rtf, **kwargs):
+    """Derive distance combining all receivers but using only RTF modules."""
+
+    apply_mean = kwargs.get("apply_mean", True)
+    apply_median = kwargs.get("apply_median", False)
+    ax_rcv = kwargs.get("ax_rcv", 1)
+    ax_f = kwargs.get("ax_f", 0)
+
+    # Moveaxis to fit with the reference order (nf, nrcv, ...)
+    rtf = np.moveaxis(rtf, [ax_f, ax_rcv], [0, 1])
+    rtf_ref = np.moveaxis(rtf_ref, [ax_f, ax_rcv], [0, 1])
+
+    # Case: 4D input for variation
+    if rtf.ndim == 4:
+
+        # Expand rtf_ref along the necessary axes for broadcasting
+        rtf_ref_expanded = cast_matrix_to_target_shape(rtf_ref, rtf.shape)
+
+        # Take modules
+        rtf = np.abs(rtf)
+        rtf_ref_expanded = np.abs(rtf_ref_expanded)
+
+        # Compute the difference
+        diff = rtf_ref_expanded - rtf
+        dist_f2 = np.sum(
+            np.abs(diff) ** 2, axis=1
+        )  # Sum over receiver axis to get dist squared per frequency
+        dist_f = np.sqrt(dist_f2)
+
+        if apply_mean:
+            dist = np.nanmean(dist_f, axis=0)
+        elif apply_median:
+            dist = np.nanmedian(dist_f, axis=0)
+
+        # Flatten if only one range or one depth
+        dist = np.squeeze(dist)
+
+    # Case: 2D input for simple distance evaluation
+    elif rtf.ndim == 2:
+
+        # Take modules
+        rtf = np.abs(rtf)
+        rtf_ref_expanded = np.abs(rtf_ref_expanded)
+
+        # Compute the difference
+        diff = rtf_ref_expanded - rtf
+        dist_f2 = np.sum(
+            np.abs(diff) ** 2, axis=1
+        )  # Sum over receiver axis to get dist squared per frequency
+        dist_f = np.sqrt(dist_f2)
+
+        if apply_mean:
+            dist = np.nanmean(dist_f)
+        elif apply_median:
+            dist = np.nanmedian(dist_f)
+
+    return dist
+
+
+def D_frobenius_module_phase(rtf_ref, rtf, **kwargs):
+    """Derive distance combining all receivers but using only RTF modules."""
+
+    apply_mean = kwargs.get("apply_mean", True)
+    apply_median = kwargs.get("apply_median", False)
+    ax_rcv = kwargs.get("ax_rcv", 1)
+    ax_f = kwargs.get("ax_f", 0)
+
+    # Moveaxis to fit with the reference order (nf, nrcv, ...)
+    rtf = np.moveaxis(rtf, [ax_f, ax_rcv], [0, 1])
+    rtf_ref = np.moveaxis(rtf_ref, [ax_f, ax_rcv], [0, 1])
+
+    # Case: 4D input for variation
+    if rtf.ndim == 4:
+
+        # Expand rtf_ref along the necessary axes for broadcasting
+        rtf_ref_expanded = cast_matrix_to_target_shape(rtf_ref, rtf.shape)
+
+        # Compute the difference
+        diff = rtf_ref_expanded - rtf
+        dist_f2 = np.sum(
+            np.abs(diff) ** 2, axis=1
+        )  # Sum over receiver axis to get dist squared per frequency
+        dist_f = np.sqrt(dist_f2)
+
+        if apply_mean:
+            dist = np.nanmean(dist_f, axis=0)
+        elif apply_median:
+            dist = np.nanmedian(dist_f, axis=0)
+
+        # Flatten if only one range or one depth
+        dist = np.squeeze(dist)
+
+    # Case: 2D input for simple distance evaluation
+    elif rtf.ndim == 2:
+
+        # Compute the difference
+        diff = rtf_ref_expanded - rtf
+        dist_f2 = np.sum(
+            np.abs(diff) ** 2, axis=1
+        )  # Sum over receiver axis to get dist squared per frequency
+        dist_f = np.sqrt(dist_f2)
+
+        if apply_mean:
+            dist = np.nanmean(dist_f)
+        elif apply_median:
+            dist = np.nanmedian(dist_f)
+
+    return dist
+
+
 def D_frobenius(rtf_ref, rtf, **kwargs):
     """Derive the generalised distance combining all receivers."""
 

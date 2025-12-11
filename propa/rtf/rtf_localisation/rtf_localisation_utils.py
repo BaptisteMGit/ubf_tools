@@ -3,7 +3,7 @@
 """
 @File    :   rtf_localisation_utils.py
 @Time    :   2024/11/06 14:02:23
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -15,6 +15,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from publication.publication_figure import PubFigure
 
 # ======================================================================================================================
 # Functions
@@ -22,6 +23,8 @@ import matplotlib.pyplot as plt
 
 
 def plot_ambiguity_surface(amb_surf, r_src, z_src, plot_args):
+
+    pfig = PubFigure()
 
     snr = plot_args["snr"]
     dist = plot_args["dist"]

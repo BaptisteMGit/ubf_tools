@@ -1420,7 +1420,7 @@ def plot_fullarray_ambiguity_surfaces_publi(
     )
 
     # Plot d_gcc and d_rtf
-    pfig = PubFigure(label_fontsize=40, ticks_fontsize=40, labelpad=25)
+    # pfig = PubFigure(label_fontsize=40, ticks_fontsize=40, labelpad=25)
 
     for i, dist in enumerate(["d_gcc", "d_rtf"]):
 
@@ -1850,22 +1850,22 @@ def load_and_sort_metrics_by_nb_rcv(snrs, root_data, subarrays_list):
 
 
 def plot_performance_vs_number_of_rcv_in_subarray_publi(
-    root_img, snrs=[0], root_data=p.root_data
+    root_img, snrs=[0], root_data=p.root_data, n_rcv=[3, 4, 5, 6]
 ):
 
     root_img = os.path.join(root_img, "errorbar")
     if not os.path.exists(root_img):
         os.makedirs(root_img)
 
-    pfig = PubFigure(
-        label_fontsize=25, ticks_fontsize=25, labelpad=15, legend_fontsize=14
-    )
+    # pfig = PubFigure(
+    #     label_fontsize=25, ticks_fontsize=25, labelpad=15, legend_fontsize=14
+    # )
 
     # Build sub arrays
-    # Here we consider all the potential subarrays containing from 3 to 6 receivers
+    # For the JASA EL we consider all the potential subarrays containing from 3 to 6 receivers -> n_rcv=[3,4,5,6]
     subarrays_list = []
     # n_rcv = [2, 3, 4, 5, 6]
-    n_rcv = [3, 4, 5, 6]
+    # n_rcv = [3, 4, 5, 6]
     # n_rcv = [6]
 
     for i in n_rcv:
@@ -2308,13 +2308,13 @@ def study_perf_vs_snr_publi(subarrays_list, root_img, root_data):
     # Load results (all available snrs)
     msr, dr, rmse = load_msr_rmse_res_subarrays(subarrays_list, root_data=root_data)
 
-    pfig = PubFigure(
-        label_fontsize=25,
-        ticks_fontsize=25,
-        labelpad=15,
-        legend_fontsize=14,
-        title_fontsize=14,
-    )
+    # pfig = PubFigure(
+    #     label_fontsize=25,
+    #     ticks_fontsize=25,
+    #     labelpad=15,
+    #     legend_fontsize=18,
+    #     title_fontsize=14,
+    # )
 
     for sa_key in msr.keys():
         # Extract info dataframes for current subarray

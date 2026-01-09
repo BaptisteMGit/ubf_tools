@@ -476,9 +476,11 @@ def field(f, z_src, r, z, depth, bottom_bc="pressure_release", n=None):
     # Define the field matrix
     p_field = np.zeros((len(f),) + zz_2d.shape, dtype=np.complex64)
 
+    n_null = n is None
+
     for i, fi in enumerate(f):
         n_max = nb_propagating_modes(fi, c0, depth, bottom_bc)
-        if n is None:
+        if n_null:
             n = n_max
         else:
             n = np.min([n_max, n])

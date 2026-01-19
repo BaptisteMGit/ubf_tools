@@ -27,7 +27,7 @@ openpyxl = "*"
 ipympl = "*"
 pyproj = "*"
 nptdms = "*"
-imageio = {extras = ["ffmpeg"], version = "*"}
+imageio = {extras = ["ffmpeg"] }
 pillow = "*"
 numba = "*"
 cdsapi = "*"
@@ -37,6 +37,10 @@ pygeoda = "*"
 cartopy = "*"
 statsmodels = "*"
 seaborn = "*"
+gpxpy = "*"
+geoid-toolkit = "*"
+pydiffmap = "*"
+soundfile = "*"
 
 [dev-packages]
 ipykernel = "*"

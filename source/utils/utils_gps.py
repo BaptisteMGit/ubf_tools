@@ -18,7 +18,7 @@ import pandas as pd
 from pyproj import Geod
 
 
-def gpx_to_csv(gpx_file, csv_file="output.csv"):
+def gpx_to_csv(gpx_file, csv_file="output.csv", verbose=False):
 
     # Charger le contenu GPX
     with open(gpx_file, "r", encoding="utf-8") as f:
@@ -45,8 +45,9 @@ def gpx_to_csv(gpx_file, csv_file="output.csv"):
         writer.writeheader()
         writer.writerows(rows)
 
-    print(f"✔ Conversion GPX → CSV terminée.")
-    print(f"✔ {len(rows)} points GPS exportés dans {csv_file}.")
+    if verbose:
+        print(f"✔ Conversion GPX → CSV terminée.")
+        print(f"✔ {len(rows)} points GPS exportés dans {csv_file}.")
 
 
 def interpolate_gps(df_gps, time_step="10s"):

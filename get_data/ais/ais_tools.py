@@ -236,6 +236,9 @@ def project_to_enu(df):
         df_2ships_enu (pd.DataFrame): ais data ENU coordinates
     """
 
+    # ATTENTION : cette fonction n'est pas excatement une transformation vers un repère ENU
+    # Azimuthal Equidistant (AEQD) -> Localement équivalent à un repère ENU 2D ? à vérifier !
+    # La vraie transformation est implémentée dans
     # Initialisation du système ENU avec un point d'origine (lon0, lat0)
     lon0, lat0 = df["lon"].median(), df["lat"].median()  # Barycentre
     proj_enu = Proj(proj="aeqd", datum="WGS84", lat_0=lat0, lon_0=lon0)  # ENU

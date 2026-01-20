@@ -709,6 +709,8 @@ def build_AIS_dataset(
             n_ais=n_ais,
             u_ais=u_ais,
             mmsi=mmsi,
+            t_start=t_start,
+            t_end=t_end,
             time_step=interpolation_time_step,
         )
     )
@@ -809,11 +811,12 @@ def interpolate_ais(ais, time_step="10s", subset_idx=None, mmsi_to_include=MMSI_
     return ais_interp, mmsi
 
 
-def format_ais_data(ais_interp, e_ais, n_ais, u_ais, mmsi, time_step):
-    # Reshape data and define common time vector
-    t_start = ais_interp["datetime"].min()
-    t_end = ais_interp["datetime"].max()
+def format_ais_data(ais_interp, e_ais, n_ais, u_ais, mmsi, t_start, t_end, time_step):
+    # t_start = ais_interp["datetime"].min()
+    # t_end = ais_interp["datetime"].max()
     # print(t_start, t_end)
+
+    # Define common time vector
     common_time = pd.date_range(start=t_start, end=t_end, freq=time_step)
 
     # ais_mat = []

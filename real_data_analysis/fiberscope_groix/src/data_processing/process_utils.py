@@ -38,6 +38,15 @@ ROOT_FOLDER = os.path.join(PROJECT_ROOT, "real_data_analysis", "fiberscope_groix
 DATA_FOLDER = os.path.join(ROOT_FOLDER, "data")
 IMG_FOLDER = os.path.join(ROOT_FOLDER, "img")
 
+# Convention Gen_Axes_D_V4 (Cf ELOBSBin2Wav.py)
+CHANNELS_ORDER = {
+    "Z": 0,
+    "X": 1,
+    "Y": 2,
+    "H": 3,
+}
+HYDRO_CHANNEL = "H"
+
 
 # ======================================================================================================================
 # Functions
@@ -212,7 +221,7 @@ def plot_arrivals_detection(
     first_emission_reception_datetime=None,
     last_emission_reception_datetime=None,
     plot_last_first=False,
-    t_hydro_source_offset=31,
+    t_hydro_source_offset=27,
     save=False,
     img_root=None,
     fs=2000,
@@ -225,7 +234,7 @@ def plot_arrivals_detection(
 ):
 
     if verbose:
-        print("Plotting arrivals...")
+        print("\t\tPlotting arrivals...")
 
     if img_root is None:
         img_root = os.path.join(IMG_FOLDER, "reception", "arrivals_detection")
@@ -498,7 +507,7 @@ def get_arrivals(signal_win, t_win, df_sequence, fs, verbose=False):
     """
 
     if verbose:
-        print("Applying matched filtering to detect arrivals...")
+        print("\t\tMatch filtering...")
 
     # Extract signal parameters
     f0 = df_sequence["Frequency min (Hz)"].iloc[0]
@@ -619,6 +628,335 @@ def detected_arrivals_psnr(sig_mf, peaks_idx, signal_params, fs, plot=False):
             plt.show()
 
     return np.array(psnr_arrivals)
+
+
+def select_dataframe_subset(df, subset_params):
+    """
+    Select a subset of a DataFrame based on specified parameters.
+    Parameters:
+    df : pd.DataFrame
+        The input DataFrame to filter.
+    subset_params : dict
+        Dictionary containing parameters to filter the DataFrame.
+        Keys are column names and values are the desired values to filter by.
+        If a value is None, that parameter is not used for filtering.
+    Returns:
+    df_sel : pd.DataFrame
+        The filtered DataFrame.
+    """
+
+    df_sel = df.copy()
+    for param in subset_params.keys():
+        if subset_params[param] is not None:
+            df_sel = df_sel[df_sel[param] == subset_params[param]]
+
+            df_sel.reset_index(drop=True, inplace=True)
+
+    return df_sel
+
+
+def build_arrivals_dataset(
+    df,
+    ds_gps,
+    sel_sequence_id,
+    pre_reception_time=5.0,
+    post_reception_time=10.0,
+    channels_order=CHANNELS_ORDER,
+    used_channel=HYDRO_CHANNEL,
+    t_hydro_source_offset=None,
+    img_root=None,
+    plot=False,
+    plot_zoom=False,
+    savefig=False,
+    verbose=False,
+):
+
+    # Define image folder
+    if img_root is None:
+        img_root = os.path.join(
+            IMG_FOLDER, "reception", "arrivals_detection", "preprocessing"
+        )
+
+    origin_keys = df.columns.to_list()
+    processed_keys = origin_keys
+    processed_data = {key: [] for key in processed_keys}
+
+    # List available wav files for each OBS (to avoid reloading them for each sequence)
+    wav_start_times_dict = {}
+    start_datetime_arr_dict = {}
+    for obs_id in [1, 2, 3]:
+        wav_start_times, start_datetime_arr = get_available_wav_files(obs_id)
+        wav_start_times_dict[obs_id] = wav_start_times
+        start_datetime_arr_dict[obs_id] = start_datetime_arr
+
+    print(f"Selected sequences: {len(sel_sequence_id)} -> {sel_sequence_id}")
+
+    for seq_id in sel_sequence_id:
+
+        if verbose:
+            print(f"Processing sequence ID: {seq_id}")
+
+        # Select dataframe for the current sequence
+        df_sequence = df.loc[df["Sequence_id"] == seq_id]
+
+        # # Correct offset # TODO remove
+        # # print(df_sequence["Emission datetime"])
+        # df_sequence["Emission datetime"] = df_sequence["Emission datetime"] + pd.Timedelta(t_hydro_source_offset, "s")
+        # print(df_sequence["Emission datetime"])
+
+        new_data = {}
+        # Lood over receivers
+        for obs_id in [1, 2, 3]:
+
+            if verbose:
+                print(f"\tOBS{obs_id}")
+
+            # Get available wav files for the selected OBS
+            wav_start_times = wav_start_times_dict[obs_id]
+            start_datetime_arr = start_datetime_arr_dict[obs_id]
+
+            ### Load signal of interest ###
+            # Get all theoretical arrival time
+            emissions_datetime = []
+            th_arrivals_datetime = []
+            th_propagation_delay = []
+            th_arrivals_seconds_from_start = []
+            for emission_id in range(df_sequence.shape[0]):
+                emission_i = df_sequence.iloc[emission_id]
+                emission_i_datetime = emission_i["Emission datetime"].to_pydatetime(
+                    warn=False
+                )
+                emissions_datetime.append(emission_i_datetime)
+
+                if emission_id == 0:  # First emission in sequence
+                    # Find the corresponding wav file (for now we assume that the sequence fits in a single wav file)
+                    wav_fpath, wav_start_datetime = get_wav_file_for_emission(
+                        emission_datetime=emission_i_datetime,
+                        start_datetime_arr=start_datetime_arr,
+                        wav_start_times=wav_start_times,
+                    )
+                    if verbose:
+                        print(f"\t\tWav file: {wav_fpath}")
+
+                # Emission position
+                emission_i_pos = [
+                    emission_i["Emission interpolated E GPS"],
+                    emission_i["Emission interpolated N GPS"],
+                    emission_i["Emission interpolated U GPS"],
+                ]
+                # Theoretical time of arrival
+                emission_i_reception_datetime, tr_i, prop_time_i = get_tr_apriori(
+                    emission_pos=emission_i_pos,
+                    ds_gps=ds_gps,
+                    wav_start_datetime=wav_start_datetime,
+                    emission_datetime=emission_i_datetime,
+                    obs_id=obs_id,
+                )
+                th_propagation_delay.append(prop_time_i)
+                th_arrivals_datetime.append(emission_i_reception_datetime)
+                th_arrivals_seconds_from_start.append(tr_i)
+
+            # Convert to numpy arrays
+            th_propagation_delay = np.array(th_propagation_delay)
+            th_arrivals_datetime = np.array(th_arrivals_datetime)
+            th_arrivals_seconds_from_start = np.array(th_arrivals_seconds_from_start)
+
+            # First emission in the sequence
+            first_emission_in_sequence_datetime = emissions_datetime[0]
+            first_emission_reception_datetime = th_arrivals_datetime[0]
+            tr_first = th_arrivals_seconds_from_start[0]
+            # Last emission in sequence
+            last_emission_in_sequence_datetime = emissions_datetime[-1]
+            last_emission_reception_datetime = th_arrivals_datetime[-1]
+            tr_last = th_arrivals_seconds_from_start[-1]
+            if verbose:
+                print(
+                    "\t\tEmission datetime (first pulse):",
+                    first_emission_in_sequence_datetime,
+                )
+                print(
+                    "\t\tEmission datetime (last pulse):",
+                    last_emission_in_sequence_datetime,
+                )
+
+            # Load the wav file
+            if verbose:
+                print("\t\tLoading wav file...")
+
+            # Read the wav file
+            signal, fs = sf.read(wav_fpath)
+            # Select the channel
+            signal = signal[:, channels_order[used_channel]]
+            # Center the signal
+            signal = signal - np.mean(signal)
+
+            # Compute source position considering the offset for the current emission   (Source, Longueur filée)
+            # TODO : implement position correction if needed
+
+            # Select the time window of interest for current sequence (all emissions in the sequence + pre/post times)
+            t_start_win = tr_first - pre_reception_time
+            t_end_win = tr_last + post_reception_time
+
+            # Convert in samples
+            n_samp_start_win = int(t_start_win * fs)
+            n_samp_end_win = int(t_end_win * fs)
+            # Slice signal
+            signal_win = signal[n_samp_start_win:n_samp_end_win]
+            wav_end_datetime = wav_start_datetime + pd.Timedelta(
+                signal.shape[0] * 1 / fs, "s"
+            )
+            t_dt = pd.date_range(
+                wav_start_datetime, wav_end_datetime, freq=f"{1/fs}s", inclusive="left"
+            )
+            t_win = t_dt[n_samp_start_win:n_samp_end_win]
+
+            if verbose:
+                print(
+                    f"\t\tWav file loaded (from {wav_start_datetime} to {wav_end_datetime})"
+                )
+
+            # print(f"Selected window from {t_win[0]} to {t_win[-1]}")
+
+            ### Get arrivals ###
+            (
+                peaks_idx,
+                peak_times,
+                t_arrivals,
+                sig_mf,
+                signal_params,
+                signal_win_filter,
+            ) = get_arrivals(
+                signal_win,
+                t_win,
+                df_sequence,
+                fs,
+                verbose=verbose,
+            )
+            signal_win = signal_win_filter
+
+            ### Plot arrivals ###
+            if plot:
+                sequence_info = {
+                    "seq_id": seq_id,
+                    "obs_id": obs_id,
+                    "vc_carte": df_sequence["Vc carte (V)"].iloc[0],
+                    "signal_type": df_sequence["Signal"].iloc[0],
+                    "emission_type": df_sequence["Source"].iloc[0],
+                }
+                nperseg = 64
+                noverlap = int(nperseg * 0.5)
+
+                plot_arrivals_detection(
+                    t_win=t_win,
+                    signal_win=signal_win,
+                    sig_mf=sig_mf,
+                    t_arrivals=t_arrivals,
+                    peaks_idx=peaks_idx,
+                    peak_times=peak_times,
+                    sequence_info=sequence_info,
+                    signal_params=signal_params,
+                    plot_last_first=False,
+                    first_emission_reception_datetime=first_emission_reception_datetime,
+                    last_emission_reception_datetime=last_emission_reception_datetime,
+                    t_hydro_source_offset=t_hydro_source_offset,
+                    save=savefig,
+                    img_root=img_root,
+                    fs=fs,
+                    nperseg=nperseg,
+                    noverlap=noverlap,
+                    first_emission_in_sequence_datetime=None,
+                    last_emission_in_sequence_datetime=None,
+                    verbose=verbose,
+                    plot_zoom=plot_zoom,
+                )
+
+                plt.close("all")
+
+            ### Compute quality metrics for the detected arrivals ###
+            # Derive peak signal to noise ratio (PSNR) on matched filtered signal
+            psnr_arrivals = detected_arrivals_psnr(
+                sig_mf, peaks_idx, signal_params, fs, plot=False
+            )
+            # print(psnr_arrivals)
+
+            # Convert t_arrivals into datetime.datetime
+            t_arrivals_dt = np.array(
+                [t_arr.to_pydatetime(warn=False) for t_arr in t_arrivals]
+            )
+
+            valid_detection = np.zeros_like(emissions_datetime, dtype=bool)
+
+            if len(t_arrivals_dt) < len(emissions_datetime):
+                print(
+                    f"Warning: only {len(t_arrivals_dt)} arrivals detected for {len(emissions_datetime)} emissions in sequence {seq_id} OBS{obs_id}"
+                )
+                # Pad in case not all peaks are detected
+                psnr_arrivals_full = np.full_like(
+                    emissions_datetime, np.nan, dtype=float
+                )
+                t_arrivals_full = np.full_like(emissions_datetime, pd.NaT)
+                t_arrivals_dt_full = np.full_like(emissions_datetime, pd.NaT)
+
+                # Associate arrivals to closest theoretical arrival
+                th_arrivals_datetime_copy = th_arrivals_datetime.copy()
+                for i_t_arr, t_arr_dt in enumerate(t_arrivals_dt):
+                    # Find closest
+                    closest_th_arr_idx = np.argmin(
+                        np.abs(th_arrivals_datetime_copy - t_arr_dt)
+                    )
+                    # Remove this theoretical arrival from the copy to avoid double matching
+                    th_arrivals_datetime_copy = np.delete(
+                        th_arrivals_datetime_copy, closest_th_arr_idx
+                    )
+                    # Replace in padded arrays
+                    t_arrivals_dt_full[closest_th_arr_idx] = t_arr_dt
+                    t_arrivals_full[closest_th_arr_idx] = t_arrivals[i_t_arr]
+                    psnr_arrivals_full[closest_th_arr_idx] = psnr_arrivals[i_t_arr]
+
+                    # Set valid_detection flag to true
+                    valid_detection[closest_th_arr_idx] = True
+
+            else:
+                t_arrivals_full = t_arrivals
+                t_arrivals_dt_full = t_arrivals_dt
+                psnr_arrivals_full = psnr_arrivals
+                valid_detection[:] = True
+
+            # Derive propagation time
+            try:
+                meas_propagation_delay = t_arrivals_dt_full - np.array(
+                    emissions_datetime
+                )
+                meas_propagation_delay = np.array(
+                    [t.total_seconds() for t in meas_propagation_delay]
+                )
+            except:
+                print("Wrong number of arrivals detected")
+
+            # Add new data for current obs
+            new_data[f"Arrival datetime OBS{obs_id}"] = list(t_arrivals_full)
+            new_data[f"Theoretical propagation time OBS{obs_id}"] = list(
+                th_propagation_delay
+            )
+            new_data[f"Measured propagation time OBS{obs_id}"] = list(
+                meas_propagation_delay
+            )
+            new_data[f"PSNR OBS{obs_id}"] = list(psnr_arrivals_full)
+            new_data[f"Valid detection OBS{obs_id}"] = list(valid_detection)
+
+        # Copy data for processed emissions
+        for key in origin_keys:
+            processed_data[key].extend(df_sequence[key].values)
+        for key in new_data:
+            if key in processed_data.keys():
+                processed_data[key].extend(new_data[key])
+            else:
+                processed_data[key] = new_data[key]
+
+    # Convert to dataframe
+    df_processed = pd.DataFrame(processed_data)
+
+    return df_processed
 
 
 if __name__ == "__main__":

@@ -13,7 +13,6 @@
 # Import
 # ======================================================================================================================
 import os
-import sys
 import datetime
 import numpy as np
 import xarray as xr

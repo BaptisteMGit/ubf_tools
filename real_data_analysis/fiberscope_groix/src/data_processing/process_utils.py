@@ -23,6 +23,11 @@ from datetime import datetime
 from scipy.signal import butter, lfilter
 import scipy.signal as sp
 
+# import tracemalloc
+from pympler import muppy, summary
+import gc
+
+
 # ======================================================================================================================
 # Defaults
 # ======================================================================================================================
@@ -210,18 +215,20 @@ def apply_match_filter(signal, fs, f0, f1, T):
 
 
 def plot_arrivals_detection(
-    t_win,
+    wav_start_datetime,
+    t_win_sec,
     signal_win,
     sig_mf,
-    t_arrivals,
+    t_arrivals_sec,
     peaks_idx,
-    peak_times,
+    peak_times_sec,
     sequence_info,
     signal_params,
     first_emission_reception_datetime=None,
     last_emission_reception_datetime=None,
     plot_last_first=False,
     t_hydro_source_offset=27,
+    cmap="Greys",
     save=False,
     img_root=None,
     fs=2000,
@@ -248,6 +255,15 @@ def plot_arrivals_detection(
 
     # Normalize signal for better visualization
     signal_win = signal_win / np.max(np.abs(signal_win))
+
+    # Convert time vectors to datetime
+    t_win = np.array([wav_start_datetime + pd.Timedelta(t, "s") for t in t_win_sec])
+    peak_times = np.array(
+        [wav_start_datetime + pd.Timedelta(t, "s") for t in peak_times_sec]
+    )
+    t_arrivals = np.array(
+        [wav_start_datetime + pd.Timedelta(t, "s") for t in t_arrivals_sec]
+    )
 
     # Compute spectrogram for visualization
     ff, tt, Sxx = sp.stft(
@@ -283,11 +299,12 @@ def plot_arrivals_detection(
             s=5,
             zorder=10,
         )
+        axs[1].legend(ncols=1, loc="lower left")
 
     axs[0].set_ylabel("s")
     axs[1].set_ylabel(r"$s_{mf}$")
 
-    im = axs[2].pcolormesh(tt_datetime, ff, 10 * np.log10(np.abs(Sxx)), cmap="jet")
+    im = axs[2].pcolormesh(tt_datetime, ff, 10 * np.log10(np.abs(Sxx)), cmap=cmap)
     # fig.colorbar(im, cax=axs[2], label=r"Pa$^2$ / Hz in dB")
     axs[2].set_ylabel("Fréquence [Hz]")
 
@@ -307,7 +324,7 @@ def plot_arrivals_detection(
                 f"{iarr}",
                 xy=(t_arrival, np.max(ff) * 0.75),
                 xytext=(t_arrival, np.max(ff) * 0.95),
-                arrowprops=dict(arrowstyle="->", color="black"),
+                arrowprops=dict(arrowstyle="->", color="red"),
                 horizontalalignment="center",
                 verticalalignment="center",
             )
@@ -382,8 +399,8 @@ def plot_arrivals_detection(
                     label=r"$T_{\text{emission}}(\text{last}) + \tau_{H_{\text{source}}}$",
                 )
 
-    for i in range(len(axs)):
-        axs[i].legend(ncols=2, loc="lower left")
+        for i in range(len(axs)):
+            axs[i].legend(ncols=2, loc="lower left")
 
     fig.supxlabel("Temps UTC")
     # fig.supylabel("Signal")
@@ -395,6 +412,7 @@ def plot_arrivals_detection(
         img_fname = f"arrival_detection_seqID{seq_id}_OBS{obs_id}.png"
         img_fpath = os.path.join(img_root, img_fname)
         fig.savefig(img_fpath, dpi=300)
+        plt.close(fig)
 
     # Plot a zoom on the first emission reception
     if len(peaks_idx) > 0 and plot_zoom:
@@ -452,7 +470,7 @@ def plot_arrivals_detection(
         # axs[2].plot(t_win, sig_mf_phase)
         # axs[2].set_ylabel(r"$\phi$ [rad]")
 
-        im = axs[2].pcolormesh(tt_datetime, ff, 10 * np.log10(np.abs(Sxx)), cmap="jet")
+        im = axs[2].pcolormesh(tt_datetime, ff, 10 * np.log10(np.abs(Sxx)), cmap=cmap)
         axs[2].set_ylabel("Fréquence [Hz]")
         for i in range(len(axs)):
             axs[i].set_xlim(
@@ -473,17 +491,143 @@ def plot_arrivals_detection(
             )
             img_fpath = os.path.join(img_root, img_fname)
             fig.savefig(img_fpath, dpi=300)
+            plt.close(fig)
 
 
-def get_arrivals(signal_win, t_win, df_sequence, fs, verbose=False):
+# def plot_arrivals_detection(
+#     t_win_sec,  # np.ndarray (seconds)
+#     signal_win,
+#     sig_mf,
+#     t_arrivals_sec,  # np.ndarray (seconds)
+#     peaks_idx,
+#     peak_times,  # np.ndarray (seconds)
+#     sequence_info,
+#     signal_params,
+#     t0_datetime=None,  # NEW
+#     first_emission_reception_datetime=None,
+#     last_emission_reception_datetime=None,
+#     plot_last_first=False,
+#     t_hydro_source_offset=27,
+#     cmap="Greys",
+#     save=False,
+#     img_root=None,
+#     fs=2000,
+#     nperseg=64,
+#     noverlap=32,
+#     verbose=False,
+#     plot_zoom=False,
+# ):
+
+#     if verbose:
+#         print("\t\tPlotting arrivals...")
+
+#     # === Time handling ===============================================
+#     if t0_datetime is not None:
+#         t_plot = t0_datetime + pd.to_timedelta(t_win_sec, unit="s")
+#     else:
+#         t_plot = t_win_sec
+
+#     # === Normalize signal ============================================
+#     max_val = np.max(np.abs(signal_win))
+#     if max_val > 0:
+#         signal_win = signal_win / max_val
+
+#     # === Spectrogram ================================================
+#     ff, tt, Sxx = sp.stft(
+#         signal_win,
+#         fs=fs,
+#         nperseg=nperseg,
+#         noverlap=noverlap,
+#         scaling="psd",
+#     )
+
+#     if t0_datetime is not None:
+#         tt_plot = t0_datetime + pd.to_timedelta(tt, unit="s")
+#     else:
+#         tt_plot = tt
+
+#     # === Figure ======================================================
+#     fig, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+
+#     axs[0].plot(t_plot, signal_win, color="k")
+#     axs[0].set_ylim([-1, 1])
+
+#     axs[1].plot(t_plot, sig_mf, color="k")
+#     axs[1].set_ylim([-1, 1])
+
+#     # === Peaks =======================================================
+#     if len(peaks_idx) > 0:
+#         axs[1].scatter(
+#             t_plot[peaks_idx],
+#             sig_mf[peaks_idx],
+#             color="r",
+#             s=5,
+#             label=r"$t_{\text{peak}}$",
+#         )
+#         axs[1].legend(loc="lower left")
+
+#     # === Spectrogram plot ============================================
+#     im = axs[2].pcolormesh(tt_plot, ff, 10 * np.log10(np.abs(Sxx) + 1e-12), cmap=cmap)
+#     axs[2].set_ylabel("Fréquence [Hz]")
+
+#     # === Arrival annotations ========================================
+#     for i, t_arr in enumerate(t_arrivals_sec):
+#         x = (
+#             t0_datetime + pd.to_timedelta(t_arr, unit="s")
+#             if t0_datetime is not None
+#             else t_arr
+#         )
+#         axs[0].annotate(
+#             f"{i}",
+#             xy=(x, 0.5),
+#             xytext=(x, 0.9),
+#             arrowprops=dict(arrowstyle="->", color="red"),
+#             ha="center",
+#         )
+#         axs[2].annotate(
+#             f"{i}",
+#             xy=(x, np.max(ff) * 0.7),
+#             xytext=(x, np.max(ff) * 0.95),
+#             arrowprops=dict(arrowstyle="->", color="red"),
+#             ha="center",
+#         )
+
+#     # === Vertical reference lines ===================================
+#     if plot_last_first and t0_datetime is not None:
+#         for dt in [
+#             first_emission_reception_datetime,
+#             last_emission_reception_datetime,
+#         ]:
+#             if dt is not None:
+#                 for ax in axs:
+#                     ax.axvline(dt, linestyle="--")
+
+#                 for ax in axs:
+#                     ax.axvline(
+#                         dt + pd.Timedelta(t_hydro_source_offset, "s"),
+#                         linestyle="-",
+#                     )
+
+#     fig.supxlabel("Temps")
+#     fig.suptitle(
+#         f"Sequence {sequence_info.get('seq_id')} - OBS{sequence_info.get('obs_id')}"
+#     )
+
+#     if save:
+#         os.makedirs(img_root, exist_ok=True)
+#         fig.savefig(os.path.join(img_root, "arrival_detection.png"), dpi=300)
+#         plt.close(fig)
+
+
+def get_arrivals(signal_win, t_win_sec, df_sequence, fs, verbose=False):
     """
     Apply matched filtering to detect arrivals in a signal window.
 
     Parameters:
     signal_win : ndarray
         The signal samples in the time window to process.
-    t_win : pd.DatetimeIndex
-        The time vector corresponding to the signal window.
+    t_win_sec : ndarray
+        The time vector corresponding to the signal window (in sec from start).
     df_sequence : pd.DataFrame
         DataFrame containing sequence parameters.
     fs : float
@@ -493,8 +637,8 @@ def get_arrivals(signal_win, t_win, df_sequence, fs, verbose=False):
     Returns:
     peaks_idx : ndarray
         Indices of detected peaks in the matched filtered signal.
-    peak_times : pd.DatetimeIndex
-        Times of detected peaks.
+    peak_times_sec : ndarray
+        Times of detected peaks (in sec from start).
     t_arrivals : pd.DatetimeIndex
         Estimated arrival times corrected for chirp duration.
     sig_mf : ndarray
@@ -539,12 +683,111 @@ def get_arrivals(signal_win, t_win, df_sequence, fs, verbose=False):
     peaks_idx, properties = sp.find_peaks(
         sig_mf, height=np.std(sig_mf) * 5, distance=dist
     )
-    peak_times = t_win[peaks_idx]
+    peak_times_sec = t_win_sec[peaks_idx]
 
     # Correct arrivals for chirp duration
-    t_arrivals = peak_times - pd.Timedelta(1 / 2 * chirp_T, "s")
+    # t_arrivals = peak_times - pd.Timedelta(1 / 2 * chirp_T, "s")
+    t_arrivals_sec = peak_times_sec - 0.5 * chirp_T
 
-    return peaks_idx, peak_times, t_arrivals, sig_mf, signal_params, signal_win_filter
+    return (
+        peaks_idx,
+        peak_times_sec,
+        t_arrivals_sec,
+        sig_mf,
+        signal_params,
+        signal_win_filter,
+    )
+
+
+# def get_arrivals(signal_win, t_win_sec, df_sequence, fs, verbose=False):
+#     """
+#     Apply matched filtering to detect arrivals in a signal window.
+
+#     Parameters
+#     ----------
+#     signal_win : np.ndarray
+#         Signal samples in the window.
+#     t_win_sec : np.ndarray (float)
+#         Time vector in seconds (relative).
+#     df_sequence : pd.DataFrame
+#         DataFrame containing sequence parameters.
+#     fs : float
+#         Sampling frequency in Hz.
+#     verbose : bool
+
+#     Returns
+#     -------
+#     peaks_idx : np.ndarray
+#         Indices of detected peaks.
+#     peak_times : np.ndarray (float)
+#         Peak times in seconds.
+#     t_arrivals : np.ndarray (float)
+#         Arrival times corrected for chirp duration (seconds).
+#     sig_mf : np.ndarray
+#         Matched filtered signal.
+#     signal_params : dict
+#         Signal parameters.
+#     signal_win_filter : np.ndarray
+#         Bandpass filtered signal.
+#     """
+
+#     # import numpy as np
+#     # from scipy.signal import butter, lfilter, find_peaks
+
+#     if verbose:
+#         print("\t\tMatch filtering...")
+
+#     # === Signal parameters ============================================
+#     row0 = df_sequence.iloc[0]
+#     f0 = row0["Frequency min (Hz)"]
+#     f1 = row0["Frequency max (Hz)"]
+#     chirp_T = row0["Duration (s)"]
+#     T_repeat = row0["Trepeat (s)"]
+
+#     signal_params = {
+#         "f0": f0,
+#         "f1": f1,
+#         "chirp_T": chirp_T,
+#         "T_repeat": T_repeat,
+#     }
+
+#     # === Bandpass filter ==============================================
+#     order = 4
+#     bandwidth = f1 - f0
+#     lowcut = f0 + 0.1 * bandwidth
+#     highcut = f1 - 0.1 * bandwidth
+
+#     b, a = butter(order, [lowcut, highcut], fs=fs, btype="band")
+#     signal_win_filter = lfilter(b, a, signal_win)
+
+#     # === Matched filter ===============================================
+#     _, sig_mf = apply_match_filter(signal_win_filter, fs, f0, f1, chirp_T)
+
+#     max_val = np.max(np.abs(sig_mf))
+#     if max_val > 0:
+#         sig_mf /= max_val
+
+#     # === Peak detection ===============================================
+#     min_dist = int(0.9 * T_repeat * fs)
+
+#     peaks_idx, _ = sp.find_peaks(
+#         sig_mf,
+#         height=5 * np.std(sig_mf),
+#         distance=min_dist,
+#     )
+
+#     # === Time handling (FLOAT ONLY) ===================================
+#     peak_times = t_win_sec[peaks_idx]
+#     t_arrivals = peak_times - 0.5 * chirp_T
+
+#     return (
+#         peaks_idx,
+#         peak_times.astype(np.float32),
+#         t_arrivals.astype(np.float32),
+#         sig_mf.astype(np.float32),
+#         signal_params,
+#         signal_win_filter.astype(np.float32),
+#     )
 
 
 def detected_arrivals_psnr(sig_mf, peaks_idx, signal_params, fs, plot=False):
@@ -677,6 +920,9 @@ def build_arrivals_dataset(
             IMG_FOLDER, "reception", "arrivals_detection", "preprocessing"
         )
 
+    # --------------------------------------------------
+    # Initialisation
+    # --------------------------------------------------
     origin_keys = df.columns.to_list()
     processed_keys = origin_keys
     processed_data = {key: [] for key in processed_keys}
@@ -691,6 +937,9 @@ def build_arrivals_dataset(
 
     print(f"Selected sequences: {len(sel_sequence_id)} -> {sel_sequence_id}")
 
+    # --------------------------------------------------
+    # Main loop over sequences
+    # --------------------------------------------------
     for seq_id in sel_sequence_id:
 
         if verbose:
@@ -715,7 +964,9 @@ def build_arrivals_dataset(
             wav_start_times = wav_start_times_dict[obs_id]
             start_datetime_arr = start_datetime_arr_dict[obs_id]
 
-            ### Load signal of interest ###
+            # -----------------------------------------
+            # 1) Get theoretical arrivals
+            # -----------------------------------------
             # Get all theoretical arrival time
             emissions_datetime = []
             th_arrivals_datetime = []
@@ -779,6 +1030,9 @@ def build_arrivals_dataset(
                     last_emission_in_sequence_datetime,
                 )
 
+            # -----------------------------------------
+            # 2) Load signal
+            # -----------------------------------------
             # Load the wav file
             if verbose:
                 print("\t\tLoading wav file...")
@@ -805,36 +1059,41 @@ def build_arrivals_dataset(
             wav_end_datetime = wav_start_datetime + pd.Timedelta(
                 signal.shape[0] * 1 / fs, "s"
             )
-            t_dt = pd.date_range(
-                wav_start_datetime, wav_end_datetime, freq=f"{1/fs}s", inclusive="left"
-            )
-            t_win = t_dt[n_samp_start_win:n_samp_end_win]
+            # t_dt = pd.date_range(
+            #     wav_start_datetime, wav_end_datetime, freq=f"{1/fs}s", inclusive="left"
+            # )
+            # t_win = t_dt[n_samp_start_win:n_samp_end_win]
+
+            t_sec = np.arange(signal.shape[0]) / fs
+            t_win_sec = t_sec[n_samp_start_win:n_samp_end_win]
 
             if verbose:
                 print(
                     f"\t\tWav file loaded (from {wav_start_datetime} to {wav_end_datetime})"
                 )
 
-            # print(f"Selected window from {t_win[0]} to {t_win[-1]}")
-
-            ### Get arrivals ###
+            # -----------------------------------------
+            # 3) Process signal to detect arrivals
+            # -----------------------------------------
             (
                 peaks_idx,
-                peak_times,
-                t_arrivals,
+                peak_times_sec,
+                t_arrivals_sec,
                 sig_mf,
                 signal_params,
                 signal_win_filter,
             ) = get_arrivals(
                 signal_win,
-                t_win,
+                t_win_sec,
                 df_sequence,
                 fs,
                 verbose=verbose,
             )
             signal_win = signal_win_filter
 
-            ### Plot arrivals ###
+            # -----------------------------------------
+            # 4) Plot detected arrivals (optional)
+            # -----------------------------------------
             if plot:
                 sequence_info = {
                     "seq_id": seq_id,
@@ -843,16 +1102,17 @@ def build_arrivals_dataset(
                     "signal_type": df_sequence["Signal"].iloc[0],
                     "emission_type": df_sequence["Source"].iloc[0],
                 }
-                nperseg = 64
+                nperseg = 256
                 noverlap = int(nperseg * 0.5)
 
                 plot_arrivals_detection(
-                    t_win=t_win,
+                    wav_start_datetime=wav_start_datetime,
+                    t_win_sec=t_win_sec,
                     signal_win=signal_win,
                     sig_mf=sig_mf,
-                    t_arrivals=t_arrivals,
+                    t_arrivals_sec=t_arrivals_sec,
                     peaks_idx=peaks_idx,
-                    peak_times=peak_times,
+                    peak_times_sec=peak_times_sec,
                     sequence_info=sequence_info,
                     signal_params=signal_params,
                     plot_last_first=False,
@@ -872,16 +1132,26 @@ def build_arrivals_dataset(
 
                 plt.close("all")
 
-            ### Compute quality metrics for the detected arrivals ###
+            # -----------------------------------------
+            # 6) Derive PSNR for each detected arrival
+            # -----------------------------------------
             # Derive peak signal to noise ratio (PSNR) on matched filtered signal
             psnr_arrivals = detected_arrivals_psnr(
                 sig_mf, peaks_idx, signal_params, fs, plot=False
             )
-            # print(psnr_arrivals)
 
+            # -----------------------------------------
+            # 7) Matching arrivals -> emissions
+            # -----------------------------------------
             # Convert t_arrivals into datetime.datetime
+            # t_arrivals_dt = np.array(
+            #     [t_arr.to_pydatetime(warn=False) for t_arr in t_arrivals]
+            # )
             t_arrivals_dt = np.array(
-                [t_arr.to_pydatetime(warn=False) for t_arr in t_arrivals]
+                [
+                    wav_start_datetime + pd.Timedelta(t_arr_s, "s")
+                    for t_arr_s in t_arrivals_sec
+                ]
             )
 
             valid_detection = np.zeros_like(emissions_datetime, dtype=bool)
@@ -894,7 +1164,7 @@ def build_arrivals_dataset(
                 psnr_arrivals_full = np.full_like(
                     emissions_datetime, np.nan, dtype=float
                 )
-                t_arrivals_full = np.full_like(emissions_datetime, pd.NaT)
+                # t_arrivals_full = np.full_like(emissions_datetime, pd.NaT)
                 t_arrivals_dt_full = np.full_like(emissions_datetime, pd.NaT)
 
                 # Associate arrivals to closest theoretical arrival
@@ -910,14 +1180,17 @@ def build_arrivals_dataset(
                     )
                     # Replace in padded arrays
                     t_arrivals_dt_full[closest_th_arr_idx] = t_arr_dt
-                    t_arrivals_full[closest_th_arr_idx] = t_arrivals[i_t_arr]
+                    # t_arrivals_full[closest_th_arr_idx] = t_arrivals[i_t_arr]
                     psnr_arrivals_full[closest_th_arr_idx] = psnr_arrivals[i_t_arr]
 
                     # Set valid_detection flag to true
                     valid_detection[closest_th_arr_idx] = True
 
+                # Release memory
+                del th_arrivals_datetime_copy
+
             else:
-                t_arrivals_full = t_arrivals
+                # t_arrivals_full = t_arrivals
                 t_arrivals_dt_full = t_arrivals_dt
                 psnr_arrivals_full = psnr_arrivals
                 valid_detection[:] = True
@@ -933,8 +1206,12 @@ def build_arrivals_dataset(
             except:
                 print("Wrong number of arrivals detected")
 
-            # Add new data for current obs
-            new_data[f"Arrival datetime OBS{obs_id}"] = list(t_arrivals_full)
+            # -----------------------------------------
+            # 7) Store results
+            # -----------------------------------------
+            # new_data[f"Arrival datetime OBS{obs_id}"] = list(t_arrivals_full)
+            new_data[f"Arrival datetime OBS{obs_id}"] = list(t_arrivals_dt_full)
+
             new_data[f"Theoretical propagation time OBS{obs_id}"] = list(
                 th_propagation_delay
             )
@@ -944,7 +1221,9 @@ def build_arrivals_dataset(
             new_data[f"PSNR OBS{obs_id}"] = list(psnr_arrivals_full)
             new_data[f"Valid detection OBS{obs_id}"] = list(valid_detection)
 
-        # Copy data for processed emissions
+        # -----------------------------------------
+        # 8) Aggregate results
+        # -----------------------------------------
         for key in origin_keys:
             processed_data[key].extend(df_sequence[key].values)
         for key in new_data:
@@ -953,10 +1232,347 @@ def build_arrivals_dataset(
             else:
                 processed_data[key] = new_data[key]
 
+        # # Release memory
+        # del t_dt, t_win, new_data
+        # gc.collect()
+
+        if verbose:
+            print(f"\tSequence ID {seq_id} processed.")
+            all_objects = muppy.get_objects()
+            summary.print_(summary.summarize(all_objects))
+
     # Convert to dataframe
     df_processed = pd.DataFrame(processed_data)
 
+    # Attribute f_score to each sequence
+    df_processed = attribute_sequence_f_score(df_processed, verbose=verbose)
+
     return df_processed
+
+
+def attribute_sequence_f_score(df_processed, verbose=False):
+    for sel_id in df_processed["Sequence_id"].unique():
+        df_seq = df_processed[df_processed["Sequence_id"] == sel_id]
+
+        for obs_id in [1, 2, 3]:
+
+            # First criterion: ratio of detected arrivals
+            col_name = f"Valid detection OBS{obs_id}"
+            n_detected = df_seq[col_name].sum()
+            crit_1 = n_detected / df_seq.shape[0]
+
+            # Second criterion: error relative to expected repetition period
+            col_name = f"Arrival datetime OBS{obs_id}"
+            t_diff_mean = df_seq[col_name].diff().mean().total_seconds()
+            repeat_period_em = df_seq["Trepeat (s)"].iloc[0]
+            crit_2 = 1 - abs(t_diff_mean - repeat_period_em) / repeat_period_em
+            if t_diff_mean < 0 or crit_2 < 0 or np.isnan(crit_2):
+                crit_2 = 0
+
+            # Third criterion: normalized psnr
+            col_name = f"PSNR OBS{obs_id}"
+            psnr_mean = df_seq[col_name].mean()
+            crit_3 = psnr_mean / df_processed[col_name].max()
+            if np.isnan(crit_3):
+                crit_3 = 0
+
+            # Final score as sum of criteria
+            final_score = (crit_1 + crit_2 + crit_3) / 3
+            if verbose:
+                print(
+                    f"Sequence ID {sel_id} - OBS{obs_id} : Score = {final_score:.2f} (C1={crit_1:.2f}, C2={crit_2:.2f}, C3={crit_3:.2f})"
+                )
+
+            # Store final score in dataframe
+            df_processed.loc[
+                (df_processed["Sequence_id"] == sel_id),
+                f"f_score OBS{obs_id}",
+            ] = final_score
+
+    return df_processed
+
+
+# def process_sequence_window(
+#     signal,
+#     fs,
+#     df_sequence,
+#     sequence_info,
+#     win_start_idx,
+#     win_end_idx,
+#     plot=False,
+#     save_plot=False,
+#     img_root=None,
+#     verbose=False,
+# ):
+#     """
+#     Process a single signal window and detect arrivals.
+#     All times are handled in SECONDS (float), never as DatetimeIndex.
+#     """
+
+#     # --------------------------------------------------
+#     # Window extraction
+#     # --------------------------------------------------
+#     signal_win = signal[win_start_idx:win_end_idx]
+
+#     # Relative time vector in seconds
+#     t_win_sec = np.arange(signal_win.shape[0]) / fs
+
+#     # --------------------------------------------------
+#     # Arrival detection
+#     # --------------------------------------------------
+#     (
+#         peaks_idx,
+#         peak_times_sec,
+#         t_arrivals_sec,
+#         sig_mf,
+#         signal_params,
+#         signal_win_filter,
+#     ) = get_arrivals(
+#         signal_win=signal_win,
+#         t_win_sec=t_win_sec,
+#         df_sequence=df_sequence,
+#         fs=fs,
+#         verbose=verbose,
+#     )
+
+#     # --------------------------------------------------
+#     # Plot (optional)
+#     # --------------------------------------------------
+#     if plot:
+#         plot_arrivals_detection(
+#             t_win_sec=t_win_sec,
+#             signal_win=signal_win_filter,
+#             sig_mf=sig_mf,
+#             t_arrivals_sec=t_arrivals_sec,
+#             peaks_idx=peaks_idx,
+#             peak_times=peak_times_sec,
+#             sequence_info=sequence_info,
+#             signal_params=signal_params,
+#             fs=fs,
+#             save=save_plot,
+#             img_root=img_root,
+#             verbose=verbose,
+#         )
+
+#     # --------------------------------------------------
+#     # Output
+#     # --------------------------------------------------
+#     return {
+#         "t_arrivals_sec": t_arrivals_sec,
+#         "peaks_idx": peaks_idx,
+#     }
+
+
+# def build_arrivals_dataset(
+#     df,
+#     ds_gps,
+#     sel_sequence_id,
+#     pre_reception_time=5.0,
+#     post_reception_time=10.0,
+#     channels_order=CHANNELS_ORDER,
+#     used_channel=HYDRO_CHANNEL,
+#     t_hydro_source_offset=None,
+#     img_root=None,
+#     plot=False,
+#     plot_zoom=False,
+#     savefig=False,
+#     verbose=False,
+# ):
+
+#     if img_root is None:
+#         img_root = os.path.join(
+#             IMG_FOLDER, "reception", "arrivals_detection", "preprocessing"
+#         )
+
+#     # ----- INITIALISATION -----
+#     origin_keys = df.columns.to_list()
+#     processed_data = {k: [] for k in origin_keys}
+
+#     # ----- WAV FILES CACHE -----
+#     wav_start_times_dict = {}
+#     start_datetime_arr_dict = {}
+#     for obs_id in [1, 2, 3]:
+#         wav_start_times, start_datetime_arr = get_available_wav_files(obs_id)
+#         wav_start_times_dict[obs_id] = wav_start_times
+#         start_datetime_arr_dict[obs_id] = start_datetime_arr
+
+#     print(f"Selected sequences: {len(sel_sequence_id)} -> {sel_sequence_id}")
+
+#     # ----- BOUCLE PRINCIPALE -----
+#     for seq_id in sel_sequence_id:
+
+#         if verbose:
+#             print(f"Processing sequence ID: {seq_id}")
+
+#         # Sélection des emissions (np.datetime64)
+#         df_sequence = df.loc[df["Sequence_id"] == seq_id]
+#         emissions_datetime = df_sequence["Emission datetime"].to_numpy(
+#             dtype="datetime64[ns]"
+#         )
+
+#         # Préallocation des nouveaux champs pour 3 OBS
+#         new_data = {}
+
+#         for obs_id in [1, 2, 3]:
+
+#             if verbose:
+#                 print(f"\tOBS{obs_id}")
+
+#             wav_start_times = wav_start_times_dict[obs_id]
+#             start_datetime_arr = start_datetime_arr_dict[obs_id]
+
+#             # -----------------------------------------
+#             # 1) Calcul des arrivées théoriques (numpy datetime64)
+#             # -----------------------------------------
+#             th_arrivals_datetime = np.empty(
+#                 df_sequence.shape[0], dtype="datetime64[ns]"
+#             )
+#             th_propagation_delay = np.empty(df_sequence.shape[0], dtype=float)
+#             th_arrivals_seconds_from_start = np.empty(df_sequence.shape[0], dtype=float)
+
+#             for i in range(df_sequence.shape[0]):
+
+#                 emission_i = df_sequence.iloc[i]
+#                 emission_dt = emissions_datetime[i]
+
+#                 if i == 0:
+#                     wav_fpath, wav_start_datetime = get_wav_file_for_emission(
+#                         emission_datetime=emission_dt,
+#                         start_datetime_arr=start_datetime_arr,
+#                         wav_start_times=wav_start_times,
+#                     )
+
+#                 emission_pos = [
+#                     emission_i["Emission interpolated E GPS"],
+#                     emission_i["Emission interpolated N GPS"],
+#                     emission_i["Emission interpolated U GPS"],
+#                 ]
+
+#                 rec_dt, tr_i, prop_time_i = get_tr_apriori(
+#                     emission_pos=emission_pos,
+#                     ds_gps=ds_gps,
+#                     wav_start_datetime=wav_start_datetime,
+#                     emission_datetime=emission_dt,
+#                     obs_id=obs_id,
+#                 )
+
+#                 th_arrivals_datetime[i] = np.datetime64(rec_dt)
+#                 th_propagation_delay[i] = prop_time_i
+#                 th_arrivals_seconds_from_start[i] = tr_i
+
+#             # -----------------------------------------
+#             # 2) Lecture du signal
+#             # -----------------------------------------
+#             signal, fs = sf.read(wav_fpath)
+#             signal = signal[:, channels_order[used_channel]]
+#             signal = signal - np.mean(signal)
+
+#             tr_first = th_arrivals_seconds_from_start[0]
+#             tr_last = th_arrivals_seconds_from_start[-1]
+
+#             t_start_win = tr_first - pre_reception_time
+#             t_end_win = tr_last + post_reception_time
+
+#             n0 = int(t_start_win * fs)
+#             n1 = int(t_end_win * fs)
+
+#             signal_win = signal[n0:n1]
+
+#             # -----------------------------------------
+#             # 3) PROCESS WINDOW (nouvelle sous-fonction)
+#             # -----------------------------------------
+#             sequence_info = {
+#                 "seq_id": seq_id,
+#                 "obs_id": obs_id,
+#                 "vc_carte": df_sequence["Vc carte (V)"].iloc[0],
+#                 "signal_type": df_sequence["Signal"].iloc[0],
+#                 "emission_type": df_sequence["Source"].iloc[0],
+#             }
+
+#             res = process_sequence_window(
+#                 signal=signal,
+#                 fs=fs,
+#                 df_sequence=df_sequence,
+#                 sequence_info=sequence_info,
+#                 win_start_idx=n0,
+#                 win_end_idx=n1,
+#                 plot=plot,
+#                 save_plot=savefig,
+#                 img_root=img_root,
+#                 verbose=verbose,
+#             )
+
+#             t_arrivals_sec = res["t_arrivals_sec"]
+#             peaks_idx = res["peaks_idx"]
+
+#             # -----------------------------------------
+#             # 4) Convert arrivals seconds -> datetime64
+#             # -----------------------------------------
+#             t0_datetime = wav_start_datetime + np.timedelta64(int(n0 * 1e9 / fs), "ns")
+#             t_arrivals_dt = t0_datetime + (t_arrivals_sec * 1e9).astype(
+#                 "timedelta64[ns]"
+#             )
+
+#             # -----------------------------------------
+#             # 5) Matching arrivals -> emissions
+#             # -----------------------------------------
+#             t_arrivals_dt_full = np.full(emissions_datetime.shape, np.datetime64("NaT"))
+#             valid_detection = np.zeros(emissions_datetime.shape, dtype=bool)
+
+#             if len(t_arrivals_dt) < len(emissions_datetime):
+
+#                 th_copy = th_arrivals_datetime.copy()
+
+#                 for i, t_arr in enumerate(t_arrivals_dt):
+#                     idx = np.argmin(np.abs(th_copy - t_arr))
+#                     valid_detection[idx] = True
+#                     t_arrivals_dt_full[idx] = t_arr
+#                     th_copy[idx] = np.datetime64("NaT")
+
+#             else:
+#                 t_arrivals_dt_full[:] = t_arrivals_dt[: len(emissions_datetime)]
+#                 valid_detection[:] = True
+
+#             # -----------------------------------------
+#             # 6) Propagation delay mesurée
+#             # -----------------------------------------
+#             meas_prop_delay = (t_arrivals_dt_full - emissions_datetime).astype(
+#                 "timedelta64[ms]"
+#             ).astype(float) / 1000.0
+
+#             # -----------------------------------------
+#             # 7) Store results
+#             # -----------------------------------------
+#             new_data[f"Arrival datetime OBS{obs_id}"] = t_arrivals_dt_full.tolist()
+#             new_data[f"Theoretical propagation time OBS{obs_id}"] = (
+#                 th_propagation_delay.tolist()
+#             )
+#             new_data[f"Measured propagation time OBS{obs_id}"] = (
+#                 meas_prop_delay.tolist()
+#             )
+#             new_data[f"PSNR OBS{obs_id}"] = res.get(
+#                 "psnr", [np.nan] * len(emissions_datetime)
+#             )
+#             new_data[f"Valid detection OBS{obs_id}"] = valid_detection.tolist()
+
+#         # -----------------------------------------
+#         # 8) Append to processed_data
+#         # -----------------------------------------
+#         for k in origin_keys:
+#             processed_data[k].extend(df_sequence[k].tolist())
+
+#         for k, v in new_data.items():
+#             processed_data.setdefault(k, []).extend(v)
+
+#         # Free memory
+#         del res, signal_win, signal
+#         gc.collect()
+
+#     # -----------------------------------------
+#     # Final dataframe
+#     # -----------------------------------------
+#     df_processed = pd.DataFrame(processed_data)
+#     return df_processed
 
 
 if __name__ == "__main__":

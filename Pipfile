@@ -41,6 +41,7 @@ gpxpy = "*"
 geoid-toolkit = "*"
 pydiffmap = "*"
 soundfile = "*"
+pympler = "*"
 
 [dev-packages]
 ipykernel = "*"

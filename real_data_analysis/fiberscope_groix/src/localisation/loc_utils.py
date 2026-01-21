@@ -69,7 +69,7 @@ def inverse_obs_loc(df_arr, ds_gps, obs_id, min_f_score, plot=True, verbose=Fals
 
     # Grandeur signante -> y = d**2 = (t_prop * c)**2
     c = 1500
-    meas_prop_time = df_obs[f"Measured propagation time OBS{obs_id}"] - 28
+    meas_prop_time = df_obs[f"Measured propagation time OBS{obs_id}"] - 27
     y = (meas_prop_time * c) ** 2
 
     # Position a priori

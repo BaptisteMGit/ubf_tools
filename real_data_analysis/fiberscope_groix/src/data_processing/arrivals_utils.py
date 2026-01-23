@@ -964,38 +964,59 @@ def build_arrivals_dataset(
 
             valid_detection = np.zeros_like(emissions_datetime, dtype=bool)
 
-            if len(t_arrivals_dt) < len(emissions_datetime):
-                print(
-                    f"Warning: only {len(t_arrivals_dt)} arrivals detected for {len(emissions_datetime)} emissions in sequence {seq_id} OBS{obs_id}"
-                )
-                # Pad in case not all peaks are detected
-                psnr_arrivals_full = np.full_like(
-                    emissions_datetime, np.nan, dtype=float
-                )
-                # t_arrivals_full = np.full_like(emissions_datetime, pd.NaT)
-                t_arrivals_dt_full = np.full_like(emissions_datetime, pd.NaT)
+            if len(t_arrivals_dt) != len(emissions_datetime):
 
-                # Associate arrivals to closest theoretical arrival
-                th_arrivals_datetime_copy = th_arrivals_datetime.copy()
-                for i_t_arr, t_arr_dt in enumerate(t_arrivals_dt):
-                    # Find closest
-                    closest_th_arr_idx = np.argmin(
-                        np.abs(th_arrivals_datetime_copy - t_arr_dt)
+                # TODO : remove this eventually
+                # Correct for approximated time shift
+                # time_shift_hydro_source = -27
+                # emissions_datetime_corr = [
+                #     em_dt - pd.Timedelta(time_shift_hydro_source, "s")
+                #     for em_dt in emissions_datetime
+                # ]
+                if len(t_arrivals_dt) > len(emissions_datetime):
+                    print(
+                        f"\nWarning: too many arrivals detected ({len(t_arrivals_dt)} arrivals detected for {len(emissions_datetime)} emissions in sequence {seq_id} OBS{obs_id})"
                     )
-                    # Remove this theoretical arrival from the copy to avoid double matching
-                    th_arrivals_datetime_copy = np.delete(
-                        th_arrivals_datetime_copy, closest_th_arr_idx
+                    # QUICK UGLY FIX -> TODO : fix it in better way
+                    n_em = len(emissions_datetime)
+                    # Crop
+                    psnr_arrivals_full = psnr_arrivals[:n_em]
+                    t_arrivals_dt_full = t_arrivals_dt[:n_em]
+                    valid_detection[:] = True
+
+                if len(t_arrivals_dt) < len(emissions_datetime):
+                    print(
+                        f"\nWarning: too few arrivals detected ({len(t_arrivals_dt)} arrivals detected for {len(emissions_datetime)} emissions in sequence {seq_id} OBS{obs_id})"
                     )
-                    # Replace in padded arrays
-                    t_arrivals_dt_full[closest_th_arr_idx] = t_arr_dt
-                    # t_arrivals_full[closest_th_arr_idx] = t_arrivals[i_t_arr]
-                    psnr_arrivals_full[closest_th_arr_idx] = psnr_arrivals[i_t_arr]
+                    # Pad in case not all peaks are detected
+                    psnr_arrivals_full = np.full_like(
+                        emissions_datetime, np.nan, dtype=float
+                    )
+                    # t_arrivals_full = np.full_like(emissions_datetime, pd.NaT)
+                    t_arrivals_dt_full = np.full_like(emissions_datetime, pd.NaT)
 
-                    # Set valid_detection flag to true
-                    valid_detection[closest_th_arr_idx] = True
+                    # Associate arrivals to closest theoretical arrival
+                    th_arrivals_datetime_copy = th_arrivals_datetime.copy()
+                    for i_t_arr, t_arr_dt in enumerate(t_arrivals_dt):
+                        # Find closest
+                        closest_th_arr_idx = np.argmin(
+                            np.abs(th_arrivals_datetime_copy - t_arr_dt)
+                        )
+                        # Set this theoretical arrival to very far to avoid double matching
+                        th_arrivals_datetime_copy[closest_th_arr_idx] += pd.Timedelta(
+                            weeks=100
+                        )
 
-                # Release memory
-                del th_arrivals_datetime_copy
+                        # Replace in padded arrays
+                        t_arrivals_dt_full[closest_th_arr_idx] = t_arr_dt
+                        # t_arrivals_full[closest_th_arr_idx] = t_arrivals[i_t_arr]
+                        psnr_arrivals_full[closest_th_arr_idx] = psnr_arrivals[i_t_arr]
+
+                        # Set valid_detection flag to true
+                        valid_detection[closest_th_arr_idx] = True
+
+                    # Release memory
+                    del th_arrivals_datetime_copy
 
             else:
                 # t_arrivals_full = t_arrivals

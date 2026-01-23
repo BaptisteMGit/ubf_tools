@@ -71,6 +71,7 @@ class FiberscopeManager:
         h_index_ref: int = p.h_index_ref,
         plot_feature: bool = False,
         theta_statistics: str = "mean",
+        process_pulse_one_by_one: bool = True,
     ):
         """
         Constructor
@@ -100,6 +101,9 @@ class FiberscopeManager:
 
         # Method to derive caracteristic angle representing the theta distribution
         self.theta_statistics = theta_statistics
+
+        # Process each pulse within the same sequence independently (in case constant source position within a single sequence does not hold)
+        self.process_pulse_one_by_one = process_pulse_one_by_one
 
         # Link to  wav dataset
         self.ds_wav_fpath = os.path.join(self.root_processed_data, "wav.nc")
@@ -251,6 +255,11 @@ class FiberscopeManager:
         f1 = xr_data.fmax
         ts = xr_data.ts
 
+        # Time to add to ensure we englobe entire signal including last reflexions
+        tau_plus = min(
+            t_ir, t_interp_pulse - t_pulse
+        )  # Avoid to include following pulse
+
         # Reference chirp
         t = xr_data.signal.sel(time=slice(0, t_pulse)).time.values
         x = sp.chirp(t, f0=f0, f1=f1, t1=t_pulse, method="linear")
@@ -269,10 +278,11 @@ class FiberscopeManager:
                 y = xr_data.signal.sel(
                     time=slice(
                         t0 + i_em * t_interp_pulse - ts / 2,
-                        t0 + i_em * t_interp_pulse + t_pulse + t_ir + ts / 2,
+                        t0 + i_em * t_interp_pulse + t_pulse + tau_plus + ts / 2,
                     ),
                     h_index=hydro_idx,
                 )
+                # Note: +/- ts/2 to ensure we include boundary samples
 
                 if init_ri_hat:
                     ri_hat = np.zeros((n_hydro, n_em, y.sizes["time"]))
@@ -285,31 +295,57 @@ class FiberscopeManager:
 
             i_hydro += 1
 
-        # Take the mean impulse response over all sweeps analysed
-        ri_hat_mean = np.mean(ri_hat, axis=1)
-
+        # Time vector for impulse response
         xr_data["t_ir"] = time - t0
-        xr_data["ri_hat"] = (
-            ["h_index", "t_ir"],
-            ri_hat_mean,
-        )
-
-        # Derive the corresponding frequency response
         # nstft = self.nperseg
         nstft = time.size
-        tf_hat_mean = np.fft.rfft(ri_hat_mean, n=nstft, axis=1)
-        f_ir = np.fft.rfftfreq(nstft, d=ts)
-        xr_data["f_ir"] = f_ir
 
-        # Store amplitude and phase in two separate variables to avoid issues with complex in netcdf
-        xr_data["tf_hat_amp"] = (
-            ["h_index", "f_ir"],
-            np.abs(tf_hat_mean),
-        )
-        xr_data["tf_hat_phase"] = (
-            ["h_index", "f_ir"],
-            np.angle(tf_hat_mean),
-        )
+        if not self.process_pulse_one_by_one:
+            # Take the mean impulse response over all sweeps analysed
+            # (assuming source position is constant over the analysis window)
+            ri_hat_mean = np.mean(ri_hat, axis=1)
+
+            xr_data["ri_hat"] = (
+                ["h_index", "t_ir"],
+                ri_hat_mean,
+            )
+
+            # Derive the corresponding frequency response
+            tf_hat_mean = np.fft.rfft(ri_hat_mean, n=nstft, axis=1)
+            f_ir = np.fft.rfftfreq(nstft, d=ts)
+            xr_data["f_ir"] = f_ir
+
+            # Store amplitude and phase in two separate variables to avoid issues with complex in netcdf
+            xr_data["tf_hat_amp"] = (
+                ["h_index", "f_ir"],
+                np.abs(tf_hat_mean),
+            )
+            xr_data["tf_hat_phase"] = (
+                ["h_index", "f_ir"],
+                np.angle(tf_hat_mean),
+            )
+
+        else:
+            # Pulse are processed independently
+            xr_data["ri_hat"] = (
+                ["h_index", "t_ir", "pulse_id"],
+                np.swapaxes(ri_hat, 1, 2),
+            )
+
+            # Derive the corresponding frequency response
+            tf_hat = np.fft.rfft(ri_hat, n=nstft, axis=-1)
+            f_ir = np.fft.rfftfreq(nstft, d=ts)
+            xr_data["f_ir"] = f_ir
+
+            # Store amplitude and phase in two separate variables to avoid issues with complex in netcdf
+            xr_data["tf_hat_amp"] = (
+                ["h_index", "f_ir", "pulse_id"],
+                np.swapaxes(np.abs(tf_hat), 1, 2),
+            )
+            xr_data["tf_hat_phase"] = (
+                ["h_index", "f_ir", "pulse_id"],
+                np.swapaxes(np.angle(tf_hat), 1, 2),
+            )
 
         # Save results
         data_fpath = os.path.join(
@@ -319,98 +355,6 @@ class FiberscopeManager:
         xr_data.to_netcdf(data_fpath)
         xr_data.close()
         del xr_data
-
-        # # Unpack signal properties
-        # t_interp_pulse = signal.interp_pulse_period
-        # t_pulse = signal.t_pulse
-        # t_ir = signal.ir_duration
-        # n_em = signal.n_sweep
-        # f0 = signal.fmin
-        # f1 = signal.fmax
-
-        # # Add attrs
-        # img_path = os.path.join(self.root_img, xr_data.recording_name)
-        # xr_data.attrs["img_path"] = img_path
-
-        # # Restrict to desired hydrophone if specified
-        # if hydro_to_process is not None:
-        #     xr_data = xr_data.sel(
-        #         h_index=slice(
-        #             hydro_to_process,
-        #         )
-        #     )  # Select hydrophone while keeping the dimension
-
-        # n_hydro = xr_data.sizes["h_index"]
-
-        # # Create the source pulse signal
-        # ts = xr_data.ts
-        # # t = xr_data.signal.sel(time=slice(0, t_ir)).time.values
-        # # x = sp.chirp(t, f0=f0, f1=f1, t1=t.max(), method="linear")
-        # t = xr_data.signal.sel(time=slice(0, t_pulse)).time.values
-        # x = sp.chirp(t, f0=f0, f1=f1, t1=t_pulse, method="linear")
-
-        # # sweep_hat = np.zeros((n_em, len(t)))
-        # # ri_hat = np.zeros((n_hydro, n_em, len(t)))
-        # init_ri_hat = True
-        # # Loop over each hydrophone to process
-        # # for i_hydro in range(n_hydro):
-        # i_hydro = 0
-        # for hydro_idx in xr_data.h_index.values:
-
-        #     # Process each emission
-        #     for i_em in range(n_em):
-        #         # Extract the emission
-        #         # hydro_idx = xr_data.h_index.isel(h_index=i_hydro)
-        #         y = xr_data.signal.sel(
-        #             time=slice(
-        #                 i_em * t_interp_pulse - ts, i_em * t_interp_pulse + t_ir
-        #             ),
-        #             h_index=hydro_idx,
-        #         )
-
-        #         if init_ri_hat:
-        #             ri_hat = np.zeros((n_hydro, n_em, y.sizes["time"]))
-        #             time = y.time.values
-        #             init_ri_hat = False
-
-        #         # Estimate the impulse response
-        #         h_hat = crosscorr_deconvolution(x=x, y=y.values)
-        #         ri_hat[i_hydro, i_em, :] = h_hat
-
-        #     i_hydro += 1
-
-        # # Take the mean impulse response over all sweeps analysed
-        # ri_hat_mean = np.mean(ri_hat, axis=1)
-
-        # xr_data["t_ir"] = time
-        # xr_data["ri_hat"] = (
-        #     ["h_index", "t_ir"],
-        #     ri_hat_mean,
-        # )
-
-        # # Derive the corresponding frequency response
-        # # nstft = self.nperseg
-        # nstft = time.size
-        # tf_hat_mean = np.fft.rfft(ri_hat_mean, n=nstft, axis=1)
-        # f_ir = np.fft.rfftfreq(nstft, d=ts)
-        # xr_data["f_ir"] = f_ir
-
-        # # Store amplitude and phase in two separate variables to avoid issues with complex in netcdf
-        # xr_data["tf_hat_amp"] = (
-        #     ["h_index", "f_ir"],
-        #     np.abs(tf_hat_mean),
-        # )
-        # xr_data["tf_hat_phase"] = (
-        #     ["h_index", "f_ir"],
-        #     np.angle(tf_hat_mean),
-        # )
-
-        # # Save results
-        # xr_data.to_netcdf(
-        #     os.path.join(xr_data.root_data, f"{xr_data.recording_name}.nc")
-        # )
-        # xr_data.close()
-        # del xr_data
 
     # def process_dyn_analysis(
     #     self,
@@ -589,6 +533,7 @@ class FiberscopeManager:
             coords=dict(
                 h_index=obs_ids,
                 time=common_time_vector,
+                pulse_id=df_seq["pulse_id"],  # To be used later
             ),
             attrs=dict(
                 fs=fs,
@@ -607,6 +552,7 @@ class FiberscopeManager:
                 fmax=df_seq["Frequency max (Hz)"].iloc[0],
                 pulse_duration=df_seq["Duration (s)"].iloc[0],
                 inter_pulse_period=df_seq["Trepeat (s)"].iloc[0],
+                process_pulse_one_by_one=int(self.process_pulse_one_by_one),
                 root_img=os.path.join(
                     self.root_img_sequence, str(df_seq["Sequence_id"].iloc[0])
                 ),
@@ -732,9 +678,7 @@ class FiberscopeManager:
             self.set_managers(fs=xr_data.fs, idx_rcv_ref=idx_rcv_ref)
 
             ### Step 2 - Preprocess data ###
-            self.preprocess_data(
-                xr_data=xr_data,
-            )
+            self.preprocess_data(xr_data=xr_data)
 
             ### Step 3 - Derive features ###
             self.derive_feature(
@@ -813,180 +757,405 @@ class FiberscopeManager:
 
     def plot_estimated_feature(self, xr_data):
 
-        nrcv = xr_data.sizes["h_index"]
-        f_amp, axs_amp = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
-        f_phase, axs_phase = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
-        i = 0
-        for rcv_idx in xr_data.h_index.values:
+        if self.process_pulse_one_by_one:
 
-            # Plot RTF amplitude
-            xr_data.rtf_amp.sel(h_index=rcv_idx).plot(
-                ax=axs_amp[i], color="k", label=f"Ref - {rcv_idx}"
-            )
-            xr_data.rtf_amp_hat.sel(h_index=rcv_idx).plot(
-                ax=axs_amp[i],
-                color="b",
-                marker="o",
-                markersize=1,
-                linewidth=1,
-                linestyle="--",
-                label=f"CS - {rcv_idx}",
-            )
-            axs_amp[i].set_xlabel("")
-            axs_amp[i].set_ylabel(r"$|\Pi|$")
-            axs_amp[i].set_yscale("log")
-            axs_amp[i].set_title("")
-            axs_amp[i].legend(fontsize=8)
+            for pulse_id in xr_data.pulse_id.values:
+                xr_data_pulse = xr_data.sel(pulse_id=pulse_id)
 
-            # Plot RTF phase
-            xr_data.rtf_phase.sel(h_index=rcv_idx).plot(
-                ax=axs_phase[i], color="k", label=f"Ref - {rcv_idx}"
-            )
-            xr_data.rtf_phase_hat.sel(h_index=rcv_idx).plot(
-                ax=axs_phase[i],
-                color="b",
-                marker="o",
-                markersize=1,
-                linewidth=1,
-                linestyle="--",
-                label=f"CS - {rcv_idx}",
-            )
-            axs_phase[i].set_xlabel("")
-            axs_phase[i].set_ylabel(r"$\Phi$")
-            axs_phase[i].set_title("")
-            axs_phase[i].legend()
-            axs_phase[i].legend(fontsize=8)
+                nrcv = xr_data.sizes["h_index"]
+                f_amp, axs_amp = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
+                f_phase, axs_phase = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
+                i = 0
+                for rcv_idx in xr_data.h_index.values:
 
-            i += 1
+                    # Plot RTF amplitude
+                    xr_data_pulse.rtf_amp.sel(h_index=rcv_idx).plot(
+                        ax=axs_amp[i], color="k", label=f"Ref - {rcv_idx}"
+                    )
+                    xr_data_pulse.rtf_amp_hat.sel(h_index=rcv_idx).plot(
+                        ax=axs_amp[i],
+                        color="b",
+                        marker="o",
+                        markersize=1,
+                        linewidth=1,
+                        linestyle="--",
+                        label=f"CS - {rcv_idx}",
+                    )
+                    axs_amp[i].set_xlabel("")
+                    axs_amp[i].set_ylabel(r"$|\Pi|$")
+                    axs_amp[i].set_yscale("log")
+                    axs_amp[i].set_title("")
+                    axs_amp[i].legend(fontsize=8)
 
-        # Ensure img folder exists
-        if not os.path.exists(xr_data.root_img):
-            os.makedirs(xr_data.root_img)
+                    # Plot RTF phase
+                    xr_data_pulse.rtf_phase.sel(h_index=rcv_idx).plot(
+                        ax=axs_phase[i], color="k", label=f"Ref - {rcv_idx}"
+                    )
+                    xr_data_pulse.rtf_phase_hat.sel(h_index=rcv_idx).plot(
+                        ax=axs_phase[i],
+                        color="b",
+                        marker="o",
+                        markersize=1,
+                        linewidth=1,
+                        linestyle="--",
+                        label=f"CS - {rcv_idx}",
+                    )
+                    axs_phase[i].set_xlabel("")
+                    axs_phase[i].set_ylabel(r"$\Phi$")
+                    axs_phase[i].set_title("")
+                    axs_phase[i].legend()
+                    axs_phase[i].legend(fontsize=8)
 
-        # Save figures
-        fpath = os.path.join(xr_data.root_img, "rtf_amp.png")
-        f_amp.savefig(fpath)
-        fpath = os.path.join(xr_data.root_img, "rtf_phase.png")
-        f_phase.savefig(fpath)
+                    i += 1
 
-        # Plot csdms (noise, noisy signal, signal)
-        f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
-        f_csdm.suptitle("CSDM")
+                # Ensure img folder exists
+                if not os.path.exists(xr_data.root_img):
+                    os.makedirs(xr_data.root_img)
 
-        # Mean CSDMs
-        mean_Rx = xr_data.Rx.mean(dim="f_csdm")
-        mean_Rv = xr_data.Rv.mean(dim="f_csdm")
-        Rs = xr_data.Rx - xr_data.Rv
-        mean_Rs = Rs.mean(dim="f_csdm")
+                # Save figures
+                fpath = os.path.join(xr_data.root_img, f"rtf_amp_pulseID{pulse_id}.png")
+                f_amp.savefig(fpath)
+                fpath = os.path.join(
+                    xr_data.root_img, f"rtf_phase_pulseID{pulse_id}.png"
+                )
+                f_phase.savefig(fpath)
 
-        # Derive a common vmax for comparison purpose
-        vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+                # Plot csdms (noise, noisy signal, signal)
+                f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
+                f_csdm.suptitle("CSDM")
 
-        # Plot Rx
-        mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
-        axs_csdm[0].set_title(r"$\hat{R}_x$")
-        axs_csdm[0].set_xlabel("Index")
-        axs_csdm[0].set_ylabel("Index")
-        # Ticks
-        axs_csdm[0].set_xticks(np.arange(1, nrcv + 1, 1))
-        axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
+                # Mean CSDMs
+                mean_Rx = xr_data_pulse.Rx.mean(dim="f_csdm")
+                mean_Rv = xr_data_pulse.Rv.mean(dim="f_csdm")
+                Rs = xr_data_pulse.Rx - xr_data_pulse.Rv
+                mean_Rs = Rs.mean(dim="f_csdm")
 
-        # Plot Rv
-        mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
-        axs_csdm[1].set_title(r"$\hat{R}_v$")
-        axs_csdm[1].set_xlabel("Index")
-        axs_csdm[1].set_ylabel("Index")
-        # Ticks
-        axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
-        axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
+                # Derive a common vmax for comparison purpose
+                vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
 
-        # Plot Rs
-        mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
-        axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
-        axs_csdm[2].set_xlabel("Index")
-        axs_csdm[2].set_ylabel("Index")
-        # Ticks
-        axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
-        axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
+                # Plot Rx
+                mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+                axs_csdm[0].set_title(r"$\hat{R}_x$")
+                axs_csdm[0].set_xlabel("Index")
+                axs_csdm[0].set_ylabel("Index")
+                # Ticks
+                axs_csdm[0].set_xticks(np.arange(1, nrcv + 1, 1))
+                axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
 
-        # Save figure
-        fpath = os.path.join(xr_data.root_img, "estimated_csdms.png")
-        f_csdm.savefig(fpath)
+                # Plot Rv
+                mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+                axs_csdm[1].set_title(r"$\hat{R}_v$")
+                axs_csdm[1].set_xlabel("Index")
+                axs_csdm[1].set_ylabel("Index")
+                # Ticks
+                axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
+                axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
-        plt.close("all")
+                # Plot Rs
+                mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+                axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
+                axs_csdm[2].set_xlabel("Index")
+                axs_csdm[2].set_ylabel("Index")
+                # Ticks
+                axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
+                axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
+
+                # Save figure
+                fpath = os.path.join(
+                    xr_data.root_img, f"estimated_csdmsèpulseID{pulse_id}.png"
+                )
+                f_csdm.savefig(fpath)
+
+                plt.close("all")
+
+        else:
+            nrcv = xr_data.sizes["h_index"]
+            f_amp, axs_amp = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
+            f_phase, axs_phase = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
+            i = 0
+            for rcv_idx in xr_data.h_index.values:
+
+                # Plot RTF amplitude
+                xr_data.rtf_amp.sel(h_index=rcv_idx).plot(
+                    ax=axs_amp[i], color="k", label=f"Ref - {rcv_idx}"
+                )
+                xr_data.rtf_amp_hat.sel(h_index=rcv_idx).plot(
+                    ax=axs_amp[i],
+                    color="b",
+                    marker="o",
+                    markersize=1,
+                    linewidth=1,
+                    linestyle="--",
+                    label=f"CS - {rcv_idx}",
+                )
+                axs_amp[i].set_xlabel("")
+                axs_amp[i].set_ylabel(r"$|\Pi|$")
+                axs_amp[i].set_yscale("log")
+                axs_amp[i].set_title("")
+                axs_amp[i].legend(fontsize=8)
+
+                # Plot RTF phase
+                xr_data.rtf_phase.sel(h_index=rcv_idx).plot(
+                    ax=axs_phase[i], color="k", label=f"Ref - {rcv_idx}"
+                )
+                xr_data.rtf_phase_hat.sel(h_index=rcv_idx).plot(
+                    ax=axs_phase[i],
+                    color="b",
+                    marker="o",
+                    markersize=1,
+                    linewidth=1,
+                    linestyle="--",
+                    label=f"CS - {rcv_idx}",
+                )
+                axs_phase[i].set_xlabel("")
+                axs_phase[i].set_ylabel(r"$\Phi$")
+                axs_phase[i].set_title("")
+                axs_phase[i].legend()
+                axs_phase[i].legend(fontsize=8)
+
+                i += 1
+
+            # Ensure img folder exists
+            if not os.path.exists(xr_data.root_img):
+                os.makedirs(xr_data.root_img)
+
+            # Save figures
+            fpath = os.path.join(xr_data.root_img, "rtf_amp.png")
+            f_amp.savefig(fpath)
+            fpath = os.path.join(xr_data.root_img, "rtf_phase.png")
+            f_phase.savefig(fpath)
+
+            # Plot csdms (noise, noisy signal, signal)
+            f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
+            f_csdm.suptitle("CSDM")
+
+            # Mean CSDMs
+            mean_Rx = xr_data.Rx.mean(dim="f_csdm")
+            mean_Rv = xr_data.Rv.mean(dim="f_csdm")
+            Rs = xr_data.Rx - xr_data.Rv
+            mean_Rs = Rs.mean(dim="f_csdm")
+
+            # Derive a common vmax for comparison purpose
+            vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+
+            # Plot Rx
+            mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[0].set_title(r"$\hat{R}_x$")
+            axs_csdm[0].set_xlabel("Index")
+            axs_csdm[0].set_ylabel("Index")
+            # Ticks
+            axs_csdm[0].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Plot Rv
+            mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[1].set_title(r"$\hat{R}_v$")
+            axs_csdm[1].set_xlabel("Index")
+            axs_csdm[1].set_ylabel("Index")
+            # Ticks
+            axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Plot Rs
+            mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
+            axs_csdm[2].set_xlabel("Index")
+            axs_csdm[2].set_ylabel("Index")
+            # Ticks
+            axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Save figure
+            fpath = os.path.join(xr_data.root_img, "estimated_csdms.png")
+            f_csdm.savefig(fpath)
+
+            plt.close("all")
 
     def get_rtf(self, xr_data, Rv_global=None, rtf_estimator="cs"):
         ts = xr_data.ts
 
-        # Covariance substraction
-        x = xr_data.signal.T
-        x.attrs["inter_pulse_period"] = xr_data.inter_pulse_period
-        x.attrs["pulse_duration"] = xr_data.pulse_duration
-        x.attrs["n_emissions"] = xr_data.n_emissions
+        if self.process_pulse_one_by_one:
 
-        # Get mask defining signal+noise period
-        tt, mask_tt_x = self.get_signal_presence_mask(
-            x, fs=1 / ts, nperseg=self.nperseg, noverlap=self.noverlap
-        )
-        mask_tt_v = ~mask_tt_x
+            t_pulse = xr_data.pulse_duration
+            t_interp_pulse = xr_data.inter_pulse_period
 
-        # xr_data.coords["tt"] = tt
-        # xr_data["mask_tt_x"] = (["tt"], mask_tt_x)
+            # Time to add to ensure we englobe entire signal including last reflexions
+            t_silence = t_interp_pulse - t_pulse
+            tau_plus = 0.9 * t_silence  # Avoid to include following pulse
+            tau_minus = 0.9 * (
+                t_silence - self.tau_ir
+            )  # Avoid to include previous pulse
 
-        # # Plot stfts
-        # fig, axs = plt.subplots(nrows=stft_y.shape[0], ncols=1, sharex=True)
-        # for ircv in range(stft_y.shape[0]):
-        #     sg.plot_spectrogram(t=tt, f=ff, S_tf=stft_y[ircv, ...], ax=axs[ircv])
-        #     axs[ircv].set_title(f"Rcv n°{ircv}")
-        #     axs[ircv].set_ylim([0, 20000])
-        # plt.suptitle("X")
+            # Time to first arrival
+            t0 = xr_data.t0
 
-        f, Rx = self.cm.get_signal_csdm(
-            y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_x
-        )
-        if Rv_global is not None:
-            Rv = Rv_global
+            init_arr = True
+
+            # Process each emission
+            for i_pulse, pulse_id in enumerate(xr_data.pulse_id):
+
+                # Extract the pulse of interest
+                x = xr_data.signal.sel(
+                    time=slice(
+                        t0 + pulse_id * t_interp_pulse - tau_minus - ts / 2,
+                        t0 + pulse_id * t_interp_pulse + t_pulse + tau_plus + ts / 2,
+                    )
+                )
+                # Note: +/- ts/2 to ensure we include boundary samples
+                x = x.T  # Transpose to fit required format
+
+                # Copy usefull attrs
+                x.attrs["inter_pulse_period"] = xr_data.inter_pulse_period
+                x.attrs["pulse_duration"] = xr_data.pulse_duration
+                x.attrs["n_emissions"] = xr_data.n_emissions
+
+                # Get mask defining signal+noise period
+                tt, mask_tt_x = self.get_signal_presence_mask(
+                    x, fs=1 / ts, nperseg=self.nperseg, noverlap=self.noverlap
+                )
+                mask_tt_v = ~mask_tt_x
+
+                f, Rx = self.cm.get_signal_csdm(
+                    y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_x
+                )
+                if Rv_global is not None:
+                    Rv = Rv_global
+                else:
+                    f, Rv = self.cm.get_signal_csdm(
+                        y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_v
+                    )
+                # Rv[...] = 0  # TODO REMOVE
+
+                if rtf_estimator == "cs":
+                    rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+                        Rx - Rv, use_first_column=True
+                    )
+                elif rtf_estimator == "cs-evd":
+                    rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+                        Rx - Rv, use_first_column=False
+                    )
+                else:
+                    print(f"{rtf_estimator} not implemented yet!")
+
+                if init_arr:
+                    n_rcv = xr_data.sizes["h_index"]
+                    npulse = xr_data.sizes["pulse_id"]
+                    nf = f.size
+
+                    rtf_hat = np.empty(
+                        (n_rcv, nf, npulse),
+                        dtype=complex,
+                    )
+                    Rx_hat = np.empty(
+                        (nf, n_rcv, n_rcv, npulse),
+                        dtype=complex,
+                    )
+                    Rv_hat = np.empty(
+                        (nf, n_rcv, n_rcv, npulse),
+                        dtype=complex,
+                    )
+                    init_arr = False
+
+                rtf_hat[..., i_pulse] = rtf.T
+                Rx_hat[..., i_pulse] = Rx
+                Rv_hat[..., i_pulse] = Rv
+
+            xr_data.coords["f_rtf"] = f
+            xr_data["rtf_amp_hat"] = (
+                ["h_index", "f_rtf", "pulse_id"],
+                np.abs(rtf_hat),
+            )
+            xr_data["rtf_phase_hat"] = (
+                ["h_index", "f_rtf", "pulse_id"],
+                np.angle(rtf_hat),
+            )
+            xr_data.attrs["h_index_ref"] = self.h_index_ref
+
+            # Add Rx and R_v to the dataset
+            xr_data.coords["f_csdm"] = f
+
+            # Create h_index bis to avoid duplicate coordinates
+            xr_data.coords["h_index_bis"] = xr_data.h_index.values
+            xr_data["Rx"] = (
+                ["f_csdm", "h_index", "h_index_bis", "pulse_id"],
+                np.abs(Rx_hat),
+            )
+            xr_data["Rv"] = (
+                ["f_csdm", "h_index", "h_index_bis", "pulse_id"],
+                np.abs(Rv_hat),
+            )
+
         else:
-            f, Rv = self.cm.get_signal_csdm(
-                y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_v
+            # Covariance substraction
+            x = xr_data.signal.T
+            # Copy usefull attrs
+            x.attrs["inter_pulse_period"] = xr_data.inter_pulse_period
+            x.attrs["pulse_duration"] = xr_data.pulse_duration
+            x.attrs["n_emissions"] = xr_data.n_emissions
+
+            # Get mask defining signal+noise period
+            tt, mask_tt_x = self.get_signal_presence_mask(
+                x, fs=1 / ts, nperseg=self.nperseg, noverlap=self.noverlap
             )
-        Rv[...] = 0  # TODO REMOVE
+            mask_tt_v = ~mask_tt_x
 
-        if rtf_estimator == "cs":
-            rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
-                Rx - Rv, use_first_column=True
+            # xr_data.coords["tt"] = tt
+            # xr_data["mask_tt_x"] = (["tt"], mask_tt_x)
+
+            # # Plot stfts
+            # fig, axs = plt.subplots(nrows=stft_y.shape[0], ncols=1, sharex=True)
+            # for ircv in range(stft_y.shape[0]):
+            #     sg.plot_spectrogram(t=tt, f=ff, S_tf=stft_y[ircv, ...], ax=axs[ircv])
+            #     axs[ircv].set_title(f"Rcv n°{ircv}")
+            #     axs[ircv].set_ylim([0, 20000])
+            # plt.suptitle("X")
+
+            f, Rx = self.cm.get_signal_csdm(
+                y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_x
             )
-        elif rtf_estimator == "cs-evd":
-            rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
-                Rx - Rv, use_first_column=False
+            if Rv_global is not None:
+                Rv = Rv_global
+            else:
+                f, Rv = self.cm.get_signal_csdm(
+                    y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_v
+                )
+            Rv[...] = 0  # TODO REMOVE
+
+            if rtf_estimator == "cs":
+                rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+                    Rx - Rv, use_first_column=True
+                )
+            elif rtf_estimator == "cs-evd":
+                rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+                    Rx - Rv, use_first_column=False
+                )
+            else:
+                print(f"{rtf_estimator} not implemented yet!")
+
+            xr_data.coords["f_rtf"] = f
+            xr_data["rtf_amp_hat"] = (
+                ["h_index", "f_rtf"],
+                np.abs(rtf).T,
             )
-        else:
-            print(f"{rtf_estimator} not implemented yet!")
+            xr_data["rtf_phase_hat"] = (
+                ["h_index", "f_rtf"],
+                np.angle(rtf).T,
+            )
+            xr_data.attrs["h_index_ref"] = self.h_index_ref
 
-        xr_data.coords["f_rtf"] = f
-        xr_data["rtf_amp_hat"] = (
-            ["h_index", "f_rtf"],
-            np.abs(rtf).T,
-        )
-        xr_data["rtf_phase_hat"] = (
-            ["h_index", "f_rtf"],
-            np.angle(rtf).T,
-        )
-        xr_data.attrs["h_index_ref"] = self.h_index_ref
+            # Add Rx and R_v to the dataset
+            xr_data.coords["f_csdm"] = f
 
-        # Add Rx and R_v to the dataset
-        xr_data.coords["f_csdm"] = f
-
-        # Create h_index bis to avoid duplicate coordinates
-        xr_data.coords["h_index_bis"] = xr_data.h_index.values
-        xr_data["Rx"] = (
-            ["f_csdm", "h_index", "h_index_bis"],
-            np.abs(Rx),
-        )
-        xr_data["Rv"] = (
-            ["f_csdm", "h_index", "h_index_bis"],
-            np.abs(Rv),
-        )
+            # Create h_index bis to avoid duplicate coordinates
+            xr_data.coords["h_index_bis"] = xr_data.h_index.values
+            xr_data["Rx"] = (
+                ["f_csdm", "h_index", "h_index_bis"],
+                np.abs(Rx),
+            )
+            xr_data["Rv"] = (
+                ["f_csdm", "h_index", "h_index_bis"],
+                np.abs(Rv),
+            )
 
         return xr_data
 
@@ -1035,25 +1204,28 @@ class FiberscopeManager:
             mask_tt_i = energy > threshold
             mask_tt_x = np.logical_or(mask_tt_x, mask_tt_i)
 
-            # # For debug purpose
-            plt.figure()
-            plt.plot(energy)
-            plt.scatter(idx_peaks, energy[idx_peaks], color="r")
-            plt.axhline(threshold, linestyle="--", color="r")
-            plt.savefig(f"debug_energy_rcv{ircv}")
+            # # # For debug purpose
+            # plt.figure()
+            # plt.plot(energy)
+            # plt.scatter(idx_peaks, energy[idx_peaks], color="r")
+            # plt.axhline(threshold, linestyle="--", color="r")
+            # plt.savefig(f"debug_energy_rcv{ircv}")
 
-            plt.figure()
-            plt.plot(mask_tt_i)
-            plt.savefig(f"debug_masktt_rcv{ircv}")
+            # plt.figure()
+            # plt.plot(mask_tt_i)
+            # plt.savefig(f"debug_masktt_rcv{ircv}")
 
-            plt.figure()
-            plt.pcolormesh(tt, ff, np.abs(stft_x[0, ...]))
-            plt.plot(tt, mask_tt_x.astype(int) * np.max(ff))
-            plt.savefig(f"debug_stft_rcv{ircv}")
+            # plt.figure()
+            # plt.pcolormesh(tt, ff, np.abs(stft_x[0, ...]))
+            # plt.plot(tt, mask_tt_x.astype(int) * np.max(ff))
+            # plt.savefig(f"debug_stft_rcv{ircv}")
 
-        plt.figure()
-        plt.plot(mask_tt_x)
-        plt.savefig(f"debug_masktt")
+            # plt.close("all")
+
+        # plt.figure()
+        # plt.plot(mask_tt_x)
+        # plt.savefig(f"debug_masktt")
+        # plt.close("all")
 
         return tt, mask_tt_x
 
@@ -1064,21 +1236,48 @@ class FiberscopeManager:
             1j * xr_data.tf_hat_phase.sel(h_index=self.h_index_ref)
         )
 
-        rtf = np.zeros((xr_data.sizes["h_index"], xr_data.sizes["f_ir"]), dtype=complex)
-        for i_hydro in range(xr_data.sizes["h_index"]):
-            tf = xr_data.tf_hat_amp.isel(h_index=i_hydro) * np.exp(
-                1j * xr_data.tf_hat_phase.isel(h_index=i_hydro)
+        if self.process_pulse_one_by_one:
+            rtf = np.zeros(
+                (
+                    xr_data.sizes["h_index"],
+                    xr_data.sizes["f_ir"],
+                    xr_data.sizes["pulse_id"],
+                ),
+                dtype=complex,
             )
-            rtf[i_hydro, :] = tf / tf_ref
+            for i_hydro in range(xr_data.sizes["h_index"]):
+                tf = xr_data.tf_hat_amp.isel(h_index=i_hydro) * np.exp(
+                    1j * xr_data.tf_hat_phase.isel(h_index=i_hydro)
+                )
+                rtf[i_hydro, :] = tf / tf_ref
 
-        xr_data["rtf_amp"] = (
-            ["h_index", "f_ir"],
-            np.abs(rtf),
-        )
-        xr_data["rtf_phase"] = (
-            ["h_index", "f_ir"],
-            np.angle(rtf),
-        )
+            xr_data["rtf_amp"] = (
+                ["h_index", "f_ir", "pulse_id"],
+                np.abs(rtf),
+            )
+            xr_data["rtf_phase"] = (
+                ["h_index", "f_ir", "pulse_id"],
+                np.angle(rtf),
+            )
+        else:
+
+            rtf = np.zeros(
+                (xr_data.sizes["h_index"], xr_data.sizes["f_ir"]), dtype=complex
+            )
+            for i_hydro in range(xr_data.sizes["h_index"]):
+                tf = xr_data.tf_hat_amp.isel(h_index=i_hydro) * np.exp(
+                    1j * xr_data.tf_hat_phase.isel(h_index=i_hydro)
+                )
+                rtf[i_hydro, :] = tf / tf_ref
+
+            xr_data["rtf_amp"] = (
+                ["h_index", "f_ir"],
+                np.abs(rtf),
+            )
+            xr_data["rtf_phase"] = (
+                ["h_index", "f_ir"],
+                np.angle(rtf),
+            )
 
         return xr_data
 
@@ -1328,11 +1527,11 @@ if __name__ == "__main__":
     #     static_records_names=fs_sweep1.records_N5,
     # )
     # # Run localization process
-    # d = fsm.localize_dyn_recording(
-    #     static_signal=fs_sweep1,
-    #     static_records_names=fs_sweep1.records_N5,
-    #     fs_dynamic_recording=fs_dr,
-    # )
+    d = fsm.localize_dyn_recording(
+        static_signal=fs_sweep1,
+        static_records_names=fs_sweep1.records_N5,
+        fs_dynamic_recording=fs_dr,
+    )
 
     # fsm.plot_dyn_loc(
     #     d_rtf=d, axis_norm=1, time_step=fs_dr.time_step, vmin=-5, save_eps=True

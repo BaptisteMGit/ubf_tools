@@ -602,7 +602,7 @@ class FiberscopeManager:
                 # ],  # TODO : we might need to change that to account for non detected arrivals ?
                 n_emissions=df_seq.shape[
                     0
-                ],  # TODO : we might need to change that to account for non detected arrivals ?
+                ],  # Assuming df_seq contains a limited number of emission/reception
                 fmin=df_seq["Frequency min (Hz)"].iloc[0],
                 fmax=df_seq["Frequency max (Hz)"].iloc[0],
                 pulse_duration=df_seq["Duration (s)"].iloc[0],

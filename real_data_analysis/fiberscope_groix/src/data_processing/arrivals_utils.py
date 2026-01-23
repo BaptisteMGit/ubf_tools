@@ -555,14 +555,51 @@ def get_arrivals(signal_win, t_win_sec, df_sequence, fs, verbose=False):
 
     # Apply matched filtering
     lags, sig_mf = apply_match_filter(signal_win_filter, fs, f0, f1, chirp_T)
+
     # Normalize matched filtered signal
     sig_mf = sig_mf / np.max(np.abs(sig_mf))
 
-    # Find peaks in matched filtered signal
-    dist = 0.9 * T_repeat * fs
-    peaks_idx, properties = sp.find_peaks(
-        sig_mf, height=np.std(sig_mf) * 5, distance=dist
-    )
+    # Detection on long time series are batch processed to improve perf
+    t_batch_sup = (
+        2 * 60
+    )  # If time series greater than 2 min we split the detection in batches
+    duration = t_win_sec[-1] - t_win_sec[0]
+    if duration >= t_batch_sup:
+        peaks_idx = []
+        n_batch = int(duration // t_batch_sup)
+        batch_size = int(t_win_sec.size // n_batch)
+        for i_batch in range(n_batch):
+            i_batch_inf = i_batch * batch_size
+            i_batch_sup = (i_batch + 1) * batch_size
+            i_batch_sup = min(i_batch_sup, t_win_sec.size)
+
+            sig_mf_batch = sig_mf[i_batch_inf:i_batch_sup]
+
+            # Normalize matched filtered signal
+            sig_mf_batch = sig_mf_batch / np.max(np.abs(sig_mf_batch))
+
+            # # TODO remove
+            # plt.figure()
+            # plt.plot(t_win_sec[i_batch_inf:i_batch_sup], sig_mf_batch)
+            # plt.savefig("test.png")
+
+            # Find peaks in matched filtered signal
+            dist = 0.9 * T_repeat * fs
+            peaks_idx_batch, properties = sp.find_peaks(
+                sig_mf_batch, height=np.std(sig_mf_batch) * 5, distance=dist
+            )
+            # Correct for batch start
+            peaks_idx_batch += i_batch_inf
+            # Store
+            peaks_idx.extend(peaks_idx_batch)
+
+    else:
+        # Find peaks in matched filtered signal
+        dist = 0.9 * T_repeat * fs
+        peaks_idx, properties = sp.find_peaks(
+            sig_mf, height=np.std(sig_mf) * 5, distance=dist
+        )
+
     peak_times_sec = t_win_sec[peaks_idx]
 
     # Correct arrivals for chirp duration
@@ -896,12 +933,12 @@ def build_arrivals_dataset(
             # -----------------------------------------
             # 4) Plot detected arrivals (optional)
             # -----------------------------------------
-            if df_sequence["Source"].iloc[0] == "trailed":
-                is_trailed = True
-            else:
-                is_trailed = False
+            # if df_sequence["Source"].iloc[0] == "trailed":
+            #     is_trailed = True
+            # else:
+            #     is_trailed = False
 
-            if plot and not is_trailed:
+            if plot:
                 sequence_info = {
                     "seq_id": seq_id,
                     "obs_id": obs_id,
@@ -966,23 +1003,45 @@ def build_arrivals_dataset(
 
             if len(t_arrivals_dt) != len(emissions_datetime):
 
-                # TODO : remove this eventually
-                # Correct for approximated time shift
-                # time_shift_hydro_source = -27
-                # emissions_datetime_corr = [
-                #     em_dt - pd.Timedelta(time_shift_hydro_source, "s")
-                #     for em_dt in emissions_datetime
-                # ]
                 if len(t_arrivals_dt) > len(emissions_datetime):
                     print(
                         f"\nWarning: too many arrivals detected ({len(t_arrivals_dt)} arrivals detected for {len(emissions_datetime)} emissions in sequence {seq_id} OBS{obs_id})"
                     )
-                    # QUICK UGLY FIX -> TODO : fix it in better way
+                    # # QUICK UGLY FIX -> TODO : fix it in better way
                     n_em = len(emissions_datetime)
                     # Crop
                     psnr_arrivals_full = psnr_arrivals[:n_em]
                     t_arrivals_dt_full = t_arrivals_dt[:n_em]
                     valid_detection[:] = True
+
+                    # # Better fix : same idea as below
+                    # psnr_arrivals_full = np.full_like(
+                    #     emissions_datetime, np.nan, dtype=float
+                    # )
+                    # t_arrivals_dt_full = np.full_like(emissions_datetime, pd.NaT)
+                    # # Associate theoretical arrival to closest measured arrivals to remove false detections
+                    # th_arrivals_datetime_copy = th_arrivals_datetime.copy()
+
+                    # idx_closest = np.array(
+                    #     [
+                    #         np.argmin(np.abs(th_arrivals_datetime_copy - t_arr_dt))
+                    #         for t_arr_dt in t_arrivals_dt
+                    #     ]
+                    # )
+
+                    # t_arr_th_error = np.array(
+                    #     [
+                    #         np.min(np.abs(th_arrivals_datetime_copy - t_arr_dt))
+                    #         for t_arr_dt in t_arrivals_dt
+                    #     ]
+                    # )
+                    # t_arr_th_error_sort_idx = np.argsort(t_arr_th_error)
+                    # t_arr_th_error_asc = t_arr_th_error[t_arr_th_error_sort_idx]
+                    # idx_closest_asc = idx_closest[t_arr_th_error_sort_idx]
+
+                    # t_arrivals_dt_full = []
+                    # while len(t_arrivals_dt_full) < len(emissions_datetime):
+                    #     pass
 
                 if len(t_arrivals_dt) < len(emissions_datetime):
                     print(

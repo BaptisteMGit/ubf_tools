@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from scipy.signal import butter, lfilter
 import scipy.signal as sp
+from misc import progression_bar
 
 # import tracemalloc
 from pympler import muppy, summary
@@ -545,6 +546,10 @@ def get_arrivals(signal_win, t_win_sec, df_sequence, fs, verbose=False):
     bandwidth = f1 - f0
     lowcut = f0 + 0.1 * bandwidth
     highcut = f1 - 0.1 * bandwidth
+
+    # Ensure highcut is lower than Nyquist frequency
+    highcut = min(fs / 2 - 1, highcut)
+
     b, a = butter(order, [lowcut, highcut], fs=fs, btype="band")
     signal_win_filter = lfilter(b, a, signal_win)
 
@@ -724,7 +729,20 @@ def build_arrivals_dataset(
     # --------------------------------------------------
     # Main loop over sequences
     # --------------------------------------------------
+
+    i_test = 0
+    prev_progress = 0
+    n_seq = len(sel_sequence_id)
+
     for seq_id in sel_sequence_id:
+
+        i_test += 1
+        prev_progress = progression_bar(
+            index=i_test,
+            index0=0,
+            indexf=n_seq,
+            prev_progress=prev_progress,
+        )
 
         if verbose:
             print(f"Processing sequence ID: {seq_id}")
@@ -878,7 +896,12 @@ def build_arrivals_dataset(
             # -----------------------------------------
             # 4) Plot detected arrivals (optional)
             # -----------------------------------------
-            if plot:
+            if df_sequence["Source"].iloc[0] == "trailed":
+                is_trailed = True
+            else:
+                is_trailed = False
+
+            if plot and not is_trailed:
                 sequence_info = {
                     "seq_id": seq_id,
                     "obs_id": obs_id,
@@ -886,6 +909,7 @@ def build_arrivals_dataset(
                     "signal_type": df_sequence["Signal"].iloc[0],
                     "emission_type": df_sequence["Source"].iloc[0],
                 }
+
                 nperseg = 256
                 noverlap = int(nperseg * 0.5)
 

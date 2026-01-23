@@ -862,7 +862,7 @@ class FiberscopeManager:
 
                 # Save figure
                 fpath = os.path.join(
-                    xr_data.root_img, f"estimated_csdmsèpulseID{pulse_id}.png"
+                    xr_data.root_img, f"estimated_csdms_pulseID{pulse_id}.png"
                 )
                 f_csdm.savefig(fpath)
 

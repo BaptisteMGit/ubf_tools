@@ -504,8 +504,8 @@ def transform_apriori_pos_wgs84_to_ecef(local_frame_origin, apriori_pos_wgs84):
     X, Y, Z = geodetic_to_ecef(lat, lon, apriori_pos_wgs84.h)
     # ECEF -> ENU
     lat0, lon0, h0 = (
-        local_frame_origin["lat"],
-        local_frame_origin["lon"],
+        np.deg2rad(local_frame_origin["lat"]),
+        np.deg2rad(local_frame_origin["lon"]),
         local_frame_origin["h"],
     )
     e, n, u = ecef_to_enu(X, Y, Z, lat0, lon0, h0)
@@ -520,16 +520,16 @@ def transform_apriori_pos_wgs84_to_ecef(local_frame_origin, apriori_pos_wgs84):
 def transform_pos_wgs84_ecef(
     pos, local_frame_origin, N_geoid_undulation, zeta=0, sensor_h_above_sea_level=5
 ):
-    lon = np.radians(pos.lon)
-    lat = np.radians(pos.lat)
+    lon = np.deg2rad(pos.lon)
+    lat = np.deg2rad(pos.lat)
     # GPS h above WGS84 ellipsoid
     h = N_geoid_undulation + zeta + sensor_h_above_sea_level
     # WGS84 -> ECEF
     x, y, z = geodetic_to_ecef(lat, lon, h)
     # ECEF -> ENU
     lat0, lon0, h0 = (
-        local_frame_origin["lat"],
-        local_frame_origin["lon"],
+        np.deg2rad(local_frame_origin["lat"]),
+        np.deg2rad(local_frame_origin["lon"]),
         local_frame_origin["h"],
     )
     e, n, u = ecef_to_enu(x, y, z, lat0, lon0, h0)
@@ -613,9 +613,9 @@ def gps_dataset(
             geodesic_frame="WGS84",
             local_frame="ENU",
             local_frame_origin=local_frame_origin["id"],
-            local_frame_origin_coordinates_wgs84_lon=local_frame_origin["lon"],
-            local_frame_origin_coordinates_wgs84_lat=local_frame_origin["lat"],
-            local_frame_origin_coordinates_wgs84_h=local_frame_origin["h"],
+            local_frame_origin_wgs84_lon=local_frame_origin["lon"],
+            local_frame_origin_wgs84_lat=local_frame_origin["lat"],
+            local_frame_origin_wgs84_h=local_frame_origin["h"],
         ),
     )
 
@@ -934,9 +934,9 @@ def ais_dataset(
             geodesic_frame="WGS84",
             local_frame="ENU",
             local_frame_origin=local_frame_origin["id"],
-            local_frame_origin_coordinates_wgs84_lon=local_frame_origin["lon"],
-            local_frame_origin_coordinates_wgs84_lat=local_frame_origin["lat"],
-            local_frame_origin_coordinates_wgs84_h=local_frame_origin["h"],
+            local_frame_origin_wgs84_lon=local_frame_origin["lon"],
+            local_frame_origin_wgs84_lat=local_frame_origin["lat"],
+            local_frame_origin_wgs84_h=local_frame_origin["h"],
             mmsi_jules=mmsi_jules,
         ),
     )
@@ -1043,9 +1043,9 @@ def bathy_dataset(
             geodesic_frame="WGS84",
             local_frame="ENU",
             local_frame_origin=local_frame_origin["id"],
-            local_frame_origin_coordinates_wgs84_lon=local_frame_origin["lon"],
-            local_frame_origin_coordinates_wgs84_lat=local_frame_origin["lat"],
-            local_frame_origin_coordinates_wgs84_h=local_frame_origin["h"],
+            local_frame_origin_wgs84_lon=local_frame_origin["lon"],
+            local_frame_origin_wgs84_lat=local_frame_origin["lat"],
+            local_frame_origin_wgs84_h=local_frame_origin["h"],
         ),
     )
 
@@ -1077,8 +1077,8 @@ def load_bathy(
     ds_bathy = xr.open_dataset(bathy_fpath)
 
     # Slice data to get the area of interest
-    lat0 = np.rad2deg(local_frame_origin["lat"])
-    lon0 = np.rad2deg(local_frame_origin["lon"])
+    lat0 = local_frame_origin["lat"]
+    lon0 = local_frame_origin["lon"]
     ds_bathy = ds_bathy.sel(
         lat=slice(
             lat0 - dlat_box,

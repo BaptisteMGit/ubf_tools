@@ -311,3 +311,31 @@ def get_csdm_snapshot_number(y, fs, nperseg, noverlap):
     k = len(tt)
 
     return k
+
+
+def V2uPa(s, Sh, G=0):
+    """
+    Source: OBS_analyse.py (Thimothee Maison, SHOM)
+
+    Convert data from Volt (raw audio data) to uPa (underwater acoustics convention),
+    such that data(uPa) = data(V)*10**((-Sh-G)/20)
+    ----------
+    s : array-like
+        data in Volt
+    Sh : float
+        hydrophone sensitivity in dB re 1V/uPa (negative)
+    G : float, optionnal
+        amplification of recorder in dB. Default to 0 (no gain).
+    -------
+    s : array-like
+        data in uPa
+
+    """
+
+    suPa = s * 10 ** ((-Sh - G) / 20)
+
+    return suPa
+
+
+if __name__ == "__main__":
+    pass

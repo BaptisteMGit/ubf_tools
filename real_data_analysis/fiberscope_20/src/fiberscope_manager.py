@@ -938,63 +938,6 @@ class FiberscopeManager:
             plt.savefig(fpath, format="eps")
 
 
-if __name__ == "__main__":
-    from real_data_analysis.fiberscope.src.fiberscope_recording import (
-        FiberscopeDynamicRecording,
-        FiberscopeSweep1,
-    )
-
-    h_index_ref = 5
-    plot_feature = False
-
-    fs_dr = FiberscopeDynamicRecording()
-
-    # Create an instance of FiberscopeManager
-    root_processed_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope\data"
-    fsm = FiberscopeManager(
-        root_processed_data=root_processed_data,
-        h_index_ref=h_index_ref,
-        plot_feature=plot_feature,
-    )
-
-    # # preSplit the dynamic recording
-    fsm.presplit_dynamic_record(
-        fs_dynamic_recording=fs_dr,
-        n_sweep=8,
-        n_records=95,
-    )
-
-    # # Split dynamic records and save as nc
-    fsm.split_dynamic_record(fs_dynamic_recording=fs_dr)
-
-    # Derive features
-    fsm.process_dyn_analysis(
-        fs_dynamic_recording=fs_dr,
-        use_global_noise_csdm=False,
-    )
-
-    # Load and preprocess static record
-    fs_sweep1 = FiberscopeSweep1()
-    fs_sweep1.records_folder = os.path.join(root_processed_data, "static")
-    if not os.path.exists(fs_sweep1.records_folder):
-        os.makedirs(fs_sweep1.records_folder)
-
-    # fsm.process_static_analysis(
-    #     static_signal=fs_sweep1,
-    #     static_records_names=fs_sweep1.records_N5,
-    # )
-    # Run localization process
-    d = fsm.localize_dyn_recording(
-        static_signal=fs_sweep1,
-        static_records_names=fs_sweep1.records_N5,
-        fs_dynamic_recording=fs_dr,
-    )
-
-    fsm.plot_dyn_loc(
-        d_rtf=d, axis_norm=1, time_step=fs_dr.time_step, vmin=-5, save_eps=True
-    )
-
-
 def get_theta_c(val, apply_mean):
     # We dont have anything to do we can store the mean value directly
     if apply_mean:
@@ -1009,3 +952,61 @@ def get_theta_c(val, apply_mean):
         theta_c = expectation
 
     return theta_c
+
+
+if __name__ == "__main__":
+    from real_data_analysis.fiberscope_20.src.fiberscope_recording import (
+        FiberscopeDynamicRecording,
+        FiberscopeSweep1,
+    )
+
+    h_index_ref = 5
+    plot_feature = False
+
+    fs_dr = FiberscopeDynamicRecording()
+
+    # Create an instance of FiberscopeManager
+    root_processed_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_20\data"
+    fsm = FiberscopeManager(
+        root_processed_data=root_processed_data,
+        h_index_ref=h_index_ref,
+        plot_feature=plot_feature,
+    )
+
+    # # # preSplit the dynamic recording
+    # fsm.presplit_dynamic_record(
+    #     fs_dynamic_recording=fs_dr,
+    #     n_sweep=8,
+    #     n_records=95,
+    # )
+
+    # # # Split dynamic records and save as nc
+    # fsm.split_dynamic_record(fs_dynamic_recording=fs_dr)
+
+    # # Derive features
+    # fsm.process_dyn_analysis(
+    #     fs_dynamic_recording=fs_dr,
+    #     use_global_noise_csdm=False,
+    # )
+
+    # Load and preprocess static record
+    fs_sweep1 = FiberscopeSweep1()
+    fs_sweep1.records_folder = os.path.join(root_processed_data, "static")
+    if not os.path.exists(fs_sweep1.records_folder):
+        os.makedirs(fs_sweep1.records_folder)
+
+    fsm.process_static_analysis(
+        static_signal=fs_sweep1,
+        static_records_names=fs_sweep1.records_N5,
+    )
+
+    # # Run localization process
+    # d = fsm.localize_dyn_recording(
+    #     static_signal=fs_sweep1,
+    #     static_records_names=fs_sweep1.records_N5,
+    #     fs_dynamic_recording=fs_dr,
+    # )
+
+    # fsm.plot_dyn_loc(
+    #     d_rtf=d, axis_norm=1, time_step=fs_dr.time_step, vmin=-5, save_eps=True
+    # )

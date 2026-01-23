@@ -1008,6 +1008,9 @@ def build_arrivals_dataset(
         # -----------------------------------------
         # 8) Aggregate results
         # -----------------------------------------
+        new_data["pulse_id"] = list(
+            np.arange(len(emissions_datetime))
+        )  # Add an id for each pulse
         for key in origin_keys:
             processed_data[key].extend(df_sequence[key].values)
         for key in new_data:

@@ -76,9 +76,9 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
         obs_wav_files_dict = wav_start_times_dict[obs_id]
 
         # # TODO : limitation for personnal computer memory -> remove this on TIM 
-        # id0 = 12
+        # id0 = 14
         # id1 = 15
-        # # keep_only_first = 2
+        # keep_only_first = 2
         # obs_wav_files_dict = dict(list(obs_wav_files_dict.items())[id0:id1])
 
         full_signal = {ch: [] for ch in channels}
@@ -155,13 +155,13 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
             # Storing time is useless since we can easily recompute it from fs
             ds_wav = xr.Dataset(
                 data_vars=dict(
-                    signal_obs1=(data_obs[1]["signal"].astype(np.float32)),
-                    signal_obs2=(data_obs[2]["signal"].astype(np.float32)),
-                    signal_obs3=(data_obs[3]["signal"].astype(np.float32)),
+                    signal_obs1=(data_obs[1]["signal"][ch].astype(np.float32)),
+                    signal_obs2=(data_obs[2]["signal"][ch].astype(np.float32)),
+                    signal_obs3=(data_obs[3]["signal"][ch].astype(np.float32)),
                 ),
                 attrs=dict(
                     description="Merged wav files from Fiberscope Groix Oct 2025 experiment",
-                    used_channel=ch,
+                    channel=ch,
                     fs_obs1=data_obs[1]["fs"],
                     start_datetime_obs1=data_obs[1]["start_dt"].strftime(date_fmt),
                     end_datetime_obs1=data_obs[1]["end_dt"].strftime(date_fmt),
@@ -197,10 +197,11 @@ def compute_spectrogram(
     root_img=img_folder,
     nperseg=4096,
     noverlap=2048,
+    channel="H"
 ):
 
     # Load wav data from netcdf
-    nc_fpath = os.path.join(root_data, "channel_H_wav.nc")
+    nc_fpath = os.path.join(root_data, f"channel_{channel}_wav.nc")
     ds_wav = xr.open_dataset(nc_fpath)
     datetime_fmt = ds_wav.attrs["datetime_format"]
 
@@ -286,7 +287,24 @@ def compute_spectrogram(
 if __name__ == "__main__":
     merge_wav_files(output_format="nc", channels=["H"], verbose=True)
 
+    merge_wav_files(output_format="nc", channels=["Z"], verbose=True)
+
+    merge_wav_files(output_format="nc", channels=["X", "Y"], verbose=True)
+
+
     # window_duration_hour = 2
+    # window_duration = window_duration_hour * 3600  # in seconds
+    # nperseg = 2**14
+    # noverlap = 2**13
+    # compute_spectrogram(
+    #     window_duration=window_duration,
+    #     root_data=data_folder,
+    #     root_img=root_img_stft,
+    #     nperseg=nperseg,
+    #     noverlap=noverlap,
+    # )
+
+    # window_duration_hour = 6
     # window_duration = window_duration_hour * 3600  # in seconds
     # nperseg = 2**14
     # noverlap = 2**13

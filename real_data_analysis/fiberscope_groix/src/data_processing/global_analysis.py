@@ -26,22 +26,18 @@ from real_data_analysis.fiberscope_groix.src.data_processing.arrivals_utils impo
     get_available_wav_files,
 )
 from real_data_analysis.real_data_utils import V2uPa
-from real_data_analysis.fiberscope_groix.src.params import (
-    obs_hydro_sensitivity,
-    obs_hydro_gain,
-)
+import real_data_analysis.fiberscope_groix.src.params as p
 
 # ======================================================================================================================
 # Paths
 # ======================================================================================================================
-project_root = os.getcwd()
-root_groix_data = os.path.join(project_root, "data", "fiberscope_groix_oct_2025")
-root_folder = os.path.join(project_root, "real_data_analysis", "fiberscope_groix")
+root_folder = p.root_folder
+project_root = p.project_root
+root_groix_data = p.root_groix_data
 
-img_folder = os.path.join(root_folder, "img")
-data_folder = os.path.join(root_folder, "data")
-root_groix_wav = os.path.join(root_groix_data, "wav")
-root_groix_metadata = os.path.join(root_groix_data, "metadata")
+img_folder = p.root_img
+data_folder = p.root_data
+root_groix_wav = p.root_groix_wav
 
 root_img_stft = os.path.join(img_folder, "signal")
 
@@ -65,7 +61,7 @@ def merge_wav_files(root_data=data_folder, output_format="nc", verbose=False):
     wav_start_times_dict = {}
     start_datetime_arr_dict = {}
     for obs_id in [1, 2, 3]:
-        wav_start_times, start_datetime_arr = get_available_wav_files(obs_id)
+        wav_start_times, start_datetime_arr = get_available_wav_files(obs_id, root_groix_wav=root_groix_wav)
         wav_start_times_dict[obs_id] = wav_start_times
         start_datetime_arr_dict[obs_id] = start_datetime_arr
 
@@ -76,11 +72,11 @@ def merge_wav_files(root_data=data_folder, output_format="nc", verbose=False):
     for obs_id in [1, 2, 3]:
         obs_wav_files_dict = wav_start_times_dict[obs_id]
 
-        # TODO : remove this limitation later
-        id0 = 12
-        id1 = 15
-        # keep_only_first = 2
-        obs_wav_files_dict = dict(list(obs_wav_files_dict.items())[id0:id1])
+        # # TODO : remove this limitation later
+        # id0 = 12
+        # id1 = 15
+        # # keep_only_first = 2
+        # obs_wav_files_dict = dict(list(obs_wav_files_dict.items())[id0:id1])
 
         full_signal = []
         full_time = []
@@ -94,7 +90,7 @@ def merge_wav_files(root_data=data_folder, output_format="nc", verbose=False):
             signal -= np.mean(signal)
             # TODO check if data already in uPa ?
             # Convert to uPa
-            signal = V2uPa(signal, obs_hydro_sensitivity, obs_hydro_gain)
+            signal = V2uPa(signal, p.obs_hydro_sensitivity, p.obs_hydro_gain)
             # Get time vector
             t0 = full_time[-1] + 1 / fs if full_time else 0
             time = np.arange(signal.shape[0]) / fs + t0

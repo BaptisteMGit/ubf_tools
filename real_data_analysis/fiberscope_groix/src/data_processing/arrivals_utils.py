@@ -305,7 +305,12 @@ def plot_arrivals_detection(
     axs[0].set_ylabel("s")
     axs[1].set_ylabel(r"$s_{mf}$")
 
-    im = axs[2].pcolormesh(tt_datetime, ff, 10 * np.log10(np.abs(Sxx)), cmap=cmap)
+    cmap = "viridis"
+    vmax = np.percentile(10 * np.log10(np.abs(Sxx)), 90)
+    vmin = np.percentile(10 * np.log10(np.abs(Sxx)), 20)
+    im = axs[2].pcolormesh(
+        tt_datetime, ff, 10 * np.log10(np.abs(Sxx)), cmap=cmap, vmax=vmax, vmin=vmin
+    )
     # fig.colorbar(im, cax=axs[2], label=r"Pa$^2$ / Hz in dB")
     axs[2].set_ylabel("Fréquence [Hz]")
 

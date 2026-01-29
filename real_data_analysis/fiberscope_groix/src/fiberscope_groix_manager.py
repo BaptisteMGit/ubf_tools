@@ -243,7 +243,7 @@ class FiberscopeManager:
 
     #     return xr_data
 
-    def preprocess_data(self, xr_data):
+    def preprocess_data(self, xr_data, df_seq):
 
         # Create the source pulse signal
         n_hydro = xr_data.sizes["h_index"]
@@ -264,6 +264,8 @@ class FiberscopeManager:
         t = xr_data.signal.sel(time=slice(0, t_pulse)).time.values
         x = sp.chirp(t, f0=f0, f1=f1, t1=t_pulse, method="linear")
 
+        # Recording start datetime
+        start_dt = datetime.strptime(xr_data.start_datetime, xr_data.datetime_format)
         # Time to first arrival
         t0 = xr_data.t0
 
@@ -272,17 +274,32 @@ class FiberscopeManager:
         i_hydro = 0
         for hydro_idx in xr_data.h_index.values:
 
-            # Process each emission
-            for i_em in range(n_em):
-                # Extract the emission
+            # Process each pulse
+            # for i_em in range(n_em):
+            for i_em, pulse_id in enumerate(xr_data.pulse_id.values):
+
+                # Extract the current pulse
+                df_pulse = df_seq.loc[df_seq["pulse_id"] == pulse_id]
+                arr_dt_pulse = df_pulse[f"Arrival datetime OBS{hydro_idx}"].iloc[0]
+                t0 = (arr_dt_pulse - start_dt).total_seconds()
                 y = xr_data.signal.sel(
                     time=slice(
-                        t0 + i_em * t_interp_pulse - ts / 2,
-                        t0 + i_em * t_interp_pulse + t_pulse + tau_plus + ts / 2,
+                        t0 - ts / 2,
+                        t0 + t_pulse + tau_plus + ts / 2,
                     ),
                     h_index=hydro_idx,
                 )
                 # Note: +/- ts/2 to ensure we include boundary samples
+
+                # # Extract the emission
+                # y = xr_data.signal.sel(
+                #     time=slice(
+                #         t0 + i_em * t_interp_pulse - ts / 2,
+                #         t0 + i_em * t_interp_pulse + t_pulse + tau_plus + ts / 2,
+                #     ),
+                #     h_index=hydro_idx,
+                # )
+                # # Note: +/- ts/2 to ensure we include boundary samples
 
                 if init_ri_hat:
                     ri_hat = np.zeros((n_hydro, n_em, y.sizes["time"]))
@@ -291,7 +308,10 @@ class FiberscopeManager:
 
                 # Estimate the impulse response
                 h_hat = crosscorr_deconvolution(x=x, y=y.values)
-                ri_hat[i_hydro, i_em, :] = h_hat
+                try:
+                    ri_hat[i_hydro, i_em, :] = h_hat
+                except:
+                    print("debug")
 
             i_hydro += 1
 
@@ -527,6 +547,7 @@ class FiberscopeManager:
         common_time_vector = np.arange(data_obs[1]["signal"].size) * 1 / fs
 
         first_arrival = np.min([data_obs[i]["t0_first_arr"] for i in obs_ids])
+        last_arrival = np.max([data_obs[i]["t0_first_arr"] for i in obs_ids])
 
         xr_data = xr.Dataset(
             data_vars=dict(signal=(["h_index", "time"], signal_mat)),
@@ -539,6 +560,7 @@ class FiberscopeManager:
                 fs=fs,
                 ts=1 / fs,
                 t0=first_arrival,
+                t1=last_arrival,
                 datetime_format=self.datetime_fmt,
                 start_datetime=t0_slice.strftime(self.datetime_fmt),
                 sequence_id=df_seq["Sequence_id"].iloc[0],
@@ -647,6 +669,14 @@ class FiberscopeManager:
         i_test = 0
         prev_progress = 0
 
+        # Ensure we process only valid arrivals
+        valid = (
+            df_arrivals["Valid detection OBS1"]
+            * df_arrivals["Valid detection OBS2"]
+            * df_arrivals["Valid detection OBS3"]
+        )
+        df_arrivals = df_arrivals.loc[valid]
+
         # Number of individual sequences to process
         sequence_ids = df_arrivals["Sequence_id"].unique()
         n_seq = sequence_ids.size
@@ -678,7 +708,7 @@ class FiberscopeManager:
             self.set_managers(fs=xr_data.fs, idx_rcv_ref=idx_rcv_ref)
 
             ### Step 2 - Preprocess data ###
-            self.preprocess_data(xr_data=xr_data)
+            self.preprocess_data(xr_data=xr_data, df_seq=df_seq)
 
             ### Step 3 - Derive features ###
             self.derive_feature(
@@ -1190,7 +1220,12 @@ class FiberscopeManager:
                 peaks_energy = energy[idx_peaks]
                 peaks_energy_sorted = np.sort(peaks_energy)[::-1]
                 peaks_energy_sorted_em = peaks_energy_sorted[:n_em]
-                min_peaks = np.min(peaks_energy_sorted_em)
+                try:
+                    min_peaks = np.min(peaks_energy_sorted_em)
+                except:
+                    default_mask = np.ones_like(energy)
+                    print("debug")
+
                 threshold = 0.9 * min_peaks
                 # threshold = 0.005 * min_peaks
             else:

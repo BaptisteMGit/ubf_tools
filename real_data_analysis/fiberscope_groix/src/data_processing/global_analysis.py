@@ -94,7 +94,7 @@ def merge_wav_files(root_data=data_folder, output_format="nc", verbose=False):
             signal -= np.mean(signal)
             # TODO check if data already in uPa ?
             # Convert to uPa
-            # signal = V2uPa(signal, hydro_sensitivity, hydro_gain)
+            signal = V2uPa(signal, obs_hydro_sensitivity, obs_hydro_gain)
             # Get time vector
             t0 = full_time[-1] + 1 / fs if full_time else 0
             time = np.arange(signal.shape[0]) / fs + t0
@@ -268,16 +268,16 @@ def compute_spectrogram(
 if __name__ == "__main__":
     merge_wav_files(output_format="nc", verbose=True)
 
-    window_duration_hour = 2
-    window_duration = window_duration_hour * 3600  # in seconds
-    nperseg = 2**14
-    noverlap = 2**13
-    compute_spectrogram(
-        window_duration=window_duration,
-        root_data=data_folder,
-        root_img=root_img_stft,
-        nperseg=nperseg,
-        noverlap=noverlap,
-    )
+    # window_duration_hour = 2
+    # window_duration = window_duration_hour * 3600  # in seconds
+    # nperseg = 2**14
+    # noverlap = 2**13
+    # compute_spectrogram(
+    #     window_duration=window_duration,
+    #     root_data=data_folder,
+    #     root_img=root_img_stft,
+    #     nperseg=nperseg,
+    #     noverlap=noverlap,
+    # )
 
     # pass

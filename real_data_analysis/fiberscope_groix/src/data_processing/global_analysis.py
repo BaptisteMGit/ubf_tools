@@ -211,7 +211,7 @@ def compute_spectrogram(
 
         # Img folder to use to store spectrograms
         root_img_obs = os.path.join(
-            root_img, f"OBS{obs_id}", f"{window_duration_hour}H"
+            root_img, f"OBS{obs_id}", channel, f"{window_duration_hour}H"
         )
         if not os.path.exists(root_img_obs):
             os.makedirs(root_img_obs)
@@ -265,9 +265,12 @@ def compute_spectrogram(
             vmin = np.percentile(sxx, 10)
             vmax = np.percentile(sxx, 99)
             # fig, ax = plt.subplots()
+
             plt.figure()
             im = plt.pcolormesh(tt_datetime, ff, sxx, cmap=cmap, vmin=vmin, vmax=vmax)
-            plt.colorbar(im, label=r"dB re 1$\mu$Pa$^2$ / Hz")
+            
+            clabel = r"dB re 1$\mu$Pa$^2$ / Hz" if channel == "H" else r"dB re 1$(m~s^{-1})^2$ / Hz"
+            plt.colorbar(im, label=clabel)
             plt.ylabel("Fréquence [Hz]")
             plt.xlabel("Temps UTC")
             # plt.show()
@@ -275,7 +278,7 @@ def compute_spectrogram(
             # Save in dedicated folder
             start_dt_str = t0_slice.strftime(datetime_fmt)
             end_dt_str = t1_slice.strftime(datetime_fmt)
-            fname = f"OBS{obs_id}_{start_dt_str}_to_{end_dt_str}.png"
+            fname = f"OBS{obs_id}_{channel}_{start_dt_str}_to_{end_dt_str}.png"
             fpath = os.path.join(root_img_obs, fname)
             plt.savefig(fpath)
 
@@ -285,35 +288,39 @@ def compute_spectrogram(
 
 
 if __name__ == "__main__":
-    merge_wav_files(output_format="nc", channels=["H"], verbose=True)
+    # merge_wav_files(output_format="nc", channels=["H"], verbose=True)
+    # merge_wav_files(output_format="nc", channels=["Z"], verbose=True)
+    # merge_wav_files(output_format="nc", channels=["X", "Y"], verbose=True)
 
-    merge_wav_files(output_format="nc", channels=["Z"], verbose=True)
+    # channel = "Z"
+    # nc_fpath = os.path.join(data_folder, f"channel_{channel}_wav.nc")
+    # ds_wav = xr.open_dataset(nc_fpath)
+    
+    for ch in p.channels_order.keys():
+        window_duration_hour = 2
+        window_duration = window_duration_hour * 3600  # in seconds
+        nperseg = 2**14
+        noverlap = 2**13
+        compute_spectrogram(
+            window_duration=window_duration,
+            root_data=data_folder,
+            root_img=root_img_stft,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            channel=ch,
+        )
 
-    merge_wav_files(output_format="nc", channels=["X", "Y"], verbose=True)
-
-
-    # window_duration_hour = 2
-    # window_duration = window_duration_hour * 3600  # in seconds
-    # nperseg = 2**14
-    # noverlap = 2**13
-    # compute_spectrogram(
-    #     window_duration=window_duration,
-    #     root_data=data_folder,
-    #     root_img=root_img_stft,
-    #     nperseg=nperseg,
-    #     noverlap=noverlap,
-    # )
-
-    # window_duration_hour = 6
-    # window_duration = window_duration_hour * 3600  # in seconds
-    # nperseg = 2**14
-    # noverlap = 2**13
-    # compute_spectrogram(
-    #     window_duration=window_duration,
-    #     root_data=data_folder,
-    #     root_img=root_img_stft,
-    #     nperseg=nperseg,
-    #     noverlap=noverlap,
-    # )
+        window_duration_hour = 6
+        window_duration = window_duration_hour * 3600  # in seconds
+        nperseg = 2**14
+        noverlap = 2**13
+        compute_spectrogram(
+            window_duration=window_duration,
+            root_data=data_folder,
+            root_img=root_img_stft,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            channel=ch,
+        )
 
     # pass

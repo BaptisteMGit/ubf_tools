@@ -25,8 +25,8 @@ import scipy.signal as sp
 from misc import progression_bar
 
 # import tracemalloc
-from pympler import muppy, summary
-import gc
+# from pympler import muppy, summary
+# import gc
 
 
 # ======================================================================================================================
@@ -1134,8 +1134,8 @@ def build_arrivals_dataset(
 
         if verbose:
             print(f"\tSequence ID {seq_id} processed.")
-            all_objects = muppy.get_objects()
-            summary.print_(summary.summarize(all_objects))
+            # all_objects = muppy.get_objects()
+            # summary.print_(summary.summarize(all_objects))
 
     # Convert to dataframe
     df_processed = pd.DataFrame(processed_data)

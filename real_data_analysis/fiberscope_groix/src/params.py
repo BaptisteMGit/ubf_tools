@@ -57,6 +57,11 @@ else:  # Linux
     data_root = "/home/data"
 
     # TODO : update this if deployement on TIM
+    root_groix_data = os.path.join(data_root, "fiberscope/groix_octobre_2025")
+    root_folder = os.path.join(project_root, "real_data_analysis", "fiberscope_groix")
+    root_groix_wav = os.path.join(root_groix_data, "shom")
+    root_data = os.path.join(root_folder, "data")
+    root_img = os.path.join(root_folder, "img")
 
     # root = os.path.join(project_root, "rtf_zhang_et_al_testcase")
     # data_folder = os.path.join(data_root, "rtf_zhang_et_al_testcase")

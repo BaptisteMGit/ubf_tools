@@ -41,13 +41,13 @@ root_groix_wav = p.root_groix_wav
 
 root_img_stft = os.path.join(img_folder, "signal")
 
-channels_order = {
-    "Z": 0,
-    "X": 1,
-    "Y": 2,
-    "H": 3,
-}
-used_channel = "H"
+# channels_order = {
+#     "Z": 0,
+#     "X": 1,
+#     "Y": 2,
+#     "H": 3,
+# }
+# hydro_channel = "H"
 
 
 # ======================================================================================================================
@@ -55,7 +55,10 @@ used_channel = "H"
 # ======================================================================================================================
 
 
-def merge_wav_files(root_data=data_folder, output_format="nc", verbose=False):
+def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_channel, verbose=False):
+
+    # Make sure channels is a 1D array
+    channels = np.atleast_1d(channels)
 
     # Get available wav files for each OBS
     wav_start_times_dict = {}
@@ -72,33 +75,39 @@ def merge_wav_files(root_data=data_folder, output_format="nc", verbose=False):
     for obs_id in [1, 2, 3]:
         obs_wav_files_dict = wav_start_times_dict[obs_id]
 
-        # # TODO : remove this limitation later
+        # # TODO : limitation for personnal computer memory -> remove this on TIM 
         # id0 = 12
         # id1 = 15
         # # keep_only_first = 2
         # obs_wav_files_dict = dict(list(obs_wav_files_dict.items())[id0:id1])
 
-        full_signal = []
+        full_signal = {ch: [] for ch in channels}
         full_time = []
+                    
         for wav_start_dt in obs_wav_files_dict.keys():
             wav_fpath = obs_wav_files_dict[wav_start_dt]
             # Load signal from wav file
             signal, fs = sf.read(wav_fpath)
-            # Select the channel
-            signal = signal[:, channels_order[used_channel]]
-            # Centre signal
-            signal -= np.mean(signal)
-            # TODO check if data already in uPa ?
-            # Convert to uPa
-            signal = V2uPa(signal, p.obs_hydro_sensitivity, p.obs_hydro_gain)
             # Get time vector
             t0 = full_time[-1] + 1 / fs if full_time else 0
             time = np.arange(signal.shape[0]) / fs + t0
-            # Add to list
-            full_signal.extend(signal)
+            # Add 
             full_time.extend(time)
 
-        full_signal = np.array(full_signal)
+            for ch in channels:
+
+                # Select the channel
+                signal_ch = signal[:, p.channels_order[ch]]
+
+                if ch == "H":
+                    # Centre signal
+                    signal_ch -= np.mean(signal_ch)
+                    # Convert to uPa
+                    signal_ch = V2uPa(signal_ch, p.obs_hydro_sensitivity, p.obs_hydro_gain)
+
+                # Add to list
+                full_signal[ch].extend(signal_ch)
+
         full_time = np.array(full_time)
 
         # Datetime info
@@ -107,13 +116,16 @@ def merge_wav_files(root_data=data_folder, output_format="nc", verbose=False):
 
         # Store data
         data_obs[obs_id] = dict(
-            signal=full_signal,
+            signal={},
             time=full_time,
             start_dt=start_dt,
             end_dt=end_dt,
             fs=fs,
         )
+        for ch in channels:
+            data_obs[obs_id]["signal"][ch] = np.array(full_signal[ch])
 
+    # TODO : need to be updated -> this code is broken 
     date_fmt = "%Y-%m-%d_%H-%M-%S"
     if output_format == "wav":
         for obs_id in data_obs.keys():
@@ -138,35 +150,45 @@ def merge_wav_files(root_data=data_folder, output_format="nc", verbose=False):
 
     elif output_format == "nc":
 
-        # Storing time is useless since we can easily recompute it from fs
-        ds_wav = xr.Dataset(
-            data_vars=dict(
-                signal_obs1=(data_obs[1]["signal"].astype(np.float32)),
-                signal_obs2=(data_obs[2]["signal"].astype(np.float32)),
-                signal_obs3=(data_obs[3]["signal"].astype(np.float32)),
-            ),
-            attrs=dict(
-                description="Merged wav files from Fiberscope Groix Oct 2025 experiment",
-                used_channel=used_channel,
-                fs_obs1=data_obs[1]["fs"],
-                start_datetime_obs1=data_obs[1]["start_dt"].strftime(date_fmt),
-                end_datetime_obs1=data_obs[1]["end_dt"].strftime(date_fmt),
-                fs_obs2=data_obs[2]["fs"],
-                start_datetime_obs2=data_obs[2]["start_dt"].strftime(date_fmt),
-                end_datetime_obs2=data_obs[2]["end_dt"].strftime(date_fmt),
-                fs_obs3=data_obs[3]["fs"],
-                start_datetime_obs3=data_obs[3]["start_dt"].strftime(date_fmt),
-                end_datetime_obs3=data_obs[3]["end_dt"].strftime(date_fmt),
-                datetime_format=date_fmt,
-            ),
-        )
+        for ch in channels:
 
-        # Save dataset
-        nc_fpath = os.path.join(root_data, "wav.nc")
-        ds_wav.to_netcdf(nc_fpath)
+            # Storing time is useless since we can easily recompute it from fs
+            ds_wav = xr.Dataset(
+                data_vars=dict(
+                    signal_obs1=(data_obs[1]["signal"].astype(np.float32)),
+                    signal_obs2=(data_obs[2]["signal"].astype(np.float32)),
+                    signal_obs3=(data_obs[3]["signal"].astype(np.float32)),
+                ),
+                attrs=dict(
+                    description="Merged wav files from Fiberscope Groix Oct 2025 experiment",
+                    used_channel=ch,
+                    fs_obs1=data_obs[1]["fs"],
+                    start_datetime_obs1=data_obs[1]["start_dt"].strftime(date_fmt),
+                    end_datetime_obs1=data_obs[1]["end_dt"].strftime(date_fmt),
+                    fs_obs2=data_obs[2]["fs"],
+                    start_datetime_obs2=data_obs[2]["start_dt"].strftime(date_fmt),
+                    end_datetime_obs2=data_obs[2]["end_dt"].strftime(date_fmt),
+                    fs_obs3=data_obs[3]["fs"],
+                    start_datetime_obs3=data_obs[3]["start_dt"].strftime(date_fmt),
+                    end_datetime_obs3=data_obs[3]["end_dt"].strftime(date_fmt),
+                    datetime_format=date_fmt,
+                ),
+            )
 
-        if verbose:
-            print(f"NetCDF file saved at: {nc_fpath}")
+            for obs_id in [1, 2, 3]:
+                ch_units = "uPa" if ch == "H" else "m/s"
+                ds_wav[f"signal_obs{obs_id}"].attrs["units"] = ch_units
+                ch_name = "Pressure" if ch == "H" else f"{ch} velocity"
+                ds_wav[f"signal_obs{obs_id}"].attrs["long_name"] = ch_name
+
+
+            # Save dataset
+            fname = f"channel_{ch}_wav.nc"
+            nc_fpath = os.path.join(root_data, fname)
+            ds_wav.to_netcdf(nc_fpath)
+
+            if verbose:
+                print(f"NetCDF file saved at: {nc_fpath}")
 
 
 def compute_spectrogram(
@@ -178,7 +200,7 @@ def compute_spectrogram(
 ):
 
     # Load wav data from netcdf
-    nc_fpath = os.path.join(root_data, "wav.nc")
+    nc_fpath = os.path.join(root_data, "channel_H_wav.nc")
     ds_wav = xr.open_dataset(nc_fpath)
     datetime_fmt = ds_wav.attrs["datetime_format"]
 
@@ -262,7 +284,7 @@ def compute_spectrogram(
 
 
 if __name__ == "__main__":
-    merge_wav_files(output_format="nc", verbose=True)
+    merge_wav_files(output_format="nc", channels=["H"], verbose=True)
 
     # window_duration_hour = 2
     # window_duration = window_duration_hour * 3600  # in seconds

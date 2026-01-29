@@ -103,7 +103,7 @@ ds_arr = xr.open_dataset(os.path.join(data_folder, "processed_arrivals.nc"))
 df_arr = ds_arr.to_dataframe()
 
 # -----------------------------------------------------------------------------
-# Distance computation (UNCHANGED logic)
+# Distance computation
 # -----------------------------------------------------------------------------
 
 
@@ -113,7 +113,6 @@ def get_dists(df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
 
     fpath = os.path.join(fsm.root_data_sequence, f"sequence_{seq_id_ref}_rtf.nc")
     xr_seq_ref = xr.open_dataset(fpath)
-
     df_seq_ref = df_arr.loc[df_arr["Sequence_id"] == seq_id_ref]
     ref_pos_e = df_seq_ref["Emission interpolated E GPS"].iloc[0]
     ref_pos_n = df_seq_ref["Emission interpolated N GPS"].iloc[0]
@@ -121,6 +120,10 @@ def get_dists(df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
     df_seq_i = df_arr.loc[df_arr["Sequence_id"] == seq_id]
     fpath = os.path.join(fsm.root_data_sequence, f"sequence_{seq_id}_rtf.nc")
     xr_seq_i = xr.open_dataset(fpath)
+
+    # # TODO remove this
+    # xr_seq_i = xr_seq_i.sel(pluse_id=slice(0, 300))
+    # df_seq_i = xr_seq_i.loc[xr_seq_i["pulse_id"].isin(xr_seq_i.pulse_id.values)]
 
     spatial_dist = np.sqrt(
         (ref_pos_e - df_seq_i["Emission interpolated E GPS"]) ** 2
@@ -153,6 +156,7 @@ def get_dists(df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
 # -----------------------------------------------------------------------------
 
 fmin, fmax = 600, 800
+# seq_id = 144
 seq_id = 144
 
 seq_refs = [151, 116, 127]  # obs1, obs2, obs3
@@ -168,13 +172,27 @@ for seq_id_ref in seq_refs:
         fmin=fmin,
         fmax=fmax,
     )
+
+    # TODO remove this
+    spatial_dist = spatial_dist[:250]
+    theta_dist = theta_dist[:250]
+
+    # # Smooth with rolling average
+    n_roll_avg = 10
+    theta_dist = np.convolve(theta_dist, np.ones(n_roll_avg) / n_roll_avg, mode="same")
+    # energy = np.convolve(energy, np.ones(n_roll_avg) / n_roll_avg, mode="same")
+
     spatial_dist_obs.append(spatial_dist)
     theta_dist_obs.append(theta_dist)
 
-# Normalize theta dist to 1 to get kind of a probability
-theta_dist_obs = (90 - np.array(theta_dist_obs)) / 90
 
-pulse_id = xr_seq.pulse_id.values
+# Normalize theta dist to 1
+theta_dist_obs = (90 - np.array(theta_dist_obs)) / 90
+# Normalize each columns to sum to 1 (presence probability)
+theta_dist_obs = theta_dist_obs / np.sum(theta_dist_obs, axis=0)
+
+pulse_id = xr_seq.pulse_id.values[:250]
+df_seq = df_seq.loc[df_seq["pulse_id"].isin(pulse_id)]
 pulse_dt = df_seq["Emission datetime"].values
 
 # -----------------------------------------------------------------------------
@@ -202,10 +220,12 @@ ax_traj.set_xlabel("E [m]")
 ax_traj.set_ylabel("N [m]")
 ax_traj.set_aspect("equal")
 
-ax_traj.set_xlim(E.min() - 10, E.max() + 10)
-ax_traj.set_ylim(N.min() - 10, N.max() + 10)
+ax_traj.set_xlim(E.min() - 100, E.max() + 100)
+ax_traj.set_ylim(N.min() - 100, N.max() + 100)
 
-keys = ["obs1", "obs2", "obs3", "t1", "t2", "t3", "t4", "t5"]
+# keys = ["obs1", "obs2", "obs3", "t1", "t2", "t3", "t4", "t5"]
+keys = ["obs1", "obs2", "obs3"]
+
 for ik, k in enumerate(keys):
     ax_traj.scatter(
         ds_gps.attrs[f"{k}_e_apriori"],
@@ -214,7 +234,7 @@ for ik, k in enumerate(keys):
         color=color(ik),
         s=40,
         zorder=10,
-        label=k,
+        label=k.upper(),
     )
 
 (line,) = ax_traj.plot([], [], lw=2, color="tab:blue")
@@ -287,5 +307,6 @@ ani = FuncAnimation(
 # -----------------------------------------------------------------------------
 
 # plt.show()
+
 fpath = os.path.join(img_folder, "trajectory_presence_probability_animation.gif")
 ani.save(fpath, fps=10, dpi=150)

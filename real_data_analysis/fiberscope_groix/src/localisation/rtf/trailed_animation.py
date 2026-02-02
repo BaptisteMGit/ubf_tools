@@ -41,11 +41,11 @@ df_arr = ds_arr.to_dataframe()
 
 seq_id = [144]  # , 134, 135, 136, 143]
 
-df_seq = df_arr.loc[df_arr["Sequence_id"].isin(seq_id)]
+df_seq = df_arr.loc[df_arr["sequence_id"].isin(seq_id)]
 
 
 # Load wav data from netcdf
-nc_fpath = os.path.join(data_folder, "wav.nc")
+nc_fpath = os.path.join(data_folder, "channel_H_wav.nc")
 ds_wav = xr.open_dataset(nc_fpath)
 
 datetime_fmt = ds_wav.attrs["datetime_format"]
@@ -113,11 +113,11 @@ def get_dists(df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
 
     fpath = os.path.join(fsm.root_data_sequence, f"sequence_{seq_id_ref}_rtf.nc")
     xr_seq_ref = xr.open_dataset(fpath)
-    df_seq_ref = df_arr.loc[df_arr["Sequence_id"] == seq_id_ref]
-    ref_pos_e = df_seq_ref["Emission interpolated E GPS"].iloc[0]
-    ref_pos_n = df_seq_ref["Emission interpolated N GPS"].iloc[0]
+    df_seq_ref = df_arr.loc[df_arr["sequence_id"] == seq_id_ref]
+    ref_pos_e = df_seq_ref["emission_interp_e_gps"].iloc[0]
+    ref_pos_n = df_seq_ref["emission_interp_n_gps"].iloc[0]
 
-    df_seq_i = df_arr.loc[df_arr["Sequence_id"] == seq_id]
+    df_seq_i = df_arr.loc[df_arr["sequence_id"] == seq_id]
     fpath = os.path.join(fsm.root_data_sequence, f"sequence_{seq_id}_rtf.nc")
     xr_seq_i = xr.open_dataset(fpath)
 
@@ -126,8 +126,8 @@ def get_dists(df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
     # df_seq_i = xr_seq_i.loc[xr_seq_i["pulse_id"].isin(xr_seq_i.pulse_id.values)]
 
     spatial_dist = np.sqrt(
-        (ref_pos_e - df_seq_i["Emission interpolated E GPS"]) ** 2
-        + (ref_pos_n - df_seq_i["Emission interpolated N GPS"]) ** 2
+        (ref_pos_e - df_seq_i["emission_interp_e_gps"]) ** 2
+        + (ref_pos_n - df_seq_i["emission_interp_n_gps"]) ** 2
     )
 
     xr_seq_i_ref = xr_seq_ref.sel(pulse_id=0)
@@ -193,16 +193,16 @@ theta_dist_obs = theta_dist_obs / np.sum(theta_dist_obs, axis=0)
 
 pulse_id = xr_seq.pulse_id.values[:250]
 df_seq = df_seq.loc[df_seq["pulse_id"].isin(pulse_id)]
-pulse_dt = df_seq["Emission datetime"].values
+pulse_dt = df_seq["emission_datetime"].values
 
 # -----------------------------------------------------------------------------
 # Trajectory data
 # -----------------------------------------------------------------------------
 
-df_seq = df_seq.sort_values("Emission datetime")
-E = df_seq["Emission interpolated E GPS"].values
-N = df_seq["Emission interpolated N GPS"].values
-t = df_seq["Emission datetime"].values
+df_seq = df_seq.sort_values("emission_datetime")
+E = df_seq["emission_interp_e_gps"].values
+N = df_seq["emission_interp_n_gps"].values
+t = df_seq["emission_datetime"].values
 
 # -----------------------------------------------------------------------------
 # Figure and subplots
@@ -306,7 +306,7 @@ ani = FuncAnimation(
 # Display / save
 # -----------------------------------------------------------------------------
 
-# plt.show()
+plt.show()
 
-fpath = os.path.join(img_folder, "trajectory_presence_probability_animation.gif")
-ani.save(fpath, fps=10, dpi=150)
+# fpath = os.path.join(img_folder, "trajectory_presence_probability_animation.gif")
+# ani.save(fpath, fps=10, dpi=150)

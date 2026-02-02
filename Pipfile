@@ -42,6 +42,7 @@ pydiffmap = "*"
 soundfile = "*"
 pympler = "*"
 imageio = {extras = ["ffmpeg"], version = "*"}
+referrers = "*"
 
 [dev-packages]
 ipykernel = "*"

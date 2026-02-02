@@ -350,7 +350,7 @@ def plot_arrivals_detection(
     axs[0].set_ylabel("s")
     axs[1].set_ylabel(r"$s_{mf}$")
 
-    cmap = "viridis"
+    cmap = "Greys"
     vmax = np.percentile(10 * np.log10(np.abs(Sxx)), 90)
     vmin = np.percentile(10 * np.log10(np.abs(Sxx)), 20)
     im = axs[2].pcolormesh(
@@ -881,14 +881,21 @@ def build_arrivals_dataset(
                 emissions_datetime.append(emission_i_datetime)
 
                 if emission_id == 0:  # First emission in sequence
-                    # Find the corresponding wav file (for now we assume that the sequence fits in a single wav file)
-                    wav_fpath, wav_start_datetime = get_wav_file_for_emission(
-                        emission_datetime=emission_i_datetime,
-                        start_datetime_arr=start_datetime_arr,
-                        wav_start_times=wav_start_times,
-                    )
-                    if verbose:
-                        print(f"\t\tWav file: {wav_fpath}")
+                    if ds_wav is not None:
+                        datetime_fmt = ds_wav.attrs["datetime_format"]
+                        start_dt_merged = datetime.strptime(
+                            ds_wav.attrs[f"start_datetime_obs{obs_id}"], datetime_fmt
+                        )
+                        wav_start_datetime = start_dt_merged
+                    else:
+                        # Find the corresponding wav file (for now we assume that the sequence fits in a single wav file)
+                        wav_fpath, wav_start_datetime = get_wav_file_for_emission(
+                            emission_datetime=emission_i_datetime,
+                            start_datetime_arr=start_datetime_arr,
+                            wav_start_times=wav_start_times,
+                        )
+                        if verbose:
+                            print(f"\t\tWav file: {wav_fpath}")
 
                 # Emission position
                 emission_i_pos = [
@@ -943,22 +950,6 @@ def build_arrivals_dataset(
                 fs = ds_wav.attrs[f"fs_obs{obs_id}"]
                 signal = ds_wav[f"signal_obs{obs_id}"]
 
-                datetime_fmt = ds_wav.attrs["datetime_format"]
-                start_dt_merged = datetime.strptime(
-                    ds_wav.attrs[f"start_datetime_obs{obs_id}"], datetime_fmt
-                )
-
-                tr_first = (
-                    first_emission_reception_datetime - start_dt_merged
-                ).total_seconds()
-
-                tr_last = (
-                    last_emission_reception_datetime - start_dt_merged
-                ).total_seconds()
-
-                # Compute source position considering the offset for the current emission   (Source, Longueur filée)
-                # TODO : implement position correction if needed
-
                 # Select the time window of interest for current sequence (all emissions in the sequence + pre/post times)
                 t_start_win = tr_first - pre_reception_time
                 t_end_win = tr_last + post_reception_time
@@ -966,6 +957,18 @@ def build_arrivals_dataset(
                 # Convert in samples
                 n_samp_start_win = int(t_start_win * fs)
                 n_samp_end_win = int(t_end_win * fs)
+
+                # tr_first = (
+                #     first_emission_reception_datetime - start_dt_merged
+                # ).total_seconds()
+
+                # tr_last = (
+                #     last_emission_reception_datetime - start_dt_merged
+                # ).total_seconds()
+
+                # Compute source position considering the offset for the current emission   (Source, Longueur filée)
+                # TODO : implement position correction if needed
+
                 # Slice signal
                 time_coordsname = f"time{obs_id}"
                 signal_win = signal.isel(
@@ -990,7 +993,7 @@ def build_arrivals_dataset(
 
                 # Compute source position considering the offset for the current emission   (Source, Longueur filée)
                 # TODO : implement position correction if needed
-
+                
                 # Select the time window of interest for current sequence (all emissions in the sequence + pre/post times)
                 t_start_win = tr_first - pre_reception_time
                 t_end_win = tr_last + post_reception_time
@@ -998,6 +1001,7 @@ def build_arrivals_dataset(
                 # Convert in samples
                 n_samp_start_win = int(t_start_win * fs)
                 n_samp_end_win = int(t_end_win * fs)
+
                 # Slice signal
                 signal_win = signal[n_samp_start_win:n_samp_end_win]
 
@@ -1261,7 +1265,7 @@ def attribute_sequence_f_score(df_processed, verbose=False):
             # Second criterion: error relative to expected repetition period
             col_name = f"arrival_datetime_obs{obs_id}"
             t_diff_mean = df_seq[col_name].diff().mean().total_seconds()
-            repeat_period_em = df_seq["Trepeat (s)"].iloc[0]
+            repeat_period_em = df_seq["repeat_period_s"].iloc[0]
             crit_2 = 1 - abs(t_diff_mean - repeat_period_em) / repeat_period_em
             if t_diff_mean < 0 or crit_2 < 0 or np.isnan(crit_2):
                 crit_2 = 0
@@ -1295,7 +1299,6 @@ if __name__ == "__main__":
     import real_data_analysis.fiberscope_groix.src.params as p
     from real_data_analysis.real_data_utils import V2uPa
 
-
     fs = 2000
     n_file = 1
     t_start = 5 * 3600 * n_file
@@ -1310,9 +1313,13 @@ if __name__ == "__main__":
     # wav_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\wav\OBS4\vitesse\ELOBS_D-SN3042919_2025-10-15_06-00-00-vel.wav"
     # wav_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\wav\OBS4\vitesse\ELOBS_D-SN3042919_2025-10-13_14-00-00-vel.wav"
 
-    wav_fpath = os.path.join(p.root_groix_wav, "OBS4", "vitesse", "ELOBS_D-SN3042919_2025-10-13_19-00-00-vel.wav")
+    wav_fpath = os.path.join(
+        p.root_groix_wav,
+        "OBS4",
+        "vitesse",
+        "ELOBS_D-SN3042919_2025-10-13_19-00-00-vel.wav",
+    )
     signal_from_wav, fs = sf.read(wav_fpath)
-
 
     signal_from_wav = signal_from_wav[:, CHANNELS_ORDER["H"]]
     signal_from_wav = signal_from_wav - np.mean(signal_from_wav)

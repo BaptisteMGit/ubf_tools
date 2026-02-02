@@ -64,18 +64,18 @@ def get_dists(df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
     xr_seq_ref = xr.open_dataset(
         os.path.join(fsm.root_data_sequence, f"sequence_{seq_id_ref}_rtf.nc")
     )
-    df_seq_ref = df_arr.loc[df_arr["Sequence_id"] == seq_id_ref]
+    df_seq_ref = df_arr.loc[df_arr["sequence_id"] == seq_id_ref]
     df_seq_ref = df_seq_ref.loc[df_seq_ref["pulse_id"].isin(xr_seq_ref.pulse_id.values)]
 
-    ref_pos_e = df_seq_ref["Emission interpolated E GPS"].values
-    ref_pos_n = df_seq_ref["Emission interpolated N GPS"].values
+    ref_pos_e = df_seq_ref["emission_interp_e_gps"].values
+    ref_pos_n = df_seq_ref["emission_interp_n_gps"].values
 
     rtf_ref = xr_seq_ref.rtf_amp_hat * np.exp(1j * xr_seq_ref.rtf_phase_hat)
 
     xr_seq = xr.open_dataset(
         os.path.join(fsm.root_data_sequence, f"sequence_{seq_id}_rtf.nc")
     )
-    df_seq = df_arr.loc[df_arr["Sequence_id"] == seq_id]
+    df_seq = df_arr.loc[df_arr["sequence_id"] == seq_id]
     df_seq = df_seq.loc[df_seq["pulse_id"].isin(xr_seq.pulse_id.values)]
 
     theta_distances = []
@@ -129,14 +129,14 @@ theta_distances = np.clip(theta_distances, 0, 1)
 # Trajectories
 # -----------------------------------------------------------------------------
 
-df_seq = df_seq.sort_values("Emission datetime")
-E = df_seq["Emission interpolated E GPS"].values
-N = df_seq["Emission interpolated N GPS"].values
-t = df_seq["Emission datetime"].values
+df_seq = df_seq.sort_values("emission_datetime")
+E = df_seq["emission_interp_e_gps"].values
+N = df_seq["emission_interp_n_gps"].values
+t = df_seq["emission_datetime"].values
 
-df_seq_ref = df_seq_ref.sort_values("Emission datetime")
-E_ref = df_seq_ref["Emission interpolated E GPS"].values
-N_ref = df_seq_ref["Emission interpolated N GPS"].values
+df_seq_ref = df_seq_ref.sort_values("emission_datetime")
+E_ref = df_seq_ref["emission_interp_e_gps"].values
+N_ref = df_seq_ref["emission_interp_n_gps"].values
 
 # -----------------------------------------------------------------------------
 # MAP estimation

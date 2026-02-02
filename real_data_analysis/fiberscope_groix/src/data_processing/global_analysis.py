@@ -55,7 +55,9 @@ root_img_stft = os.path.join(img_folder, "signal")
 # ======================================================================================================================
 
 
-def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_channel, verbose=False):
+def merge_wav_files(
+    root_data=data_folder, output_format="nc", channels=p.hydro_channel, verbose=False
+):
 
     # Make sure channels is a 1D array
     channels = np.atleast_1d(channels)
@@ -64,7 +66,9 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
     wav_start_times_dict = {}
     start_datetime_arr_dict = {}
     for obs_id in [1, 2, 3]:
-        wav_start_times, start_datetime_arr = get_available_wav_files(obs_id, root_groix_wav=root_groix_wav)
+        wav_start_times, start_datetime_arr = get_available_wav_files(
+            obs_id, root_groix_wav=root_groix_wav
+        )
         wav_start_times_dict[obs_id] = wav_start_times
         start_datetime_arr_dict[obs_id] = start_datetime_arr
 
@@ -75,7 +79,7 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
     for obs_id in [1, 2, 3]:
         obs_wav_files_dict = wav_start_times_dict[obs_id]
 
-        # # TODO : limitation for personnal computer memory -> remove this on TIM 
+        # # TODO : limitation for personnal computer memory -> remove this on TIM
         # id0 = 14
         # id1 = 15
         # keep_only_first = 2
@@ -83,7 +87,7 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
 
         full_signal = {ch: [] for ch in channels}
         full_time = []
-                    
+
         for wav_start_dt in obs_wav_files_dict.keys():
             wav_fpath = obs_wav_files_dict[wav_start_dt]
             # Load signal from wav file
@@ -91,7 +95,7 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
             # Get time vector
             t0 = full_time[-1] + 1 / fs if full_time else 0
             time = np.arange(signal.shape[0]) / fs + t0
-            # Add 
+            # Add
             full_time.extend(time)
 
             for ch in channels:
@@ -103,7 +107,9 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
                     # Centre signal
                     signal_ch -= np.mean(signal_ch)
                     # Convert to uPa
-                    signal_ch = V2uPa(signal_ch, p.obs_hydro_sensitivity, p.obs_hydro_gain)
+                    signal_ch = V2uPa(
+                        signal_ch, p.obs_hydro_sensitivity, p.obs_hydro_gain
+                    )
 
                 # Add to list
                 full_signal[ch].extend(signal_ch)
@@ -125,7 +131,7 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
         for ch in channels:
             data_obs[obs_id]["signal"][ch] = np.array(full_signal[ch])
 
-    # TODO : need to be updated -> this code is broken 
+    # TODO : need to be updated -> this code is broken
     date_fmt = "%Y-%m-%d_%H-%M-%S"
     if output_format == "wav":
         for obs_id in data_obs.keys():
@@ -155,9 +161,18 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
             # Storing time is useless since we can easily recompute it from fs
             ds_wav = xr.Dataset(
                 data_vars=dict(
-                    signal_obs1=(data_obs[1]["signal"][ch].astype(np.float32)),
-                    signal_obs2=(data_obs[2]["signal"][ch].astype(np.float32)),
-                    signal_obs3=(data_obs[3]["signal"][ch].astype(np.float32)),
+                    signal_obs1=(
+                        ["time1"],
+                        data_obs[1]["signal"][ch].astype(np.float32),
+                    ),
+                    signal_obs2=(
+                        ["time2"],
+                        data_obs[2]["signal"][ch].astype(np.float32),
+                    ),
+                    signal_obs3=(
+                        ["time3"],
+                        data_obs[3]["signal"][ch].astype(np.float32),
+                    ),
                 ),
                 attrs=dict(
                     description="Merged wav files from Fiberscope Groix Oct 2025 experiment",
@@ -181,7 +196,6 @@ def merge_wav_files(root_data=data_folder, output_format="nc", channels=p.hydro_
                 ch_name = "Pressure" if ch == "H" else f"{ch} velocity"
                 ds_wav[f"signal_obs{obs_id}"].attrs["long_name"] = ch_name
 
-
             # Save dataset
             fname = f"channel_{ch}_wav.nc"
             nc_fpath = os.path.join(root_data, fname)
@@ -197,7 +211,7 @@ def compute_spectrogram(
     root_img=img_folder,
     nperseg=4096,
     noverlap=2048,
-    channel="H"
+    channel="H",
 ):
 
     # Load wav data from netcdf
@@ -216,6 +230,7 @@ def compute_spectrogram(
         if not os.path.exists(root_img_obs):
             os.makedirs(root_img_obs)
 
+        time_coordsname = f"time{obs_id}"
         sig_varname = f"signal_obs{obs_id}"
         signal = ds_wav[sig_varname]
         # Select a window of the signal
@@ -231,7 +246,7 @@ def compute_spectrogram(
         # Iterate over successive windows
         while n_end < signal.size:
             # Slice signal
-            sig_win = signal.isel({sig_varname: slice(n_start, n_end)})
+            sig_win = signal.isel({time_coordsname: slice(n_start, n_end)})
             # Define datetime borders
             t_start = n_start * 1 / fs
             t_end = n_end * 1 / fs
@@ -268,8 +283,12 @@ def compute_spectrogram(
 
             plt.figure()
             im = plt.pcolormesh(tt_datetime, ff, sxx, cmap=cmap, vmin=vmin, vmax=vmax)
-            
-            clabel = r"dB re 1$\mu$Pa$^2$ / Hz" if channel == "H" else r"dB re 1$(m~s^{-1})^2$ / Hz"
+
+            clabel = (
+                r"dB re 1$\mu$Pa$^2$ / Hz"
+                if channel == "H"
+                else r"dB re 1$(m~s^{-1})^2$ / Hz"
+            )
             plt.colorbar(im, label=clabel)
             plt.ylabel("Fréquence [Hz]")
             plt.xlabel("Temps UTC")
@@ -295,7 +314,7 @@ if __name__ == "__main__":
     # channel = "Z"
     # nc_fpath = os.path.join(data_folder, f"channel_{channel}_wav.nc")
     # ds_wav = xr.open_dataset(nc_fpath)
-    
+
     for ch in p.channels_order.keys():
         window_duration_hour = 2
         window_duration = window_duration_hour * 3600  # in seconds

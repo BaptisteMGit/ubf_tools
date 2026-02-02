@@ -580,10 +580,10 @@ def get_arrivals(signal_win, t_win_sec, df_sequence, fs, verbose=False):
         print("\t\tMatch filtering...")
 
     # Extract signal parameters
-    f0 = df_sequence["Frequency min (Hz)"].iloc[0]
-    f1 = df_sequence["Frequency max (Hz)"].iloc[0]
-    chirp_T = df_sequence["Duration (s)"].iloc[0]
-    T_repeat = df_sequence["Trepeat (s)"].iloc[0]
+    f0 = df_sequence["frequency_min_hz"].iloc[0]
+    f1 = df_sequence["frequency_max_hz"].iloc[0]
+    chirp_T = df_sequence["duration_s"].iloc[0]
+    T_repeat = df_sequence["repeat_period_s"].iloc[0]
     signal_params = {
         "f0": f0,
         "f1": f1,
@@ -1204,16 +1204,16 @@ def build_arrivals_dataset(
             # 7) Store results
             # -----------------------------------------
             # new_data[f"Arrival datetime OBS{obs_id}"] = list(t_arrivals_full)
-            new_data[f"Arrival datetime OBS{obs_id}"] = list(t_arrivals_dt_full)
+            new_data[f"arrival_datetime_obs{obs_id}"] = list(t_arrivals_dt_full)
 
-            new_data[f"Theoretical propagation time OBS{obs_id}"] = list(
+            new_data[f"theoretical_propagation_time_obs{obs_id}"] = list(
                 th_propagation_delay
             )
-            new_data[f"Measured propagation time OBS{obs_id}"] = list(
+            new_data[f"measured_propagation_time_obs{obs_id}"] = list(
                 meas_propagation_delay
             )
-            new_data[f"PSNR OBS{obs_id}"] = list(psnr_arrivals_full)
-            new_data[f"Valid detection OBS{obs_id}"] = list(valid_detection)
+            new_data[f"psnr_obs{obs_id}"] = list(psnr_arrivals_full)
+            new_data[f"valid_detection_obs{obs_id}"] = list(valid_detection)
 
         # -----------------------------------------
         # 8) Aggregate results
@@ -1254,12 +1254,12 @@ def attribute_sequence_f_score(df_processed, verbose=False):
         for obs_id in [1, 2, 3]:
 
             # First criterion: ratio of detected arrivals
-            col_name = f"Valid detection OBS{obs_id}"
+            col_name = f"valid_detection_obs{obs_id}"
             n_detected = df_seq[col_name].sum()
             crit_1 = n_detected / df_seq.shape[0]
 
             # Second criterion: error relative to expected repetition period
-            col_name = f"Arrival datetime OBS{obs_id}"
+            col_name = f"arrival_datetime_obs{obs_id}"
             t_diff_mean = df_seq[col_name].diff().mean().total_seconds()
             repeat_period_em = df_seq["Trepeat (s)"].iloc[0]
             crit_2 = 1 - abs(t_diff_mean - repeat_period_em) / repeat_period_em
@@ -1267,7 +1267,7 @@ def attribute_sequence_f_score(df_processed, verbose=False):
                 crit_2 = 0
 
             # Third criterion: normalized psnr
-            col_name = f"PSNR OBS{obs_id}"
+            col_name = f"psnr_obs{obs_id}"
             psnr_mean = df_seq[col_name].mean()
             crit_3 = psnr_mean / df_processed[col_name].max()
             if np.isnan(crit_3):
@@ -1283,7 +1283,7 @@ def attribute_sequence_f_score(df_processed, verbose=False):
             # Store final score in dataframe
             df_processed.loc[
                 (df_processed["sequence_id"] == sel_id),
-                f"f_score OBS{obs_id}",
+                f"f_score_obs{obs_id}",
             ] = final_score
 
     return df_processed
@@ -1293,7 +1293,7 @@ if __name__ == "__main__":
     # get_wav_filesnames_from_glucide()
 
     fs = 2000
-    n_file = 17
+    n_file = 0
     t_start = 5 * 3600 * n_file
     n_start = int(t_start * fs)
     n_stop = int((t_start + 5 * 3600) * fs)

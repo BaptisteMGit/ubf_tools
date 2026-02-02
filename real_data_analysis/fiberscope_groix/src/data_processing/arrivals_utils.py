@@ -847,12 +847,12 @@ def build_arrivals_dataset(
             print(f"Processing sequence ID: {seq_id}")
 
         # Select dataframe for the current sequence
-        df_sequence = df.loc[df["Sequence_id"] == seq_id]
+        df_sequence = df.loc[df["sequence_id"] == seq_id]
 
         # # Correct offset # TODO remove
-        # # print(df_sequence["Emission datetime"])
-        # df_sequence["Emission datetime"] = df_sequence["Emission datetime"] + pd.Timedelta(t_hydro_source_offset, "s")
-        # print(df_sequence["Emission datetime"])
+        # # print(df_sequence["emission_datetime"])
+        # df_sequence["emission_datetime"] = df_sequence["emission_datetime"] + pd.Timedelta(t_hydro_source_offset, "s")
+        # print(df_sequence["emission_datetime"])
 
         new_data = {}
         # Lood over receivers
@@ -875,7 +875,7 @@ def build_arrivals_dataset(
             th_arrivals_seconds_from_start = []
             for emission_id in range(df_sequence.shape[0]):
                 emission_i = df_sequence.iloc[emission_id]
-                emission_i_datetime = emission_i["Emission datetime"].to_pydatetime(
+                emission_i_datetime = emission_i["emission_datetime"].to_pydatetime(
                     warn=False
                 )
                 emissions_datetime.append(emission_i_datetime)
@@ -892,9 +892,9 @@ def build_arrivals_dataset(
 
                 # Emission position
                 emission_i_pos = [
-                    emission_i["Emission interpolated E GPS"],
-                    emission_i["Emission interpolated N GPS"],
-                    emission_i["Emission interpolated U GPS"],
+                    emission_i["emission_interp_e_gps"],
+                    emission_i["emission_interp_n_gps"],
+                    emission_i["emission_interp_u_gps"],
                 ]
                 # Theoretical time of arrival
                 emission_i_reception_datetime, tr_i, prop_time_i = get_tr_apriori(
@@ -1048,9 +1048,9 @@ def build_arrivals_dataset(
                 sequence_info = {
                     "seq_id": seq_id,
                     "obs_id": obs_id,
-                    "vc_carte": df_sequence["Vc carte (V)"].iloc[0],
-                    "signal_type": df_sequence["Signal"].iloc[0],
-                    "emission_type": df_sequence["Source"].iloc[0],
+                    "vc_carte": df_sequence["board_voltage_v"].iloc[0],
+                    "signal_type": df_sequence["signal_type"].iloc[0],
+                    "emission_type": df_sequence["src_pos_status"].iloc[0],
                 }
 
                 nperseg = 256
@@ -1248,8 +1248,8 @@ def build_arrivals_dataset(
 
 
 def attribute_sequence_f_score(df_processed, verbose=False):
-    for sel_id in df_processed["Sequence_id"].unique():
-        df_seq = df_processed[df_processed["Sequence_id"] == sel_id]
+    for sel_id in df_processed["sequence_id"].unique():
+        df_seq = df_processed[df_processed["sequence_id"] == sel_id]
 
         for obs_id in [1, 2, 3]:
 
@@ -1282,7 +1282,7 @@ def attribute_sequence_f_score(df_processed, verbose=False):
 
             # Store final score in dataframe
             df_processed.loc[
-                (df_processed["Sequence_id"] == sel_id),
+                (df_processed["sequence_id"] == sel_id),
                 f"f_score OBS{obs_id}",
             ] = final_score
 

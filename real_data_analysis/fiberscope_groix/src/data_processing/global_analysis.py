@@ -67,7 +67,7 @@ def merge_wav_files(
     start_datetime_arr_dict = {}
     for obs_id in [1, 2, 3]:
         wav_start_times, start_datetime_arr = get_available_wav_files(
-            obs_id, root_groix_wav=root_groix_wav
+            obs_id, root_groix_wav=root_groix_wav, from_filename_txt=False
         )
         wav_start_times_dict[obs_id] = wav_start_times
         start_datetime_arr_dict[obs_id] = start_datetime_arr

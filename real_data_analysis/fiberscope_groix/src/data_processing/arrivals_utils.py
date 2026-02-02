@@ -1292,23 +1292,27 @@ def attribute_sequence_f_score(df_processed, verbose=False):
 if __name__ == "__main__":
     # get_wav_filesnames_from_glucide()
 
+    import real_data_analysis.fiberscope_groix.src.params as p
+    from real_data_analysis.real_data_utils import V2uPa
+
+
     fs = 2000
-    n_file = 0
+    n_file = 1
     t_start = 5 * 3600 * n_file
     n_start = int(t_start * fs)
     n_stop = int((t_start + 5 * 3600) * fs)
-    data_folder = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data"
-    ds_wav = xr.open_dataset(os.path.join(data_folder, "channel_H_wav.nc"))
+    # data_folder = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data"
+    ds_wav = xr.open_dataset(os.path.join(p.root_data, "channel_H_wav.nc"))
     signal_win = ds_wav[f"signal_obs1"].isel({"time1": slice(n_start, n_stop)})
 
     print(n_start, n_stop)
 
     # wav_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\wav\OBS4\vitesse\ELOBS_D-SN3042919_2025-10-15_06-00-00-vel.wav"
-    wav_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\wav\OBS4\vitesse\ELOBS_D-SN3042919_2025-10-13_14-00-00-vel.wav"
+    # wav_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\wav\OBS4\vitesse\ELOBS_D-SN3042919_2025-10-13_14-00-00-vel.wav"
 
+    wav_fpath = os.path.join(p.root_groix_wav, "OBS4", "vitesse", "ELOBS_D-SN3042919_2025-10-13_19-00-00-vel.wav")
     signal_from_wav, fs = sf.read(wav_fpath)
 
-    from real_data_analysis.real_data_utils import V2uPa
 
     signal_from_wav = signal_from_wav[:, CHANNELS_ORDER["H"]]
     signal_from_wav = signal_from_wav - np.mean(signal_from_wav)
@@ -1317,5 +1321,5 @@ if __name__ == "__main__":
     plt.figure()
 
     plt.plot(signal_win)
-    plt.plot(signal_from_wav)
+    plt.plot(signal_from_wav, color="r", linestyle="--")
     plt.show()

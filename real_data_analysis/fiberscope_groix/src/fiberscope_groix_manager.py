@@ -32,6 +32,9 @@ from propa.rtf.rtf_utils import D_hermitian_angle_fast
 from real_data_analysis.deconvolution_utils import crosscorr_deconvolution
 from real_data_analysis.fiberscope_20.src.read_tdms import load_fiberscope_data
 
+import referrers
+from pympler import muppy, summary
+
 
 class BandFilter:
     """
@@ -106,7 +109,7 @@ class FiberscopeManager:
         self.process_pulse_one_by_one = process_pulse_one_by_one
 
         # Link to  wav dataset
-        self.ds_wav_fpath = os.path.join(self.root_processed_data, "wav.nc")
+        self.ds_wav_fpath = os.path.join(self.root_processed_data, "channel_H_wav.nc")
         self.ds_wav = xr.open_dataset(self.ds_wav_fpath)
         self.datetime_fmt = self.ds_wav.attrs["datetime_format"]
 
@@ -280,7 +283,7 @@ class FiberscopeManager:
 
                 # Extract the current pulse
                 df_pulse = df_seq.loc[df_seq["pulse_id"] == pulse_id]
-                arr_dt_pulse = df_pulse[f"Arrival datetime OBS{hydro_idx}"].iloc[0]
+                arr_dt_pulse = df_pulse[f"arrival_datetime_obs{hydro_idx}"].iloc[0]
                 t0 = (arr_dt_pulse - start_dt).total_seconds()
                 y = xr_data.signal.sel(
                     time=slice(
@@ -491,9 +494,9 @@ class FiberscopeManager:
         datetime_fmt = self.ds_wav.attrs["datetime_format"]
 
         # Datetime bounds for the studied sequence
-        arr_dt_obs1 = df_seq[f"Arrival datetime OBS1"]
-        arr_dt_obs2 = df_seq[f"Arrival datetime OBS2"]
-        arr_dt_obs3 = df_seq[f"Arrival datetime OBS3"]
+        arr_dt_obs1 = df_seq[f"arrival_datetime_obs1"]
+        arr_dt_obs2 = df_seq[f"arrival_datetime_obs2"]
+        arr_dt_obs3 = df_seq[f"arrival_datetime_obs3"]
         arr_dt_obs = [arr_dt_obs1, arr_dt_obs2, arr_dt_obs3]
 
         first_arr_dt = np.min([arr_dt.iloc[0] for arr_dt in arr_dt_obs])
@@ -518,21 +521,25 @@ class FiberscopeManager:
 
             # Slice signal
             sig_varname = f"signal_obs{obs_id}"
+            time_varname = f"time{obs_id}"
             signal = self.ds_wav[sig_varname]
-            sig_win = signal.isel({sig_varname: slice(n_start, n_end)})
-            t_sig_sec = np.arange(0, signal.size) * 1 / fs
-            t_win_sec = t_sig_sec[n_start:n_end]
-            t_win = np.array([wav_start_dt + timedelta(seconds=t) for t in t_win_sec])
+            sig_win = signal.isel({time_varname: slice(n_start, n_end)}).values
+
+            t_win_sec = np.arange(sig_win.shape[0]) / fs + n_start * 1 / fs
+
+            # t_sig_sec = np.arange(0, signal.size) * 1 / fs
+            # t_win_sec = t_sig_sec[n_start:n_end]
+            # t_win = np.array([wav_start_dt + timedelta(seconds=t) for t in t_win_sec])
 
             # Apply filter if required
             if self.apply_bandfilter:
                 sig_win = self.bandfilter.apply_filter(sig_win, fs)
 
             t0_slice = wav_start_dt + timedelta(seconds=n_start * 1 / fs)
-            t1_slice = wav_start_dt + timedelta(seconds=n_end * 1 / fs)
+            # t1_slice = wav_start_dt + timedelta(seconds=n_end * 1 / fs)
 
             # Elapsed time from t0_slice to first arrival at current obs
-            first_arr_dt_obs = df_seq[f"Arrival datetime OBS{obs_id}"].iloc[0]
+            first_arr_dt_obs = df_seq[f"arrival_datetime_obs{obs_id}"].iloc[0]
             t0_first_arr = (first_arr_dt_obs - t0_slice).total_seconds()
 
             # Store data
@@ -563,20 +570,20 @@ class FiberscopeManager:
                 t1=last_arrival,
                 datetime_format=self.datetime_fmt,
                 start_datetime=t0_slice.strftime(self.datetime_fmt),
-                sequence_id=df_seq["Sequence_id"].iloc[0],
+                sequence_id=df_seq["sequence_id"].iloc[0],
                 # n_emissions=df_seq["Nrepeat"].iloc[
                 #     0
                 # ],  # TODO : we might need to change that to account for non detected arrivals ?
                 n_emissions=df_seq.shape[
                     0
                 ],  # Assuming df_seq contains a limited number of emission/reception
-                fmin=df_seq["Frequency min (Hz)"].iloc[0],
-                fmax=df_seq["Frequency max (Hz)"].iloc[0],
-                pulse_duration=df_seq["Duration (s)"].iloc[0],
-                inter_pulse_period=df_seq["Trepeat (s)"].iloc[0],
+                fmin=df_seq["frequency_min_hz"].iloc[0],
+                fmax=df_seq["frequency_max_hz"].iloc[0],
+                pulse_duration=df_seq["duration_s"].iloc[0],
+                inter_pulse_period=df_seq["repeat_period_s"].iloc[0],
                 process_pulse_one_by_one=int(self.process_pulse_one_by_one),
                 root_img=os.path.join(
-                    self.root_img_sequence, str(df_seq["Sequence_id"].iloc[0])
+                    self.root_img_sequence, str(df_seq["sequence_id"].iloc[0])
                 ),
                 root_data=self.root_data_sequence,
             ),
@@ -671,14 +678,14 @@ class FiberscopeManager:
 
         # Ensure we process only valid arrivals
         valid = (
-            df_arrivals["Valid detection OBS1"]
-            * df_arrivals["Valid detection OBS2"]
-            * df_arrivals["Valid detection OBS3"]
+            df_arrivals["valid_detection_obs1"]
+            * df_arrivals["valid_detection_obs2"]
+            * df_arrivals["valid_detection_obs3"]
         )
         df_arrivals = df_arrivals.loc[valid]
 
         # Number of individual sequences to process
-        sequence_ids = df_arrivals["Sequence_id"].unique()
+        sequence_ids = df_arrivals["sequence_id"].unique()
         n_seq = sequence_ids.size
 
         if verbose:
@@ -695,7 +702,7 @@ class FiberscopeManager:
             )
 
             ### Step 1 - Load audio data correponding to current sequence ###
-            df_seq = df_arrivals.loc[df_arrivals["Sequence_id"] == seq_id]
+            df_seq = df_arrivals.loc[df_arrivals["sequence_id"] == seq_id]
             xr_data = self.load_sequence_data(df_seq=df_seq)  # TODO : complete args
 
             # If stfts props are already set we dont need to do it
@@ -787,6 +794,10 @@ class FiberscopeManager:
 
     def plot_estimated_feature(self, xr_data):
 
+        # Ensure img folder exists
+        if not os.path.exists(xr_data.root_img):
+            os.makedirs(xr_data.root_img)
+
         if self.process_pulse_one_by_one:
 
             for pulse_id in xr_data.pulse_id.values:
@@ -833,14 +844,9 @@ class FiberscopeManager:
                     axs_phase[i].set_xlabel("")
                     axs_phase[i].set_ylabel(r"$\Phi$")
                     axs_phase[i].set_title("")
-                    axs_phase[i].legend()
                     axs_phase[i].legend(fontsize=8)
 
                     i += 1
-
-                # Ensure img folder exists
-                if not os.path.exists(xr_data.root_img):
-                    os.makedirs(xr_data.root_img)
 
                 # Save figures
                 fpath = os.path.join(xr_data.root_img, f"rtf_amp_pulseID{pulse_id}.png")
@@ -897,6 +903,30 @@ class FiberscopeManager:
                 f_csdm.savefig(fpath)
 
                 plt.close("all")
+
+                # Memory leaks
+                # top_10_objects = (muppy.sort(muppy.get_objects()))[-10:]
+                # top_10_objects.reverse()
+
+                # for obj in top_10_objects:
+                #     print(
+                #         referrers.get_referrer_graph(
+                #             obj,
+                #             exclude_object_ids=[id(top_10_objects)],
+                #         )
+                #     )
+
+                all_objects = muppy.get_objects()
+                # all_objects = (muppy.sort(muppy.get_objects()))[-10:]
+                # all_objects.reverse()
+                summary.print_(summary.summarize(all_objects))
+
+                del xr_data_pulse
+
+                all_objects = muppy.get_objects()
+                # all_objects = (muppy.sort(muppy.get_objects()))[-10:]
+                # all_objects.reverse()
+                summary.print_(summary.summarize(all_objects))
 
         else:
             nrcv = xr_data.sizes["h_index"]
@@ -1504,18 +1534,20 @@ def get_theta_c(val, apply_mean):
 
 if __name__ == "__main__":
 
-    # Create an instance of FiberscopeManager
-    root_processed_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope\data"
-    fsm = FiberscopeManager(
-        root_processed_data=root_processed_data,
-        h_index_ref=h_index_ref,
-        plot_feature=plot_feature,
-    )
+    pass
 
-    fsm.process_static_analysis(
-        static_signal=fs_sweep1,
-        static_records_names=fs_sweep1.records_N5,
-    )
+    # Create an instance of FiberscopeManager
+    # root_processed_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope\data"
+    # fsm = FiberscopeManager(
+    #     root_processed_data=root_processed_data,
+    #     h_index_ref=h_index_ref,
+    #     plot_feature=plot_feature,
+    # )
+
+    # fsm.process_static_analysis(
+    #     static_signal=fs_sweep1,
+    #     static_records_names=fs_sweep1.records_N5,
+    # )
 
     # from real_data_analysis.fiberscope_20.src.fiberscope_recording import (
     #     FiberscopeDynamicRecording,
@@ -1561,12 +1593,12 @@ if __name__ == "__main__":
     #     static_signal=fs_sweep1,
     #     static_records_names=fs_sweep1.records_N5,
     # )
-    # # Run localization process
-    d = fsm.localize_dyn_recording(
-        static_signal=fs_sweep1,
-        static_records_names=fs_sweep1.records_N5,
-        fs_dynamic_recording=fs_dr,
-    )
+    # # # Run localization process
+    # d = fsm.localize_dyn_recording(
+    #     static_signal=fs_sweep1,
+    #     static_records_names=fs_sweep1.records_N5,
+    #     fs_dynamic_recording=fs_dr,
+    # )
 
     # fsm.plot_dyn_loc(
     #     d_rtf=d, axis_norm=1, time_step=fs_dr.time_step, vmin=-5, save_eps=True

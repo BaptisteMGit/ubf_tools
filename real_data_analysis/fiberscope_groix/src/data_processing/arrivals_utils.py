@@ -57,7 +57,32 @@ HYDRO_CHANNEL = "H"
 # ======================================================================================================================
 # Functions
 # ======================================================================================================================
-def get_available_wav_files(obs_id, root_groix_wav=ROOT_GROIX_WAV):
+
+
+def get_wav_filesnames_from_glucide():
+    """ """
+
+    root_glucide = (
+        r"\\glucide1.ecole-navale.fr\Fiberscope_2024_Labat\groix_octobre_2025\shom"
+    )
+
+    for obs_id in [1, 2, 3]:
+        # Get the list of wav file available for selected obs_id
+        obs_wav_dir = os.path.join(root_glucide, f"OBS{obs_id+3}", "vitesse")
+        # List all wav files in the directory
+        wav_files = os.listdir(obs_wav_dir)
+
+        # Write to txt files
+        obs_wav_dir = os.path.join(ROOT_GROIX_WAV, f"OBS{obs_id+3}", "vitesse")
+        fpath = os.path.join(obs_wav_dir, "filenames.txt")
+        with open(file=fpath, mode="w") as f:
+            for fname in wav_files:
+                f.write(f"{fname}\n")
+
+
+def get_available_wav_files(
+    obs_id, root_groix_wav=ROOT_GROIX_WAV, from_filename_txt=True
+):
     """
     Get available wav files for a given OBS id.
 
@@ -66,17 +91,34 @@ def get_available_wav_files(obs_id, root_groix_wav=ROOT_GROIX_WAV):
         The OBS id (1-indexed, i.e., OBS1 -> obs_id=1).
     root_groix_wav : str
         The root directory where wav files are stored.
+    from_filename_txt : bool
+        Use previously generated txt file containing filenames (see get_wav_filesnames_from_glucide).
+
     Returns:
     wav_start_times : dict
         Dictionary mapping wav file start datetimes to their file paths.
     start_datetime_arr : np.ndarray of datetime.datetime
         Array of wav file start datetimes.
     """
+    # Use previously generated txt files (in case we use merged nc wav dataset we dont need to access raw files anymore)
+    if from_filename_txt:
+        obs_wav_dir = os.path.join(root_groix_wav, f"OBS{obs_id+3}", "vitesse")
+        fpath = os.path.join(obs_wav_dir, "filenames.txt")
+        with open(file=fpath, mode="r") as f:
+            wav_files = f.read().splitlines()
 
-    # Get the list of wav file available for selected obs_id
-    obs_wav_dir = os.path.join(root_groix_wav, f"OBS{obs_id+3}", "vitesse")
-    # List all wav files in the directory
-    wav_files = os.listdir(obs_wav_dir)
+        root_glucide = (
+            r"\\glucide1.ecole-navale.fr\Fiberscope_2024_Labat\groix_octobre_2025\shom"
+        )
+        obs_wav_dir = os.path.join(root_glucide, f"OBS{obs_id+3}", "vitesse")
+
+    # Old fashion : access wav files stored on the computer
+    else:
+        # Get the list of wav file available for selected obs_id
+        obs_wav_dir = os.path.join(root_groix_wav, f"OBS{obs_id+3}", "vitesse")
+        # List all wav files in the directory
+        wav_files = os.listdir(obs_wav_dir)
+
     # Extract start times from filenames
     wav_start_times = {}
     for wav_file in wav_files:
@@ -89,6 +131,9 @@ def get_available_wav_files(obs_id, root_groix_wav=ROOT_GROIX_WAV):
             wav_start_times[file_start_datetime] = os.path.join(obs_wav_dir, wav_file)
 
     start_datetime_arr = np.array(list(wav_start_times.keys()))
+
+    # Sort by acsending order
+    start_datetime_arr = np.sort(start_datetime_arr)
 
     return wav_start_times, start_datetime_arr
 
@@ -733,6 +778,7 @@ def build_arrivals_dataset(
     df,
     ds_gps,
     sel_sequence_id,
+    root_merged_wav=None,
     pre_reception_time=5.0,
     post_reception_time=10.0,
     channels_order=CHANNELS_ORDER,
@@ -767,6 +813,17 @@ def build_arrivals_dataset(
         start_datetime_arr_dict[obs_id] = start_datetime_arr
 
     print(f"Selected sequences: {len(sel_sequence_id)} -> {sel_sequence_id}")
+
+    # Load merged wav nc
+    if root_merged_wav is not None:
+        fname_wav = f"channel_{used_channel}_wav.nc"
+        fpath_wav = os.path.join(root_merged_wav, fname_wav)
+        ds_wav = xr.open_dataset(fpath_wav)
+
+        if verbose:
+            print(f"Merged nc wav file {fname_wav} loaded. ")
+    else:
+        ds_wav = None
 
     # --------------------------------------------------
     # Main loop over sequences
@@ -877,44 +934,88 @@ def build_arrivals_dataset(
             # -----------------------------------------
             # 2) Load signal
             # -----------------------------------------
-            # Load the wav file
-            if verbose:
-                print("\t\tLoading wav file...")
 
-            # Read the wav file
-            signal, fs = sf.read(wav_fpath)
-            # Select the channel
-            signal = signal[:, channels_order[used_channel]]
-            # Center the signal
-            signal = signal - np.mean(signal)
+            # Use previoulsy merged wav nc dataset for simplicity (no need to access raw files)
+            if ds_wav is not None:
+                if verbose:
+                    print("\t\tExtracting signal portion from merged file (.nc)...")
 
-            # Compute source position considering the offset for the current emission   (Source, Longueur filée)
-            # TODO : implement position correction if needed
+                fs = ds_wav.attrs[f"fs_obs{obs_id}"]
+                signal = ds_wav[f"signal_obs{obs_id}"]
 
-            # Select the time window of interest for current sequence (all emissions in the sequence + pre/post times)
-            t_start_win = tr_first - pre_reception_time
-            t_end_win = tr_last + post_reception_time
-
-            # Convert in samples
-            n_samp_start_win = int(t_start_win * fs)
-            n_samp_end_win = int(t_end_win * fs)
-            # Slice signal
-            signal_win = signal[n_samp_start_win:n_samp_end_win]
-            wav_end_datetime = wav_start_datetime + pd.Timedelta(
-                signal.shape[0] * 1 / fs, "s"
-            )
-            # t_dt = pd.date_range(
-            #     wav_start_datetime, wav_end_datetime, freq=f"{1/fs}s", inclusive="left"
-            # )
-            # t_win = t_dt[n_samp_start_win:n_samp_end_win]
-
-            t_sec = np.arange(signal.shape[0]) / fs
-            t_win_sec = t_sec[n_samp_start_win:n_samp_end_win]
-
-            if verbose:
-                print(
-                    f"\t\tWav file loaded (from {wav_start_datetime} to {wav_end_datetime})"
+                datetime_fmt = ds_wav.attrs["datetime_format"]
+                start_dt_merged = datetime.strptime(
+                    ds_wav.attrs[f"start_datetime_obs{obs_id}"], datetime_fmt
                 )
+
+                tr_first = (
+                    first_emission_reception_datetime - start_dt_merged
+                ).total_seconds()
+
+                tr_last = (
+                    last_emission_reception_datetime - start_dt_merged
+                ).total_seconds()
+
+                # Compute source position considering the offset for the current emission   (Source, Longueur filée)
+                # TODO : implement position correction if needed
+
+                # Select the time window of interest for current sequence (all emissions in the sequence + pre/post times)
+                t_start_win = tr_first - pre_reception_time
+                t_end_win = tr_last + post_reception_time
+
+                # Convert in samples
+                n_samp_start_win = int(t_start_win * fs)
+                n_samp_end_win = int(t_end_win * fs)
+                # Slice signal
+                time_coordsname = f"time{obs_id}"
+                signal_win = signal.isel(
+                    {time_coordsname: slice(n_samp_start_win, n_samp_end_win)}
+                ).values
+
+                t_win_sec = (
+                    np.arange(signal_win.shape[0]) / fs + n_samp_start_win * 1 / fs
+                )
+
+            else:
+                # Load the wav file
+                if verbose:
+                    print("\t\tLoading wav file...")
+
+                # Read the wav file
+                signal, fs = sf.read(wav_fpath)
+                # Select the channel
+                signal = signal[:, channels_order[used_channel]]
+                # Center the signal
+                signal = signal - np.mean(signal)
+
+                # Compute source position considering the offset for the current emission   (Source, Longueur filée)
+                # TODO : implement position correction if needed
+
+                # Select the time window of interest for current sequence (all emissions in the sequence + pre/post times)
+                t_start_win = tr_first - pre_reception_time
+                t_end_win = tr_last + post_reception_time
+
+                # Convert in samples
+                n_samp_start_win = int(t_start_win * fs)
+                n_samp_end_win = int(t_end_win * fs)
+                # Slice signal
+                signal_win = signal[n_samp_start_win:n_samp_end_win]
+
+                wav_end_datetime = wav_start_datetime + pd.Timedelta(
+                    signal.shape[0] * 1 / fs, "s"
+                )
+                # t_dt = pd.date_range(
+                #     wav_start_datetime, wav_end_datetime, freq=f"{1/fs}s", inclusive="left"
+                # )
+                # t_win = t_dt[n_samp_start_win:n_samp_end_win]
+
+                t_sec = np.arange(signal.shape[0]) / fs
+                t_win_sec = t_sec[n_samp_start_win:n_samp_end_win]
+
+                if verbose:
+                    print(
+                        f"\t\tWav file loaded (from {wav_start_datetime} to {wav_end_datetime})"
+                    )
 
             # -----------------------------------------
             # 3) Process signal to detect arrivals
@@ -1189,4 +1290,32 @@ def attribute_sequence_f_score(df_processed, verbose=False):
 
 
 if __name__ == "__main__":
-    pass
+    # get_wav_filesnames_from_glucide()
+
+    fs = 2000
+    n_file = 17
+    t_start = 5 * 3600 * n_file
+    n_start = int(t_start * fs)
+    n_stop = int((t_start + 5 * 3600) * fs)
+    data_folder = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data"
+    ds_wav = xr.open_dataset(os.path.join(data_folder, "channel_H_wav.nc"))
+    signal_win = ds_wav[f"signal_obs1"].isel({"time1": slice(n_start, n_stop)})
+
+    print(n_start, n_stop)
+
+    # wav_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\wav\OBS4\vitesse\ELOBS_D-SN3042919_2025-10-15_06-00-00-vel.wav"
+    wav_fpath = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\wav\OBS4\vitesse\ELOBS_D-SN3042919_2025-10-13_14-00-00-vel.wav"
+
+    signal_from_wav, fs = sf.read(wav_fpath)
+
+    from real_data_analysis.real_data_utils import V2uPa
+
+    signal_from_wav = signal_from_wav[:, CHANNELS_ORDER["H"]]
+    signal_from_wav = signal_from_wav - np.mean(signal_from_wav)
+    signal_from_wav = V2uPa(signal_from_wav, -160, 0)
+
+    plt.figure()
+
+    plt.plot(signal_win)
+    plt.plot(signal_from_wav)
+    plt.show()

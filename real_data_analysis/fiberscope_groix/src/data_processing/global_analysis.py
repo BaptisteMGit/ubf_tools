@@ -78,17 +78,18 @@ def merge_wav_files(
     # Load entire signal for each OBS
     for obs_id in [1, 2, 3]:
         obs_wav_files_dict = wav_start_times_dict[obs_id]
+        obs_start_datetime_arr = start_datetime_arr_dict[obs_id]
 
-        # # TODO : limitation for personnal computer memory -> remove this on TIM
-        # id0 = 14
-        # id1 = 15
-        # keep_only_first = 2
-        # obs_wav_files_dict = dict(list(obs_wav_files_dict.items())[id0:id1])
+        # # # TODO : limitation for personnal computer memory (or debug purpose) -> remove this on TIM
+        # id0 = 0
+        # id1 = 2
+        # obs_start_datetime_arr = obs_start_datetime_arr[id0:id1]
+        # obs_wav_files_dict = {k:obs_wav_files_dict[k] for k in obs_start_datetime_arr}
 
         full_signal = {ch: [] for ch in channels}
         full_time = []
 
-        for wav_start_dt in obs_wav_files_dict.keys():
+        for wav_start_dt in obs_start_datetime_arr:
             wav_fpath = obs_wav_files_dict[wav_start_dt]
             # Load signal from wav file
             signal, fs = sf.read(wav_fpath)
@@ -307,9 +308,9 @@ def compute_spectrogram(
 
 
 if __name__ == "__main__":
-    # merge_wav_files(output_format="nc", channels=["H"], verbose=True)
-    # merge_wav_files(output_format="nc", channels=["Z"], verbose=True)
-    # merge_wav_files(output_format="nc", channels=["X", "Y"], verbose=True)
+    merge_wav_files(output_format="nc", channels=["H"], verbose=True)
+    merge_wav_files(output_format="nc", channels=["Z"], verbose=True)
+    merge_wav_files(output_format="nc", channels=["X", "Y"], verbose=True)
 
     # channel = "Z"
     # nc_fpath = os.path.join(data_folder, f"channel_{channel}_wav.nc")

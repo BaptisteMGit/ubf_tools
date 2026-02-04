@@ -319,7 +319,7 @@ class FiberscopeManager:
             i_hydro += 1
 
         # Time vector for impulse response
-        xr_data["t_ir"] = time - t0
+        xr_data["t_ir"] = np.arange(time.size) * xr_data.ts
         # nstft = self.nperseg
         nstft = time.size
 
@@ -535,6 +535,7 @@ class FiberscopeManager:
             if self.apply_bandfilter:
                 sig_win = self.bandfilter.apply_filter(sig_win, fs)
 
+            # Datetime corresponding to the first instant in the slice
             t0_slice = wav_start_dt + timedelta(seconds=n_start * 1 / fs)
             # t1_slice = wav_start_dt + timedelta(seconds=n_end * 1 / fs)
 
@@ -1052,7 +1053,7 @@ class FiberscopeManager:
             init_arr = True
 
             # Process each emission
-            for i_pulse, pulse_id in enumerate(xr_data.pulse_id):
+            for i_pulse, pulse_id in enumerate(xr_data.pulse_id.values):
 
                 # Extract the pulse of interest
                 x = xr_data.signal.sel(
@@ -1068,6 +1069,10 @@ class FiberscopeManager:
                 x.attrs["inter_pulse_period"] = xr_data.inter_pulse_period
                 x.attrs["pulse_duration"] = xr_data.pulse_duration
                 x.attrs["n_emissions"] = xr_data.n_emissions
+                x.attrs["t_start"] = t0 + pulse_id * t_interp_pulse
+                x.attrs["t_end"] = (
+                    xr_data.t1 + pulse_id * t_interp_pulse + t_pulse + self.tau_ir
+                )
 
                 # Get mask defining signal+noise period
                 tt, mask_tt_x = self.get_signal_presence_mask(

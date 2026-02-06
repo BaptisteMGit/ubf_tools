@@ -24,15 +24,19 @@ from scipy import stats
 from datetime import datetime, timedelta
 from scipy.signal import butter, lfilter
 
+import source.global_constants as gc
 import real_data_analysis.fiberscope_groix.src.params as p
 from misc import progression_bar
 from source.cov_manager import CovManager
 from source.feature_processor import FeatureProcessor
 from propa.rtf.rtf_utils import D_hermitian_angle_fast
-from real_data_analysis.deconvolution_utils import crosscorr_deconvolution
+from real_data_analysis.deconvolution_utils import (
+    crosscorr_deconvolution,
+    wiener_deconvolution,
+)
 from real_data_analysis.fiberscope_20.src.read_tdms import load_fiberscope_data
 
-import referrers
+# import referrers
 from pympler import muppy, summary
 
 
@@ -75,6 +79,7 @@ class FiberscopeManager:
         plot_feature: bool = False,
         theta_statistics: str = "mean",
         process_pulse_one_by_one: bool = True,
+        estimate_ir_duration: bool = True,
     ):
         """
         Constructor
@@ -107,6 +112,9 @@ class FiberscopeManager:
 
         # Process each pulse within the same sequence independently (in case constant source position within a single sequence does not hold)
         self.process_pulse_one_by_one = process_pulse_one_by_one
+
+        # Estimate the impulse response duration online (from deconvolved waveguide response)
+        self.estimate_ir_duration = estimate_ir_duration
 
         # Link to  wav dataset
         self.ds_wav_fpath = os.path.join(self.root_processed_data, "channel_H_wav.nc")
@@ -174,17 +182,35 @@ class FiberscopeManager:
                 # )
                 # # Note: +/- ts/2 to ensure we include boundary samples
 
+                # Estimate the impulse response
+                # h_hat = crosscorr_deconvolution(x=x, y=y.values)
+                h_hat = wiener_deconvolution(x=x, y=y.values)
+
+                # plt.figure()
+                # plt.plot(
+                #     np.arange(y.time.values.size) * xr_data.ts,
+                #     h_hat_,
+                #     linestyle="-",
+                #     color="k",
+                #     label="wiener",
+                # )
+                # plt.plot(
+                #     np.arange(y.time.values.size) * xr_data.ts,
+                #     h_hat,
+                #     linestyle="--",
+                #     color="r",
+                #     label="crosscorr",
+                # )
+                # plt.xlim([7.2, 7.8])
+                # plt.legend()
+                # plt.savefig("test_ir.png")
+
                 if init_ri_hat:
                     ri_hat = np.zeros((n_hydro, n_em, y.sizes["time"]))
                     time = y.time.values
                     init_ri_hat = False
 
-                # Estimate the impulse response
-                h_hat = crosscorr_deconvolution(x=x, y=y.values)
-                try:
-                    ri_hat[i_hydro, i_em, :] = h_hat
-                except:
-                    print("debug")
+                ri_hat[i_hydro, i_em, :] = h_hat
 
             i_hydro += 1
 
@@ -240,6 +266,9 @@ class FiberscopeManager:
                 np.swapaxes(np.angle(tf_hat), 1, 2),
             )
 
+        if self.estimate_ir_duration:
+            xr_data = self.get_ir_duration(xr_data)
+
         # Save results
         data_fpath = os.path.join(
             self.root_data_sequence, f"sequence_{xr_data.sequence_id}.nc"
@@ -249,11 +278,96 @@ class FiberscopeManager:
         xr_data.close()
         del xr_data
 
+    def get_ir_duration(self, xr_data):
+        n_window_rms = int(0.2 * xr_data.fs)
+
+        impulse_response = xr_data.ri_hat
+        p2_roll = (impulse_response**2).rolling(t_ir=n_window_rms, center=True).mean()
+        # RMS impulse response
+        p_rms = np.sqrt(p2_roll)
+
+        # Impulse response SPL
+        spl = 20 * np.log10(p_rms / gc.p0)
+
+        # Derive threshold for ir duration
+        background_lvl_threshold = spl.quantile(0.97, dim="t_ir")
+        ir_duration_estimation_th = -(spl.max(dim="t_ir") - background_lvl_threshold)
+
+        ir_duration = np.empty((xr_data.sizes["h_index"], xr_data.sizes["pulse_id"]))
+
+        for ih, h_index in enumerate(xr_data.h_index.values):
+            for ip, pulse_id in enumerate(xr_data.pulse_id.values):
+
+                spl_ = spl.sel(pulse_id=pulse_id, h_index=h_index)
+                th = background_lvl_threshold.sel(pulse_id=pulse_id, h_index=h_index)
+                above_th = spl_.t_ir.where(spl_ >= th).dropna("t_ir")
+
+                # Derive tau_th
+                arr_start = above_th.values[0]
+                arr_end = above_th.values[-1]
+                tau_ir = arr_end - arr_start
+                # print(f"Reverberation time ({threshold:.1f} dB) : {tau_ir:.2f} s")
+
+                # Store
+                ir_duration[ih, ip] = tau_ir
+
+                # # Plot for debug
+
+                # # Plot p_rms
+                # plt.figure()
+                # p_rms.sel(h_index=1).plot(color="k")
+                # plt.ylabel("RMS pressure")
+                # plt.title("")
+                # # Plot ir
+                # plt.figure()
+                # impulse_response.sel(h_index=h_index, pulse_id=pulse_id).plot(color="k")
+                # plt.savefig("test_ir.png")
+
+                # # Plot spl for anormal values
+                # if tau_ir >= 1:
+                #     img_path = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\src\localisation\rtf\debug"
+                #     plt.figure()
+                #     spl.sel(h_index=h_index, pulse_id=pulse_id).plot(color="k")
+                #     plt.axhline(
+                #         y=th,
+                #         color="r",
+                #         linestyle="--",
+                #         linewidth=1,
+                #         # label=f"{threshold:.1f} dB",
+                #     )
+                #     plt.ylabel(r"$L_p$ [dB re 1$\mu$Pa$^2$]")
+                #     # plt.legend()
+                #     plt.title("")
+                #     plt.savefig(
+                #         os.path.join(img_path, f"test_ir_{h_index}_{pulse_id}.png")
+                #     )
+
+                #     plt.close("all")
+
+        # Save impulse response duration
+        xr_data["ir_duration"] = (["h_index", "pulse_id"], np.array(ir_duration))
+        xr_data.ir_duration.attrs["units"] = "s"
+        xr_data.ir_duration.attrs["long_name"] = "Impulse response duration"
+
+        # Save estimation threshold
+        xr_data["ir_duration_estimation_th"] = ir_duration_estimation_th
+
+        # Store usefull duration
+        xr_data["eff_ir_duration"] = np.median(
+            xr_data.ir_duration.values[xr_data.ir_duration_estimation_th <= -5]
+        )
+
+        return xr_data
+
     def set_stft_params(self, ts):
 
         n_ir = int(
             self.tau_ir / ts
         )  # Number of samples corresponding to the assumed impulse response duration
+        # #
+        # nperseg = n_ir  # Number of sample per snapshot to use = closest power of two
+        # noverlap = int(nperseg * self.alpha_overlap)
+
         # Get closer power of 2
         nperseg = 2 ** int(
             np.log2(n_ir) + 1
@@ -301,8 +415,9 @@ class FiberscopeManager:
 
         data_obs = {}
 
+        obs_ids = [1, 2, 3]
         # Extract the corresponding signal portion
-        for obs_id in [1, 2, 3]:
+        for obs_id in obs_ids:
             # fs = ds_wav.attrs[f"fs_obs{obs_id}"]
             # print(fs)
 
@@ -324,9 +439,11 @@ class FiberscopeManager:
 
             t_win_sec = np.arange(sig_win.shape[0]) / fs + n_start * 1 / fs
 
-            # t_sig_sec = np.arange(0, signal.size) * 1 / fs
-            # t_win_sec = t_sig_sec[n_start:n_end]
-            # t_win = np.array([wav_start_dt + timedelta(seconds=t) for t in t_win_sec])
+            # Arrivals dt in seconds from start of slice
+            arr_time_in_sec_from_wavstart = (
+                arr_dt_obs[obs_id - 1] - wav_start_dt
+            ).dt.total_seconds()
+            arr_time_in_sec_from_slicestart = arr_time_in_sec_from_wavstart - t_start
 
             # Apply filter if required
             if self.apply_bandfilter:
@@ -345,9 +462,12 @@ class FiberscopeManager:
                 signal=sig_win,
                 time=t_win_sec,
                 t0_first_arr=t0_first_arr,
+                arr_time_in_sec_from_start=arr_time_in_sec_from_slicestart,
             )
 
-        obs_ids = [1, 2, 3]
+        arr_time_in_sec_from_start_mat = np.vstack(
+            [data_obs[i]["arr_time_in_sec_from_start"].values for i in obs_ids]
+        )
         signal_mat = np.vstack([data_obs[i]["signal"] for i in obs_ids])
         common_time_vector = np.arange(data_obs[1]["signal"].size) * 1 / fs
 
@@ -355,7 +475,13 @@ class FiberscopeManager:
         last_arrival = np.max([data_obs[i]["t0_first_arr"] for i in obs_ids])
 
         xr_data = xr.Dataset(
-            data_vars=dict(signal=(["h_index", "time"], signal_mat)),
+            data_vars=dict(
+                signal=(["h_index", "time"], signal_mat),
+                arr_time_in_sec_from_start=(
+                    ["h_index", "pulse_id"],
+                    arr_time_in_sec_from_start_mat,
+                ),
+            ),
             coords=dict(
                 h_index=obs_ids,
                 time=common_time_vector,
@@ -506,6 +632,7 @@ class FiberscopeManager:
             # If stfts props are already set we dont need to do it
             if set_stft_props:
                 self.set_stft_params(ts=xr_data.ts)
+                print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
 
             idx_rcv_ref = np.argmin(
                 np.abs(xr_data.h_index.values - self.h_index_ref)
@@ -714,17 +841,17 @@ class FiberscopeManager:
                 #         )
                 #     )
 
-                all_objects = muppy.get_objects()
-                # all_objects = (muppy.sort(muppy.get_objects()))[-10:]
-                # all_objects.reverse()
-                summary.print_(summary.summarize(all_objects))
+                # all_objects = muppy.get_objects()
+                # # all_objects = (muppy.sort(muppy.get_objects()))[-10:]
+                # # all_objects.reverse()
+                # summary.print_(summary.summarize(all_objects))
 
-                del xr_data_pulse
+                # del xr_data_pulse
 
-                all_objects = muppy.get_objects()
-                # all_objects = (muppy.sort(muppy.get_objects()))[-10:]
-                # all_objects.reverse()
-                summary.print_(summary.summarize(all_objects))
+                # all_objects = muppy.get_objects()
+                # # all_objects = (muppy.sort(muppy.get_objects()))[-10:]
+                # # all_objects.reverse()
+                # summary.print_(summary.summarize(all_objects))
 
         else:
             nrcv = xr_data.sizes["h_index"]
@@ -843,6 +970,7 @@ class FiberscopeManager:
             tau_minus = 0.9 * (
                 t_silence - self.tau_ir
             )  # Avoid to include previous pulse
+            tau_minus = np.max(tau_minus, 0)  # In case tau_ir > t_silence
 
             # Time to first arrival
             t0 = xr_data.t0
@@ -853,39 +981,75 @@ class FiberscopeManager:
             for i_pulse, pulse_id in enumerate(xr_data.pulse_id.values):
 
                 # Extract the pulse of interest
-                x = xr_data.signal.sel(
+                # x = xr_data.signal.sel(
+                #     time=slice(
+                #         t0 + pulse_id * t_interp_pulse - tau_minus - ts / 2,
+                #         t0 + pulse_id * t_interp_pulse + t_pulse + tau_plus + ts / 2,
+                #     )
+                # )
+
+                # Smallest arrival time in seconds from start (ie corresponding to closest OBS)
+                tstart = xr_data.arr_time_in_sec_from_start.sel(pulse_id=pulse_id).min()
+                # Longest arrival time in seconds from start (ie corresponding to furthest OBS)
+                tend = xr_data.arr_time_in_sec_from_start.sel(pulse_id=pulse_id).max()
+                # Select the corresponding time window
+                x = xr_data.sel(
                     time=slice(
-                        t0 + pulse_id * t_interp_pulse - tau_minus - ts / 2,
-                        t0 + pulse_id * t_interp_pulse + t_pulse + tau_plus + ts / 2,
+                        tstart - tau_minus - ts / 2,
+                        tstart + t_pulse + tau_plus + ts / 2,
                     )
                 )
                 # Note: +/- ts/2 to ensure we include boundary samples
-                x = x.T  # Transpose to fit required format
 
-                # Copy usefull attrs
-                x.attrs["inter_pulse_period"] = xr_data.inter_pulse_period
-                x.attrs["pulse_duration"] = xr_data.pulse_duration
-                x.attrs["n_emissions"] = xr_data.n_emissions
-                x.attrs["t_start"] = t0 + pulse_id * t_interp_pulse
-                x.attrs["t_end"] = (
-                    xr_data.t1 + pulse_id * t_interp_pulse + t_pulse + self.tau_ir
+                # x = x.T  # Transpose to fit required format
+
+                # # # Copy usefull attrs
+                # x.attrs["inter_pulse_period"] = xr_data.inter_pulse_period
+                # x.attrs["pulse_duration"] = xr_data.pulse_duration
+                # x.attrs["n_emissions"] = xr_data.n_emissions
+                # x.attrs["t_start"] = t0 + pulse_id * t_interp_pulse
+                # x.attrs["t_end"] = (
+                #     xr_data.t1 + pulse_id * t_interp_pulse + t_pulse + self.tau_ir
+                # )
+
+                # # Get mask defining signal+noise period
+                # tt, mask_tt_x = self.get_signal_presence_mask(
+                #     x, fs=1 / ts, nperseg=self.nperseg, noverlap=self.noverlap
+                # )
+                # mask_tt_v = ~mask_tt_x
+                # x = x.signal.T
+                # f, Rx = self.cm.get_signal_csdm(
+                #     y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_x
+                # )
+
+                mask_stft_x = self.get_signal_presence_mask_ft(
+                    x, tstart, tend, nperseg=self.nperseg, noverlap=self.noverlap
                 )
+                mask_stft_v = ~mask_stft_x
 
-                # Get mask defining signal+noise period
-                tt, mask_tt_x = self.get_signal_presence_mask(
-                    x, fs=1 / ts, nperseg=self.nperseg, noverlap=self.noverlap
-                )
-                mask_tt_v = ~mask_tt_x
-
+                x = x.signal.T
                 f, Rx = self.cm.get_signal_csdm(
-                    y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_x
+                    y=x,
+                    fs=1 / ts,
+                    add_identity=False,
+                    mask_tt=None,
+                    mask_stft=mask_stft_x,
                 )
+
                 if Rv_global is not None:
                     Rv = Rv_global
                 else:
+                    # f, Rv = self.cm.get_signal_csdm(
+                    #     y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_v
+                    # )
                     f, Rv = self.cm.get_signal_csdm(
-                        y=x, fs=1 / ts, add_identity=False, mask_tt=mask_tt_v
+                        y=x,
+                        fs=1 / ts,
+                        add_identity=False,
+                        mask_tt=None,
+                        mask_stft=mask_stft_v,
                     )
+
                 # Rv[...] = 0  # TODO REMOVE
 
                 if rtf_estimator == "cs":
@@ -1021,18 +1185,99 @@ class FiberscopeManager:
 
         return xr_data
 
+    def get_signal_presence_mask_ft(self, x, tstart, tend, nperseg, noverlap):
+
+        # Dummy stft calculation to get ff and tt (should be replace by single stft calc)
+        ff, tt, stft_x = self.cm.get_stft_array(
+            x.signal.T,
+            fs=x.fs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+        )
+
+        t_first_arr_in_slice = (tstart - x.time.min()).values
+        t_last_arr_in_slice = (tend - x.time.min()).values
+
+        # Add a little offset to ensure to include all the signal energy
+        dtt = tt[1] - tt[0]
+        t_first_arr_in_slice -= 2 * dtt
+        t_last_arr_in_slice += 2 * dtt
+
+        # Define bounds
+        t = (x.time - x.time.min()).values
+        f0 = 80
+        f1 = 1000
+        left_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_first_arr_in_slice)
+        right_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_last_arr_in_slice)
+
+        # Interpolate on tt grid
+        left_tt = np.interp(tt, t, left_bound)
+        right_tt = np.interp(tt, t, right_bound)
+
+        # Define mask
+        TT, FF = np.meshgrid(tt, ff)
+        mask_stft = np.logical_and(
+            (FF <= left_tt[np.newaxis, :]), (FF >= right_tt[np.newaxis, :])
+        )
+
+        # # Plot for debug purpose
+        # for ircv in range(stft_x.shape[0]):
+        #     stft_i = np.abs(stft_x[ircv, ...])
+        #     stft_i /= np.max(stft_i)
+        #     plt.figure()
+        #     plt.pcolormesh(tt, ff, 10 * np.log10(stft_i), vmin=-30, cmap="jet")
+        #     plt.colorbar()
+        #     # plt.plot(t, left_bound, label="left-bound", linewidth=5, color="m")
+        #     plt.plot(
+        #         tt,
+        #         left_tt,
+        #         label="left-bound",
+        #         linewidth=5,
+        #         color="m",
+        #         marker="+",
+        #         markersize=20,
+        #     )
+
+        #     # plt.plot(
+        #     #     t, right_bound, label="right-bound", linewidth=5, color="m"
+        #     # )
+        #     plt.plot(
+        #         tt,
+        #         right_tt,
+        #         label="right-bound",
+        #         linewidth=3,
+        #         color="g",
+        #         marker="+",
+        #         markersize=20,
+        #     )
+        #     plt.ylim([0, 1000])
+        #     plt.savefig(f"mask_boundbox_{ircv}.png")
+
+        #     # stft_masked = stft_x[ircv] * mask
+        #     plt.figure()
+        #     plt.pcolormesh(tt, ff, mask_stft.astype(float), cmap="gray")
+        #     plt.plot(tt, left_tt, "m", linewidth=3)
+        #     plt.plot(tt, right_tt, "m", linewidth=3)
+        #     plt.ylim([0, 1000])
+        #     plt.colorbar()
+        #     plt.savefig(f"mask_{ircv}.png")
+
+        #     plt.close("all")
+
+        return mask_stft
+
     def get_signal_presence_mask(self, x, fs, nperseg, noverlap):
+
+        # Energy detector based
         ff, tt, stft_x = self.cm.get_stft_array(
             x, fs=fs, nperseg=nperseg, noverlap=noverlap
         )
+        dtt = tt[1] - tt[0]
 
         duration = x.time.max() - x.time.min()
-
-        dtt = tt[1] - tt[0]
         sig_dist_samples = int(x.inter_pulse_period * 1 / dtt * 2 / 3)
         n_roll_avg = int(x.pulse_duration * 1 / dtt * 2 / 3)
         n_em = x.n_emissions
-
         # Define the signal presence mask
         mask_tt_x = np.zeros_like(tt, dtype=int)
         for ircv in range(stft_x.shape[0]):
@@ -1058,8 +1303,8 @@ class FiberscopeManager:
                     default_mask = np.ones_like(energy)
                     print("debug")
 
-                threshold = 0.9 * min_peaks
-                # threshold = 0.005 * min_peaks
+                # threshold = 0.9 * min_peaks
+                threshold = 0.5 * min_peaks
             else:
                 # Other simple method
                 threshold = np.median(energy)
@@ -1071,28 +1316,29 @@ class FiberscopeManager:
             mask_tt_i = energy > threshold
             mask_tt_x = np.logical_or(mask_tt_x, mask_tt_i)
 
-            # # # For debug purpose
-            # plt.figure()
-            # plt.plot(energy)
-            # plt.scatter(idx_peaks, energy[idx_peaks], color="r")
-            # plt.axhline(threshold, linestyle="--", color="r")
-            # plt.savefig(f"debug_energy_rcv{ircv}")
+        # # # For debug purpose
+        # plt.figure()
+        # plt.plot(energy)
+        # plt.scatter(idx_peaks, energy[idx_peaks], color="r")
+        # plt.axhline(threshold, linestyle="--", color="r")
+        # plt.savefig(f"debug_energy_rcv{ircv}")
 
-            # plt.figure()
-            # plt.plot(mask_tt_i)
-            # plt.savefig(f"debug_masktt_rcv{ircv}")
-
-            # plt.figure()
-            # plt.pcolormesh(tt, ff, np.abs(stft_x[0, ...]))
-            # plt.plot(tt, mask_tt_x.astype(int) * np.max(ff))
-            # plt.savefig(f"debug_stft_rcv{ircv}")
-
-            # plt.close("all")
+        # plt.figure()
+        # plt.plot(mask_tt_i)
+        # plt.savefig(f"debug_masktt_rcv{ircv}")
+        # plt.close("all")
 
         # plt.figure()
         # plt.plot(mask_tt_x)
         # plt.savefig(f"debug_masktt")
         # plt.close("all")
+
+        # # # Un-comment for debug
+        # for ircv in range(stft_x.shape[0]):
+        #     plt.figure()
+        #     plt.pcolormesh(tt, ff, np.abs(stft_x[ircv, ...]))
+        #     plt.plot(tt, mask_tt_x.astype(int) * np.max(ff))
+        #     plt.savefig(f"debug_stft_rcv{ircv}")
 
         return tt, mask_tt_x
 

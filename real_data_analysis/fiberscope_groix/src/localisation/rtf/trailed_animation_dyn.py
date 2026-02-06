@@ -115,7 +115,7 @@ def get_dists(df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
 
 seq_ref = 144
 seq_id = 147
-fmin, fmax = 700, 800
+fmin, fmax = 600, 800
 
 theta_distances, xr_seq_ref, df_seq_ref, xr_seq, df_seq = get_dists(
     df_arr, seq_ref, seq_id, fmin, fmax

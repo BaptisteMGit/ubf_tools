@@ -53,8 +53,9 @@ def crosscorr_deconvolution(x, y):
 def wiener_deconvolution(x, y, rho_f=None):
     """Apply Wiener filter to estimate the impulse response"""
     # Derive ffts
-    x_fft = np.fft.rfft(x)
-    y_fft = np.fft.rfft(y)
+    nstft = max(x.size, y.size)
+    x_fft = np.fft.rfft(x, nstft)
+    y_fft = np.fft.rfft(y, nstft)
 
     if rho_f is None:
         rho_f = np.ones_like(x_fft)
@@ -64,26 +65,52 @@ def wiener_deconvolution(x, y, rho_f=None):
 
     h_fft = g_fft * y_fft
 
-    h = np.fft.irfft(h_fft, n=len(x))
+    h = np.fft.irfft(h_fft, n=nstft)
 
     return h
 
 
 if __name__ == "__main__":
-    x = np.random.randn(100)
-    y = np.random.randn(100)
+    import scipy
 
-    # h = crosscorr_deconvolution(x, y)
-    r_xy = sp.correlate(x, y, mode="full")
+    fc = 50
+    t0 = 1
+    fs = 1000
+    T = 10
+    t = np.arange(0, T, 1 / fs)
+    ns = t.size
+    x = np.random.randn(ns)
+    h_ricker = (1 - 2 * (np.pi * fc * (t - t0)) ** 2) * np.exp(
+        -((np.pi * fc * (t - t0)) ** 2)
+    )
+    y = scipy.fft.irfft(scipy.fft.rfft(x) * scipy.fft.rfft(h_ricker))
+    # y = np.convolve(x, h_ricker, mode="same")
+    h = crosscorr_deconvolution(x, y)
+    h = scipy.fft.irfft(scipy.fft.rfft(y) / scipy.fft.rfft(x))
+    h = wiener_deconvolution(x, y)
 
-    # Estime y_rec from x and r_xy
-    y_rec = sp.convolve(x, r_xy, mode="full")
-    sigma_y = np.std(y)
-    sigma_y_rec = np.std(y_rec)
+    print(h_ricker / h)
 
-    # Compute the impulse response
-    h = r_xy * sigma_y / sigma_y_rec
+    fig, axs = plt.subplots(3, 1, sharex=True)
+    axs[0].plot(t, x)
+    axs[1].plot(t, h_ricker, label="h")
+    axs[1].plot(t, h, label="h_hat")
+    # axs[1].plot(t, h_ricker / h)
+    axs[1].legend()
+    axs[2].plot(t, y)
 
-    plt.figure()
-    plt.plot(h)
     plt.show()
+
+    # r_xy = sp.correlate(x, y, mode="full")
+
+    # # Estime y_rec from x and r_xy
+    # y_rec = sp.convolve(x, r_xy, mode="full")
+    # sigma_y = np.std(y)
+    # sigma_y_rec = np.std(y_rec)
+
+    # # Compute the impulse response
+    # h = r_xy * sigma_y / sigma_y_rec
+
+    # plt.figure()
+    # plt.plot(h)
+    # plt.show()

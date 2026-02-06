@@ -952,7 +952,7 @@ def build_arrivals_dataset(
 
                 # Select the time window of interest for current sequence (all emissions in the sequence + pre/post times)
                 t_start_win = tr_first - pre_reception_time
-                t_end_win = tr_last + post_reception_time
+                t_end_win = tr_last + emission_i.duration_s + post_reception_time
 
                 # Convert in samples
                 n_samp_start_win = int(t_start_win * fs)
@@ -993,7 +993,7 @@ def build_arrivals_dataset(
 
                 # Compute source position considering the offset for the current emission   (Source, Longueur filée)
                 # TODO : implement position correction if needed
-                
+
                 # Select the time window of interest for current sequence (all emissions in the sequence + pre/post times)
                 t_start_win = tr_first - pre_reception_time
                 t_end_win = tr_last + post_reception_time

@@ -178,3 +178,16 @@ def pekeris_ir_duration(f, c_w, c_s, rho_w, rho_s, r, d):
 #         phim_arr[i, :] = phi_m
 
 #     return phim_arr
+
+
+if __name__ == "__main__":
+    f = 800
+    c_w = 1500
+    c_s = 2000
+    rho_w = 1.0 * 1e3
+    rho_s = 2.03 * 1e3
+    r = 3000
+    d = 35
+    tau = pekeris_ir_duration(f, c_w, c_s, rho_w, rho_s, r, d)
+
+    print(tau)

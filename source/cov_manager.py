@@ -53,6 +53,7 @@ class CovManager:
         fs: float,
         add_identity: bool = False,
         mask_tt: np.ndarray = None,
+        mask_stft: np.ndarray = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Derive the CSDM of y.
@@ -69,6 +70,10 @@ class CovManager:
             Mask to apply on the time snapshots (num_time_snapshots,). If none the whole signal is used.
             The purpose of this parameter is to derive signal + noise CSDM or noise only CSDM directly from
             the complete signal by applying the right mask to the STFTs.
+        mask_stft : np.ndarray
+            Mask to apply directly to the 2D STFTs. If none the whole signal is used.
+            The purpose of this parameter is to derive signal + noise CSDM or noise only CSDM directly from
+            the complete signal by applying the right mask to the STFTs.
 
         Returns
         -------
@@ -82,7 +87,7 @@ class CovManager:
             y, fs, self.nperseg, self.noverlap, self.window
         )
         csdm_y = self.compute_csdm_fast(
-            stft_arr, n_seg_cov=0, mask_tt=mask_tt
+            stft_arr, n_seg_cov=0, mask_tt=mask_tt, mask_stft=mask_stft
         )  # (nf x nrcv x nrcv)
 
         if add_identity:
@@ -153,7 +158,10 @@ class CovManager:
 
     @staticmethod
     def compute_csdm_fast(
-        stfts: list[np.ndarray], n_seg_cov: int = 0, mask_tt: np.ndarray = None
+        stfts: list[np.ndarray],
+        n_seg_cov: int = 0,
+        mask_tt: np.ndarray = None,
+        mask_stft: np.ndarray = None,
     ) -> np.ndarray:
         """
         Compute the Cross Spectral Density Matrix (CSDM) from STFTs.
@@ -164,6 +172,15 @@ class CovManager:
             STFTs array (num_receivers, num_frequency_bins, num_snapshots).
         n_seg_cov : int
             Number of time snapshots to average over (number of segments per block).
+        mask_tt : np.ndarray
+            Mask to apply on the time snapshots (num_time_snapshots,). If none the whole signal is used.
+            The purpose of this parameter is to derive signal + noise CSDM or noise only CSDM directly from
+            the complete signal by applying the right mask to the STFTs.
+        mask_stft : np.ndarray
+            Mask to apply directly to the 2D STFTs. If none the whole signal is used.
+            The purpose of this parameter is to derive signal + noise CSDM or noise only CSDM directly from
+            the complete signal by applying the right mask to the STFTs.
+
 
         Returns
         -------
@@ -184,7 +201,19 @@ class CovManager:
 
         # Apply mask to stfts if provided
         mask_applied = False
-        if mask_tt is not None and mask_tt.shape[0] == num_snapshots:
+
+        # First option : global mask
+        if mask_stft is not None and mask_stft.shape == (num_freq_bins, num_snapshots):
+            mask = mask_stft
+            # Stack the mask along the receiver dimension
+            stacked_mask = np.repeat(mask[np.newaxis], num_receivers, axis=0)
+            # Apply mask
+            stacked_stfts *= stacked_mask
+            # Store flag to indicate that the mask was applied
+            mask_applied = True
+
+        # Second option : mask only on time index
+        elif mask_tt is not None and mask_tt.shape[0] == num_snapshots:
             # Cast to (num_freq_bins, num_snapshots)
             mask = np.repeat(mask_tt[np.newaxis, :], num_freq_bins, axis=0)
             # Stack the mask along the receiver dimension
@@ -220,10 +249,20 @@ class CovManager:
             # Derive the number of non-zero snapshots within the k-th block
             if mask_applied:
                 # n_mean = np.nansum(mask_tt[idx_start : idx_start + n_seg_cov])
-                n_mean = np.sum(mask_tt[idx_start : idx_start + n_seg_cov])
+                # n_mean = np.sum(mask_tt[idx_start : idx_start + n_seg_cov])
+                # General formula for mask_tt/mask_stft
+                n_mean = np.sum(
+                    mask[:, idx_start : idx_start + n_seg_cov], axis=1
+                )  # Number of used bins for each frequencies
+
+            # N_mean can be equal to 0
+            n_mean[n_mean == 0] = np.iinfo(
+                n_mean.dtype
+            ).max  # Replace by very large value to avoid dividing by 0 and set the csdm to 0 for those values
 
             csd_matrix[..., k] = (
-                np.einsum("ftr,fts->frs", stft_block, stft_block_conj) / n_mean
+                np.einsum("ftr,fts->frs", stft_block, stft_block_conj)
+                / n_mean[:, np.newaxis, np.newaxis]
             )
 
         return (

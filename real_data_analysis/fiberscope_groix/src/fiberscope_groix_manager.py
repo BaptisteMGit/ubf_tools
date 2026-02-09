@@ -404,6 +404,8 @@ class FiberscopeManager:
         fs = self.ds_wav.attrs[f"fs_obs{1}"]
         datetime_fmt = self.ds_wav.attrs["datetime_format"]
 
+        emission_duration = df_seq["duration_s"].iloc[0]
+
         # Datetime bounds for the studied sequence
         arr_dt_obs1 = df_seq[f"arrival_datetime_obs1"]
         arr_dt_obs2 = df_seq[f"arrival_datetime_obs2"]
@@ -427,9 +429,21 @@ class FiberscopeManager:
 
             # Signal slice to extract
             t_start = (first_arr_dt - wav_start_dt).total_seconds() - pre_reception_time
-            n_start = int(np.floor(t_start * fs))
-            t_end = (last_arr_dt - wav_start_dt).total_seconds() + post_reception_time
-            n_end = int(np.floor(t_end * fs))
+            n_start = int(np.floor(np.round(t_start * fs, 4)))
+            t_end = (
+                (last_arr_dt - wav_start_dt).total_seconds()
+                + emission_duration
+                + post_reception_time
+            )  # Add emission duration to get the entire signal
+            n_end = int(np.ceil(np.round(t_end * fs, 4)))
+
+            # print(obs_id)
+            # print(t_end, t_start)
+            # print((t_end - t_start)*fs)
+            # print(int((t_end - t_start)*fs))
+            # print(t_start * fs, t_end * fs)
+            # print(n_start, n_end)
+            # print(n_end - n_start)
 
             # Slice signal
             sig_varname = f"signal_obs{obs_id}"
@@ -632,7 +646,7 @@ class FiberscopeManager:
             # If stfts props are already set we dont need to do it
             if set_stft_props:
                 self.set_stft_params(ts=xr_data.ts)
-                print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
+                # print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
 
             idx_rcv_ref = np.argmin(
                 np.abs(xr_data.h_index.values - self.h_index_ref)

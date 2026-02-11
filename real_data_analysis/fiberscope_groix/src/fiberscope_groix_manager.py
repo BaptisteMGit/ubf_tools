@@ -80,6 +80,7 @@ class FiberscopeManager:
         theta_statistics: str = "mean",
         process_pulse_one_by_one: bool = True,
         estimate_ir_duration: bool = True,
+        rtf_estimator: str = "cs-evd",
     ):
         """
         Constructor
@@ -106,6 +107,7 @@ class FiberscopeManager:
         self.h_index_ref = h_index_ref
 
         self.plot_feature = plot_feature
+        self.plot_csdm_mask = plot_feature
 
         # Method to derive caracteristic angle representing the theta distribution
         self.theta_statistics = theta_statistics
@@ -115,6 +117,9 @@ class FiberscopeManager:
 
         # Estimate the impulse response duration online (from deconvolved waveguide response)
         self.estimate_ir_duration = estimate_ir_duration
+
+        # RTF estimator to use
+        self.rtf_estimator = rtf_estimator
 
         # Link to  wav dataset
         self.ds_wav_fpath = os.path.join(self.root_processed_data, "channel_H_wav.nc")
@@ -607,7 +612,6 @@ class FiberscopeManager:
         self,
         df_arrivals,
         set_stft_props=True,
-        rtf_estimator="cs",
         verbose=False,
     ):
 
@@ -657,10 +661,7 @@ class FiberscopeManager:
             self.preprocess_data(xr_data=xr_data, df_seq=df_seq)
 
             ### Step 3 - Derive features ###
-            self.derive_feature(
-                sequence_id=seq_id,
-                rtf_estimator=rtf_estimator,
-            )
+            self.derive_feature(sequence_id=seq_id, verbose=verbose)
 
     def estimate_global_csdm(self, xr_data):
         x = xr_data.signal.T
@@ -683,7 +684,6 @@ class FiberscopeManager:
         Rv_global=None,
         verbose=False,
         save=True,
-        rtf_estimator="cs",
     ):
 
         if verbose:
@@ -701,9 +701,7 @@ class FiberscopeManager:
         xr_data = xr.open_dataset(fpath)
 
         # Derive rtf from recordings
-        xr_data = self.get_rtf(
-            xr_data=xr_data, Rv_global=Rv_global, rtf_estimator=rtf_estimator
-        )
+        xr_data = self.get_rtf(xr_data=xr_data, Rv_global=Rv_global)
 
         # # Derive rtf from tf estimated by deconvolution
         xr_data = self.derive_rtf_from_tf(xr_data=xr_data)
@@ -749,6 +747,8 @@ class FiberscopeManager:
                 for rcv_idx in xr_data.h_index.values:
 
                     # Plot RTF amplitude
+                    max_amp = xr_data_pulse.rtf_amp.max() * 1.2
+                    min_amp = xr_data_pulse.rtf_amp.min() * 0.8
                     xr_data_pulse.rtf_amp.sel(h_index=rcv_idx).plot(
                         ax=axs_amp[i], color="k", label=f"Ref - {rcv_idx}"
                     )
@@ -759,10 +759,11 @@ class FiberscopeManager:
                         markersize=1,
                         linewidth=1,
                         linestyle="--",
-                        label=f"CS - {rcv_idx}",
+                        label=f"{self.rtf_estimator.upper()} - {rcv_idx}",
                     )
                     axs_amp[i].set_xlabel("")
                     axs_amp[i].set_ylabel(r"$|\Pi|$")
+                    axs_amp[i].set_ylim(min_amp, max_amp)
                     axs_amp[i].set_yscale("log")
                     axs_amp[i].set_title("")
                     axs_amp[i].legend(fontsize=8)
@@ -778,7 +779,7 @@ class FiberscopeManager:
                         markersize=1,
                         linewidth=1,
                         linestyle="--",
-                        label=f"CS - {rcv_idx}",
+                        label=f"{self.rtf_estimator.upper()} - {rcv_idx}",
                     )
                     axs_phase[i].set_xlabel("")
                     axs_phase[i].set_ylabel(r"$\Phi$")
@@ -794,6 +795,8 @@ class FiberscopeManager:
                     xr_data.root_img, f"rtf_phase_pulseID{pulse_id}.png"
                 )
                 f_phase.savefig(fpath)
+
+                plt.close("all")
 
                 # Plot csdms (noise, noisy signal, signal)
                 f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
@@ -838,6 +841,56 @@ class FiberscopeManager:
                 # Save figure
                 fpath = os.path.join(
                     xr_data.root_img, f"estimated_csdms_pulseID{pulse_id}.png"
+                )
+                f_csdm.savefig(fpath)
+
+                plt.close("all")
+
+                # Plot csdms (noise, noisy signal, signal)
+                f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
+
+                # CSDMs at a center freq
+                fc = (xr_data.fmax - xr_data.fmin) / 2
+                f_csdm.suptitle(f"CSDM (f = {fc} Hz)")
+
+                Rx = xr_data_pulse.Rx.sel(f_csdm=fc, method="nearest")
+                Rv = xr_data_pulse.Rv.sel(f_csdm=fc, method="nearest")
+                Rs = Rx - Rv
+
+                # Derive a common vmax for comparison purpose
+                vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+
+                # Plot Rx
+                Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+                axs_csdm[0].set_title(r"$\hat{R}_x$")
+                axs_csdm[0].set_xlabel("Index")
+                axs_csdm[0].set_ylabel("Index")
+                # Ticks
+                axs_csdm[0].set_xticks(np.arange(1, nrcv + 1, 1))
+                axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
+
+                # Plot Rv
+                Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+                axs_csdm[1].set_title(r"$\hat{R}_v$")
+                axs_csdm[1].set_xlabel("Index")
+                axs_csdm[1].set_ylabel("Index")
+                # Ticks
+                axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
+                axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
+
+                # Plot Rs
+                Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+                axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
+                axs_csdm[2].set_xlabel("Index")
+                axs_csdm[2].set_ylabel("Index")
+                # Ticks
+                axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
+                axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
+
+                # Save figure
+                fpath = os.path.join(
+                    xr_data.root_img,
+                    f"estimated_csdms_pulseID{pulse_id}_f_{Rx.f_csdm.values:.1f}Hz.png",
                 )
                 f_csdm.savefig(fpath)
 
@@ -970,7 +1023,7 @@ class FiberscopeManager:
 
             plt.close("all")
 
-    def get_rtf(self, xr_data, Rv_global=None, rtf_estimator="cs"):
+    def get_rtf(self, xr_data, Rv_global=None):
         ts = xr_data.ts
 
         if self.process_pulse_one_by_one:
@@ -1037,7 +1090,11 @@ class FiberscopeManager:
                 # )
 
                 mask_stft_x = self.get_signal_presence_mask_ft(
-                    x, tstart, tend, nperseg=self.nperseg, noverlap=self.noverlap
+                    x,
+                    tstart=tstart,
+                    tend=tend + self.tau_ir,
+                    nperseg=self.nperseg,
+                    noverlap=self.noverlap,
                 )
                 mask_stft_v = ~mask_stft_x
 
@@ -1066,16 +1123,20 @@ class FiberscopeManager:
 
                 # Rv[...] = 0  # TODO REMOVE
 
-                if rtf_estimator == "cs":
+                if self.rtf_estimator == "cs":
                     rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
                         Rx - Rv, use_first_column=True
                     )
-                elif rtf_estimator == "cs-evd":
+                elif self.rtf_estimator == "cs-evd":
                     rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
                         Rx - Rv, use_first_column=False
                     )
+                # elif self.rtf_estimator == "cw":
+                #     rtf = self.fp.rtf_estimator.estimate_rtf_covariance_whitening(
+                #         Rx, Rv
+                #     )
                 else:
-                    print(f"{rtf_estimator} not implemented yet!")
+                    print(f"{self.rtf_estimator} not implemented yet!")
 
                 if init_arr:
                     n_rcv = xr_data.sizes["h_index"]
@@ -1161,16 +1222,16 @@ class FiberscopeManager:
                 )
             Rv[...] = 0  # TODO REMOVE
 
-            if rtf_estimator == "cs":
+            if self.rtf_estimator == "cs":
                 rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
                     Rx - Rv, use_first_column=True
                 )
-            elif rtf_estimator == "cs-evd":
+            elif self.rtf_estimator == "cs-evd":
                 rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
                     Rx - Rv, use_first_column=False
                 )
             else:
-                print(f"{rtf_estimator} not implemented yet!")
+                print(f"{self.rtf_estimator} not implemented yet!")
 
             xr_data.coords["f_rtf"] = f
             xr_data["rtf_amp_hat"] = (
@@ -1213,16 +1274,17 @@ class FiberscopeManager:
         t_last_arr_in_slice = (tend - x.time.min()).values
 
         # Add a little offset to ensure to include all the signal energy
+        alpha = np.ceil(noverlap / nperseg * 4)
         dtt = tt[1] - tt[0]
-        t_first_arr_in_slice -= 2 * dtt
-        t_last_arr_in_slice += 2 * dtt
+        t_left = t_first_arr_in_slice - alpha * dtt
+        t_right = t_last_arr_in_slice + alpha * dtt
 
         # Define bounds
         t = (x.time - x.time.min()).values
-        f0 = 80
-        f1 = 1000
-        left_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_first_arr_in_slice)
-        right_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_last_arr_in_slice)
+        f0 = x.fmin
+        f1 = x.fmax
+        left_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_left)
+        right_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_right)
 
         # Interpolate on tt grid
         left_tt = np.interp(tt, t, left_bound)
@@ -1234,49 +1296,45 @@ class FiberscopeManager:
             (FF <= left_tt[np.newaxis, :]), (FF >= right_tt[np.newaxis, :])
         )
 
-        # # Plot for debug purpose
-        # for ircv in range(stft_x.shape[0]):
-        #     stft_i = np.abs(stft_x[ircv, ...])
-        #     stft_i /= np.max(stft_i)
-        #     plt.figure()
-        #     plt.pcolormesh(tt, ff, 10 * np.log10(stft_i), vmin=-30, cmap="jet")
-        #     plt.colorbar()
-        #     # plt.plot(t, left_bound, label="left-bound", linewidth=5, color="m")
-        #     plt.plot(
-        #         tt,
-        #         left_tt,
-        #         label="left-bound",
-        #         linewidth=5,
-        #         color="m",
-        #         marker="+",
-        #         markersize=20,
-        #     )
+        # Plot mask
+        if self.plot_csdm_mask:
+            for ircv in range(stft_x.shape[0]):
+                stft_i = np.abs(stft_x[ircv, ...])
+                stft_i /= np.max(stft_i)
+                plt.figure()
+                plt.pcolormesh(tt, ff, 10 * np.log10(stft_i), vmin=-30, cmap="jet")
+                plt.colorbar(label="[dB]")
+                plt.plot(
+                    tt,
+                    left_tt,
+                    linewidth=4,
+                    color="k",
+                )
+                plt.plot(
+                    tt,
+                    right_tt,
+                    linewidth=4,
+                    color="k",
+                )
 
-        #     # plt.plot(
-        #     #     t, right_bound, label="right-bound", linewidth=5, color="m"
-        #     # )
-        #     plt.plot(
-        #         tt,
-        #         right_tt,
-        #         label="right-bound",
-        #         linewidth=3,
-        #         color="g",
-        #         marker="+",
-        #         markersize=20,
-        #     )
-        #     plt.ylim([0, 1000])
-        #     plt.savefig(f"mask_boundbox_{ircv}.png")
+                # Mask overlay
+                alpha_mask = mask_stft.astype(float) * 0.45
+                plt.pcolormesh(
+                    tt,
+                    ff,
+                    np.ones_like(mask_stft),
+                    cmap="gray",
+                    alpha=alpha_mask,
+                    shading="auto",
+                )
 
-        #     # stft_masked = stft_x[ircv] * mask
-        #     plt.figure()
-        #     plt.pcolormesh(tt, ff, mask_stft.astype(float), cmap="gray")
-        #     plt.plot(tt, left_tt, "m", linewidth=3)
-        #     plt.plot(tt, right_tt, "m", linewidth=3)
-        #     plt.ylim([0, 1000])
-        #     plt.colorbar()
-        #     plt.savefig(f"mask_{ircv}.png")
+                plt.xlabel("Time [s]")
+                plt.ylabel("Frequency [Hz]")
+                plt.ylim([0, 1000])
+                fpath = os.path.join(x.root_img, f"csdm_mask_definition_rcv{ircv}.png")
+                plt.savefig(fpath)
 
-        #     plt.close("all")
+            self.plot_csdm_mask = False  # Plot only one time
 
         return mask_stft
 

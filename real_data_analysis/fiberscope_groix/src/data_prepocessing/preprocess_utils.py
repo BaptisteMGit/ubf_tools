@@ -411,6 +411,10 @@ def build_GPS_dataset(
     )
     common_time = pd.date_range(start=t_start, end=t_end, freq=interpolation_time_step)
 
+    # Derive GPS speed
+    dt = (common_time[1] - common_time[0]).total_seconds()
+    v_e_gps, v_n_gps, v_u_gps = get_speed(dt=dt, e=e_gps, n=n_gps, u=u_gps, axis=0)
+
     # Get apriori pos of interest
     apriori_pos_wgs84_before_campaign, apriori_pos_wgs84 = load_apriori_pos_wgs84(
         root_groix_metadata=root_groix_metadata
@@ -442,6 +446,9 @@ def build_GPS_dataset(
         e_gps=e_gps,
         n_gps=n_gps,
         u_gps=u_gps,
+        v_e_gps=v_e_gps,
+        v_n_gps=v_n_gps,
+        v_u_gps=v_u_gps,
         common_time=common_time,
         local_frame_origin=local_frame_origin,
         apriori_pos_wgs84=apriori_pos_wgs84,
@@ -576,6 +583,20 @@ def format_gps_data(gps_interp, e_gps, n_gps, u_gps, t_start, t_end, time_step):
     return gps_interp_lon, gps_interp_lat, e_gps, n_gps, u_gps
 
 
+def get_speed(e, n, u, dt, axis=0, scheme="gradient"):
+    if scheme == "gradient":
+        v_e = np.gradient(e, dt, axis=axis)
+        v_n = np.gradient(n, dt, axis=axis)
+        v_u = np.gradient(u, dt, axis=axis)
+
+    elif scheme == "forward":
+        v_e = np.diff(e, axis=axis, append=np.nan) / dt
+        v_n = np.diff(n, axis=axis, append=np.nan) / dt
+        v_u = np.diff(u, axis=axis, append=np.nan) / dt
+
+    return v_e, v_n, v_u
+
+
 def gps_dataset(
     gps,
     gps_interp_lon,
@@ -583,6 +604,9 @@ def gps_dataset(
     e_gps,
     n_gps,
     u_gps,
+    v_e_gps,
+    v_n_gps,
+    v_u_gps,
     common_time,
     local_frame_origin,
     apriori_pos_wgs84,
@@ -601,6 +625,9 @@ def gps_dataset(
             e=(["time"], e_gps),
             n=(["time"], n_gps),
             u=(["time"], u_gps),
+            v_e=(["time"], v_e_gps),
+            v_n=(["time"], v_n_gps),
+            v_u=(["time"], v_u_gps),
         ),
         coords=dict(
             time=common_time.tz_localize(None),
@@ -653,6 +680,9 @@ def gps_dataset(
     ds_gps.e.attrs["units"] = "m"
     ds_gps.n.attrs["units"] = "m"
     ds_gps.u.attrs["units"] = "m"
+    ds_gps.v_e.attrs["units"] = r"m~s$^{-1}$"
+    ds_gps.v_n.attrs["units"] = r"m~s$^{-1}$"
+    ds_gps.v_u.attrs["units"] = r"m~s$^{-1}$"
 
     ds_gps.raw_lon.attrs["long_name"] = "Longitude"
     ds_gps.raw_lat.attrs["long_name"] = "Latitude"
@@ -661,6 +691,9 @@ def gps_dataset(
     ds_gps.e.attrs["long_name"] = "E"
     ds_gps.n.attrs["long_name"] = "N"
     ds_gps.u.attrs["long_name"] = "U"
+    ds_gps.v_e.attrs["long_name"] = "V_E"
+    ds_gps.v_n.attrs["long_name"] = "V_N"
+    ds_gps.v_u.attrs["long_name"] = "V_U"
 
     ds_gps.time.attrs["timezone"] = "UTC"
     ds_gps.raw_time.attrs["timezone"] = "UTC"
@@ -715,6 +748,12 @@ def build_AIS_dataset(
         )
     )
 
+    # Derive AIS speed
+    dt = (common_time[1] - common_time[0]).total_seconds()
+    v_e_ais_mat, v_n_ais_mat, v_u_ais_mat = get_speed(
+        dt=dt, e=ais_e_mat, n=ais_n_mat, u=ais_u_mat, axis=1
+    )
+
     # Get apriori pos of interest
     apriori_pos_wgs84_before_campaign, apriori_pos_wgs84 = load_apriori_pos_wgs84(
         root_groix_metadata=root_groix_metadata
@@ -746,6 +785,9 @@ def build_AIS_dataset(
         ais_e_mat=ais_e_mat,
         ais_n_mat=ais_n_mat,
         ais_u_mat=ais_u_mat,
+        ais_v_e_mat=v_e_ais_mat,
+        ais_v_n_mat=v_n_ais_mat,
+        ais_v_u_mat=v_u_ais_mat,
         common_time=common_time,
         mmsi=mmsi,
         local_frame_origin=local_frame_origin,
@@ -894,6 +936,9 @@ def ais_dataset(
     ais_e_mat,
     ais_n_mat,
     ais_u_mat,
+    ais_v_e_mat,
+    ais_v_n_mat,
+    ais_v_u_mat,
     common_time,
     mmsi,
     local_frame_origin,
@@ -918,6 +963,9 @@ def ais_dataset(
             e=(["mmsi", "time"], ais_e_mat),
             n=(["mmsi", "time"], ais_n_mat),
             u=(["mmsi", "time"], ais_u_mat),
+            v_e=(["mmsi", "time"], ais_v_e_mat),
+            v_n=(["mmsi", "time"], ais_v_n_mat),
+            v_u=(["mmsi", "time"], ais_v_u_mat),
         ),
         coords=dict(
             raw_time=raw_ais_jules.datetime,  # Remove timezone info for xarray compatibility
@@ -974,6 +1022,10 @@ def ais_dataset(
     ds_ais.e.attrs["units"] = "m"
     ds_ais.n.attrs["units"] = "m"
     ds_ais.u.attrs["units"] = "m"
+    ds_ais.v_e.attrs["units"] = r"m~s$^{-1}$"
+    ds_ais.v_n.attrs["units"] = r"m~s$^{-1}$"
+    ds_ais.v_u.attrs["units"] = r"m~s$^{-1}$"
+
     ds_ais.mmsi.attrs["units"] = ""
     ds_ais.time.attrs["timezone"] = "UTC"
     ds_ais.raw_time.attrs["timezone"] = "UTC"
@@ -985,6 +1037,9 @@ def ais_dataset(
     ds_ais.e.attrs["long_name"] = "E"
     ds_ais.n.attrs["long_name"] = "N"
     ds_ais.u.attrs["long_name"] = "U"
+    ds_ais.v_e.attrs["long_name"] = "V_E"
+    ds_ais.v_n.attrs["long_name"] = "V_N"
+    ds_ais.v_u.attrs["long_name"] = "V_U"
 
     return ds_ais
 

@@ -86,6 +86,7 @@ class FiberscopeManager:
         rtf_estimator: str = "cs-evd",
         obs_ids: list = [1, 2, 3],
         verbose: bool = False,
+        plot_signal: bool = False,
     ):
         """
         Constructor
@@ -138,6 +139,9 @@ class FiberscopeManager:
 
         # Verbose flag
         self.verbose = verbose
+
+        # Plot audio signal flag
+        self.plot_signal = plot_signal
 
     def set_stft_params(self, ts):
         """
@@ -370,7 +374,7 @@ class FiberscopeManager:
 
         return tt, mask_tt_x
 
-    def plot_window_analysis(xr_data):
+    def plot_audio_signal(xr_data):
         pass
 
     def process_analysis(self):
@@ -589,6 +593,8 @@ class ActiveFiberscopeManager(FiberscopeManager):
         rtf_estimator: str = "cs-evd",
         obs_ids: list = [1, 2, 3],
         verbose: bool = False,
+        plot_signal: bool = False,
+        deconvolution_method: str = "wiener",
     ):
         """
         Class constructor
@@ -609,7 +615,221 @@ class ActiveFiberscopeManager(FiberscopeManager):
             rtf_estimator=rtf_estimator,
             obs_ids=obs_ids,
             verbose=verbose,
+            plot_signal=plot_signal,
         )
+
+        self.deconvolution_method = deconvolution_method
+
+    def load_sequence_data(
+        self,
+        df_seq,
+        pre_reception_time=p.pre_reception_time,
+        post_reception_time=p.post_reception_time,
+    ):
+
+        # nperseg = 256 * 2
+        # noverlap = int(nperseg * 0.5)
+
+        fs = self.ds_wav.attrs[f"fs_obs{1}"]
+        datetime_fmt = self.ds_wav.attrs["datetime_format"]
+
+        emission_duration = df_seq["duration_s"].iloc[0]
+
+        # Datetime bounds for the studied sequence
+        arr_dt_obs1 = df_seq[f"arrival_datetime_obs1"]
+        arr_dt_obs2 = df_seq[f"arrival_datetime_obs2"]
+        arr_dt_obs3 = df_seq[f"arrival_datetime_obs3"]
+        arr_dt_obs = [arr_dt_obs1, arr_dt_obs2, arr_dt_obs3]
+
+        first_arr_dt = np.min([arr_dt.iloc[0] for arr_dt in arr_dt_obs])
+        last_arr_dt = np.max([arr_dt.iloc[-1] for arr_dt in arr_dt_obs])
+
+        data_obs = {}
+
+        # Extract the corresponding signal portion
+        for obs_id in self.obs_ids:
+            # fs = ds_wav.attrs[f"fs_obs{obs_id}"]
+            # print(fs)
+
+            # Start of recording
+            t0 = self.ds_wav.attrs[f"start_datetime_obs{obs_id}"]
+            wav_start_dt = datetime.strptime(t0, datetime_fmt)
+
+            # Signal slice to extract
+            t_start = (first_arr_dt - wav_start_dt).total_seconds() - pre_reception_time
+            n_start = int(np.floor(np.round(t_start * fs, 4)))
+            t_end = (
+                (last_arr_dt - wav_start_dt).total_seconds()
+                + emission_duration
+                + post_reception_time
+            )  # Add emission duration to get the entire signal
+            n_end = int(np.ceil(np.round(t_end * fs, 4)))
+
+            # print(obs_id)
+            # print(t_end, t_start)
+            # print((t_end - t_start)*fs)
+            # print(int((t_end - t_start)*fs))
+            # print(t_start * fs, t_end * fs)
+            # print(n_start, n_end)
+            # print(n_end - n_start)
+
+            # Slice signal
+            sig_varname = f"signal_obs{obs_id}"
+            time_varname = f"time{obs_id}"
+            signal = self.ds_wav[sig_varname]
+            sig_win = signal.isel({time_varname: slice(n_start, n_end)}).values
+
+            t_win_sec = np.arange(sig_win.shape[0]) / fs + n_start * 1 / fs
+
+            # Arrivals dt in seconds from start of slice
+            arr_time_in_sec_from_wavstart = (
+                arr_dt_obs[obs_id - 1] - wav_start_dt
+            ).dt.total_seconds()
+            arr_time_in_sec_from_slicestart = arr_time_in_sec_from_wavstart - t_start
+
+            # Apply filter if required
+            if self.apply_bandfilter:
+                sig_win = self.bandfilter.apply_filter(sig_win, fs)
+
+            # Datetime corresponding to the first instant in the slice
+            t0_slice = wav_start_dt + timedelta(seconds=n_start * 1 / fs)
+            # t1_slice = wav_start_dt + timedelta(seconds=n_end * 1 / fs)
+
+            # Elapsed time from t0_slice to first arrival at current obs
+            first_arr_dt_obs = df_seq[f"arrival_datetime_obs{obs_id}"].iloc[0]
+            t0_first_arr = (first_arr_dt_obs - t0_slice).total_seconds()
+
+            # Store data
+            data_obs[obs_id] = dict(
+                signal=sig_win,
+                time=t_win_sec,
+                t0_first_arr=t0_first_arr,
+                arr_time_in_sec_from_start=arr_time_in_sec_from_slicestart,
+            )
+
+        arr_time_in_sec_from_start_mat = np.vstack(
+            [data_obs[i]["arr_time_in_sec_from_start"].values for i in self.obs_ids]
+        )
+        signal_mat = np.vstack([data_obs[i]["signal"] for i in self.obs_ids])
+        common_time_vector = np.arange(data_obs[1]["signal"].size) * 1 / fs
+
+        first_arrival = np.min([data_obs[i]["t0_first_arr"] for i in self.obs_ids])
+        last_arrival = np.max([data_obs[i]["t0_first_arr"] for i in self.obs_ids])
+
+        xr_data = xr.Dataset(
+            data_vars=dict(
+                signal=(["h_index", "time"], signal_mat),
+                arr_time_in_sec_from_start=(
+                    ["h_index", "pulse_id"],
+                    arr_time_in_sec_from_start_mat,
+                ),
+            ),
+            coords=dict(
+                h_index=self.obs_ids,
+                time=common_time_vector,
+                pulse_id=df_seq["pulse_id"],  # To be used later
+            ),
+            attrs=dict(
+                fs=fs,
+                ts=1 / fs,
+                t0=first_arrival,
+                t1=last_arrival,
+                datetime_format=self.datetime_fmt,
+                start_datetime=t0_slice.strftime(self.datetime_fmt),
+                sequence_id=df_seq["sequence_id"].iloc[0],
+                # n_emissions=df_seq["Nrepeat"].iloc[
+                #     0
+                # ],  # TODO : we might need to change that to account for non detected arrivals ?
+                n_emissions=df_seq.shape[
+                    0
+                ],  # Assuming df_seq contains a limited number of emission/reception
+                fmin=df_seq["frequency_min_hz"].iloc[0],
+                fmax=df_seq["frequency_max_hz"].iloc[0],
+                pulse_duration=df_seq["duration_s"].iloc[0],
+                inter_pulse_period=df_seq["repeat_period_s"].iloc[0],
+                process_pulse_one_by_one=int(self.process_pulse_one_by_one),
+                root_img=os.path.join(
+                    self.root_img_sequence, str(df_seq["sequence_id"].iloc[0])
+                ),
+                root_data=self.root_data_sequence,
+            ),
+        )
+
+        if not os.path.exists(xr_data.root_img):
+            os.makedirs(xr_data.root_img)
+        if not os.path.exists(xr_data.root_data):
+            os.makedirs(xr_data.root_data)
+
+        if self.plot_signal:
+            self.plot_audio_signal(xr_data)
+
+        return xr_data
+
+    def plot_audio_signal(xr_data, arrivals_datetimes=None, nperseg=256, noverlap=128):
+
+        fs = xr_data.fs
+        seq_id = xr_data.sequence_id
+        t0_slice = xr_data.start_datetime
+        t_win_sec = xr_data.time.values
+        t_win = np.array([t0_slice + timedelta(seconds=t) for t in t_win_sec])
+
+        for obs_id in xr_data.h_index.values:
+            sig_win = xr_data.signal.sel(h_index=obs_id)
+            # Derive stft
+            ff, tt, stft = sp.stft(
+                sig_win.values,
+                fs=fs,
+                window="hann",
+                nperseg=nperseg,
+                noverlap=noverlap,
+                scaling="psd",
+            )
+            sxx_0 = 1  # 1uPa**2 / Hz
+            sxx = 10 * np.log10(np.abs(stft) / sxx_0)
+            # Associated datetime vector
+            tt_datetime = pd.date_range(
+                t0_slice,
+                t0_slice + timedelta(seconds=tt[-1]),
+                freq=f"{tt[1]-tt[0]}s",
+                inclusive="both",
+            )
+
+            # Plot
+            cmap = "Greys"
+            t_arrivals = arrivals_datetimes[obs_id - 1]
+
+            fig, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
+            # Plot raw signal
+            sig_win = sig_win / np.max(np.abs(sig_win))
+            axs[0].plot(t_win, sig_win, color="k")
+            axs[0].set_ylim([-1, 1])
+            im = axs[1].pcolormesh(tt_datetime, ff, sxx, cmap=cmap)
+            axs[1].set_ylabel("Fréquence [Hz]")
+
+            # Add arrivals
+            if len(t_arrivals) > 0:
+                # Plot arrows for arrivals
+                for iarr, t_arrival in enumerate(t_arrivals):
+                    axs[0].annotate(
+                        f"{iarr}",
+                        xy=(t_arrival, 0.5),
+                        xytext=(t_arrival, 0.9),
+                        arrowprops=dict(arrowstyle="->", color="red"),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                    )
+                    axs[1].annotate(
+                        f"{iarr}",
+                        xy=(t_arrival, np.max(ff) * 0.75),
+                        xytext=(t_arrival, np.max(ff) * 0.95),
+                        arrowprops=dict(arrowstyle="->", color="red"),
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                    )
+
+            fig.supxlabel("Temps UTC")
+            fig.supylabel("Signal")
+            fig.suptitle(f"Sequence ID {seq_id} - OBS{obs_id}")
 
     def preprocess_data(self, xr_data, df_seq):
 
@@ -670,27 +890,14 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 # # Note: +/- ts/2 to ensure we include boundary samples
 
                 # Estimate the impulse response
-                # h_hat = crosscorr_deconvolution(x=x, y=y.values)
-                h_hat = wiener_deconvolution(x=x, y=y.values)
-
-                # plt.figure()
-                # plt.plot(
-                #     np.arange(y.time.values.size) * xr_data.ts,
-                #     h_hat_,
-                #     linestyle="-",
-                #     color="k",
-                #     label="wiener",
-                # )
-                # plt.plot(
-                #     np.arange(y.time.values.size) * xr_data.ts,
-                #     h_hat,
-                #     linestyle="--",
-                #     color="r",
-                #     label="crosscorr",
-                # )
-                # plt.xlim([7.2, 7.8])
-                # plt.legend()
-                # plt.savefig("test_ir.png")
+                if self.deconvolution_method == "crosscorr":
+                    h_hat = crosscorr_deconvolution(x=x, y=y.values)
+                elif self.deconvolution_method == "wiener":
+                    h_hat = wiener_deconvolution(x=x, y=y.values)
+                else:
+                    raise ValueError(
+                        f"Deconvolution method {self.deconvolution_method} not recognized. Please choose 'crosscorr' or 'wiener'."
+                    )
 
                 if init_ri_hat:
                     ri_hat = np.zeros((n_hydro, n_em, y.sizes["time"]))
@@ -845,218 +1052,6 @@ class ActiveFiberscopeManager(FiberscopeManager):
         )
 
         return xr_data
-
-    def load_sequence_data(
-        self,
-        df_seq,
-        pre_reception_time=p.pre_reception_time,
-        post_reception_time=p.post_reception_time,
-        plot=False,
-    ):
-
-        # nperseg = 256 * 2
-        # noverlap = int(nperseg * 0.5)
-
-        fs = self.ds_wav.attrs[f"fs_obs{1}"]
-        datetime_fmt = self.ds_wav.attrs["datetime_format"]
-
-        emission_duration = df_seq["duration_s"].iloc[0]
-
-        # Datetime bounds for the studied sequence
-        arr_dt_obs1 = df_seq[f"arrival_datetime_obs1"]
-        arr_dt_obs2 = df_seq[f"arrival_datetime_obs2"]
-        arr_dt_obs3 = df_seq[f"arrival_datetime_obs3"]
-        arr_dt_obs = [arr_dt_obs1, arr_dt_obs2, arr_dt_obs3]
-
-        first_arr_dt = np.min([arr_dt.iloc[0] for arr_dt in arr_dt_obs])
-        last_arr_dt = np.max([arr_dt.iloc[-1] for arr_dt in arr_dt_obs])
-
-        data_obs = {}
-
-        # Extract the corresponding signal portion
-        for obs_id in self.obs_ids:
-            # fs = ds_wav.attrs[f"fs_obs{obs_id}"]
-            # print(fs)
-
-            # Start of recording
-            t0 = self.ds_wav.attrs[f"start_datetime_obs{obs_id}"]
-            wav_start_dt = datetime.strptime(t0, datetime_fmt)
-
-            # Signal slice to extract
-            t_start = (first_arr_dt - wav_start_dt).total_seconds() - pre_reception_time
-            n_start = int(np.floor(np.round(t_start * fs, 4)))
-            t_end = (
-                (last_arr_dt - wav_start_dt).total_seconds()
-                + emission_duration
-                + post_reception_time
-            )  # Add emission duration to get the entire signal
-            n_end = int(np.ceil(np.round(t_end * fs, 4)))
-
-            # print(obs_id)
-            # print(t_end, t_start)
-            # print((t_end - t_start)*fs)
-            # print(int((t_end - t_start)*fs))
-            # print(t_start * fs, t_end * fs)
-            # print(n_start, n_end)
-            # print(n_end - n_start)
-
-            # Slice signal
-            sig_varname = f"signal_obs{obs_id}"
-            time_varname = f"time{obs_id}"
-            signal = self.ds_wav[sig_varname]
-            sig_win = signal.isel({time_varname: slice(n_start, n_end)}).values
-
-            t_win_sec = np.arange(sig_win.shape[0]) / fs + n_start * 1 / fs
-
-            # Arrivals dt in seconds from start of slice
-            arr_time_in_sec_from_wavstart = (
-                arr_dt_obs[obs_id - 1] - wav_start_dt
-            ).dt.total_seconds()
-            arr_time_in_sec_from_slicestart = arr_time_in_sec_from_wavstart - t_start
-
-            # Apply filter if required
-            if self.apply_bandfilter:
-                sig_win = self.bandfilter.apply_filter(sig_win, fs)
-
-            # Datetime corresponding to the first instant in the slice
-            t0_slice = wav_start_dt + timedelta(seconds=n_start * 1 / fs)
-            # t1_slice = wav_start_dt + timedelta(seconds=n_end * 1 / fs)
-
-            # Elapsed time from t0_slice to first arrival at current obs
-            first_arr_dt_obs = df_seq[f"arrival_datetime_obs{obs_id}"].iloc[0]
-            t0_first_arr = (first_arr_dt_obs - t0_slice).total_seconds()
-
-            # Store data
-            data_obs[obs_id] = dict(
-                signal=sig_win,
-                time=t_win_sec,
-                t0_first_arr=t0_first_arr,
-                arr_time_in_sec_from_start=arr_time_in_sec_from_slicestart,
-            )
-
-        arr_time_in_sec_from_start_mat = np.vstack(
-            [data_obs[i]["arr_time_in_sec_from_start"].values for i in self.obs_ids]
-        )
-        signal_mat = np.vstack([data_obs[i]["signal"] for i in self.obs_ids])
-        common_time_vector = np.arange(data_obs[1]["signal"].size) * 1 / fs
-
-        first_arrival = np.min([data_obs[i]["t0_first_arr"] for i in self.obs_ids])
-        last_arrival = np.max([data_obs[i]["t0_first_arr"] for i in self.obs_ids])
-
-        xr_data = xr.Dataset(
-            data_vars=dict(
-                signal=(["h_index", "time"], signal_mat),
-                arr_time_in_sec_from_start=(
-                    ["h_index", "pulse_id"],
-                    arr_time_in_sec_from_start_mat,
-                ),
-            ),
-            coords=dict(
-                h_index=self.obs_ids,
-                time=common_time_vector,
-                pulse_id=df_seq["pulse_id"],  # To be used later
-            ),
-            attrs=dict(
-                fs=fs,
-                ts=1 / fs,
-                t0=first_arrival,
-                t1=last_arrival,
-                datetime_format=self.datetime_fmt,
-                start_datetime=t0_slice.strftime(self.datetime_fmt),
-                sequence_id=df_seq["sequence_id"].iloc[0],
-                # n_emissions=df_seq["Nrepeat"].iloc[
-                #     0
-                # ],  # TODO : we might need to change that to account for non detected arrivals ?
-                n_emissions=df_seq.shape[
-                    0
-                ],  # Assuming df_seq contains a limited number of emission/reception
-                fmin=df_seq["frequency_min_hz"].iloc[0],
-                fmax=df_seq["frequency_max_hz"].iloc[0],
-                pulse_duration=df_seq["duration_s"].iloc[0],
-                inter_pulse_period=df_seq["repeat_period_s"].iloc[0],
-                process_pulse_one_by_one=int(self.process_pulse_one_by_one),
-                root_img=os.path.join(
-                    self.root_img_sequence, str(df_seq["sequence_id"].iloc[0])
-                ),
-                root_data=self.root_data_sequence,
-            ),
-        )
-
-        if not os.path.exists(xr_data.root_img):
-            os.makedirs(xr_data.root_img)
-        if not os.path.exists(xr_data.root_data):
-            os.makedirs(xr_data.root_data)
-
-        if plot:
-            self.plot_window_analysis(xr_data)
-
-        return xr_data
-
-    def plot_window_analysis(xr_data, arrivals_datetimes, nperseg=256, noverlap=128):
-
-        fs = xr_data.fs
-        seq_id = xr_data.sequence_id
-        t0_slice = xr_data.start_datetime
-        t_win_sec = xr_data.time.values
-        t_win = np.array([t0_slice + timedelta(seconds=t) for t in t_win_sec])
-
-        for obs_id in xr_data.h_index.values:
-            sig_win = xr_data.signal.sel(h_index=obs_id)
-            # Derive stft
-            ff, tt, stft = sp.stft(
-                sig_win.values,
-                fs=fs,
-                window="hann",
-                nperseg=nperseg,
-                noverlap=noverlap,
-                scaling="psd",
-            )
-            sxx_0 = 1  # 1uPa**2 / Hz
-            sxx = 10 * np.log10(np.abs(stft) / sxx_0)
-            # Associated datetime vector
-            tt_datetime = pd.date_range(
-                t0_slice,
-                t0_slice + timedelta(seconds=tt[-1]),
-                freq=f"{tt[1]-tt[0]}s",
-                inclusive="both",
-            )
-
-            # Plot
-            cmap = "Greys"
-            t_arrivals = arrivals_datetimes[obs_id - 1]
-
-            fig, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
-            # Plot raw signal
-            sig_win = sig_win / np.max(np.abs(sig_win))
-            axs[0].plot(t_win, sig_win, color="k")
-            axs[0].set_ylim([-1, 1])
-            im = axs[1].pcolormesh(tt_datetime, ff, sxx, cmap=cmap)
-            axs[1].set_ylabel("Fréquence [Hz]")
-
-            # Add arrivals
-            if len(t_arrivals) > 0:
-                # Plot arrows for arrivals
-                for iarr, t_arrival in enumerate(t_arrivals):
-                    axs[0].annotate(
-                        f"{iarr}",
-                        xy=(t_arrival, 0.5),
-                        xytext=(t_arrival, 0.9),
-                        arrowprops=dict(arrowstyle="->", color="red"),
-                        horizontalalignment="center",
-                        verticalalignment="center",
-                    )
-                    axs[1].annotate(
-                        f"{iarr}",
-                        xy=(t_arrival, np.max(ff) * 0.75),
-                        xytext=(t_arrival, np.max(ff) * 0.95),
-                        arrowprops=dict(arrowstyle="->", color="red"),
-                        horizontalalignment="center",
-                        verticalalignment="center",
-                    )
-
-            fig.supxlabel("Temps UTC")
-            fig.supylabel("Signal")
-            fig.suptitle(f"Sequence ID {seq_id} - OBS{obs_id}")
 
     def process_analysis(
         self,
@@ -1777,8 +1772,9 @@ class PassiveFiberscopeManager(FiberscopeManager):
         rtf_estimator: str = "cs-evd",
         obs_ids: list = [1, 2, 3],
         verbose: bool = False,
-        analysis_window_duration: float = 10,
-        analysis_window_alpha_overlap: float = 0.5,
+        plot_signal: bool = False,
+        analysis_segment_duration: float = 10,
+        analysis_segment_alpha_overlap: float = 0.5,
     ):
         """
         Class constructor
@@ -1799,14 +1795,11 @@ class PassiveFiberscopeManager(FiberscopeManager):
             rtf_estimator=rtf_estimator,
             obs_ids=obs_ids,
             verbose=verbose,
+            plot_signal=plot_signal,
         )
 
-        self.analysis_window_duration = analysis_window_duration
-        self.analysis_window_alpha_overlap = analysis_window_alpha_overlap
-
-    def plot_window_analysis(xr_data, arrivals_datetimes, nperseg=256, noverlap=128):
-        # TODO : define for passive
-        pass
+        self.analysis_segment_duration = analysis_segment_duration
+        self.analysis_segment_alpha_overlap = analysis_segment_alpha_overlap
 
     def process_analysis(
         self,
@@ -1889,7 +1882,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
         # Build dataset
         xr_data = xr.Dataset(
             data_vars=dict(
-                signal=(["h_index", "time"], signal_mat),
+                signal=(["h_index", "time"], signal_mat), start_dt=t_start, end_dt=t_end
             ),
             coords=dict(
                 h_index=self.obs_ids,
@@ -1899,8 +1892,8 @@ class PassiveFiberscopeManager(FiberscopeManager):
                 fs=fs,
                 ts=1 / fs,
                 datetime_format=self.datetime_fmt,
-                t_start=t_start.strftime(self.datetime_fmt),
-                t_end=t_end.strftime(self.datetime_fmt),
+                # t_start=t_start.strftime(self.datetime_fmt),
+                # t_end=t_end.strftime(self.datetime_fmt),
                 record_id=record_id,
                 root_img=os.path.join(self.root_img_sequence, record_id),
                 root_data=os.path.join(self.root_data_sequence, "passive"),
@@ -1913,7 +1906,14 @@ class PassiveFiberscopeManager(FiberscopeManager):
         if not os.path.exists(xr_data.root_data):
             os.makedirs(xr_data.root_data)
 
+        if self.plot_signal:
+            self.plot_audio_signal(xr_data)
+
         return xr_data
+
+    def plot_audio_signal(xr_data, arrivals_datetimes, nperseg=256, noverlap=128):
+        # TODO : define for passive
+        pass
 
     def derive_feature(
         self,
@@ -1943,7 +1943,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             pass
 
         # Derive rtf from recordings
-        xr_data = self.get_rtf_passive(xr_data=xr_data, Rv_global=Rv_global)
+        xr_data = self.get_rtf(xr_data=xr_data, Rv_global=Rv_global)
 
         # Slice along frequency axis to ensure we never use information outside of the signal bandwidth
         # This also reduce the memory size required
@@ -2129,26 +2129,43 @@ class PassiveFiberscopeManager(FiberscopeManager):
 
             plt.close("all")
 
-    def get_rtf_passive(self, xr_data, Rv_global=None):
+    def get_rtf(self, xr_data, Rv_global=None):
+        """
+        Derive RTF for each segment of the selected analysis window.
+
+        Parameters
+        ----------
+        xr_data : xr.Dataset
+            Wav data for the selected period of recording to analyse as provided by the load_recording method.
+        Rv_global : np.array
+            Noise covariance matrix to use. If None (default), the noise is neglected and Rv is set to 0.
+
+        Returns
+        -------
+        xr_data : xr.Dataset
+            RTF dataset for the selected portion of data.
+
+        """
 
         ts = xr_data.ts
         init_arr = True
 
-        window_shift = self.analysis_window_duration * (
-            1 - self.analysis_window_alpha_overlap
+        window_shift = self.analysis_segment_duration * (
+            1 - self.analysis_segment_alpha_overlap
         )
         n_window = int(
             np.floor(
                 (
                     xr_data.time.max().values
-                    - self.analysis_window_duration * self.analysis_window_alpha_overlap
+                    - self.analysis_segment_duration
+                    * self.analysis_segment_alpha_overlap
                 )
                 / window_shift
             )
         )
 
         tstart = 0
-        tend = self.analysis_window_duration
+        tend = self.analysis_segment_duration
 
         # Process sucessive windows
         for i_window in range(n_window):
@@ -2214,28 +2231,43 @@ class PassiveFiberscopeManager(FiberscopeManager):
         # Set new coords
         xr_data.coords["f_rtf"] = f
         xr_data.coords["f_csdm"] = f
-        xr_data.coords["segment_id"] = np.arange(n_window)
         # Create h_index bis to avoid duplicate coordinates
         xr_data.coords["h_index_bis"] = xr_data.h_index.values
 
+        # Define time coordinate as the center of each segment analysed
+        segment_ids = np.arange(n_window)
+        segment_dt = []
+        for segment_id in segment_ids:
+            t_end_segment = self.analysis_segment_duration * (
+                1 + (segment_id - 1) * (1 - self.analysis_segment_alpha_overlap)
+            )
+            t_centre_segment_s = t_end_segment - 0.5 * self.analysis_segment_duration
+            t_centre_segment = xr_data.t_start + timedelta(seconds=t_centre_segment_s)
+            segment_dt.append(t_centre_segment)
+
+        segment_dt = np.array(segment_dt)
+
+        # xr_data.coords["segment_id"] = np.arange(n_window)
+        xr_data.coords["time"] = segment_dt
+
         # Add variables
         xr_data["rtf_amp_hat"] = (
-            ["h_index", "f_rtf", "segment_id"],
+            ["h_index", "f_rtf", "time"],
             np.abs(rtf_hat),
         )
         xr_data["rtf_phase_hat"] = (
-            ["h_index", "f_rtf", "segment_id"],
+            ["h_index", "f_rtf", "time"],
             np.angle(rtf_hat),
         )
         xr_data.attrs["h_index_ref"] = self.h_index_ref
 
         # Add Rx and R_v to the dataset
         xr_data["Rx"] = (
-            ["f_csdm", "h_index", "h_index_bis", "segment_id"],
+            ["f_csdm", "h_index", "h_index_bis", "time"],
             np.abs(Rx_hat),
         )
         xr_data["Rv"] = (
-            ["f_csdm", "h_index", "h_index_bis", "segment_id"],
+            ["f_csdm", "h_index", "h_index_bis", "time"],
             np.abs(Rv_hat),
         )
         return xr_data

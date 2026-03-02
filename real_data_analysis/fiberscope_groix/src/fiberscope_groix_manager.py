@@ -373,7 +373,19 @@ class FiberscopeManager:
         return xr_data
 
     def set_stft_params(self, ts):
-        """ """
+        """
+        Set STFT params as the power of 2 closest to the provided impulse response duration self.tau_ir
+        The objective is to ensure that the multiplicative transfer function (MTF) model holds.
+
+        Parameters
+        ----------
+        ts : float
+            Sampling period (s).
+
+        Returns
+        -------
+        None
+        """
 
         n_ir = int(
             self.tau_ir / ts
@@ -396,6 +408,20 @@ class FiberscopeManager:
             print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
 
     def set_managers(self, fs, idx_rcv_ref):
+        """
+        Initialise CovManager and FeatureProcessor classes used to derive RTF.
+
+        Parameters
+        ----------
+        fs : float
+            Sampling frequency (Hz).
+        idx_rcv_ref : int
+            Index of the receiver to use as reference.
+
+        Returns
+        -------
+        None
+        """
         # Define covariance manager with the right stft params
         self.cm = CovManager(nperseg=self.nperseg, noverlap=self.noverlap)
 

@@ -255,15 +255,20 @@ class CovManager:
                     mask[:, idx_start : idx_start + n_seg_cov], axis=1
                 )  # Number of used bins for each frequencies
 
-            # N_mean can be equal to 0
-            n_mean[n_mean == 0] = np.iinfo(
-                n_mean.dtype
-            ).max  # Replace by very large value to avoid dividing by 0 and set the csdm to 0 for those values
+                # N_mean can be equal to 0
+                n_mean[n_mean == 0] = np.iinfo(
+                    n_mean.dtype
+                ).max  # Replace by very large value to avoid dividing by 0 and set the csdm to 0 for those values
 
-            csd_matrix[..., k] = (
-                np.einsum("ftr,fts->frs", stft_block, stft_block_conj)
-                / n_mean[:, np.newaxis, np.newaxis]
-            )
+                csd_matrix[..., k] = (
+                    np.einsum("ftr,fts->frs", stft_block, stft_block_conj)
+                    / n_mean[:, np.newaxis, np.newaxis]
+                )
+
+            else:
+                csd_matrix[..., k] = (
+                    np.einsum("ftr,fts->frs", stft_block, stft_block_conj) / n_mean
+                )
 
         return (
             np.squeeze(csd_matrix, axis=-1) if n_available_segments == 1 else csd_matrix

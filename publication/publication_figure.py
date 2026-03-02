@@ -13,8 +13,41 @@
 # Import
 # ======================================================================================================================
 
+import string
+import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+
+
+def set_subfigures_abc_labels(
+    axs,
+    x_pos=0.02,
+    y_pos=0.98,
+    fontsize=14,
+    fontweight="bold",
+    ha="left",
+    va="top",
+):
+
+    labels = list(string.ascii_lowercase)
+
+    # Ensure axs is a 1D array of axes
+    axs = np.atleast_1d(axs).flatten()
+
+    # Iterate over subplots and add labels
+    for i in range(axs.size):
+        # Subfigure annotation
+        axs[i].text(
+            x_pos,
+            y_pos,
+            f"({labels[i]})",
+            transform=axs[i].transAxes,
+            fontsize=fontsize,
+            fontweight=fontweight,
+            ha=ha,
+            va=va,
+            clip_on=False,
+        )
 
 
 def color(n: int):

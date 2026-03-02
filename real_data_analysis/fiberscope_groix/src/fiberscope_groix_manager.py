@@ -1472,12 +1472,23 @@ class ActiveFiberscopeManager(FiberscopeManager):
             tau_minus = np.max(tau_minus, 0)  # In case tau_ir > t_silence
 
             # Time to first arrival
-            t0 = xr_data.t0
-
+            # t0 = xr_data.t0
             init_arr = True
+
+            i_pb = 0
+            prev_progress = 0
+            indexf = xr_data.sizes["pulse_id"]
 
             # Process each emission
             for i_pulse, pulse_id in enumerate(xr_data.pulse_id.values):
+
+                i_pb += 1
+                prev_progress = progression_bar(
+                    index=i_pb,
+                    index0=0,
+                    indexf=indexf,
+                    prev_progress=prev_progress,
+                )
 
                 # Extract the pulse of interest
                 # x = xr_data.signal.sel(

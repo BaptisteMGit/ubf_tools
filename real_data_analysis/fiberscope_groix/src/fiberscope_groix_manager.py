@@ -373,6 +373,7 @@ class FiberscopeManager:
         return xr_data
 
     def set_stft_params(self, ts):
+        """ """
 
         n_ir = int(
             self.tau_ir / ts
@@ -391,7 +392,7 @@ class FiberscopeManager:
         self.noverlap = noverlap
 
         if self.verbose:
-
+            print(f"STFT params set using tau_ir = {self.tau_ir} s")
             print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
 
     def set_managers(self, fs, idx_rcv_ref):
@@ -680,26 +681,25 @@ class FiberscopeManager:
         t_start,
         t_end,
         set_stft_props=True,
-        verbose=False,
     ):
 
-        if verbose:
+        if self.verbose:
             print(f"RTF processing of passive recording from (complete that later)")
 
-        ### Step 1 - Load audio data for the required period ###
+        ### Step 1 - Load audio data for the required analysis window ###
         xr_data = self.load_data_portion(ds_wav, t_start, t_end)
 
+        ### Step 2 - Init CovManager and FeatureProcessor
         # If stfts props are already set we dont need to do it
         if set_stft_props:
             self.set_stft_params(ts=xr_data.ts)
-
-        idx_rcv_ref = np.argmin(
-            np.abs(xr_data.h_index.values - self.h_index_ref)
-        )  # Index of hydrophone might not be sorted or not start at 0
+        # Index of hydrophone might not be sorted or not start at 0
+        idx_rcv_ref = np.argmin(np.abs(xr_data.h_index.values - self.h_index_ref))
+        # Init managers
         self.set_managers(fs=xr_data.fs, idx_rcv_ref=idx_rcv_ref)
 
         ### Step 3 - Derive features ###
-        self.derive_feature_passive(xr_data, verbose=verbose)
+        self.derive_feature_passive(xr_data)
 
     def load_data_portion(self, ds_wav, t_start, t_end):
         """
@@ -798,11 +798,10 @@ class FiberscopeManager:
         self,
         xr_data,
         Rv_global=None,
-        verbose=False,
         save=True,
     ):
 
-        if verbose:
+        if self.verbose:
             pass
 
         # Derive rtf from recordings

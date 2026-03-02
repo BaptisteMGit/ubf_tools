@@ -16,6 +16,7 @@ import os
 import time
 import numpy as np
 import xarray as xr
+import pandas as pd
 from datetime import datetime, timedelta
 from propa.rtf.rtf_utils import D_hermitian_angle_fast
 
@@ -435,7 +436,7 @@ def get_dists_2_passive_event(
     rtf_distances = []
     spatial_distances = []
 
-    t_start = datetime.strptime(xr_passive.t_start, xr_passive.datetime_format)
+    # t_start = datetime.strptime(xr_passive.t_start, xr_passive.datetime_format)
 
     rtf_passive = xr_passive.rtf_amp_hat * np.exp(1j * xr_passive.rtf_phase_hat)
     rtf_passive_4d = rtf_passive.values[..., np.newaxis]
@@ -456,14 +457,16 @@ def get_dists_2_passive_event(
 
     # Build distances
     # TODO store those information in xr_passive to avoid duplication and potential errors
-    window_duration = 10
-    window_overlap = 0.5
-    for segment_id in xr_passive.segment_id.values:
-        # Emission positions for the current sugment
-        t_end_segment = window_duration * (1 + (segment_id - 1) * (1 - window_overlap))
-        t_centre_segment_s = t_end_segment - 0.5 * window_duration
-        t_centre_segment = t_start + timedelta(seconds=t_centre_segment_s)
-        gps_pos_segment = ds_gps.sel(time=t_centre_segment, method="nearest")
+    # window_duration = 10
+    # window_overlap = 0.5
+    # for segment_id in xr_passive.segment_id.values:
+    #     # Emission positions for the current sugment
+    #     t_end_segment = window_duration * (1 + (segment_id - 1) * (1 - window_overlap))
+    #     t_centre_segment_s = t_end_segment - 0.5 * window_duration
+    #     t_centre_segment = t_start + timedelta(seconds=t_centre_segment_s)
+
+    for segment_dt in xr_passive.segment_dt.values:
+        gps_pos_segment = ds_gps.sel(time=segment_dt, method="nearest")
 
         pos_e_segment = gps_pos_segment.e.values
         pos_n_segment = gps_pos_segment.n.values

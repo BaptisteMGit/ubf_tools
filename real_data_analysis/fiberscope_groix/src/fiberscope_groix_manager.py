@@ -1818,7 +1818,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
         ### Step 1 - Load audio data for the required analysis window ###
         xr_data = self.load_recording(ds_wav, t_start, t_end)
 
-        ### Step 2 - Init CovManager and FeatureProcessor
+        ### Step 2 - Init CovManager and FeatureProcessor ###
         # If stfts props are already set we dont need to do it
         if set_stft_props:
             self.set_stft_params(ts=xr_data.ts)
@@ -1953,7 +1953,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
 
         # Plot feature components for analysis if required
         if self.plot_feature:
-            self.plot_estimated_feature_passive(xr_data)
+            self.plot_estimated_feature(xr_data)
 
         # Save results
         if save:
@@ -1964,14 +1964,21 @@ class PassiveFiberscopeManager(FiberscopeManager):
         else:
             return xr_data
 
-    def plot_estimated_feature_passive(self, xr_data):
+    def plot_estimated_feature(self, xr_data):
 
         # Ensure img folder exists
         if not os.path.exists(xr_data.root_img):
             os.makedirs(xr_data.root_img)
 
-        for segment_id in xr_data.segment_id.values:
-            xr_data_seg = xr_data.sel(segment_id=segment_id)
+        for segment_dt in xr_data.segment_dt.values:
+            xr_data_seg = xr_data.sel(segment_dt=segment_dt)
+
+            segment_dt_str = datetime.strftime(
+                pd.to_datetime(segment_dt).to_pydatetime(), "%H%M%S"
+            )
+
+            # for segment_id in xr_data.segment_id.values:
+            #     xr_data_seg = xr_data.sel(segment_id=segment_id)
 
             nrcv = xr_data.sizes["h_index"]
             f_amp, axs_amp = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
@@ -2022,11 +2029,9 @@ class PassiveFiberscopeManager(FiberscopeManager):
                 i += 1
 
             # Save figures
-            fpath = os.path.join(xr_data.root_img, f"rtf_amp_segmentID{segment_id}.png")
+            fpath = os.path.join(xr_data.root_img, f"rtf_amp_{segment_dt_str}.png")
             f_amp.savefig(fpath)
-            fpath = os.path.join(
-                xr_data.root_img, f"rtf_phase_segmentID{segment_id}.png"
-            )
+            fpath = os.path.join(xr_data.root_img, f"rtf_phase_{segment_dt_str}.png")
             f_phase.savefig(fpath)
 
             plt.close("all")
@@ -2073,7 +2078,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
 
             # Save figure
             fpath = os.path.join(
-                xr_data.root_img, f"estimated_csdms_segmentID{segment_id}.png"
+                xr_data.root_img, f"estimated_csdms_{segment_dt_str}.png"
             )
             f_csdm.savefig(fpath)
 
@@ -2123,7 +2128,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             # Save figure
             fpath = os.path.join(
                 xr_data.root_img,
-                f"estimated_csdms_segmentID{segment_id}_f_{Rx.f_csdm.values:.1f}Hz.png",
+                f"estimated_csdms_{segment_dt_str}_f_{Rx.f_csdm.values:.1f}Hz.png",
             )
             f_csdm.savefig(fpath)
 
@@ -2242,34 +2247,54 @@ class PassiveFiberscopeManager(FiberscopeManager):
                 1 + (segment_id - 1) * (1 - self.analysis_segment_alpha_overlap)
             )
             t_centre_segment_s = t_end_segment - 0.5 * self.analysis_segment_duration
-            t_centre_segment = xr_data.t_start + timedelta(seconds=t_centre_segment_s)
+            # t_centre_segment = pd.to_datetime(
+            #     xr_data.start_dt.values
+            # ).to_pydatetime() + timedelta(seconds=t_centre_segment_s)
+
+            # Round to ms to use np.timedelta64 and avoid convertion of start_dt
+            t_centre_segment_ms = np.round(t_centre_segment_s, 3) * 1000
+            t_centre_segment = xr_data.start_dt.values + np.timedelta64(
+                int(t_centre_segment_ms), "ms"
+            )
+
             segment_dt.append(t_centre_segment)
 
         segment_dt = np.array(segment_dt)
 
         # xr_data.coords["segment_id"] = np.arange(n_window)
-        xr_data.coords["time"] = segment_dt
+        xr_data.coords["segment_dt"] = segment_dt
+        xr_data["segment_dt"].attrs = {
+            "long_name": "Time analysis segment (UTC)",
+            "description": "Time corresponding to the center of each analysis segment",
+        }
 
         # Add variables
         xr_data["rtf_amp_hat"] = (
-            ["h_index", "f_rtf", "time"],
+            ["h_index", "f_rtf", "segment_dt"],
             np.abs(rtf_hat),
         )
         xr_data["rtf_phase_hat"] = (
-            ["h_index", "f_rtf", "time"],
+            ["h_index", "f_rtf", "segment_dt"],
             np.angle(rtf_hat),
         )
         xr_data.attrs["h_index_ref"] = self.h_index_ref
 
         # Add Rx and R_v to the dataset
         xr_data["Rx"] = (
-            ["f_csdm", "h_index", "h_index_bis", "time"],
+            ["f_csdm", "h_index", "h_index_bis", "segment_dt"],
             np.abs(Rx_hat),
         )
         xr_data["Rv"] = (
-            ["f_csdm", "h_index", "h_index_bis", "time"],
+            ["f_csdm", "h_index", "h_index_bis", "segment_dt"],
             np.abs(Rv_hat),
         )
+
+        # Add attributes to keep track of the analysis parameters
+        xr_data.attrs["analysis_segment_duration"] = self.analysis_segment_duration
+        xr_data.attrs["analysis_segment_alpha_overlap"] = (
+            self.analysis_segment_alpha_overlap
+        )
+
         return xr_data
 
 

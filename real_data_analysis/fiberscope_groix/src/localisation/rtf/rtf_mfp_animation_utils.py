@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.ndimage import convolve1d
 from matplotlib.animation import FuncAnimation
 from publication.publication_figure import color, PubFigure, LargeFigure
 
@@ -23,6 +24,8 @@ def rtf_mfp_animation(
     ds_gps_event,
     ds_ais_event,
     normalization_percentile=50,
+    apply_roll_avg=True,
+    roll_avg_window=5,
     save=True,
     root_img="",
     output_fname="rtf_mfp_results",
@@ -30,6 +33,12 @@ def rtf_mfp_animation(
     fps=10,
     dpi=80,
 ):
+
+    if apply_roll_avg:
+        # Apply rolling average to smooth the values over library positions (optional)
+        mu = convolve1d(
+            mu, np.ones(roll_avg_window) / roll_avg_window, axis=1, mode="nearest"
+        )
 
     # Normalize theta to get distances in [0, 1]
     max_at_each_seg = np.percentile(
@@ -184,10 +193,11 @@ def rtf_mfp_animation(
             *event_points.values(),
         )
 
+    frames = range(0, n_frames, step)
     ani = FuncAnimation(
         fig,
         update,
-        frames=range(0, len(ds_theta.segment_dt), step),
+        frames=frames,
         init_func=init,
         interval=200,
         blit=True,

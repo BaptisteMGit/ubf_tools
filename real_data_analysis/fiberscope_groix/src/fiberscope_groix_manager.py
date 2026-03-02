@@ -1062,7 +1062,6 @@ class ActiveFiberscopeManager(FiberscopeManager):
         self,
         df_arrivals,
         set_stft_props=True,
-        verbose=False,
     ):
 
         i_test = 0
@@ -1080,7 +1079,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
         sequence_ids = df_arrivals["sequence_id"].unique()
         n_seq = sequence_ids.size
 
-        if verbose:
+        if self.verbose:
             print(f"RTF processing of sequences {sequence_ids} ({n_seq})")
 
         for seq_id in sequence_ids:
@@ -1111,7 +1110,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
             self.preprocess_data(xr_data=xr_data, df_seq=df_seq)
 
             ### Step 3 - Derive features ###
-            self.derive_feature(sequence_id=seq_id, verbose=verbose)
+            self.derive_feature(sequence_id=seq_id)
 
     def estimate_global_csdm(self, xr_data):
         # TODO : set dedicated fct for active loc ?
@@ -1121,11 +1120,10 @@ class ActiveFiberscopeManager(FiberscopeManager):
         self,
         sequence_id,
         Rv_global=None,
-        verbose=False,
         save=True,
     ):
 
-        if verbose:
+        if self.verbose:
             print(f"Processing sequence {sequence_id} - RTF estimation")
 
         # Load data
@@ -1779,6 +1777,8 @@ class PassiveFiberscopeManager(FiberscopeManager):
         rtf_estimator: str = "cs-evd",
         obs_ids: list = [1, 2, 3],
         verbose: bool = False,
+        analysis_window_duration: float = 10,
+        analysis_window_alpha_overlap: float = 0.5,
     ):
         """
         Class constructor
@@ -1800,6 +1800,9 @@ class PassiveFiberscopeManager(FiberscopeManager):
             obs_ids=obs_ids,
             verbose=verbose,
         )
+
+        self.analysis_window_duration = analysis_window_duration
+        self.analysis_window_alpha_overlap = analysis_window_alpha_overlap
 
     def plot_window_analysis(xr_data, arrivals_datetimes, nperseg=256, noverlap=128):
         # TODO : define for passive
@@ -2131,18 +2134,21 @@ class PassiveFiberscopeManager(FiberscopeManager):
         ts = xr_data.ts
         init_arr = True
 
-        window_duration = 10
-        window_overlap = 0.5
-        window_shift = window_duration * (1 - window_overlap)
+        window_shift = self.analysis_window_duration * (
+            1 - self.analysis_window_alpha_overlap
+        )
         n_window = int(
             np.floor(
-                (xr_data.time.max().values - window_duration * window_overlap)
+                (
+                    xr_data.time.max().values
+                    - self.analysis_window_duration * self.analysis_window_alpha_overlap
+                )
                 / window_shift
             )
         )
 
         tstart = 0
-        tend = window_duration
+        tend = self.analysis_window_duration
 
         # Process sucessive windows
         for i_window in range(n_window):

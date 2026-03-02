@@ -663,6 +663,99 @@ class FiberscopeManager:
             ### Step 3 - Derive features ###
             self.derive_feature(sequence_id=seq_id, verbose=verbose)
 
+    def process_passive_analysis(
+        self,
+        ds_wav,
+        t_start,
+        t_end,
+        set_stft_props=True,
+        verbose=False,
+    ):
+
+        if verbose:
+            print(f"RTF processing of passive recording from (complete that later)")
+
+        # for seq_id in sequence_ids:
+
+        #     i_test += 1
+        #     prev_progress = progression_bar(
+        #         index=i_test,
+        #         index0=0,
+        #         indexf=n_seq,
+        #         prev_progress=prev_progress,
+        #     )
+
+        ### Step 1 - Load audio data for the required period ###
+        xr_data = self.load_portion_data(ds_wav, t_start, t_end)
+
+        # If stfts props are already set we dont need to do it
+        if set_stft_props:
+            self.set_stft_params(ts=xr_data.ts)
+            # print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
+
+        idx_rcv_ref = np.argmin(
+            np.abs(xr_data.h_index.values - self.h_index_ref)
+        )  # Index of hydrophone might not be sorted or not start at 0
+        self.set_managers(fs=xr_data.fs, idx_rcv_ref=idx_rcv_ref)
+
+        ### Step 3 - Derive features ###
+        self.derive_feature_passive(xr_data, verbose=verbose)
+
+    def load_portion_data(self, ds_wav, t_start, t_end):
+        obs_ids = [1, 2, 3]
+        datetime_fmt = ds_wav.attrs["datetime_format"]
+        for i, obs_id in enumerate(obs_ids):
+
+            # sig_varname = f"signal_obs{obs_id}"
+            time_coordsname = f"time{obs_id}"
+
+            # Select a window of the signal
+            fs = ds_wav.attrs[f"fs_obs{obs_id}"]
+
+            # Start of recording
+            t0 = ds_wav.attrs[f"start_datetime_obs{obs_id}"]
+            t0 = datetime.strptime(t0, datetime_fmt)
+
+            # Select window
+            t_from_t0_start_s = (t_start - t0).total_seconds()
+            n_start = int(t_from_t0_start_s * fs)
+            t_from_t0_end_s = (t_end - t0).total_seconds()
+            n_end = int(t_from_t0_end_s * fs)
+
+            # Slice signal for current OBS
+            ds_wav = ds_wav.isel({time_coordsname: slice(n_start, n_end)})
+
+        signal_mat = np.vstack([ds_wav[f"signal_obs{i}"].values for i in obs_ids])
+        common_time_vector = np.arange(ds_wav.sizes["time1"]) * 1 / fs
+
+        record_id = f"passive_{datetime.strftime(t_start, datetime_fmt)}_to_{datetime.strftime(t_end, datetime_fmt)}"
+        xr_data = xr.Dataset(
+            data_vars=dict(
+                signal=(["h_index", "time"], signal_mat),
+            ),
+            coords=dict(
+                h_index=obs_ids,
+                time=common_time_vector,
+            ),
+            attrs=dict(
+                fs=fs,
+                ts=1 / fs,
+                datetime_format=self.datetime_fmt,
+                t_start=t_start.strftime(self.datetime_fmt),
+                t_end=t_end.strftime(self.datetime_fmt),
+                record_id=record_id,
+                root_img=os.path.join(self.root_img_sequence, record_id),
+                root_data=os.path.join(self.root_data_sequence, "passive"),
+            ),
+        )
+
+        if not os.path.exists(xr_data.root_img):
+            os.makedirs(xr_data.root_img)
+        if not os.path.exists(xr_data.root_data):
+            os.makedirs(xr_data.root_data)
+
+        return xr_data
+
     def estimate_global_csdm(self, xr_data):
         x = xr_data.signal.T
         ts = xr_data.ts
@@ -677,6 +770,204 @@ class FiberscopeManager:
         ff, Rv_global = self.cm.get_signal_csdm(y=x, fs=1 / ts, mask_tt=mask_tt_v)
 
         return ff, tt, Rv_global
+
+    def derive_feature_passive(
+        self,
+        xr_data,
+        Rv_global=None,
+        verbose=False,
+        save=True,
+    ):
+
+        if verbose:
+            pass
+
+        # Derive rtf from recordings
+        xr_data = self.get_rtf_passive(xr_data=xr_data, Rv_global=Rv_global)
+
+        # Slice along frequency axis to ensure we never use information outside of the signal bandwidth
+        # This also reduce the memory size required
+        # xr_data = xr_data.sel(f_rtf=slice(xr_data.fmin, xr_data.fmax))
+        # xr_data = xr_data.sel(f_ir=slice(xr_data.fmin, xr_data.fmax))
+        # xr_data = xr_data.sel(f_csdm=slice(xr_data.fmin, xr_data.fmax))
+
+        # Plot feature components for analysis if required
+        if self.plot_feature:
+            self.plot_estimated_feature_passive(xr_data)
+
+        # Save results
+        if save:
+            xr_data.to_netcdf(
+                os.path.join(xr_data.root_data, f"sequence_{xr_data.record_id}_rtf.nc")
+            )
+            xr_data.close()
+        else:
+            return xr_data
+
+    def plot_estimated_feature_passive(self, xr_data):
+
+        # Ensure img folder exists
+        if not os.path.exists(xr_data.root_img):
+            os.makedirs(xr_data.root_img)
+
+        for segment_id in xr_data.segment_id.values:
+            xr_data_seg = xr_data.sel(segment_id=segment_id)
+
+            nrcv = xr_data.sizes["h_index"]
+            f_amp, axs_amp = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
+            f_phase, axs_phase = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
+            i = 0
+            for rcv_idx in xr_data.h_index.values:
+
+                # Plot RTF amplitude
+                max_amp = xr_data_seg.rtf_amp_hat.max() * 1.2
+                min_amp = xr_data_seg.rtf_amp_hat.min() * 0.8
+                # xr_data_seg.rtf_amp.sel(h_index=rcv_idx).plot(
+                #     ax=axs_amp[i], color="k", label=f"Ref - {rcv_idx}"
+                # )
+                xr_data_seg.rtf_amp_hat.sel(h_index=rcv_idx).plot(
+                    ax=axs_amp[i],
+                    color="k",
+                    marker="o",
+                    markersize=1,
+                    linewidth=1,
+                    linestyle="-",
+                    label=f"{self.rtf_estimator.upper()} - {rcv_idx}",
+                )
+                axs_amp[i].set_xlabel("")
+                axs_amp[i].set_ylabel(r"$|\Pi|$")
+                axs_amp[i].set_ylim(min_amp, max_amp)
+                axs_amp[i].set_yscale("log")
+                axs_amp[i].set_title("")
+                axs_amp[i].legend(fontsize=8)
+
+                # Plot RTF phase
+                # xr_data_seg.rtf_phase.sel(h_index=rcv_idx).plot(
+                #     ax=axs_phase[i], color="k", label=f"Ref - {rcv_idx}"
+                # )
+                xr_data_seg.rtf_phase_hat.sel(h_index=rcv_idx).plot(
+                    ax=axs_phase[i],
+                    color="k",
+                    marker="o",
+                    markersize=1,
+                    linewidth=1,
+                    linestyle="-",
+                    label=f"{self.rtf_estimator.upper()} - {rcv_idx}",
+                )
+                axs_phase[i].set_xlabel("")
+                axs_phase[i].set_ylabel(r"$\Phi$")
+                axs_phase[i].set_title("")
+                axs_phase[i].legend(fontsize=8)
+
+                i += 1
+
+            # Save figures
+            fpath = os.path.join(xr_data.root_img, f"rtf_amp_segmentID{segment_id}.png")
+            f_amp.savefig(fpath)
+            fpath = os.path.join(
+                xr_data.root_img, f"rtf_phase_segmentID{segment_id}.png"
+            )
+            f_phase.savefig(fpath)
+
+            plt.close("all")
+
+            # Plot csdms (noise, noisy signal, signal)
+            f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
+            f_csdm.suptitle("CSDM")
+
+            # Mean CSDMs
+            mean_Rx = xr_data_seg.Rx.mean(dim="f_csdm")
+            mean_Rv = xr_data_seg.Rv.mean(dim="f_csdm")
+            Rs = xr_data_seg.Rx - xr_data_seg.Rv
+            mean_Rs = Rs.mean(dim="f_csdm")
+
+            # Derive a common vmax for comparison purpose
+            vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+
+            # Plot Rx
+            mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[0].set_title(r"$\hat{R}_x$")
+            axs_csdm[0].set_xlabel("Index")
+            axs_csdm[0].set_ylabel("Index")
+            # Ticks
+            axs_csdm[0].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Plot Rv
+            mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[1].set_title(r"$\hat{R}_v$")
+            axs_csdm[1].set_xlabel("Index")
+            axs_csdm[1].set_ylabel("Index")
+            # Ticks
+            axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Plot Rs
+            mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
+            axs_csdm[2].set_xlabel("Index")
+            axs_csdm[2].set_ylabel("Index")
+            # Ticks
+            axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Save figure
+            fpath = os.path.join(
+                xr_data.root_img, f"estimated_csdms_segmentID{segment_id}.png"
+            )
+            f_csdm.savefig(fpath)
+
+            plt.close("all")
+
+            # Plot csdms (noise, noisy signal, signal)
+            f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
+
+            # CSDMs at a center freq
+            fc = (xr_data.f_rtf.max().values - xr_data.f_rtf.min().values) / 2
+            f_csdm.suptitle(f"CSDM (f = {fc} Hz)")
+
+            Rx = xr_data_seg.Rx.sel(f_csdm=fc, method="nearest")
+            Rv = xr_data_seg.Rv.sel(f_csdm=fc, method="nearest")
+            Rs = Rx - Rv
+
+            # Derive a common vmax for comparison purpose
+            vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+
+            # Plot Rx
+            Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[0].set_title(r"$\hat{R}_x$")
+            axs_csdm[0].set_xlabel("Index")
+            axs_csdm[0].set_ylabel("Index")
+            # Ticks
+            axs_csdm[0].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Plot Rv
+            Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[1].set_title(r"$\hat{R}_v$")
+            axs_csdm[1].set_xlabel("Index")
+            axs_csdm[1].set_ylabel("Index")
+            # Ticks
+            axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Plot Rs
+            Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+            axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
+            axs_csdm[2].set_xlabel("Index")
+            axs_csdm[2].set_ylabel("Index")
+            # Ticks
+            axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
+            axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
+
+            # Save figure
+            fpath = os.path.join(
+                xr_data.root_img,
+                f"estimated_csdms_segmentID{segment_id}_f_{Rx.f_csdm.values:.1f}Hz.png",
+            )
+            f_csdm.savefig(fpath)
+
+            plt.close("all")
 
     def derive_feature(
         self,
@@ -1022,6 +1313,114 @@ class FiberscopeManager:
             f_csdm.savefig(fpath)
 
             plt.close("all")
+
+    def get_rtf_passive(self, xr_data, Rv_global=None):
+
+        ts = xr_data.ts
+        init_arr = True
+
+        window_duration = 10
+        window_overlap = 0.5
+        window_shift = window_duration * (1 - window_overlap)
+        n_window = int(
+            np.floor(
+                (xr_data.time.max().values - window_duration * window_overlap)
+                / window_shift
+            )
+        )
+
+        tstart = 0
+        tend = window_duration
+
+        # Process sucessive windows
+        for i_window in range(n_window):
+
+            # Select the corresponding time window
+            x = xr_data.sel(time=slice(tstart, tend))
+            tstart += window_shift
+            tend += window_shift
+            # print(x.time.values)
+
+            x = x.signal.T
+            f, Rx = self.cm.get_signal_csdm(
+                y=x,
+                fs=1 / ts,
+                add_identity=False,
+                mask_tt=None,
+                mask_stft=None,
+            )
+
+            if Rv_global is not None:
+                Rv = Rv_global
+            else:
+                # For continous signal we assume the noise to be negligible
+                Rv = np.zeros_like(Rx)
+
+            if self.rtf_estimator == "cs":
+                rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+                    Rx - Rv, use_first_column=True
+                )
+            elif self.rtf_estimator == "cs-evd":
+                rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+                    Rx - Rv, use_first_column=False
+                )
+            # elif self.rtf_estimator == "cw":
+            #     rtf = self.fp.rtf_estimator.estimate_rtf_covariance_whitening(
+            #         Rx, Rv
+            #     )
+            else:
+                print(f"{self.rtf_estimator} not implemented yet!")
+
+            if init_arr:
+                n_rcv = xr_data.sizes["h_index"]
+                nf = f.size
+
+                rtf_hat = np.empty(
+                    (n_rcv, nf, n_window),
+                    dtype=complex,
+                )
+                Rx_hat = np.empty(
+                    (nf, n_rcv, n_rcv, n_window),
+                    dtype=complex,
+                )
+                Rv_hat = np.empty(
+                    (nf, n_rcv, n_rcv, n_window),
+                    dtype=complex,
+                )
+                init_arr = False
+
+            rtf_hat[..., i_window] = rtf.T
+            Rx_hat[..., i_window] = Rx
+            Rv_hat[..., i_window] = Rv
+
+        # Set new coords
+        xr_data.coords["f_rtf"] = f
+        xr_data.coords["f_csdm"] = f
+        xr_data.coords["segment_id"] = np.arange(n_window)
+        # Create h_index bis to avoid duplicate coordinates
+        xr_data.coords["h_index_bis"] = xr_data.h_index.values
+
+        # Add variables
+        xr_data["rtf_amp_hat"] = (
+            ["h_index", "f_rtf", "segment_id"],
+            np.abs(rtf_hat),
+        )
+        xr_data["rtf_phase_hat"] = (
+            ["h_index", "f_rtf", "segment_id"],
+            np.angle(rtf_hat),
+        )
+        xr_data.attrs["h_index_ref"] = self.h_index_ref
+
+        # Add Rx and R_v to the dataset
+        xr_data["Rx"] = (
+            ["f_csdm", "h_index", "h_index_bis", "segment_id"],
+            np.abs(Rx_hat),
+        )
+        xr_data["Rv"] = (
+            ["f_csdm", "h_index", "h_index_bis", "segment_id"],
+            np.abs(Rv_hat),
+        )
+        return xr_data
 
     def get_rtf(self, xr_data, Rv_global=None):
         ts = xr_data.ts

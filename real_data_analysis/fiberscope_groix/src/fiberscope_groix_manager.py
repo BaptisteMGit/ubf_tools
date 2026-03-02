@@ -40,9 +40,12 @@ from real_data_analysis.fiberscope_20.src.read_tdms import load_fiberscope_data
 from pympler import muppy, summary
 
 
+# ======================================================================================================================
+# Band filtering class
+# ======================================================================================================================
 class BandFilter:
     """
-    Band filter
+    Wrapping class to apply Butterworth filtering using scipy.signal.butter and scipy.signal.lfilter
     """
 
     def __init__(
@@ -65,7 +68,7 @@ class BandFilter:
 
 class FiberscopeManager:
     """
-    Class to manage Fiberscope data analysis
+    Mother class to apply RTF-MFP to Fiberscope data
     """
 
     def __init__(
@@ -86,7 +89,6 @@ class FiberscopeManager:
     ):
         """
         Constructor
-
         """
         self.root_img = root_img
         self.root_img_sequence = os.path.join(self.root_img, "sequences")
@@ -136,6 +138,478 @@ class FiberscopeManager:
 
         # Verbose flag
         self.verbose = verbose
+
+    def set_stft_params(self, ts):
+        """
+        Set STFT params as the power of 2 closest to the provided impulse response duration self.tau_ir
+        The objective is to ensure that the multiplicative transfer function (MTF) model holds.
+
+        Parameters
+        ----------
+        ts : float
+            Sampling period (s).
+
+        Returns
+        -------
+        None
+        """
+
+        n_ir = int(
+            self.tau_ir / ts
+        )  # Number of samples corresponding to the assumed impulse response duration
+        # #
+        # nperseg = n_ir  # Number of sample per snapshot to use = closest power of two
+        # noverlap = int(nperseg * self.alpha_overlap)
+
+        # Get closer power of 2
+        nperseg = 2 ** int(
+            np.log2(n_ir) + 1
+        )  # Number of sample per snapshot to use = closest power of two
+        noverlap = int(nperseg * self.alpha_overlap)
+
+        self.nperseg = nperseg
+        self.noverlap = noverlap
+
+        if self.verbose:
+            print(f"STFT params set using tau_ir = {self.tau_ir} s")
+            print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
+
+    def set_managers(self, fs, idx_rcv_ref):
+        """
+        Initialise CovManager and FeatureProcessor classes used to derive RTF.
+
+        Parameters
+        ----------
+        fs : float
+            Sampling frequency (Hz).
+        idx_rcv_ref : int
+            Index of the receiver to use as reference.
+
+        Returns
+        -------
+        None
+        """
+        # Define covariance manager with the right stft params
+        self.cm = CovManager(nperseg=self.nperseg, noverlap=self.noverlap)
+
+        # Define feature processor with the right stft params
+        self.fp = FeatureProcessor(
+            fs=fs,
+            idx_rcv_ref=idx_rcv_ref,
+            nperseg=self.nperseg,
+            noverlap=self.noverlap,
+            window="hann",
+        )  # Feature processor to handle rtf_estimator and gcc_estimator
+
+    def estimate_global_csdm(self, xr_data):
+        x = xr_data.signal.T
+        ts = xr_data.ts
+
+        # Derive mask
+        tt, mask_tt_x = self.get_signal_presence_mask(
+            x, fs=1 / xr_data.ts, nperseg=self.nperseg, noverlap=self.noverlap
+        )
+        mask_tt_v = ~mask_tt_x
+
+        # Derive global noise csdm
+        ff, Rv_global = self.cm.get_signal_csdm(y=x, fs=1 / ts, mask_tt=mask_tt_v)
+
+        return ff, tt, Rv_global
+
+    def get_signal_presence_mask_ft(self, x, tstart, tend, nperseg, noverlap):
+
+        # Dummy stft calculation to get ff and tt (should be replace by single stft calc)
+        ff, tt, stft_x = self.cm.get_stft_array(
+            x.signal.T,
+            fs=x.fs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+        )
+
+        t_first_arr_in_slice = (tstart - x.time.min()).values
+        t_last_arr_in_slice = (tend - x.time.min()).values
+
+        # Add a little offset to ensure to include all the signal energy
+        alpha = np.ceil(noverlap / nperseg * 4)
+        dtt = tt[1] - tt[0]
+        t_left = t_first_arr_in_slice - alpha * dtt
+        t_right = t_last_arr_in_slice + alpha * dtt
+
+        # Define bounds
+        t = (x.time - x.time.min()).values
+        f0 = x.fmin
+        f1 = x.fmax
+        left_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_left)
+        right_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_right)
+
+        # Interpolate on tt grid
+        left_tt = np.interp(tt, t, left_bound)
+        right_tt = np.interp(tt, t, right_bound)
+
+        # Define mask
+        TT, FF = np.meshgrid(tt, ff)
+        mask_stft = np.logical_and(
+            (FF <= left_tt[np.newaxis, :]), (FF >= right_tt[np.newaxis, :])
+        )
+
+        # Plot mask
+        if self.plot_csdm_mask:
+            for ircv in range(stft_x.shape[0]):
+                stft_i = np.abs(stft_x[ircv, ...])
+                stft_i /= np.max(stft_i)
+                plt.figure()
+                plt.pcolormesh(tt, ff, 10 * np.log10(stft_i), vmin=-30, cmap="jet")
+                plt.colorbar(label="[dB]")
+                plt.plot(
+                    tt,
+                    left_tt,
+                    linewidth=4,
+                    color="k",
+                )
+                plt.plot(
+                    tt,
+                    right_tt,
+                    linewidth=4,
+                    color="k",
+                )
+
+                # Mask overlay
+                alpha_mask = mask_stft.astype(float) * 0.45
+                plt.pcolormesh(
+                    tt,
+                    ff,
+                    np.ones_like(mask_stft),
+                    cmap="gray",
+                    alpha=alpha_mask,
+                    shading="auto",
+                )
+
+                plt.xlabel("Time [s]")
+                plt.ylabel("Frequency [Hz]")
+                plt.ylim([0, 1000])
+                fpath = os.path.join(x.root_img, f"csdm_mask_definition_rcv{ircv}.png")
+                plt.savefig(fpath)
+
+            self.plot_csdm_mask = False  # Plot only one time
+
+        return mask_stft
+
+    def get_signal_presence_mask(self, x, fs, nperseg, noverlap):
+
+        # Energy detector based
+        ff, tt, stft_x = self.cm.get_stft_array(
+            x, fs=fs, nperseg=nperseg, noverlap=noverlap
+        )
+        dtt = tt[1] - tt[0]
+
+        duration = x.time.max() - x.time.min()
+        sig_dist_samples = int(x.inter_pulse_period * 1 / dtt * 2 / 3)
+        n_roll_avg = int(x.pulse_duration * 1 / dtt * 2 / 3)
+        n_em = x.n_emissions
+        # Define the signal presence mask
+        mask_tt_x = np.zeros_like(tt, dtype=int)
+        for ircv in range(stft_x.shape[0]):
+            energy = np.sum(np.abs(stft_x[ircv, ...]) ** 2, axis=0)
+
+            # Smooth with rolling average
+            energy = np.convolve(energy, np.ones(n_roll_avg) / n_roll_avg, mode="same")
+
+            if duration > 1:
+                # Old method before 27/10/2025
+                min_height = 0.2 * np.max(energy)
+                # min_height = np.median(energy)
+                idx_peaks = sp.find_peaks(
+                    energy, height=min_height, distance=sig_dist_samples
+                )[0]
+
+                peaks_energy = energy[idx_peaks]
+                peaks_energy_sorted = np.sort(peaks_energy)[::-1]
+                peaks_energy_sorted_em = peaks_energy_sorted[:n_em]
+                try:
+                    min_peaks = np.min(peaks_energy_sorted_em)
+                except:
+                    default_mask = np.ones_like(energy)
+                    print("debug")
+
+                # threshold = 0.9 * min_peaks
+                threshold = 0.5 * min_peaks
+            else:
+                # Other simple method
+                threshold = np.median(energy)
+
+            # Simpler method 27/10/2025 not working well
+            # threshold = np.max(1.1 * np.min(energy), 0.1 * np.max(energy))
+
+            # Define signal presence mask
+            mask_tt_i = energy > threshold
+            mask_tt_x = np.logical_or(mask_tt_x, mask_tt_i)
+
+        # # # For debug purpose
+        # plt.figure()
+        # plt.plot(energy)
+        # plt.scatter(idx_peaks, energy[idx_peaks], color="r")
+        # plt.axhline(threshold, linestyle="--", color="r")
+        # plt.savefig(f"debug_energy_rcv{ircv}")
+
+        # plt.figure()
+        # plt.plot(mask_tt_i)
+        # plt.savefig(f"debug_masktt_rcv{ircv}")
+        # plt.close("all")
+
+        # plt.figure()
+        # plt.plot(mask_tt_x)
+        # plt.savefig(f"debug_masktt")
+        # plt.close("all")
+
+        # # # Un-comment for debug
+        # for ircv in range(stft_x.shape[0]):
+        #     plt.figure()
+        #     plt.pcolormesh(tt, ff, np.abs(stft_x[ircv, ...]))
+        #     plt.plot(tt, mask_tt_x.astype(int) * np.max(ff))
+        #     plt.savefig(f"debug_stft_rcv{ircv}")
+
+        return tt, mask_tt_x
+
+    def plot_window_analysis(xr_data):
+        pass
+
+    def process_analysis(self):
+        pass
+
+    def load_data(self):
+        pass
+
+    def derive_feature(self):
+        pass
+
+    def plot_estimated_feature(self):
+        pass
+
+    def get_rtf(self):
+        pass
+
+    def localize_dyn_recording(
+        self, static_signal, static_records_names, fs_dynamic_recording
+    ):
+        # TODO : recode this for Groix
+        pass
+
+        # # Localizing static records
+        # d = []
+
+        # # Order static records names by position order
+        # position_ids = [int(name.split("_")[1][1]) for name in static_records_names]
+        # # Sort the static records names by position
+        # sorted_indices = np.argsort(position_ids)
+        # static_records_names = [static_records_names[i] for i in sorted_indices]
+
+        # # Init progress bar
+        # i_test = 0
+        # prev_progress = 0
+        # n_test = len(static_records_names)
+        # print("\nCompute distance map")
+
+        # for recording_name in static_records_names:
+
+        #     i_test += 1
+        #     prev_progress = progression_bar(
+        #         index=i_test,
+        #         index0=0,
+        #         indexf=n_test,
+        #         prev_progress=prev_progress,
+        #     )
+
+        #     fpath = os.path.join(
+        #         static_signal.records_folder, recording_name + "_rtf.nc"
+        #     )
+        #     xr_data_event = xr.open_dataset(fpath)
+
+        #     # Localize using rtf
+        #     d_rtf = self.localize_dyn_recording_rtf(xr_data_event, fs_dynamic_recording)
+        #     d.append(d_rtf)
+
+        #     # Derive constrast q
+        #     # Eq 1.106 rapport RTF
+        #     # q_rtf = (np.max(d_rtf) - d_rtf) / (np.max(d_rtf) - np.min(d_rtf))
+        #     # q.append(q_rtf)
+
+        # # q = np.array(q)
+        # d = np.array(d)
+
+        # return d
+
+    def localize_dyn_recording_rtf(self, xr_data_event, fs_dynamic_recording):
+
+        # TODO : recode this for Groix
+        pass
+
+        # # Reference rtf vector = rtf vector at the event position
+        # sig = fs_dynamic_recording.signal
+        # xr_data_event = xr_data_event.sel(f_rtf=slice(sig.fmin, sig.fmax))
+        # rtf_event = xr_data_event.rtf_amp_hat * np.exp(1j * xr_data_event.rtf_phase_hat)
+        # # rtf_event_true = xr_data_event.rtf_amp * np.exp(1j * xr_data_event.rtf_phase)
+        # # List to store distance with each successive position
+        # dist = []
+
+        # # Sort the dynamic recordings by position
+        # dist_from_P1 = [
+        #     float(r_name.split("_")[-2][1:-1])
+        #     for r_name in fs_dynamic_recording.splitted_records_names
+        # ]
+        # # Sort the dynamic recordings by position
+        # sorted_indices = np.argsort(dist_from_P1)
+        # splitted_records_names = [
+        #     fs_dynamic_recording.splitted_records_names[i] for i in sorted_indices
+        # ]
+
+        # # Set distance args to use
+        # if self.theta_statistics == "mean":
+        #     apply_mean = True
+        # elif self.theta_statistics == "expectation":
+        #     apply_mean = False
+        # dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": apply_mean}
+
+        # # Iterate over dynamic recordings
+        # for recording_name in splitted_records_names:
+        #     # Load data
+        #     fpath = os.path.join(
+        #         fs_dynamic_recording.splitted_records_folder,
+        #         recording_name + "_rtf.nc",
+        #     )
+        #     # Assert fpath exist
+        #     if not os.path.exists(fpath):
+        #         raise FileNotFoundError(
+        #             f"File {fpath} does not exist. Please check the file path."
+        #         )
+        #     xr_data_library_i = xr.open_dataset(fpath)
+        #     xr_data_library_i = xr_data_library_i.sel(f_rtf=slice(sig.fmin, sig.fmax))
+        #     rtf_library_i = xr_data_library_i.rtf_amp_hat * np.exp(
+        #         1j * xr_data_library_i.rtf_phase_hat
+        #     )
+
+        #     # Interpolate rtf_event at rtf_library freq (dynamic recording uses smaller window to
+        #     # match the number of segment L )
+        #     rtf_event = rtf_event.sel(
+        #         f_rtf=rtf_library_i.f_rtf.values, method="nearest"
+        #     )
+
+        #     # Derive distance using hermitian angle
+        #     theta = D_hermitian_angle_fast(
+        #         rtf_event.values, rtf_library_i.values, **dist_kwargs
+        #     )
+        #     theta_c = get_theta_c(val=theta, apply_mean=apply_mean)
+        #     dist.append(theta_c)
+
+        # dist = np.array(dist)
+
+        # return dist
+
+    def plot_dyn_loc(
+        self, d_rtf, time_step, axis_norm=1, fname=None, vmin=-5, save_eps=False
+    ):
+
+        # TODO : recode this for Groix
+        pass
+
+        # d = -d_rtf
+
+        # if axis_norm is None:
+        #     d_max = np.nanmax(d, axis=axis_norm) * np.ones_like(d)
+        #     d_min = np.nanmin(d, axis=axis_norm) * np.ones_like(d)
+        #     norm_label = "norm_over_entire_surface"
+        # else:
+        #     d_max = np.tile(
+        #         np.nanmax(d, axis=axis_norm), (d.shape[axis_norm], 1)
+        #     )  # Cast to d shape
+        #     d_min = np.tile(np.nanmin(d, axis=axis_norm), (d.shape[axis_norm], 1))
+        #     if axis_norm == 1:
+        #         norm_label = f"norm_along_time_axis"
+        #     elif axis_norm == 0:
+        #         norm_label = f"norm_along_position_axis"
+
+        # if axis_norm == 1:
+        #     d_max = d_max.T
+        #     d_min = d_min.T
+
+        # # Normalize
+        # q = (d - d_min) / (d_max - d_min)
+
+        # # In dB
+        # q[q == 0] = 1e-6
+        # q_dB = 10 * np.log10(q)
+
+        # t = np.arange(0, d.shape[1]) * time_step
+        # ordered_pos = [f"$P_{i}$" for i in range(1, 7)]
+        # truepos_order = [0, 5, 1, 4, 2, 3]
+        # q_dB = q_dB[truepos_order, :]
+        # plt.figure()
+        # plt.imshow(q_dB, cmap="jet", aspect="auto", vmin=vmin, rasterized=False)
+        # plt.xticks(np.arange(0, q_dB.shape[1], 10), np.round(t[::10], 2))
+        # plt.yticks(np.arange(0, q.shape[0]), ordered_pos)
+        # plt.xlabel("Time [s]")
+        # plt.ylabel("Position")
+        # plt.colorbar(label=r"$q\, \textrm{[dB]}$")
+        # plt.gca().invert_yaxis()
+
+        # folder = os.path.join(self.root_img, "localization", norm_label)
+        # if not os.path.exists(folder):
+        #     os.makedirs(folder)
+        # if fname is None:
+        #     fname = f"dyn_qdB_href{self.h_index_ref}.png"
+
+        # fpath = os.path.join(folder, fname)
+        # plt.savefig(fpath)
+
+        # if save_eps:
+        #     fname = fname.split(".")[0] + ".eps"
+        #     fpath = os.path.join(folder, fname)
+        #     plt.savefig(fpath, format="eps")
+
+
+# ======================================================================================================================
+#  Active source localisation
+# ======================================================================================================================
+class ActiveFiberscopeManager(FiberscopeManager):
+    """
+    Class to handle active source localisation. The source to localise is the Lubell emiting series of LFM signals.
+    """
+
+    def __init__(
+        self,
+        root_processed_data: str,
+        root_img: str = p.root_img,
+        bandfilter: BandFilter = None,
+        tau_ir: float = p.tau_ir,
+        alpha_overlap: float = p.alpha_overlap,
+        h_index_ref: int = p.h_index_ref,
+        plot_feature: bool = False,
+        theta_statistics: str = "mean",
+        process_pulse_one_by_one: bool = True,
+        estimate_ir_duration: bool = True,
+        rtf_estimator: str = "cs-evd",
+        obs_ids: list = [1, 2, 3],
+        verbose: bool = False,
+    ):
+        """
+        Class constructor
+
+        """
+        # Using super() to initialize the parent class
+        super().__init__(
+            root_processed_data=root_processed_data,
+            root_img=root_img,
+            bandfilter=bandfilter,
+            tau_ir=tau_ir,
+            alpha_overlap=alpha_overlap,
+            h_index_ref=h_index_ref,
+            plot_feature=plot_feature,
+            theta_statistics=theta_statistics,
+            process_pulse_one_by_one=process_pulse_one_by_one,
+            estimate_ir_duration=estimate_ir_duration,
+            rtf_estimator=rtf_estimator,
+            obs_ids=obs_ids,
+            verbose=verbose,
+        )
 
     def preprocess_data(self, xr_data, df_seq):
 
@@ -372,68 +846,6 @@ class FiberscopeManager:
 
         return xr_data
 
-    def set_stft_params(self, ts):
-        """
-        Set STFT params as the power of 2 closest to the provided impulse response duration self.tau_ir
-        The objective is to ensure that the multiplicative transfer function (MTF) model holds.
-
-        Parameters
-        ----------
-        ts : float
-            Sampling period (s).
-
-        Returns
-        -------
-        None
-        """
-
-        n_ir = int(
-            self.tau_ir / ts
-        )  # Number of samples corresponding to the assumed impulse response duration
-        # #
-        # nperseg = n_ir  # Number of sample per snapshot to use = closest power of two
-        # noverlap = int(nperseg * self.alpha_overlap)
-
-        # Get closer power of 2
-        nperseg = 2 ** int(
-            np.log2(n_ir) + 1
-        )  # Number of sample per snapshot to use = closest power of two
-        noverlap = int(nperseg * self.alpha_overlap)
-
-        self.nperseg = nperseg
-        self.noverlap = noverlap
-
-        if self.verbose:
-            print(f"STFT params set using tau_ir = {self.tau_ir} s")
-            print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
-
-    def set_managers(self, fs, idx_rcv_ref):
-        """
-        Initialise CovManager and FeatureProcessor classes used to derive RTF.
-
-        Parameters
-        ----------
-        fs : float
-            Sampling frequency (Hz).
-        idx_rcv_ref : int
-            Index of the receiver to use as reference.
-
-        Returns
-        -------
-        None
-        """
-        # Define covariance manager with the right stft params
-        self.cm = CovManager(nperseg=self.nperseg, noverlap=self.noverlap)
-
-        # Define feature processor with the right stft params
-        self.fp = FeatureProcessor(
-            fs=fs,
-            idx_rcv_ref=idx_rcv_ref,
-            nperseg=self.nperseg,
-            noverlap=self.noverlap,
-            window="hann",
-        )  # Feature processor to handle rtf_estimator and gcc_estimator
-
     def load_sequence_data(
         self,
         df_seq,
@@ -576,11 +988,11 @@ class FiberscopeManager:
             os.makedirs(xr_data.root_data)
 
         if plot:
-            self.plot_loaded_sequence(xr_data)
+            self.plot_window_analysis(xr_data)
 
         return xr_data
 
-    def plot_loaded_sequence(xr_data, arrivals_datetimes, nperseg=256, noverlap=128):
+    def plot_window_analysis(xr_data, arrivals_datetimes, nperseg=256, noverlap=128):
 
         fs = xr_data.fs
         seq_id = xr_data.sequence_id
@@ -701,338 +1113,9 @@ class FiberscopeManager:
             ### Step 3 - Derive features ###
             self.derive_feature(sequence_id=seq_id, verbose=verbose)
 
-    def process_passive_analysis(
-        self,
-        ds_wav,
-        t_start,
-        t_end,
-        set_stft_props=True,
-    ):
-
-        if self.verbose:
-            print(f"RTF processing of passive recording from (complete that later)")
-
-        ### Step 1 - Load audio data for the required analysis window ###
-        xr_data = self.load_data_portion(ds_wav, t_start, t_end)
-
-        ### Step 2 - Init CovManager and FeatureProcessor
-        # If stfts props are already set we dont need to do it
-        if set_stft_props:
-            self.set_stft_params(ts=xr_data.ts)
-        # Index of hydrophone might not be sorted or not start at 0
-        idx_rcv_ref = np.argmin(np.abs(xr_data.h_index.values - self.h_index_ref))
-        # Init managers
-        self.set_managers(fs=xr_data.fs, idx_rcv_ref=idx_rcv_ref)
-
-        ### Step 3 - Derive features ###
-        self.derive_feature_passive(xr_data)
-
-    def load_data_portion(self, ds_wav, t_start, t_end):
-        """
-        Load data for the required analysis window.
-
-        Parameters
-        ----------
-        ds_wav : xr.Dataset
-            Wav dataset (containing the entire recordings)
-        t_start : datetime.datetime
-            Start of the analysis window.
-        t_end datetime.datetime
-            End of the analysis window.
-
-        Returns
-        -------
-        xr_data : xr.Dataset
-            Selected portion of wav data for the required analysis window (form t_start to t_end).
-        """
-
-        datetime_fmt = ds_wav.attrs["datetime_format"]
-        for i, obs_id in enumerate(self.obs_ids):
-
-            # Name of the time coords in ds_wav
-            time_coordsname = f"time{obs_id}"
-
-            # Select a window of the signal
-            fs = ds_wav.attrs[f"fs_obs{obs_id}"]
-
-            # Start of recording
-            t0 = ds_wav.attrs[f"start_datetime_obs{obs_id}"]
-            t0 = datetime.strptime(t0, datetime_fmt)
-
-            # Select the required window
-            t_from_t0_start_s = (t_start - t0).total_seconds()
-            n_start = int(t_from_t0_start_s * fs)
-            t_from_t0_end_s = (t_end - t0).total_seconds()
-            n_end = int(t_from_t0_end_s * fs)
-
-            # Slice signal for current OBS
-            ds_wav = ds_wav.isel({time_coordsname: slice(n_start, n_end)})
-
-        # Reshape
-        signal_mat = np.vstack([ds_wav[f"signal_obs{i}"].values for i in self.obs_ids])
-        # Set common time vector
-        common_time_vector = np.arange(ds_wav.sizes["time1"]) * 1 / fs
-
-        # Define a record_id to be used to save results
-        record_id = f"passive_{datetime.strftime(t_start, datetime_fmt)}_to_{datetime.strftime(t_end, datetime_fmt)}"
-
-        # Build dataset
-        xr_data = xr.Dataset(
-            data_vars=dict(
-                signal=(["h_index", "time"], signal_mat),
-            ),
-            coords=dict(
-                h_index=self.obs_ids,
-                time=common_time_vector,
-            ),
-            attrs=dict(
-                fs=fs,
-                ts=1 / fs,
-                datetime_format=self.datetime_fmt,
-                t_start=t_start.strftime(self.datetime_fmt),
-                t_end=t_end.strftime(self.datetime_fmt),
-                record_id=record_id,
-                root_img=os.path.join(self.root_img_sequence, record_id),
-                root_data=os.path.join(self.root_data_sequence, "passive"),
-            ),
-        )
-
-        # Ensure folders exists
-        if not os.path.exists(xr_data.root_img):
-            os.makedirs(xr_data.root_img)
-        if not os.path.exists(xr_data.root_data):
-            os.makedirs(xr_data.root_data)
-
-        return xr_data
-
     def estimate_global_csdm(self, xr_data):
-        x = xr_data.signal.T
-        ts = xr_data.ts
-
-        # Derive mask
-        tt, mask_tt_x = self.get_signal_presence_mask(
-            x, fs=1 / xr_data.ts, nperseg=self.nperseg, noverlap=self.noverlap
-        )
-        mask_tt_v = ~mask_tt_x
-
-        # Derive global noise csdm
-        ff, Rv_global = self.cm.get_signal_csdm(y=x, fs=1 / ts, mask_tt=mask_tt_v)
-
-        return ff, tt, Rv_global
-
-    def derive_feature_passive(
-        self,
-        xr_data,
-        Rv_global=None,
-        save=True,
-    ):
-        """
-        Derive RTF for each segment of the selected analysis window.
-
-        Parameters
-        ----------
-        xr_data : xr.Dataset
-            Wav data for the selected period of recording to analyse as provided by the load_data_portion method.
-        Rv_global : np.array
-            Noise covariance matrix to use. If None (default), the noise is neglected and Rv is set to 0.
-        save : bool
-            Save data to netcdf.
-
-        Returns
-        -------
-        xr_data : xr.Dataset
-            RTF dataset for the selected portion of data.
-        """
-
-        if self.verbose:
-            pass
-
-        # Derive rtf from recordings
-        xr_data = self.get_rtf_passive(xr_data=xr_data, Rv_global=Rv_global)
-
-        # Slice along frequency axis to ensure we never use information outside of the signal bandwidth
-        # This also reduce the memory size required
-        # xr_data = xr_data.sel(f_rtf=slice(xr_data.fmin, xr_data.fmax))
-        # xr_data = xr_data.sel(f_ir=slice(xr_data.fmin, xr_data.fmax))
-        # xr_data = xr_data.sel(f_csdm=slice(xr_data.fmin, xr_data.fmax))
-
-        # Plot feature components for analysis if required
-        if self.plot_feature:
-            self.plot_estimated_feature_passive(xr_data)
-
-        # Save results
-        if save:
-            xr_data.to_netcdf(
-                os.path.join(xr_data.root_data, f"sequence_{xr_data.record_id}_rtf.nc")
-            )
-            xr_data.close()
-        else:
-            return xr_data
-
-    def plot_estimated_feature_passive(self, xr_data):
-
-        # Ensure img folder exists
-        if not os.path.exists(xr_data.root_img):
-            os.makedirs(xr_data.root_img)
-
-        for segment_id in xr_data.segment_id.values:
-            xr_data_seg = xr_data.sel(segment_id=segment_id)
-
-            nrcv = xr_data.sizes["h_index"]
-            f_amp, axs_amp = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
-            f_phase, axs_phase = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
-            i = 0
-            for rcv_idx in xr_data.h_index.values:
-
-                # Plot RTF amplitude
-                max_amp = xr_data_seg.rtf_amp_hat.max() * 1.2
-                min_amp = xr_data_seg.rtf_amp_hat.min() * 0.8
-                # xr_data_seg.rtf_amp.sel(h_index=rcv_idx).plot(
-                #     ax=axs_amp[i], color="k", label=f"Ref - {rcv_idx}"
-                # )
-                xr_data_seg.rtf_amp_hat.sel(h_index=rcv_idx).plot(
-                    ax=axs_amp[i],
-                    color="k",
-                    marker="o",
-                    markersize=1,
-                    linewidth=1,
-                    linestyle="-",
-                    label=f"{self.rtf_estimator.upper()} - {rcv_idx}",
-                )
-                axs_amp[i].set_xlabel("")
-                axs_amp[i].set_ylabel(r"$|\Pi|$")
-                axs_amp[i].set_ylim(min_amp, max_amp)
-                axs_amp[i].set_yscale("log")
-                axs_amp[i].set_title("")
-                axs_amp[i].legend(fontsize=8)
-
-                # Plot RTF phase
-                # xr_data_seg.rtf_phase.sel(h_index=rcv_idx).plot(
-                #     ax=axs_phase[i], color="k", label=f"Ref - {rcv_idx}"
-                # )
-                xr_data_seg.rtf_phase_hat.sel(h_index=rcv_idx).plot(
-                    ax=axs_phase[i],
-                    color="k",
-                    marker="o",
-                    markersize=1,
-                    linewidth=1,
-                    linestyle="-",
-                    label=f"{self.rtf_estimator.upper()} - {rcv_idx}",
-                )
-                axs_phase[i].set_xlabel("")
-                axs_phase[i].set_ylabel(r"$\Phi$")
-                axs_phase[i].set_title("")
-                axs_phase[i].legend(fontsize=8)
-
-                i += 1
-
-            # Save figures
-            fpath = os.path.join(xr_data.root_img, f"rtf_amp_segmentID{segment_id}.png")
-            f_amp.savefig(fpath)
-            fpath = os.path.join(
-                xr_data.root_img, f"rtf_phase_segmentID{segment_id}.png"
-            )
-            f_phase.savefig(fpath)
-
-            plt.close("all")
-
-            # Plot csdms (noise, noisy signal, signal)
-            f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
-            f_csdm.suptitle("CSDM")
-
-            # Mean CSDMs
-            mean_Rx = xr_data_seg.Rx.mean(dim="f_csdm")
-            mean_Rv = xr_data_seg.Rv.mean(dim="f_csdm")
-            Rs = xr_data_seg.Rx - xr_data_seg.Rv
-            mean_Rs = Rs.mean(dim="f_csdm")
-
-            # Derive a common vmax for comparison purpose
-            vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
-
-            # Plot Rx
-            mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
-            axs_csdm[0].set_title(r"$\hat{R}_x$")
-            axs_csdm[0].set_xlabel("Index")
-            axs_csdm[0].set_ylabel("Index")
-            # Ticks
-            axs_csdm[0].set_xticks(np.arange(1, nrcv + 1, 1))
-            axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
-
-            # Plot Rv
-            mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
-            axs_csdm[1].set_title(r"$\hat{R}_v$")
-            axs_csdm[1].set_xlabel("Index")
-            axs_csdm[1].set_ylabel("Index")
-            # Ticks
-            axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
-            axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
-
-            # Plot Rs
-            mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
-            axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
-            axs_csdm[2].set_xlabel("Index")
-            axs_csdm[2].set_ylabel("Index")
-            # Ticks
-            axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
-            axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
-
-            # Save figure
-            fpath = os.path.join(
-                xr_data.root_img, f"estimated_csdms_segmentID{segment_id}.png"
-            )
-            f_csdm.savefig(fpath)
-
-            plt.close("all")
-
-            # Plot csdms (noise, noisy signal, signal)
-            f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
-
-            # CSDMs at a center freq
-            fc = (xr_data.f_rtf.max().values - xr_data.f_rtf.min().values) / 2
-            f_csdm.suptitle(f"CSDM (f = {fc} Hz)")
-
-            Rx = xr_data_seg.Rx.sel(f_csdm=fc, method="nearest")
-            Rv = xr_data_seg.Rv.sel(f_csdm=fc, method="nearest")
-            Rs = Rx - Rv
-
-            # Derive a common vmax for comparison purpose
-            vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
-
-            # Plot Rx
-            Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
-            axs_csdm[0].set_title(r"$\hat{R}_x$")
-            axs_csdm[0].set_xlabel("Index")
-            axs_csdm[0].set_ylabel("Index")
-            # Ticks
-            axs_csdm[0].set_xticks(np.arange(1, nrcv + 1, 1))
-            axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
-
-            # Plot Rv
-            Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
-            axs_csdm[1].set_title(r"$\hat{R}_v$")
-            axs_csdm[1].set_xlabel("Index")
-            axs_csdm[1].set_ylabel("Index")
-            # Ticks
-            axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
-            axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
-
-            # Plot Rs
-            Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
-            axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
-            axs_csdm[2].set_xlabel("Index")
-            axs_csdm[2].set_ylabel("Index")
-            # Ticks
-            axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
-            axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
-
-            # Save figure
-            fpath = os.path.join(
-                xr_data.root_img,
-                f"estimated_csdms_segmentID{segment_id}_f_{Rx.f_csdm.values:.1f}Hz.png",
-            )
-            f_csdm.savefig(fpath)
-
-            plt.close("all")
+        # TODO : set dedicated fct for active loc ?
+        pass
 
     def derive_feature(
         self,
@@ -1379,114 +1462,6 @@ class FiberscopeManager:
 
             plt.close("all")
 
-    def get_rtf_passive(self, xr_data, Rv_global=None):
-
-        ts = xr_data.ts
-        init_arr = True
-
-        window_duration = 10
-        window_overlap = 0.5
-        window_shift = window_duration * (1 - window_overlap)
-        n_window = int(
-            np.floor(
-                (xr_data.time.max().values - window_duration * window_overlap)
-                / window_shift
-            )
-        )
-
-        tstart = 0
-        tend = window_duration
-
-        # Process sucessive windows
-        for i_window in range(n_window):
-
-            # Select the corresponding time window
-            x = xr_data.sel(time=slice(tstart, tend))
-            tstart += window_shift
-            tend += window_shift
-            # print(x.time.values)
-
-            x = x.signal.T
-            f, Rx = self.cm.get_signal_csdm(
-                y=x,
-                fs=1 / ts,
-                add_identity=False,
-                mask_tt=None,
-                mask_stft=None,
-            )
-
-            if Rv_global is not None:
-                Rv = Rv_global
-            else:
-                # For continous signal we assume the noise to be negligible
-                Rv = np.zeros_like(Rx)
-
-            if self.rtf_estimator == "cs":
-                rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
-                    Rx - Rv, use_first_column=True
-                )
-            elif self.rtf_estimator == "cs-evd":
-                rtf = self.fp.rtf_estimator.estimate_rtf_covariance_subtraction(
-                    Rx - Rv, use_first_column=False
-                )
-            # elif self.rtf_estimator == "cw":
-            #     rtf = self.fp.rtf_estimator.estimate_rtf_covariance_whitening(
-            #         Rx, Rv
-            #     )
-            else:
-                print(f"{self.rtf_estimator} not implemented yet!")
-
-            if init_arr:
-                n_rcv = xr_data.sizes["h_index"]
-                nf = f.size
-
-                rtf_hat = np.empty(
-                    (n_rcv, nf, n_window),
-                    dtype=complex,
-                )
-                Rx_hat = np.empty(
-                    (nf, n_rcv, n_rcv, n_window),
-                    dtype=complex,
-                )
-                Rv_hat = np.empty(
-                    (nf, n_rcv, n_rcv, n_window),
-                    dtype=complex,
-                )
-                init_arr = False
-
-            rtf_hat[..., i_window] = rtf.T
-            Rx_hat[..., i_window] = Rx
-            Rv_hat[..., i_window] = Rv
-
-        # Set new coords
-        xr_data.coords["f_rtf"] = f
-        xr_data.coords["f_csdm"] = f
-        xr_data.coords["segment_id"] = np.arange(n_window)
-        # Create h_index bis to avoid duplicate coordinates
-        xr_data.coords["h_index_bis"] = xr_data.h_index.values
-
-        # Add variables
-        xr_data["rtf_amp_hat"] = (
-            ["h_index", "f_rtf", "segment_id"],
-            np.abs(rtf_hat),
-        )
-        xr_data["rtf_phase_hat"] = (
-            ["h_index", "f_rtf", "segment_id"],
-            np.angle(rtf_hat),
-        )
-        xr_data.attrs["h_index_ref"] = self.h_index_ref
-
-        # Add Rx and R_v to the dataset
-        xr_data["Rx"] = (
-            ["f_csdm", "h_index", "h_index_bis", "segment_id"],
-            np.abs(Rx_hat),
-        )
-        xr_data["Rv"] = (
-            ["f_csdm", "h_index", "h_index_bis", "segment_id"],
-            np.abs(Rv_hat),
-        )
-        return xr_data
-
     def get_rtf(self, xr_data, Rv_global=None):
         ts = xr_data.ts
 
@@ -1724,159 +1699,9 @@ class FiberscopeManager:
 
         return xr_data
 
-    def get_signal_presence_mask_ft(self, x, tstart, tend, nperseg, noverlap):
-
-        # Dummy stft calculation to get ff and tt (should be replace by single stft calc)
-        ff, tt, stft_x = self.cm.get_stft_array(
-            x.signal.T,
-            fs=x.fs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-        )
-
-        t_first_arr_in_slice = (tstart - x.time.min()).values
-        t_last_arr_in_slice = (tend - x.time.min()).values
-
-        # Add a little offset to ensure to include all the signal energy
-        alpha = np.ceil(noverlap / nperseg * 4)
-        dtt = tt[1] - tt[0]
-        t_left = t_first_arr_in_slice - alpha * dtt
-        t_right = t_last_arr_in_slice + alpha * dtt
-
-        # Define bounds
-        t = (x.time - x.time.min()).values
-        f0 = x.fmin
-        f1 = x.fmax
-        left_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_left)
-        right_bound = f0 + (f1 - f0) / x.pulse_duration * (t - t_right)
-
-        # Interpolate on tt grid
-        left_tt = np.interp(tt, t, left_bound)
-        right_tt = np.interp(tt, t, right_bound)
-
-        # Define mask
-        TT, FF = np.meshgrid(tt, ff)
-        mask_stft = np.logical_and(
-            (FF <= left_tt[np.newaxis, :]), (FF >= right_tt[np.newaxis, :])
-        )
-
-        # Plot mask
-        if self.plot_csdm_mask:
-            for ircv in range(stft_x.shape[0]):
-                stft_i = np.abs(stft_x[ircv, ...])
-                stft_i /= np.max(stft_i)
-                plt.figure()
-                plt.pcolormesh(tt, ff, 10 * np.log10(stft_i), vmin=-30, cmap="jet")
-                plt.colorbar(label="[dB]")
-                plt.plot(
-                    tt,
-                    left_tt,
-                    linewidth=4,
-                    color="k",
-                )
-                plt.plot(
-                    tt,
-                    right_tt,
-                    linewidth=4,
-                    color="k",
-                )
-
-                # Mask overlay
-                alpha_mask = mask_stft.astype(float) * 0.45
-                plt.pcolormesh(
-                    tt,
-                    ff,
-                    np.ones_like(mask_stft),
-                    cmap="gray",
-                    alpha=alpha_mask,
-                    shading="auto",
-                )
-
-                plt.xlabel("Time [s]")
-                plt.ylabel("Frequency [Hz]")
-                plt.ylim([0, 1000])
-                fpath = os.path.join(x.root_img, f"csdm_mask_definition_rcv{ircv}.png")
-                plt.savefig(fpath)
-
-            self.plot_csdm_mask = False  # Plot only one time
-
-        return mask_stft
-
-    def get_signal_presence_mask(self, x, fs, nperseg, noverlap):
-
-        # Energy detector based
-        ff, tt, stft_x = self.cm.get_stft_array(
-            x, fs=fs, nperseg=nperseg, noverlap=noverlap
-        )
-        dtt = tt[1] - tt[0]
-
-        duration = x.time.max() - x.time.min()
-        sig_dist_samples = int(x.inter_pulse_period * 1 / dtt * 2 / 3)
-        n_roll_avg = int(x.pulse_duration * 1 / dtt * 2 / 3)
-        n_em = x.n_emissions
-        # Define the signal presence mask
-        mask_tt_x = np.zeros_like(tt, dtype=int)
-        for ircv in range(stft_x.shape[0]):
-            energy = np.sum(np.abs(stft_x[ircv, ...]) ** 2, axis=0)
-
-            # Smooth with rolling average
-            energy = np.convolve(energy, np.ones(n_roll_avg) / n_roll_avg, mode="same")
-
-            if duration > 1:
-                # Old method before 27/10/2025
-                min_height = 0.2 * np.max(energy)
-                # min_height = np.median(energy)
-                idx_peaks = sp.find_peaks(
-                    energy, height=min_height, distance=sig_dist_samples
-                )[0]
-
-                peaks_energy = energy[idx_peaks]
-                peaks_energy_sorted = np.sort(peaks_energy)[::-1]
-                peaks_energy_sorted_em = peaks_energy_sorted[:n_em]
-                try:
-                    min_peaks = np.min(peaks_energy_sorted_em)
-                except:
-                    default_mask = np.ones_like(energy)
-                    print("debug")
-
-                # threshold = 0.9 * min_peaks
-                threshold = 0.5 * min_peaks
-            else:
-                # Other simple method
-                threshold = np.median(energy)
-
-            # Simpler method 27/10/2025 not working well
-            # threshold = np.max(1.1 * np.min(energy), 0.1 * np.max(energy))
-
-            # Define signal presence mask
-            mask_tt_i = energy > threshold
-            mask_tt_x = np.logical_or(mask_tt_x, mask_tt_i)
-
-        # # # For debug purpose
-        # plt.figure()
-        # plt.plot(energy)
-        # plt.scatter(idx_peaks, energy[idx_peaks], color="r")
-        # plt.axhline(threshold, linestyle="--", color="r")
-        # plt.savefig(f"debug_energy_rcv{ircv}")
-
-        # plt.figure()
-        # plt.plot(mask_tt_i)
-        # plt.savefig(f"debug_masktt_rcv{ircv}")
-        # plt.close("all")
-
-        # plt.figure()
-        # plt.plot(mask_tt_x)
-        # plt.savefig(f"debug_masktt")
-        # plt.close("all")
-
-        # # # Un-comment for debug
-        # for ircv in range(stft_x.shape[0]):
-        #     plt.figure()
-        #     plt.pcolormesh(tt, ff, np.abs(stft_x[ircv, ...]))
-        #     plt.plot(tt, mask_tt_x.astype(int) * np.max(ff))
-        #     plt.savefig(f"debug_stft_rcv{ircv}")
-
-        return tt, mask_tt_x
+    # TODO : add wrapping function to set the required signal shape fct (LFM) ?
+    # def get_signal_presence_mask_ft(self, x, tstart, tend, nperseg, noverlap):
+    #     pass
 
     def derive_rtf_from_tf(self, xr_data):
 
@@ -1930,179 +1755,10 @@ class FiberscopeManager:
 
         return xr_data
 
-    def localize_dyn_recording(
-        self, static_signal, static_records_names, fs_dynamic_recording
-    ):
-        # Localizing static records
-        d = []
 
-        # Order static records names by position order
-        position_ids = [int(name.split("_")[1][1]) for name in static_records_names]
-        # Sort the static records names by position
-        sorted_indices = np.argsort(position_ids)
-        static_records_names = [static_records_names[i] for i in sorted_indices]
-
-        # Init progress bar
-        i_test = 0
-        prev_progress = 0
-        n_test = len(static_records_names)
-        print("\nCompute distance map")
-
-        for recording_name in static_records_names:
-
-            i_test += 1
-            prev_progress = progression_bar(
-                index=i_test,
-                index0=0,
-                indexf=n_test,
-                prev_progress=prev_progress,
-            )
-
-            fpath = os.path.join(
-                static_signal.records_folder, recording_name + "_rtf.nc"
-            )
-            xr_data_event = xr.open_dataset(fpath)
-
-            # Localize using rtf
-            d_rtf = self.localize_dyn_recording_rtf(xr_data_event, fs_dynamic_recording)
-            d.append(d_rtf)
-
-            # Derive constrast q
-            # Eq 1.106 rapport RTF
-            # q_rtf = (np.max(d_rtf) - d_rtf) / (np.max(d_rtf) - np.min(d_rtf))
-            # q.append(q_rtf)
-
-        # q = np.array(q)
-        d = np.array(d)
-
-        return d
-
-    def localize_dyn_recording_rtf(self, xr_data_event, fs_dynamic_recording):
-
-        # TODO add assertion to check if previous steps have been covered
-
-        # Reference rtf vector = rtf vector at the event position
-        sig = fs_dynamic_recording.signal
-        xr_data_event = xr_data_event.sel(f_rtf=slice(sig.fmin, sig.fmax))
-        rtf_event = xr_data_event.rtf_amp_hat * np.exp(1j * xr_data_event.rtf_phase_hat)
-        # rtf_event_true = xr_data_event.rtf_amp * np.exp(1j * xr_data_event.rtf_phase)
-        # List to store distance with each successive position
-        dist = []
-
-        # Sort the dynamic recordings by position
-        dist_from_P1 = [
-            float(r_name.split("_")[-2][1:-1])
-            for r_name in fs_dynamic_recording.splitted_records_names
-        ]
-        # Sort the dynamic recordings by position
-        sorted_indices = np.argsort(dist_from_P1)
-        splitted_records_names = [
-            fs_dynamic_recording.splitted_records_names[i] for i in sorted_indices
-        ]
-
-        # Set distance args to use
-        if self.theta_statistics == "mean":
-            apply_mean = True
-        elif self.theta_statistics == "expectation":
-            apply_mean = False
-        dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": apply_mean}
-
-        # Iterate over dynamic recordings
-        for recording_name in splitted_records_names:
-            # Load data
-            fpath = os.path.join(
-                fs_dynamic_recording.splitted_records_folder,
-                recording_name + "_rtf.nc",
-            )
-            # Assert fpath exist
-            if not os.path.exists(fpath):
-                raise FileNotFoundError(
-                    f"File {fpath} does not exist. Please check the file path."
-                )
-            xr_data_library_i = xr.open_dataset(fpath)
-            xr_data_library_i = xr_data_library_i.sel(f_rtf=slice(sig.fmin, sig.fmax))
-            rtf_library_i = xr_data_library_i.rtf_amp_hat * np.exp(
-                1j * xr_data_library_i.rtf_phase_hat
-            )
-
-            # Interpolate rtf_event at rtf_library freq (dynamic recording uses smaller window to
-            # match the number of segment L )
-            rtf_event = rtf_event.sel(
-                f_rtf=rtf_library_i.f_rtf.values, method="nearest"
-            )
-
-            # Derive distance using hermitian angle
-            theta = D_hermitian_angle_fast(
-                rtf_event.values, rtf_library_i.values, **dist_kwargs
-            )
-            theta_c = get_theta_c(val=theta, apply_mean=apply_mean)
-            dist.append(theta_c)
-
-        dist = np.array(dist)
-
-        return dist
-
-    def plot_dyn_loc(
-        self, d_rtf, time_step, axis_norm=1, fname=None, vmin=-5, save_eps=False
-    ):
-        d = -d_rtf
-
-        if axis_norm is None:
-            d_max = np.nanmax(d, axis=axis_norm) * np.ones_like(d)
-            d_min = np.nanmin(d, axis=axis_norm) * np.ones_like(d)
-            norm_label = "norm_over_entire_surface"
-        else:
-            d_max = np.tile(
-                np.nanmax(d, axis=axis_norm), (d.shape[axis_norm], 1)
-            )  # Cast to d shape
-            d_min = np.tile(np.nanmin(d, axis=axis_norm), (d.shape[axis_norm], 1))
-            if axis_norm == 1:
-                norm_label = f"norm_along_time_axis"
-            elif axis_norm == 0:
-                norm_label = f"norm_along_position_axis"
-
-        if axis_norm == 1:
-            d_max = d_max.T
-            d_min = d_min.T
-
-        # Normalize
-        q = (d - d_min) / (d_max - d_min)
-
-        # In dB
-        q[q == 0] = 1e-6
-        q_dB = 10 * np.log10(q)
-
-        t = np.arange(0, d.shape[1]) * time_step
-        ordered_pos = [f"$P_{i}$" for i in range(1, 7)]
-        truepos_order = [0, 5, 1, 4, 2, 3]
-        q_dB = q_dB[truepos_order, :]
-        plt.figure()
-        plt.imshow(q_dB, cmap="jet", aspect="auto", vmin=vmin, rasterized=False)
-        plt.xticks(np.arange(0, q_dB.shape[1], 10), np.round(t[::10], 2))
-        plt.yticks(np.arange(0, q.shape[0]), ordered_pos)
-        plt.xlabel("Time [s]")
-        plt.ylabel("Position")
-        plt.colorbar(label=r"$q\, \textrm{[dB]}$")
-        plt.gca().invert_yaxis()
-
-        folder = os.path.join(self.root_img, "localization", norm_label)
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-        if fname is None:
-            fname = f"dyn_qdB_href{self.h_index_ref}.png"
-
-        fpath = os.path.join(folder, fname)
-        plt.savefig(fpath)
-
-        if save_eps:
-            fname = fname.split(".")[0] + ".eps"
-            fpath = os.path.join(folder, fname)
-            plt.savefig(fpath, format="eps")
-
-
-# -----------------------------------------------------------------------------
-# Passive source localisation
-# -----------------------------------------------------------------------------
+# ======================================================================================================================
+#  Passive source localisation
+# ======================================================================================================================
 class PassiveFiberscopeManager(FiberscopeManager):
     """
     Class to handle passive source localisation. The source to localise is typically a ship of opportunity.
@@ -2145,23 +1801,26 @@ class PassiveFiberscopeManager(FiberscopeManager):
             verbose=verbose,
         )
 
-    def plot_loaded_sequence(xr_data, arrivals_datetimes, nperseg=256, noverlap=128):
+    def plot_window_analysis(xr_data, arrivals_datetimes, nperseg=256, noverlap=128):
         # TODO : define for passive
         pass
 
-    def process_passive_analysis(
+    def process_analysis(
         self,
         ds_wav,
         t_start,
         t_end,
         set_stft_props=True,
     ):
+        """
+        Run analysis on the reduired recording analysis window.
+        """
 
         if self.verbose:
-            print(f"RTF processing of passive recording from (complete that later)")
+            print(f"RTF processing of passive recording.")
 
         ### Step 1 - Load audio data for the required analysis window ###
-        xr_data = self.load_data_portion(ds_wav, t_start, t_end)
+        xr_data = self.load_recording(ds_wav, t_start, t_end)
 
         ### Step 2 - Init CovManager and FeatureProcessor
         # If stfts props are already set we dont need to do it
@@ -2173,9 +1832,9 @@ class PassiveFiberscopeManager(FiberscopeManager):
         self.set_managers(fs=xr_data.fs, idx_rcv_ref=idx_rcv_ref)
 
         ### Step 3 - Derive features ###
-        self.derive_feature_passive(xr_data)
+        self.derive_feature(xr_data)
 
-    def load_data_portion(self, ds_wav, t_start, t_end):
+    def load_recording(self, ds_wav, t_start, t_end):
         """
         Load data for the required analysis window.
 
@@ -2253,7 +1912,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
 
         return xr_data
 
-    def derive_feature_passive(
+    def derive_feature(
         self,
         xr_data,
         Rv_global=None,
@@ -2265,7 +1924,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
         Parameters
         ----------
         xr_data : xr.Dataset
-            Wav data for the selected period of recording to analyse as provided by the load_data_portion method.
+            Wav data for the selected period of recording to analyse as provided by the load_recording method.
         Rv_global : np.array
             Noise covariance matrix to use. If None (default), the noise is neglected and Rv is set to 0.
         save : bool

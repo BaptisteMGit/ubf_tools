@@ -81,6 +81,7 @@ class FiberscopeManager:
         process_pulse_one_by_one: bool = True,
         estimate_ir_duration: bool = True,
         rtf_estimator: str = "cs-evd",
+        obs_ids: list = [1, 2, 3],
     ):
         """
         Constructor
@@ -128,6 +129,9 @@ class FiberscopeManager:
 
         # Define usefull objects
         self.cm = CovManager()
+
+        # OBS ids
+        self.obs_ids = obs_ids
 
     def preprocess_data(self, xr_data, df_seq):
 
@@ -422,9 +426,8 @@ class FiberscopeManager:
 
         data_obs = {}
 
-        obs_ids = [1, 2, 3]
         # Extract the corresponding signal portion
-        for obs_id in obs_ids:
+        for obs_id in self.obs_ids:
             # fs = ds_wav.attrs[f"fs_obs{obs_id}"]
             # print(fs)
 
@@ -485,13 +488,13 @@ class FiberscopeManager:
             )
 
         arr_time_in_sec_from_start_mat = np.vstack(
-            [data_obs[i]["arr_time_in_sec_from_start"].values for i in obs_ids]
+            [data_obs[i]["arr_time_in_sec_from_start"].values for i in self.obs_ids]
         )
-        signal_mat = np.vstack([data_obs[i]["signal"] for i in obs_ids])
+        signal_mat = np.vstack([data_obs[i]["signal"] for i in self.obs_ids])
         common_time_vector = np.arange(data_obs[1]["signal"].size) * 1 / fs
 
-        first_arrival = np.min([data_obs[i]["t0_first_arr"] for i in obs_ids])
-        last_arrival = np.max([data_obs[i]["t0_first_arr"] for i in obs_ids])
+        first_arrival = np.min([data_obs[i]["t0_first_arr"] for i in self.obs_ids])
+        last_arrival = np.max([data_obs[i]["t0_first_arr"] for i in self.obs_ids])
 
         xr_data = xr.Dataset(
             data_vars=dict(
@@ -502,7 +505,7 @@ class FiberscopeManager:
                 ),
             ),
             coords=dict(
-                h_index=obs_ids,
+                h_index=self.obs_ids,
                 time=common_time_vector,
                 pulse_id=df_seq["pulse_id"],  # To be used later
             ),
@@ -675,18 +678,8 @@ class FiberscopeManager:
         if verbose:
             print(f"RTF processing of passive recording from (complete that later)")
 
-        # for seq_id in sequence_ids:
-
-        #     i_test += 1
-        #     prev_progress = progression_bar(
-        #         index=i_test,
-        #         index0=0,
-        #         indexf=n_seq,
-        #         prev_progress=prev_progress,
-        #     )
-
         ### Step 1 - Load audio data for the required period ###
-        xr_data = self.load_portion_data(ds_wav, t_start, t_end)
+        xr_data = self.load_data_portion(ds_wav, t_start, t_end)
 
         # If stfts props are already set we dont need to do it
         if set_stft_props:
@@ -701,12 +694,29 @@ class FiberscopeManager:
         ### Step 3 - Derive features ###
         self.derive_feature_passive(xr_data, verbose=verbose)
 
-    def load_portion_data(self, ds_wav, t_start, t_end):
-        obs_ids = [1, 2, 3]
-        datetime_fmt = ds_wav.attrs["datetime_format"]
-        for i, obs_id in enumerate(obs_ids):
+    def load_data_portion(self, ds_wav, t_start, t_end):
+        """
+        Load data for the required analysis window.
 
-            # sig_varname = f"signal_obs{obs_id}"
+        Parameters
+        ----------
+        ds_wav : xr.Dataset
+            Wav dataset (containing the entire recordings)
+        t_start : datetime.datetime
+            Start of the analysis window.
+        t_end datetime.datetime
+            End of the analysis window.
+
+        Returns
+        -------
+        xr_data : xr.Dataset
+            Selected portion of wav data for the required analysis window (form t_start to t_end).
+        """
+
+        datetime_fmt = ds_wav.attrs["datetime_format"]
+        for i, obs_id in enumerate(self.obs_ids):
+
+            # Name of the time coords in ds_wav
             time_coordsname = f"time{obs_id}"
 
             # Select a window of the signal
@@ -716,7 +726,7 @@ class FiberscopeManager:
             t0 = ds_wav.attrs[f"start_datetime_obs{obs_id}"]
             t0 = datetime.strptime(t0, datetime_fmt)
 
-            # Select window
+            # Select the required window
             t_from_t0_start_s = (t_start - t0).total_seconds()
             n_start = int(t_from_t0_start_s * fs)
             t_from_t0_end_s = (t_end - t0).total_seconds()
@@ -725,16 +735,21 @@ class FiberscopeManager:
             # Slice signal for current OBS
             ds_wav = ds_wav.isel({time_coordsname: slice(n_start, n_end)})
 
-        signal_mat = np.vstack([ds_wav[f"signal_obs{i}"].values for i in obs_ids])
+        # Reshape
+        signal_mat = np.vstack([ds_wav[f"signal_obs{i}"].values for i in self.obs_ids])
+        # Set common time vector
         common_time_vector = np.arange(ds_wav.sizes["time1"]) * 1 / fs
 
+        # Define a record_id to be used to save results
         record_id = f"passive_{datetime.strftime(t_start, datetime_fmt)}_to_{datetime.strftime(t_end, datetime_fmt)}"
+
+        # Build dataset
         xr_data = xr.Dataset(
             data_vars=dict(
                 signal=(["h_index", "time"], signal_mat),
             ),
             coords=dict(
-                h_index=obs_ids,
+                h_index=self.obs_ids,
                 time=common_time_vector,
             ),
             attrs=dict(
@@ -749,6 +764,7 @@ class FiberscopeManager:
             ),
         )
 
+        # Ensure folders exists
         if not os.path.exists(xr_data.root_img):
             os.makedirs(xr_data.root_img)
         if not os.path.exists(xr_data.root_data):

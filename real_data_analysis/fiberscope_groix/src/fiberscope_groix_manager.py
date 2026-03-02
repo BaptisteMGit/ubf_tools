@@ -82,6 +82,7 @@ class FiberscopeManager:
         estimate_ir_duration: bool = True,
         rtf_estimator: str = "cs-evd",
         obs_ids: list = [1, 2, 3],
+        verbose: bool = False,
     ):
         """
         Constructor
@@ -132,6 +133,9 @@ class FiberscopeManager:
 
         # OBS ids
         self.obs_ids = obs_ids
+
+        # Verbose flag
+        self.verbose = verbose
 
     def preprocess_data(self, xr_data, df_seq):
 
@@ -385,6 +389,10 @@ class FiberscopeManager:
 
         self.nperseg = nperseg
         self.noverlap = noverlap
+
+        if self.verbose:
+
+            print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
 
     def set_managers(self, fs, idx_rcv_ref):
         # Define covariance manager with the right stft params
@@ -684,7 +692,6 @@ class FiberscopeManager:
         # If stfts props are already set we dont need to do it
         if set_stft_props:
             self.set_stft_params(ts=xr_data.ts)
-            # print(f"nperseg = {self.nperseg}, noverlap = {self.noverlap}")
 
         idx_rcv_ref = np.argmin(
             np.abs(xr_data.h_index.values - self.h_index_ref)

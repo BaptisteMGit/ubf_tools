@@ -1058,7 +1058,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
             fig.supylabel("Signal")
             fig.suptitle(f"Sequence ID {seq_id} - OBS{obs_id}")
 
-    def process_static_analysis(
+    def process_analysis(
         self,
         df_arrivals,
         set_stft_props=True,

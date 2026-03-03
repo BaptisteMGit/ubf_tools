@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.ndimage import convolve1d
 from matplotlib.animation import FuncAnimation
@@ -10,7 +11,7 @@ from publication.publication_figure import color, PubFigure, LargeFigure
 # Figure style
 # -----------------------------------------------------------------------------
 
-pfig = LargeFigure(
+pfig = PubFigure(
     legend_fontsize=10,
     label_fontsize=18,
     title_fontsize=22,
@@ -34,12 +35,6 @@ def rtf_mfp_animation(
     dpi=80,
 ):
 
-    if apply_roll_avg:
-        # Apply rolling average to smooth the values over library positions (optional)
-        mu = convolve1d(
-            mu, np.ones(roll_avg_window) / roll_avg_window, axis=1, mode="nearest"
-        )
-
     # Normalize theta to get distances in [0, 1]
     max_at_each_seg = np.percentile(
         ds_theta.theta.values, normalization_percentile, axis=1
@@ -47,6 +42,11 @@ def rtf_mfp_animation(
     theta = (max_at_each_seg - ds_theta.theta) / max_at_each_seg
     mu = np.clip(theta, 0, 1)
 
+    if apply_roll_avg:
+        # Apply rolling average to smooth the values over library positions (optional)
+        mu = convolve1d(
+            mu, np.ones(roll_avg_window) / roll_avg_window, axis=1, mode="nearest"
+        )
     # -----------------------------------------------------------------------------
     # Trajectories
     # -----------------------------------------------------------------------------
@@ -62,6 +62,7 @@ def rtf_mfp_animation(
     event_traj["jules_gps"] = {
         "e": gps_event_seg_dt.e.values,
         "n": gps_event_seg_dt.n.values,
+        "t": gps_event_seg_dt.time.values,
         "name": "GPS Jules",
     }
     for mmsi in ds_ais_event.mmsi.values:
@@ -87,9 +88,9 @@ def rtf_mfp_animation(
     fig, ax_traj = plt.subplots(1, 1, constrained_layout=True)
 
     # -----------------------------------------------------------------------------
-    # LEFT: probabilistic localisation
+    # Estimated localisation
     # -----------------------------------------------------------------------------
-
+    time_text = ax_traj.text(0.02, 0.95, "", transform=ax_traj.transAxes)
     ax_traj.set_xlabel("E [m]")
     ax_traj.set_ylabel("N [m]")
     ax_traj.set_aspect("equal")
@@ -142,7 +143,7 @@ def rtf_mfp_animation(
         event_lines[key] = line_i
         event_points[key] = point_i
 
-    ax_traj.legend(fontsize=10)
+    ax_traj.legend(fontsize=10, loc="upper right")
 
     lib_grid_offset = 500
     ax_traj.set_xlim(
@@ -161,6 +162,8 @@ def rtf_mfp_animation(
 
     def init():
 
+        time_text.set_text("")
+
         sc_lib.set_array(np.zeros(n_lib_replicas))
 
         for key in event_traj.keys():
@@ -174,6 +177,11 @@ def rtf_mfp_animation(
         )
 
     def update(frame):
+
+        # Time title
+        time_text.set_text(
+            f"UTC : {pd.to_datetime(event_traj['jules_gps']['t'][frame])}"
+        )
 
         # Update probabilistic localisation
         sc_lib.set_array(mu[frame])

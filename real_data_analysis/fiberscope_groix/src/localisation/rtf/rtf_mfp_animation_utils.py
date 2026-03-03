@@ -6,6 +6,13 @@ from scipy.ndimage import convolve1d
 from matplotlib.animation import FuncAnimation
 from publication.publication_figure import color, PubFigure, LargeFigure
 
+# Tel matplotlib where to find ffmpeg for saving the animation as mp4
+import matplotlib as mpl
+
+mpl.rcParams["animation.ffmpeg_path"] = (
+    r"C:\ProgramData\anaconda3\Library\bin\ffmpeg.exe"
+)
+
 
 # -----------------------------------------------------------------------------
 # Figure style
@@ -85,7 +92,9 @@ def rtf_mfp_animation(
     # -----------------------------------------------------------------------------
     # Figure
     # -----------------------------------------------------------------------------
-    fig, ax_traj = plt.subplots(1, 1, constrained_layout=True)
+    # fig, ax_traj = plt.subplots(1, 1, constrained_layout=True)
+    fig = plt.figure(figsize=(10, 10), constrained_layout=True)
+    ax_traj = plt.gca()
 
     # -----------------------------------------------------------------------------
     # Estimated localisation
@@ -105,7 +114,8 @@ def rtf_mfp_animation(
         cmap="magma_r",
         vmin=0,
         vmax=1,
-        s=60,
+        # alpha=0.6,
+        s=50,
         zorder=10,
         label="Référence (pondérée)",
     )
@@ -183,8 +193,18 @@ def rtf_mfp_animation(
             f"UTC : {pd.to_datetime(event_traj['jules_gps']['t'][frame])}"
         )
 
-        # Update probabilistic localisation
-        sc_lib.set_array(mu[frame])
+        # # Update probabilistic localisation
+        # sc_lib.set_array(mu[frame])
+
+        vals = mu[frame]
+        # normalisation 0-1
+        vals_norm = (vals - vals.min()) / (vals.max() - vals.min() + 1e-12)
+        # couleurs du colormap
+        colors = plt.cm.magma_r(vals_norm)
+        # alpha dépend de la valeur
+        colors[:, 3] = vals_norm  # alpha
+        print(colors[:5])
+        sc_lib.set_facecolors(colors)
 
         # Update trajectories
         for key, traj in event_traj.items():
@@ -216,11 +236,18 @@ def rtf_mfp_animation(
     # -----------------------------------------------------------------------------
     if save:
 
+        # ani.save(
+        #     os.path.join(root_img, f"{output_fname}.gif"),
+        #     fps=fps,
+        #     dpi=dpi,
+        # )
         ani.save(
-            os.path.join(root_img, f"{output_fname}.gif"),
+            os.path.join(root_img, f"{output_fname}.mp4"),
+            writer="ffmpeg",
             fps=fps,
             dpi=dpi,
         )
+
     else:
         plt.show()
 

@@ -385,25 +385,34 @@ def get_dists_2_passive_event(
     fmin=600,
     fmax=800,
     dist_type="hermitian_angle",
+    verbose=False,
 ):
 
     if dist_type == "hermitian_angle":
         dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
-        print("Compute distance using hermitian angle distance (in C^N)")
+        comment = "Compute distance using hermitian angle distance (in C^N)"
+        # print("Compute distance using hermitian angle distance (in C^N)")
     elif dist_type == "euclidean":
-        print("Compute distance using euclidean distance (in C^N)")
+        comment = "Compute distance using euclidean distance (in C^N)"
+        # print("Compute distance using euclidean distance (in C^N)")
     elif dist_type == "euclidean_module":
-        print(
-            "Compute distance using euclidean distance on the module of RTF vectors (in R^N)"
-        )
+        comment = "Compute distance using euclidean distance on the module of RTF vectors (in R^N)"
+        # print(
+        #     "Compute distance using euclidean distance on the module of RTF vectors (in R^N)"
+        # )
     elif dist_type == "euclidean_phase":
-        print(
-            "Compute distance using euclidean distance on the phase of RTF vectors (in R^N)"
-        )
+        comment = "Compute distance using euclidean distance on the phase of RTF vectors (in R^N)"
+        # print(
+        #     "Compute distance using euclidean distance on the phase of RTF vectors (in R^N)"
+        # )
     else:
         print("Warning : unknown distance, set to default -> hermitian angle")
         dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
-        print("Compute distance using hermitian angle distance (in C^N)")
+        comment = "Compute distance using hermitian angle distance (in C^N)"
+        # print("Compute distance using hermitian angle distance (in C^N)")
+
+    if verbose:
+        print(comment)
 
     fpath = os.path.join(fsm.root_data_sequence, f"sequence_{seq_id_ref}_rtf.nc")
     xr_seq_ref = xr.open_dataset(fpath)

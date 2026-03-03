@@ -1893,11 +1893,13 @@ class PassiveFiberscopeManager(FiberscopeManager):
         # Build dataset
         xr_data = xr.Dataset(
             data_vars=dict(
-                signal=(["h_index", "time"], signal_mat), start_dt=t_start, end_dt=t_end
+                signal=(["h_index", "time"], signal_mat.astype(np.float32)),
+                start_dt=t_start,
+                end_dt=t_end,
             ),
             coords=dict(
                 h_index=self.obs_ids,
-                time=common_time_vector,
+                time=common_time_vector.astype(np.float32),
             ),
             attrs=dict(
                 fs=fs,
@@ -2245,8 +2247,8 @@ class PassiveFiberscopeManager(FiberscopeManager):
             Rv_hat[..., i_window] = Rv
 
         # Set new coords
-        xr_data.coords["f_rtf"] = f
-        xr_data.coords["f_csdm"] = f
+        xr_data.coords["f_rtf"] = f.astype(np.float32)
+        xr_data.coords["f_csdm"] = f.astype(np.float32)
         # Create h_index bis to avoid duplicate coordinates
         xr_data.coords["h_index_bis"] = xr_data.h_index.values
 
@@ -2282,22 +2284,22 @@ class PassiveFiberscopeManager(FiberscopeManager):
         # Add variables
         xr_data["rtf_amp_hat"] = (
             ["h_index", "f_rtf", "segment_dt"],
-            np.abs(rtf_hat),
+            np.abs(rtf_hat).astype(np.float32),
         )
         xr_data["rtf_phase_hat"] = (
             ["h_index", "f_rtf", "segment_dt"],
-            np.angle(rtf_hat),
+            np.angle(rtf_hat).astype(np.float32),
         )
         xr_data.attrs["h_index_ref"] = self.h_index_ref
 
         # Add Rx and R_v to the dataset
         xr_data["Rx"] = (
             ["f_csdm", "h_index", "h_index_bis", "segment_dt"],
-            np.abs(Rx_hat),
+            np.abs(Rx_hat).astype(np.float32),
         )
         xr_data["Rv"] = (
             ["f_csdm", "h_index", "h_index_bis", "segment_dt"],
-            np.abs(Rv_hat),
+            np.abs(Rv_hat).astype(np.float32),
         )
 
         # Add attributes to keep track of the analysis parameters

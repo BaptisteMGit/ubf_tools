@@ -12,7 +12,7 @@ import matplotlib as mpl
 mpl.rcParams["animation.ffmpeg_path"] = (
     r"C:\ProgramData\anaconda3\Library\bin\ffmpeg.exe"
 )
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # -----------------------------------------------------------------------------
 # Figure style
@@ -92,9 +92,14 @@ def rtf_mfp_animation(
     # -----------------------------------------------------------------------------
     # Figure
     # -----------------------------------------------------------------------------
-    # fig, ax_traj = plt.subplots(1, 1, constrained_layout=True)
-    fig = plt.figure(figsize=(10, 10), constrained_layout=True)
-    ax_traj = plt.gca()
+    fig, ax_traj = plt.subplots(
+        1,
+        1,
+        constrained_layout=True,
+        figsize=(12, 10),
+    )
+    # fig = plt.figure(figsize=(12, 10), constrained_layout=True)
+    # ax_traj = plt.gca()
 
     # -----------------------------------------------------------------------------
     # Estimated localisation
@@ -120,7 +125,13 @@ def rtf_mfp_animation(
         label="Référence (pondérée)",
     )
 
-    cbar = fig.colorbar(sc_lib, ax=ax_traj, pad=0.01)
+    # cbar = fig.colorbar(sc_lib, ax=ax_traj, pad=0.01)
+    # cbar.set_label(r"$\mu$")
+
+    divider = make_axes_locatable(ax_traj)
+    cax = divider.append_axes("right", size="3%", pad=0.05)
+
+    cbar = fig.colorbar(sc_lib, cax=cax)
     cbar.set_label(r"$\mu$")
 
     # -------------------------------------------------------------------------
@@ -166,6 +177,19 @@ def rtf_mfp_animation(
         library_pos["n"].max() + lib_grid_offset,
     )
 
+    # colors_all = []
+
+    # for frame in range(n_frames):
+
+    #     vals = mu[frame]
+    #     vals_norm = vals
+    #     # vals_norm = (vals - vals.min()) / (vals.max() - vals.min() + 1e-12)
+
+    #     colors = plt.cm.magma_r(vals_norm)
+    #     colors[:, 3] = vals_norm
+
+    #     colors_all.append(colors)
+
     # -----------------------------------------------------------------------------
     # Animation
     # -----------------------------------------------------------------------------
@@ -194,17 +218,20 @@ def rtf_mfp_animation(
         )
 
         # # Update probabilistic localisation
-        # sc_lib.set_array(mu[frame])
+        sc_lib.set_array(mu[frame])
 
-        vals = mu[frame]
+        # vals_norm = mu[frame]
         # normalisation 0-1
-        vals_norm = (vals - vals.min()) / (vals.max() - vals.min() + 1e-12)
+        # vals_norm = (vals - vals.min()) / (vals.max() - vals.min() + 1e-12)
         # couleurs du colormap
-        colors = plt.cm.magma_r(vals_norm)
+        # colors = plt.cm.magma_r(vals_norm)
         # alpha dépend de la valeur
-        colors[:, 3] = vals_norm  # alpha
-        print(colors[:5])
-        sc_lib.set_facecolors(colors)
+        # colors[:, 3] = vals_norm  # alpha
+        # print(colors[:5])
+        # update scatter
+        # sc_lib.set_facecolor(colors_all[frame])
+        # sc_lib.set_edgecolor(colors_all[frame])
+        # sc_lib.set_array(mu[frame])  # important pour forcer redraw
 
         # Update trajectories
         for key, traj in event_traj.items():

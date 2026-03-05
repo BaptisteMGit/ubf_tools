@@ -718,15 +718,15 @@ class ActiveFiberscopeManager(FiberscopeManager):
 
         xr_data = xr.Dataset(
             data_vars=dict(
-                signal=(["h_index", "time"], signal_mat),
+                signal=(["h_index", "time"], signal_mat.astype(np.float32)),
                 arr_time_in_sec_from_start=(
                     ["h_index", "pulse_id"],
-                    arr_time_in_sec_from_start_mat,
+                    arr_time_in_sec_from_start_mat.astype(np.float32),
                 ),
             ),
             coords=dict(
                 h_index=self.obs_ids,
-                time=common_time_vector,
+                time=common_time_vector.astype(np.float32),
                 pulse_id=df_seq["pulse_id"],  # To be used later
             ),
             attrs=dict(
@@ -751,7 +751,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 root_img=os.path.join(
                     self.root_img_sequence, str(df_seq["sequence_id"].iloc[0])
                 ),
-                root_data=self.root_data_sequence,
+                root_data=os.path.join(self.root_data_sequence, "active"),
             ),
         )
 
@@ -909,7 +909,8 @@ class ActiveFiberscopeManager(FiberscopeManager):
             i_hydro += 1
 
         # Time vector for impulse response
-        xr_data["t_ir"] = np.arange(time.size) * xr_data.ts
+        t_ir = np.arange(time.size) * xr_data.ts
+        xr_data["t_ir"] = (t_ir).astype(np.float32)
         # nstft = self.nperseg
         nstft = time.size
 
@@ -920,57 +921,59 @@ class ActiveFiberscopeManager(FiberscopeManager):
 
             xr_data["ri_hat"] = (
                 ["h_index", "t_ir"],
-                ri_hat_mean,
+                ri_hat_mean.astype(np.float32),
             )
 
             # Derive the corresponding frequency response
             tf_hat_mean = np.fft.rfft(ri_hat_mean, n=nstft, axis=1)
             f_ir = np.fft.rfftfreq(nstft, d=ts)
-            xr_data["f_ir"] = f_ir
+            xr_data["f_ir"] = f_ir.astype(np.float32)
 
             # Store amplitude and phase in two separate variables to avoid issues with complex in netcdf
             xr_data["tf_hat_amp"] = (
                 ["h_index", "f_ir"],
-                np.abs(tf_hat_mean),
+                np.abs(tf_hat_mean).astype(np.float32),
             )
             xr_data["tf_hat_phase"] = (
                 ["h_index", "f_ir"],
-                np.angle(tf_hat_mean),
+                np.angle(tf_hat_mean).astype(np.float32),
             )
 
         else:
             # Pulse are processed independently
             xr_data["ri_hat"] = (
                 ["h_index", "t_ir", "pulse_id"],
-                np.swapaxes(ri_hat, 1, 2),
+                np.swapaxes(ri_hat, 1, 2).astype(np.float32),
             )
 
             # Derive the corresponding frequency response
             tf_hat = np.fft.rfft(ri_hat, n=nstft, axis=-1)
             f_ir = np.fft.rfftfreq(nstft, d=ts)
-            xr_data["f_ir"] = f_ir
+            xr_data["f_ir"] = f_ir.astype(np.float32)
 
             # Store amplitude and phase in two separate variables to avoid issues with complex in netcdf
             xr_data["tf_hat_amp"] = (
                 ["h_index", "f_ir", "pulse_id"],
-                np.swapaxes(np.abs(tf_hat), 1, 2),
+                np.swapaxes(np.abs(tf_hat), 1, 2).astype(np.float32),
             )
             xr_data["tf_hat_phase"] = (
                 ["h_index", "f_ir", "pulse_id"],
-                np.swapaxes(np.angle(tf_hat), 1, 2),
+                np.swapaxes(np.angle(tf_hat), 1, 2).astype(np.float32),
             )
 
         if self.estimate_ir_duration:
             xr_data = self.get_ir_duration(xr_data)
 
-        # Save results
-        data_fpath = os.path.join(
-            self.root_data_sequence, f"sequence_{xr_data.sequence_id}.nc"
-        )
-        xr_data.attrs["fpath"] = data_fpath
-        xr_data.to_netcdf(data_fpath)
-        xr_data.close()
-        del xr_data
+        # # Save results
+        # data_fpath = os.path.join(
+        #     self.root_data_sequence, "active", f"sequence_{xr_data.sequence_id}.nc"
+        # )
+        # xr_data.attrs["fpath"] = data_fpath
+        # xr_data.to_netcdf(data_fpath)
+        # xr_data.close()
+        # del xr_data
+
+        return xr_data
 
     def get_ir_duration(self, xr_data):
         n_window_rms = int(0.2 * xr_data.fs)
@@ -1102,10 +1105,10 @@ class ActiveFiberscopeManager(FiberscopeManager):
             self.set_managers(fs=xr_data.fs, idx_rcv_ref=idx_rcv_ref)
 
             ### Step 2 - Preprocess data ###
-            self.preprocess_data(xr_data=xr_data, df_seq=df_seq)
+            xr_data = self.preprocess_data(xr_data=xr_data, df_seq=df_seq)
 
             ### Step 3 - Derive features ###
-            self.derive_feature(sequence_id=seq_id)
+            self.derive_feature(xr_data=xr_data, sequence_id=seq_id)
 
     def estimate_global_csdm(self, xr_data):
         # TODO : set dedicated fct for active loc ?
@@ -1113,6 +1116,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
 
     def derive_feature(
         self,
+        xr_data,
         sequence_id,
         Rv_global=None,
         save=True,
@@ -1121,16 +1125,16 @@ class ActiveFiberscopeManager(FiberscopeManager):
         if self.verbose:
             print(f"Processing sequence {sequence_id} - RTF estimation")
 
-        # Load data
-        fpath = os.path.join(self.root_data_sequence, f"sequence_{sequence_id}.nc")
+        # # Load data
+        # fpath = os.path.join(self.root_data_sequence, "active", f"sequence_{sequence_id}.nc")
 
-        # Assert fpath exist
-        if not os.path.exists(fpath):
-            raise FileNotFoundError(
-                f"File {fpath} does not exist. Please check the file path."
-            )
+        # # Assert fpath exist
+        # if not os.path.exists(fpath):
+        #     raise FileNotFoundError(
+        #         f"File {fpath} does not exist. Please check the file path."
+        #     )
 
-        xr_data = xr.open_dataset(fpath)
+        # xr_data = xr.open_dataset(fpath)
 
         # Derive rtf from recordings
         xr_data = self.get_rtf(xr_data=xr_data, Rv_global=Rv_global)
@@ -1604,29 +1608,29 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 Rx_hat[..., i_pulse] = Rx
                 Rv_hat[..., i_pulse] = Rv
 
-            xr_data.coords["f_rtf"] = f
+            xr_data.coords["f_rtf"] = f.astype(np.float32)
             xr_data["rtf_amp_hat"] = (
                 ["h_index", "f_rtf", "pulse_id"],
-                np.abs(rtf_hat),
+                np.abs(rtf_hat).astype(np.float32),
             )
             xr_data["rtf_phase_hat"] = (
                 ["h_index", "f_rtf", "pulse_id"],
-                np.angle(rtf_hat),
+                np.angle(rtf_hat).astype(np.float32),
             )
             xr_data.attrs["h_index_ref"] = self.h_index_ref
 
             # Add Rx and R_v to the dataset
-            xr_data.coords["f_csdm"] = f
+            xr_data.coords["f_csdm"] = f.astype(np.float32)
 
             # Create h_index bis to avoid duplicate coordinates
             xr_data.coords["h_index_bis"] = xr_data.h_index.values
             xr_data["Rx"] = (
                 ["f_csdm", "h_index", "h_index_bis", "pulse_id"],
-                np.abs(Rx_hat),
+                np.abs(Rx_hat).astype(np.float32),
             )
             xr_data["Rv"] = (
                 ["f_csdm", "h_index", "h_index_bis", "pulse_id"],
-                np.abs(Rv_hat),
+                np.abs(Rv_hat).astype(np.float32),
             )
 
         else:
@@ -1676,29 +1680,29 @@ class ActiveFiberscopeManager(FiberscopeManager):
             else:
                 print(f"{self.rtf_estimator} not implemented yet!")
 
-            xr_data.coords["f_rtf"] = f
+            xr_data.coords["f_rtf"] = f.astype(np.float32)
             xr_data["rtf_amp_hat"] = (
                 ["h_index", "f_rtf"],
-                np.abs(rtf).T,
+                np.abs(rtf).T.astype(np.float32),
             )
             xr_data["rtf_phase_hat"] = (
                 ["h_index", "f_rtf"],
-                np.angle(rtf).T,
+                np.angle(rtf).T.astype(np.float32),
             )
             xr_data.attrs["h_index_ref"] = self.h_index_ref
 
             # Add Rx and R_v to the dataset
-            xr_data.coords["f_csdm"] = f
+            xr_data.coords["f_csdm"] = f.astype(np.float32)
 
             # Create h_index bis to avoid duplicate coordinates
             xr_data.coords["h_index_bis"] = xr_data.h_index.values
             xr_data["Rx"] = (
                 ["f_csdm", "h_index", "h_index_bis"],
-                np.abs(Rx),
+                np.abs(Rx).astype(np.float32),
             )
             xr_data["Rv"] = (
                 ["f_csdm", "h_index", "h_index_bis"],
-                np.abs(Rv),
+                np.abs(Rv).astype(np.float32),
             )
 
         return xr_data
@@ -1731,11 +1735,11 @@ class ActiveFiberscopeManager(FiberscopeManager):
 
             xr_data["rtf_amp"] = (
                 ["h_index", "f_ir", "pulse_id"],
-                np.abs(rtf),
+                np.abs(rtf).astype(np.float32),
             )
             xr_data["rtf_phase"] = (
                 ["h_index", "f_ir", "pulse_id"],
-                np.angle(rtf),
+                np.angle(rtf).astype(np.float32),
             )
         else:
 
@@ -1750,11 +1754,11 @@ class ActiveFiberscopeManager(FiberscopeManager):
 
             xr_data["rtf_amp"] = (
                 ["h_index", "f_ir"],
-                np.abs(rtf),
+                np.abs(rtf).astype(np.float32),
             )
             xr_data["rtf_phase"] = (
                 ["h_index", "f_ir"],
-                np.angle(rtf),
+                np.angle(rtf).astype(np.float32),
             )
 
         return xr_data

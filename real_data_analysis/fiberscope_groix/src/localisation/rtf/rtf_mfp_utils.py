@@ -377,7 +377,7 @@ def get_dists_2(
 
 def get_dists_2_passive_event(
     fsm,
-    df_arr,
+    df_arr_library,
     seq_id_ref,
     ds_gps,
     t_start,
@@ -385,6 +385,7 @@ def get_dists_2_passive_event(
     fmin=600,
     fmax=800,
     dist_type="hermitian_angle",
+    use_weighted_mean=False,
     verbose=False,
 ):
 
@@ -414,12 +415,15 @@ def get_dists_2_passive_event(
     if verbose:
         print(comment)
 
-    fpath = os.path.join(fsm.root_data_sequence, f"sequence_{seq_id_ref}_rtf.nc")
+    fpath = os.path.join(
+        fsm.root_data_sequence, "active", f"sequence_{seq_id_ref}_rtf.nc"
+    )
     xr_seq_ref = xr.open_dataset(fpath)
-    df_seq_ref = df_arr.loc[df_arr["sequence_id"] == seq_id_ref]
+    df_seq_ref = df_arr_library.loc[df_arr_library["sequence_id"] == seq_id_ref]
     df_seq_ref = df_seq_ref.loc[
         df_seq_ref["pulse_id"].isin(xr_seq_ref.pulse_id.values)
     ]  # keep only detected pulse
+    xr_seq_ref = xr_seq_ref.sel(pulse_id=df_seq_ref["pulse_id"].values)
 
     ref_pos_e = df_seq_ref["emission_interp_e_gps"].values
     ref_pos_n = df_seq_ref["emission_interp_n_gps"].values
@@ -448,11 +452,110 @@ def get_dists_2_passive_event(
     # t_start = datetime.strptime(xr_passive.t_start, xr_passive.datetime_format)
 
     rtf_passive = xr_passive.rtf_amp_hat * np.exp(1j * xr_passive.rtf_phase_hat)
-    rtf_passive_4d = rtf_passive.values[..., np.newaxis]
+    rtf_passive_4d = rtf_passive.values[..., np.newaxis]  # Shape (nrcv, nf, nseg, 1)
+
+    import scipy.signal as sp
+
+    if use_weighted_mean:
+        start_seg = 0
+        end_seg = xr_passive.analysis_segment_duration
+        segment_shift = xr_passive.analysis_segment_duration * (
+            1 - xr_passive.analysis_segment_alpha_overlap
+        )
+
+        event_weights = []
+
+        for i_seg in range(xr_passive.sizes["segment_dt"]):
+            # Get signal corresponding to the current segment
+            passive_sig_seg = xr_passive.signal.sel(time=slice(start_seg, end_seg))
+            # Compute weights using signal from the reference receiver
+            passive_sig_seg_rcv_ref = passive_sig_seg.sel(
+                h_index=xr_passive.h_index_ref
+            )
+
+            # Compute PSD of the signal
+            ff, Pxx_seg = sp.welch(
+                passive_sig_seg_rcv_ref.values,
+                fs=xr_passive.fs,
+                nperseg=2
+                ** 13,  # TODO save those params in xr_passive to avoid hardcoding and potential errors
+                noverlap=int(2**13 * 0.75),
+                window="hann",
+            )
+
+            # Select frequency band of interest
+            idx_ff_in_band = np.logical_and(
+                (ff >= fmin_common_band), (ff <= fmax_common_band)
+            )
+            ff = ff[idx_ff_in_band]
+            Pxx_seg = Pxx_seg[idx_ff_in_band]
+            # Convert to dB
+            Pxx_seg = 10 * np.log10(Pxx_seg)
+
+            # Compute weights (normalized PSD)
+            w_k = (Pxx_seg + np.min(np.abs(Pxx_seg))) / np.max(
+                Pxx_seg + np.min(np.abs(Pxx_seg))
+            )
+            event_weights.append(w_k)
+
+            end_seg += segment_shift
+            start_seg += segment_shift
+
+        event_weights = np.array(event_weights)  # Shape (n_seg, nf)
+
+        # TODO adapt the section below for the library signal
+
+        # start_seg = 0
+        # end_seg = xr_passive.analysis_segment_duration
+        # segment_shift = xr_passive.analysis_segment_duration * (
+        #     1 - xr_passive.analysis_segment_alpha_overlap
+        # )
+        # library_weights = []
+        # for i_pulse in range(xr_seq_ref.sizes["pulse_id"]):
+        #     # TODO : implement this
+        #     # We need to compute the weights to use to compute the weighted mean hermitian angle
+
+        #     # Get signal corresponding to the current segment
+        #     passive_sig_seg = xr_passive.signal.sel(time=slice(start_seg, end_seg))
+        #     # Compute weights using signal from the reference receiver
+        #     passive_sig_seg_rcv_ref = passive_sig_seg.sel(
+        #         h_index=xr_passive.h_index_ref
+        #     )
+
+        #     # Compute PSD of the signal
+        #     ff, Pxx_seg = sp.welch(
+        #         passive_sig_seg_rcv_ref.values,
+        #         fs=xr_passive.fs,
+        #         nperseg=2
+        #         ** 13,  # TODO save those params in xr_passive to avoid hardcoding and potential errors
+        #         noverlap=int(2**13 * 0.75),
+        #         window="hann",
+        #     )
+
+        #     # Select frequency band of interest
+        #     idx_ff_in_band = np.logical_and(
+        #         (ff >= fmin_common_band), (ff <= fmax_common_band)
+        #     )
+        #     ff = ff[idx_ff_in_band]
+        #     Pxx_seg = Pxx_seg[idx_ff_in_band]
+        #     # Convert to dB
+        #     Pxx_seg = 10 * np.log10(Pxx_seg)
+
+        #     # Compute weights (normalized PSD)
+        #     w_k = (Pxx_seg + np.min(np.abs(Pxx_seg))) / np.max(
+        #         Pxx_seg + np.min(np.abs(Pxx_seg))
+        #     )
+        #     event_weights.append(w_k)
+
+        #     end_seg += segment_shift
+        #     start_seg += segment_shift
+
+        # library_weights = np.array(library_weights)  # Shape ?
 
     if dist_type == "hermitian_angle":
         # Iterate of each pulse of the library replica
         for pulse_id_ref in xr_seq_ref.pulse_id.values:
+
             rtf_ref_pulse_i = rtf_ref.sel(pulse_id=pulse_id_ref)
             rtf_dist = D_hermitian_angle_fast(
                 rtf_ref=rtf_ref_pulse_i.values,
@@ -465,15 +568,6 @@ def get_dists_2_passive_event(
     rtf_distances = rtf_distances.T
 
     # Build distances
-    # TODO store those information in xr_passive to avoid duplication and potential errors
-    # window_duration = 10
-    # window_overlap = 0.5
-    # for segment_id in xr_passive.segment_id.values:
-    #     # Emission positions for the current sugment
-    #     t_end_segment = window_duration * (1 + (segment_id - 1) * (1 - window_overlap))
-    #     t_centre_segment_s = t_end_segment - 0.5 * window_duration
-    #     t_centre_segment = t_start + timedelta(seconds=t_centre_segment_s)
-
     for segment_dt in xr_passive.segment_dt.values:
         gps_pos_segment = ds_gps.sel(time=segment_dt, method="nearest")
 

@@ -92,26 +92,37 @@ def rtf_mfp_animation(
     # -----------------------------------------------------------------------------
     # Figure
     # -----------------------------------------------------------------------------
-    fig, ax_traj = plt.subplots(
+    # fig, ax_traj = plt.subplots(
+    #     1,
+    #     1,
+    #     # constrained_layout=True,
+    #     figsize=(14, 10),
+    # )
+    fig, axes = plt.subplots(
+        2,
         1,
-        1,
-        constrained_layout=True,
-        figsize=(12, 10),
+        figsize=(14, 10),
+        gridspec_kw={"height_ratios": [20, 1]},
     )
+
+    ax_traj = axes[0]
+    ax_cbar = axes[1]
+
+    # reserve space for colorbar label
+    # fig.subplots_adjust(right=0.6)
+
     # fig = plt.figure(figsize=(12, 10), constrained_layout=True)
     # ax_traj = plt.gca()
 
     # -----------------------------------------------------------------------------
-    # Estimated localisation
+    # Initialisation
     # -----------------------------------------------------------------------------
     time_text = ax_traj.text(0.02, 0.95, "", transform=ax_traj.transAxes)
     ax_traj.set_xlabel("E [m]")
     ax_traj.set_ylabel("N [m]")
     ax_traj.set_aspect("equal")
 
-    # (line,) = ax_traj.plot([], [], lw=2, color="tab:blue", label="Trajectoire testée")
-    # (point,) = ax_traj.plot([], [], "o", color="red", zorder=15)
-
+    # Library replicas
     sc_lib = ax_traj.scatter(
         library_pos["e"],
         library_pos["n"],
@@ -125,15 +136,32 @@ def rtf_mfp_animation(
         label="Référence (pondérée)",
     )
 
-    # cbar = fig.colorbar(sc_lib, ax=ax_traj, pad=0.01)
-    # cbar.set_label(r"$\mu$")
+    # divider = make_axes_locatable(ax_cbar)
+    # cax = divider.append_axes("right", size="3%", pad=0.01)
 
-    divider = make_axes_locatable(ax_traj)
-    cax = divider.append_axes("right", size="3%", pad=0.05)
-
-    cbar = fig.colorbar(sc_lib, cax=cax)
+    cbar = fig.colorbar(
+        sc_lib,
+        cax=ax_cbar,
+        orientation="horizontal",
+        # shrink=0.5,
+    )
     cbar.set_label(r"$\mu$")
+    ax_cbar.xaxis.set_ticks_position("bottom")
 
+    # Receiver potsitions
+    # keys = ["obs1", "obs2", "obs3", "t1", "t2", "t3", "t4", "t5"]
+    keys = ["obs1", "obs2", "obs3"]
+
+    for ik, k in enumerate(keys):
+        ax_traj.scatter(
+            ds_gps_event.attrs[f"{k}_e_apriori"],
+            ds_gps_event.attrs[f"{k}_n_apriori"],
+            marker="D",
+            color=color(ik),
+            s=40,
+            zorder=10,
+            label=k.upper(),
+        )
     # -------------------------------------------------------------------------
     # Event trajectories artists
     # -------------------------------------------------------------------------
@@ -268,6 +296,7 @@ def rtf_mfp_animation(
         #     fps=fps,
         #     dpi=dpi,
         # )
+        # fig.tight_layout()
         ani.save(
             os.path.join(root_img, f"{output_fname}.mp4"),
             writer="ffmpeg",

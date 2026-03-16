@@ -22,6 +22,8 @@ import matplotlib.pyplot as plt
 from publication.publication_figure import PubFigure, color
 from real_data_analysis.fiberscope_groix.src.data_prepocessing.oceano_utils import (
     SBE39_reader,
+    SBE37_reader,
+    rbr_reader,
 )
 from misc import progression_bar
 from source.utils.utils_gps import gpx_to_csv, interpolate_gps
@@ -35,6 +37,11 @@ PROJECT_ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd"
 
 # SBE39_OBS_folder = r"D:\DATA_CAMPAGNES\DATA_Groix\SBE39_OBS"
 SBE39_OBS_FOLDER = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\SBE39_OBS"
+RBR_SOURCE_FOLDER = (
+    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\RBR"
+)
+SBE39_SOURCE_FOLDER = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\SBE39_SOURCE"
+SBE37_SOUNDING_FOLDER = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\fiberscope_groix_oct_2025\SBE37_SOUNDING"
 
 ROOT_GROIX_DATA = os.path.join(PROJECT_ROOT, "data", "fiberscope_groix_oct_2025")
 ROOT_GROIX_AIS = os.path.join(ROOT_GROIX_DATA, "ais")
@@ -49,11 +56,11 @@ AIS_SPATIONAV_FPATH = os.path.join(ROOT_GROIX_AIS, "SPATIONAV_AIS_001.csv")
 MMSI_JULES = 226916000
 
 # ======================================================================================================================
-# SBE DATA
+# SBE39 OBS DATA
 # ======================================================================================================================
 
 
-def interpolate_sbe_series(
+def interpolate_sbe39_obs_series(
     time_obs_series,
     raw_temperature_obs_series,
     raw_immersion_obs_series,
@@ -112,7 +119,9 @@ def interpolate_sbe_series(
     )
 
 
-def build_SBE_dataset(sbe_data_folder=SBE39_OBS_FOLDER, interpolation_time_step="30s"):
+def build_SBE39_obs_dataset(
+    sbe_data_folder=SBE39_OBS_FOLDER, interpolation_time_step="30s"
+):
 
     # Load SBE39 data
     SBE39_OBS6 = "\SBE39-945.asc"
@@ -150,7 +159,7 @@ def build_SBE_dataset(sbe_data_folder=SBE39_OBS_FOLDER, interpolation_time_step=
         immersion_obs2,
         immersion_obs3,
         time_interp,
-    ) = interpolate_sbe_series(
+    ) = interpolate_sbe39_obs_series(
         (time_obs1, time_obs2, time_obs3),
         (raw_temperature_obs1, raw_temperature_obs2, raw_temperature_obs3),
         (raw_immersion_obs1, raw_immersion_obs2, raw_immersion_obs3),
@@ -230,7 +239,7 @@ def build_SBE_dataset(sbe_data_folder=SBE39_OBS_FOLDER, interpolation_time_step=
     return ds_SBE
 
 
-def plot_SBE(ds_SBE):
+def plot_SBE39_obs(ds_SBE):
 
     fig, axs = plt.subplots(2, 1, sharex=True)
     ds_SBE.raw_immersion_obs1.plot.scatter(
@@ -304,6 +313,560 @@ def plot_SBE(ds_SBE):
 
     axs[0].legend(ncols=2)
     axs[1].legend(ncols=2)
+
+
+# ======================================================================================================================
+# SBE39 SOURCE DATA
+# ======================================================================================================================
+def interpolate_sbe39_src_series(
+    time_obs_series,
+    raw_temperature_src_series,
+    raw_immersion_src_series,
+    time_step="5s",
+):
+
+    # # Extract data for each sensor
+    # time_obs1, time_obs2, time_obs3 = time_obs_series
+    # raw_temperature_obs1, raw_temperature_obs2, raw_temperature_obs3 = (
+    #     raw_temperature_obs_series
+    # )
+    # raw_immersion_obs1, raw_immersion_obs2, raw_immersion_obs3 = (
+    #     raw_immersion_obs_series
+    # )
+
+    # Get time limits
+    t_start = np.max([time_obs1.min(), time_obs2.min(), time_obs3.min()])
+    t_end = np.min([time_obs1.max(), time_obs2.max(), time_obs3.max()])
+    # Round to closest
+    t_start = t_start.ceil(time_step)
+    t_end = t_end.floor(time_step)
+
+    # Set common time vector
+    time_interp = pd.date_range(t_start, t_end, freq=time_step)
+    # Convert to linear time
+    linear_time_interp = (time_interp - t_start) / np.timedelta64(
+        1, "s"
+    )  # Linear time from start
+
+    linear_time_obs1 = (time_obs1 - t_start) / np.timedelta64(1, "s")
+    linear_time_obs2 = (time_obs2 - t_start) / np.timedelta64(1, "s")
+    linear_time_obs3 = (time_obs3 - t_start) / np.timedelta64(1, "s")
+
+    # Interpolate
+    temperature_obs1 = np.interp(
+        linear_time_interp, linear_time_obs1, raw_temperature_obs1
+    )
+    temperature_obs2 = np.interp(
+        linear_time_interp, linear_time_obs2, raw_temperature_obs2
+    )
+    temperature_obs3 = np.interp(
+        linear_time_interp, linear_time_obs3, raw_temperature_obs3
+    )
+    immersion_obs1 = np.interp(linear_time_interp, linear_time_obs1, raw_immersion_obs1)
+    immersion_obs2 = np.interp(linear_time_interp, linear_time_obs2, raw_immersion_obs2)
+    immersion_obs3 = np.interp(linear_time_interp, linear_time_obs3, raw_immersion_obs3)
+
+    return (
+        temperature_obs1,
+        temperature_obs2,
+        temperature_obs3,
+        immersion_obs1,
+        immersion_obs2,
+        immersion_obs3,
+        time_interp,
+    )
+
+
+def build_oceano_src_dataset(
+    sbe_data_folder=SBE39_SOURCE_FOLDER,
+    rbr_data_folder=RBR_SOURCE_FOLDER,
+    interpolation_time_step="5s",
+):
+
+    # RBR_fold = r"D:\DATA_CAMPAGNES\DATA_Groix\RBR\207416_20251016_1535\207416_20251016_1535"
+    # RBR_file = "/207416_20251016_1535_data.txt"
+    # rbr = rbr_reader(RBR_file, RBR_fold)
+    # SBE39_Source_folder = r"D:\DATA_CAMPAGNES\DATA_Groix\SBE39_SOURCE"
+    # SBE39_Source_file = "\SBE39-331.asc"
+    # SBESource = SBE39_reader(SBE39_Source_file, SBE39_Source_folder)
+    # datetime_RBR = pd.to_datetime(rbr.Time, format="%Y-%m-%d %H:%M:%S.%f")
+    # datetime_SBE = pd.to_datetime(SBESource.time, format="%Y-%m-%d %H:%M:%S.%f")
+
+    # Load SBE39 data
+    sbe_source_fname = "\SBE39-331.asc"
+    sbe_src = SBE39_reader(sbe_source_fname, sbe_data_folder)
+
+    # Load RBR data
+    rbr_fname = "207416_20251016_1535.txt"
+    rbr_fpath = os.path.join(rbr_data_folder, rbr_fname)
+    rbr_src = rbr_reader(rbr_fpath)
+
+    # Convert time
+    datetime_sbe_src = pd.to_datetime(sbe_src.time, format="%Y-%m-%d %H:%M:%S.%f")
+    datetime_rbr_src = pd.to_datetime(
+        rbr_src["yyyy-mm-ddThh:mm:ss.sss"], format="%Y-%m-%d %H:%M:%S.%f"
+    )
+
+    raw_temperature_src = np.array(sbe_src.Ture)
+    raw_immersion_src = np.array(sbe_src.depth)
+
+    # Interpolation sur le même vecteur de temps
+    (
+        temperature_src,
+        immersion_src,
+        time_interp,
+    ) = interpolate_sbe39_src_series(
+        (time_obs1, time_obs2, time_obs3),
+        (raw_temperature_obs1, raw_temperature_obs2, raw_temperature_obs3),
+        (raw_immersion_obs1, raw_immersion_obs2, raw_immersion_obs3),
+        time_step=interpolation_time_step,
+    )
+
+    # Build xarray dataset
+    # Correspondance nomenclatures OBS : 1, 2, 3 = 4, 5, 6
+    ds_SBE = xr.Dataset(
+        data_vars=dict(
+            raw_temperature_obs1=(["time_obs1"], raw_temperature_obs1),
+            raw_temperature_obs2=(["time_obs2"], raw_temperature_obs2),
+            raw_temperature_obs3=(["time_obs3"], raw_temperature_obs3),
+            raw_immersion_obs1=(["time_obs1"], raw_immersion_obs1),
+            raw_immersion_obs2=(["time_obs2"], raw_immersion_obs2),
+            raw_immersion_obs3=(["time_obs3"], raw_immersion_obs3),
+            temperature_obs1=(["time"], temperature_obs1),
+            temperature_obs2=(["time"], temperature_obs2),
+            temperature_obs3=(["time"], temperature_obs3),
+            immersion_obs1=(["time"], immersion_obs1),
+            immersion_obs2=(["time"], immersion_obs2),
+            immersion_obs3=(["time"], immersion_obs3),
+        ),
+        coords=dict(
+            time=time_interp,
+            time_obs1=datetime_SBE4[ind4],
+            time_obs2=datetime_SBE5[ind5],
+            time_obs3=datetime_SBE6[ind6],
+        ),
+        attrs=dict(
+            description="Données SBE39 OBS. Les données ont été sélectionnées pour ne garder que les périodes où les capteurs sont immergés.",
+            source="Dossier SBE39_OBS (données SHOM)",
+            traitemement="Fonction SBE39_reader adaptée du script Read_oceano.py fourni par le SHOM. Les données (non raw) sont interpolées linéairement sur un vecteur de temps commun.",
+            notation="Les OBS sont renommés OBS1, OBS2 et OBS3 conformément à la nomenclature utilisée dans les documents de préparation de campagne. La correspondance est la suivante : OBS1 = SBE39-1123, OBS2 = SBE39-1362, OBS3 = SBE39-945",
+            interpolation_time_step=interpolation_time_step,
+        ),
+    )
+
+    # Add attributes to variables
+    ds_SBE.temperature_obs1.attrs["units"] = "°C"
+    ds_SBE.temperature_obs2.attrs["units"] = "°C"
+    ds_SBE.temperature_obs3.attrs["units"] = "°C"
+    ds_SBE.temperature_obs1.attrs["long_name"] = "Température"
+    ds_SBE.temperature_obs2.attrs["long_name"] = "Température"
+    ds_SBE.temperature_obs3.attrs["long_name"] = "Température"
+    ds_SBE.raw_temperature_obs1.attrs["units"] = "°C"
+    ds_SBE.raw_temperature_obs2.attrs["units"] = "°C"
+    ds_SBE.raw_temperature_obs3.attrs["units"] = "°C"
+    ds_SBE.raw_temperature_obs1.attrs["long_name"] = "Température"
+    ds_SBE.raw_temperature_obs2.attrs["long_name"] = "Température"
+    ds_SBE.raw_temperature_obs3.attrs["long_name"] = "Température"
+
+    ds_SBE.immersion_obs1.attrs["units"] = "m"
+    ds_SBE.immersion_obs2.attrs["units"] = "m"
+    ds_SBE.immersion_obs3.attrs["units"] = "m"
+    ds_SBE.immersion_obs1.attrs["long_name"] = "Immersion"
+    ds_SBE.immersion_obs2.attrs["long_name"] = "Immersion"
+    ds_SBE.immersion_obs3.attrs["long_name"] = "Immersion"
+    ds_SBE.raw_immersion_obs1.attrs["units"] = "m"
+    ds_SBE.raw_immersion_obs2.attrs["units"] = "m"
+    ds_SBE.raw_immersion_obs3.attrs["units"] = "m"
+    ds_SBE.raw_immersion_obs1.attrs["long_name"] = "Immersion"
+    ds_SBE.raw_immersion_obs2.attrs["long_name"] = "Immersion"
+    ds_SBE.raw_immersion_obs3.attrs["long_name"] = "Immersion"
+
+    ds_SBE.time.attrs["long_name"] = "Temps UTC"
+    ds_SBE.time_obs1.attrs["long_name"] = "Temps UTC"
+    ds_SBE.time_obs2.attrs["long_name"] = "Temps UTC"
+    ds_SBE.time_obs3.attrs["long_name"] = "Temps UTC"
+
+    # Overwriten by xarray automatically while saving to netcdf
+    ds_SBE.time.attrs["timezone"] = "UTC"
+    ds_SBE.time_obs1.attrs["timezone"] = "UTC"
+    ds_SBE.time_obs2.attrs["timezone"] = "UTC"
+    ds_SBE.time_obs3.attrs["timezone"] = "UTC"
+
+    return ds_SBE
+
+
+def plot_SBE39_src(ds_SBE):
+
+    fig, axs = plt.subplots(2, 1, sharex=True)
+    ds_SBE.raw_immersion_obs1.plot.scatter(
+        ax=axs[0], label="Raw OBS1", marker="x", s=1, color=color(0)
+    )
+    ds_SBE.raw_immersion_obs2.plot.scatter(
+        ax=axs[0], label="Raw OBS2", marker="x", s=1, color=color(1)
+    )
+    ds_SBE.raw_immersion_obs3.plot.scatter(
+        ax=axs[0], label="Raw OBS3", marker="x", s=1, color=color(2)
+    )
+    ds_SBE.immersion_obs1.plot(ax=axs[0], label="OBS1", color=color(3))
+    ds_SBE.immersion_obs2.plot(ax=axs[0], label="OBS2", color=color(4))
+    ds_SBE.immersion_obs3.plot(ax=axs[0], label="OBS3", color=color(5))
+    axs[0].set_xlabel("")
+
+    ds_SBE.raw_temperature_obs1.plot.scatter(
+        ax=axs[1], label="Raw OBS1", marker="x", s=1, color=color(0)
+    )
+    ds_SBE.raw_temperature_obs2.plot.scatter(
+        ax=axs[1], label="Raw OBS2", marker="x", s=1, color=color(1)
+    )
+    ds_SBE.raw_temperature_obs3.plot.scatter(
+        ax=axs[1], label="Raw OBS3", marker="x", s=1, color=color(2)
+    )
+    ds_SBE.temperature_obs1.plot(ax=axs[1], label="OBS1", color=color(3))
+    ds_SBE.temperature_obs2.plot(ax=axs[1], label="OBS2", color=color(4))
+    ds_SBE.temperature_obs3.plot(ax=axs[1], label="OBS3", color=color(5))
+
+    axs[0].legend(ncols=2)
+    axs[1].legend(ncols=2)
+
+    t_zoom = slice(
+        datetime.datetime(2025, 10, 15, 11, 30, 0),
+        datetime.datetime(2025, 10, 15, 12, 30, 0),
+    )
+    fig, axs = plt.subplots(2, 1, sharex=True)
+
+    ds_SBE.raw_immersion_obs1.sel(time_obs1=t_zoom).plot.scatter(
+        ax=axs[0], label="Raw OBS1", marker="x", s=1, color=color(0)
+    )
+    ds_SBE.raw_immersion_obs2.sel(time_obs2=t_zoom).plot.scatter(
+        ax=axs[0], label="Raw OBS2", marker="x", s=1, color=color(1)
+    )
+    ds_SBE.raw_immersion_obs3.sel(time_obs3=t_zoom).plot.scatter(
+        ax=axs[0], label="Raw OBS3", marker="x", s=1, color=color(2)
+    )
+    ds_SBE.sel(time=t_zoom).immersion_obs1.plot(ax=axs[0], label="OBS1", color=color(3))
+    ds_SBE.sel(time=t_zoom).immersion_obs2.plot(ax=axs[0], label="OBS2", color=color(4))
+    ds_SBE.sel(time=t_zoom).immersion_obs3.plot(ax=axs[0], label="OBS3", color=color(5))
+    axs[0].set_xlabel("")
+
+    ds_SBE.raw_temperature_obs1.sel(time_obs1=t_zoom).plot.scatter(
+        ax=axs[1], label="Raw OBS1", marker="x", s=1, color=color(0)
+    )
+    ds_SBE.raw_temperature_obs2.sel(time_obs2=t_zoom).plot.scatter(
+        ax=axs[1], label="Raw OBS2", marker="x", s=1, color=color(1)
+    )
+    ds_SBE.raw_temperature_obs3.sel(time_obs3=t_zoom).plot.scatter(
+        ax=axs[1], label="Raw OBS3", marker="x", s=1, color=color(2)
+    )
+    ds_SBE.sel(time=t_zoom).temperature_obs1.plot(
+        ax=axs[1], label="OBS1", color=color(3)
+    )
+    ds_SBE.sel(time=t_zoom).temperature_obs2.plot(
+        ax=axs[1], label="OBS2", color=color(4)
+    )
+    ds_SBE.sel(time=t_zoom).temperature_obs3.plot(
+        ax=axs[1], label="OBS3", color=color(5)
+    )
+
+    axs[0].legend(ncols=2)
+    axs[1].legend(ncols=2)
+
+
+# ======================================================================================================================
+# SBE37 (sounding) DATA
+# ======================================================================================================================
+
+
+def interpolate_sbe37_sounding_series(
+    time_obs_series,
+    raw_temperature_obs_series,
+    raw_immersion_obs_series,
+    time_step="30s",
+):
+
+    # TODO : implement the following steps for SBE37 data, as for SBE39 data
+    pass
+    # # Extract data for each sensor
+    # time_obs1, time_obs2, time_obs3 = time_obs_series
+    # raw_temperature_obs1, raw_temperature_obs2, raw_temperature_obs3 = (
+    #     raw_temperature_obs_series
+    # )
+    # raw_immersion_obs1, raw_immersion_obs2, raw_immersion_obs3 = (
+    #     raw_immersion_obs_series
+    # )
+
+    # # Get time limits
+    # t_start = np.max([time_obs1.min(), time_obs2.min(), time_obs3.min()])
+    # t_end = np.min([time_obs1.max(), time_obs2.max(), time_obs3.max()])
+    # # Round to closest
+    # t_start = t_start.ceil(time_step)
+    # t_end = t_end.floor(time_step)
+
+    # # Set common time vector
+    # time_interp = pd.date_range(t_start, t_end, freq=time_step)
+    # # Convert to linear time
+    # linear_time_interp = (time_interp - t_start) / np.timedelta64(
+    #     1, "s"
+    # )  # Linear time from start
+
+    # linear_time_obs1 = (time_obs1 - t_start) / np.timedelta64(1, "s")
+    # linear_time_obs2 = (time_obs2 - t_start) / np.timedelta64(1, "s")
+    # linear_time_obs3 = (time_obs3 - t_start) / np.timedelta64(1, "s")
+
+    # # Interpolate
+    # temperature_obs1 = np.interp(
+    #     linear_time_interp, linear_time_obs1, raw_temperature_obs1
+    # )
+    # temperature_obs2 = np.interp(
+    #     linear_time_interp, linear_time_obs2, raw_temperature_obs2
+    # )
+    # temperature_obs3 = np.interp(
+    #     linear_time_interp, linear_time_obs3, raw_temperature_obs3
+    # )
+    # immersion_obs1 = np.interp(linear_time_interp, linear_time_obs1, raw_immersion_obs1)
+    # immersion_obs2 = np.interp(linear_time_interp, linear_time_obs2, raw_immersion_obs2)
+    # immersion_obs3 = np.interp(linear_time_interp, linear_time_obs3, raw_immersion_obs3)
+
+    # return (
+    #     temperature_obs1,
+    #     temperature_obs2,
+    #     temperature_obs3,
+    #     immersion_obs1,
+    #     immersion_obs2,
+    #     immersion_obs3,
+    #     time_interp,
+    # )
+
+
+def build_SBE37_sounding_dataset(
+    sbe_data_folder=SBE37_SOUNDING_FOLDER, interpolation_time_step="1s"
+):
+
+    # Load SBE37 data
+    serial_nb_1 = "20453"
+    serial_nb_2 = "23773"
+
+    folder_serial_1 = os.path.join(sbe_data_folder, f"SBE37_{serial_nb_1}")
+    folder_serial_2 = os.path.join(sbe_data_folder, f"SBE37_{serial_nb_2}")
+
+    # Scan folders for each sensor and get .cnv files
+    cnv_files = []
+    for folder_serial in [folder_serial_1, folder_serial_2]:
+        for dirpath, dirnames, filenames in os.walk(folder_serial_1):
+            cnv_filepath = [
+                os.path.join(dirpath, f) for f in filenames if f.endswith(".cnv")
+            ]
+            cnv_files.extend(cnv_filepath)
+
+    # Load data from cnv files
+    sbe37_data = {}
+    for i, fpath in enumerate(cnv_files):
+        sbe37_ssp = SBE37_reader(cnv_filepath=fpath)
+        # sbe37_ssp.segmente_data()     # For the moment, we keep the whole series, but we could segment it in immersion / emersion phases based on the immersion variable (or depth)
+
+        filename = os.path.basename(fpath)
+        serial_nb = filename.split("_")[1]  # 037xxxxx
+        date = "".join(filename.split("_")[2:]).split(".")[0]  # YYYYMMDD
+        date = datetime.datetime.strptime(
+            date, "%Y%m%d"
+        ).date()  # Convert to datetime.date
+
+        sbe37_data[i] = {
+            "serial_nb": serial_nb,
+            "date": date,
+            "ssp": sbe37_ssp,
+        }
+
+    # Derive UTC time from time infomation
+    for i_sounding in sbe37_data.keys():
+        sbe37_ssp = sbe37_data[i_sounding]
+        # sbe37_ssp
+
+    # TODO : implement the following steps for SBE37 data, as for SBE39 data
+
+    # datetime_SBE4 = pd.to_datetime(SBE4.time, format="%Y-%m-%d %H:%M:%S.%f")
+    # datetime_SBE5 = pd.to_datetime(SBE5.time, format="%Y-%m-%d %H:%M:%S.%f")
+    # datetime_SBE6 = pd.to_datetime(SBE6.time, format="%Y-%m-%d %H:%M:%S.%f")
+
+    # # sélection des périodes immergées
+    # ind4 = np.where((np.array(SBE4.depth) > 20))[0]
+    # ind5 = np.where((np.array(SBE5.depth) > 20))[0]
+    # ind6 = np.where((np.array(SBE6.depth) > 29))[0]
+
+    # time_obs1 = datetime_SBE4[ind4]
+
+    # raw_temperature_obs1 = np.array(SBE4.Ture)[ind4]
+    # raw_temperature_obs2 = np.array(SBE5.Ture)[ind5]
+    # raw_temperature_obs3 = np.array(SBE6.Ture)[ind6]
+    # raw_immersion_obs1 = np.array(SBE4.depth)[ind4]
+    # raw_immersion_obs2 = np.array(SBE5.depth)[ind5]
+    # raw_immersion_obs3 = np.array(SBE6.depth)[ind6]
+
+    # # Interpolation sur le même vecteur de temps
+    # (
+    #     temperature_obs1,
+    #     temperature_obs2,
+    #     temperature_obs3,
+    #     immersion_obs1,
+    #     immersion_obs2,
+    #     immersion_obs3,
+    #     time_interp,
+    # ) = interpolate_sbe37_sounding_series(
+    #     (time_obs1, time_obs2, time_obs3),
+    #     (raw_temperature_obs1, raw_temperature_obs2, raw_temperature_obs3),
+    #     (raw_immersion_obs1, raw_immersion_obs2, raw_immersion_obs3),
+    #     time_step=interpolation_time_step,
+    # )
+
+    # # Build xarray dataset
+    # # Correspondance nomenclatures OBS : 1, 2, 3 = 4, 5, 6
+    # ds_SBE = xr.Dataset(
+    #     data_vars=dict(
+    #         raw_temperature_obs1=(["time_obs1"], raw_temperature_obs1),
+    #         raw_temperature_obs2=(["time_obs2"], raw_temperature_obs2),
+    #         raw_temperature_obs3=(["time_obs3"], raw_temperature_obs3),
+    #         raw_immersion_obs1=(["time_obs1"], raw_immersion_obs1),
+    #         raw_immersion_obs2=(["time_obs2"], raw_immersion_obs2),
+    #         raw_immersion_obs3=(["time_obs3"], raw_immersion_obs3),
+    #         temperature_obs1=(["time"], temperature_obs1),
+    #         temperature_obs2=(["time"], temperature_obs2),
+    #         temperature_obs3=(["time"], temperature_obs3),
+    #         immersion_obs1=(["time"], immersion_obs1),
+    #         immersion_obs2=(["time"], immersion_obs2),
+    #         immersion_obs3=(["time"], immersion_obs3),
+    #     ),
+    #     coords=dict(
+    #         time=time_interp,
+    #         time_obs1=datetime_SBE4[ind4],
+    #         time_obs2=datetime_SBE5[ind5],
+    #         time_obs3=datetime_SBE6[ind6],
+    #     ),
+    #     attrs=dict(
+    #         description="Données SBE39 OBS. Les données ont été sélectionnées pour ne garder que les périodes où les capteurs sont immergés.",
+    #         source="Dossier SBE39_OBS (données SHOM)",
+    #         traitemement="Fonction SBE39_reader adaptée du script Read_oceano.py fourni par le SHOM. Les données (non raw) sont interpolées linéairement sur un vecteur de temps commun.",
+    #         notation="Les OBS sont renommés OBS1, OBS2 et OBS3 conformément à la nomenclature utilisée dans les documents de préparation de campagne. La correspondance est la suivante : OBS1 = SBE39-1123, OBS2 = SBE39-1362, OBS3 = SBE39-945",
+    #         interpolation_time_step=interpolation_time_step,
+    #     ),
+    # )
+
+    # # Add attributes to variables
+    # ds_SBE.temperature_obs1.attrs["units"] = "°C"
+    # ds_SBE.temperature_obs2.attrs["units"] = "°C"
+    # ds_SBE.temperature_obs3.attrs["units"] = "°C"
+    # ds_SBE.temperature_obs1.attrs["long_name"] = "Température"
+    # ds_SBE.temperature_obs2.attrs["long_name"] = "Température"
+    # ds_SBE.temperature_obs3.attrs["long_name"] = "Température"
+    # ds_SBE.raw_temperature_obs1.attrs["units"] = "°C"
+    # ds_SBE.raw_temperature_obs2.attrs["units"] = "°C"
+    # ds_SBE.raw_temperature_obs3.attrs["units"] = "°C"
+    # ds_SBE.raw_temperature_obs1.attrs["long_name"] = "Température"
+    # ds_SBE.raw_temperature_obs2.attrs["long_name"] = "Température"
+    # ds_SBE.raw_temperature_obs3.attrs["long_name"] = "Température"
+
+    # ds_SBE.immersion_obs1.attrs["units"] = "m"
+    # ds_SBE.immersion_obs2.attrs["units"] = "m"
+    # ds_SBE.immersion_obs3.attrs["units"] = "m"
+    # ds_SBE.immersion_obs1.attrs["long_name"] = "Immersion"
+    # ds_SBE.immersion_obs2.attrs["long_name"] = "Immersion"
+    # ds_SBE.immersion_obs3.attrs["long_name"] = "Immersion"
+    # ds_SBE.raw_immersion_obs1.attrs["units"] = "m"
+    # ds_SBE.raw_immersion_obs2.attrs["units"] = "m"
+    # ds_SBE.raw_immersion_obs3.attrs["units"] = "m"
+    # ds_SBE.raw_immersion_obs1.attrs["long_name"] = "Immersion"
+    # ds_SBE.raw_immersion_obs2.attrs["long_name"] = "Immersion"
+    # ds_SBE.raw_immersion_obs3.attrs["long_name"] = "Immersion"
+
+    # ds_SBE.time.attrs["long_name"] = "Temps UTC"
+    # ds_SBE.time_obs1.attrs["long_name"] = "Temps UTC"
+    # ds_SBE.time_obs2.attrs["long_name"] = "Temps UTC"
+    # ds_SBE.time_obs3.attrs["long_name"] = "Temps UTC"
+
+    # # Overwriten by xarray automatically while saving to netcdf
+    # ds_SBE.time.attrs["timezone"] = "UTC"
+    # ds_SBE.time_obs1.attrs["timezone"] = "UTC"
+    # ds_SBE.time_obs2.attrs["timezone"] = "UTC"
+    # ds_SBE.time_obs3.attrs["timezone"] = "UTC"
+
+    # return ds_SBE
+
+
+def plot_SBE37_sounding(ds_SBE):
+
+    # TODO : implement the following steps for SBE37 data, as for SBE39 data
+    pass
+
+    # fig, axs = plt.subplots(2, 1, sharex=True)
+    # ds_SBE.raw_immersion_obs1.plot.scatter(
+    #     ax=axs[0], label="Raw OBS1", marker="x", s=1, color=color(0)
+    # )
+    # ds_SBE.raw_immersion_obs2.plot.scatter(
+    #     ax=axs[0], label="Raw OBS2", marker="x", s=1, color=color(1)
+    # )
+    # ds_SBE.raw_immersion_obs3.plot.scatter(
+    #     ax=axs[0], label="Raw OBS3", marker="x", s=1, color=color(2)
+    # )
+    # ds_SBE.immersion_obs1.plot(ax=axs[0], label="OBS1", color=color(3))
+    # ds_SBE.immersion_obs2.plot(ax=axs[0], label="OBS2", color=color(4))
+    # ds_SBE.immersion_obs3.plot(ax=axs[0], label="OBS3", color=color(5))
+    # axs[0].set_xlabel("")
+
+    # ds_SBE.raw_temperature_obs1.plot.scatter(
+    #     ax=axs[1], label="Raw OBS1", marker="x", s=1, color=color(0)
+    # )
+    # ds_SBE.raw_temperature_obs2.plot.scatter(
+    #     ax=axs[1], label="Raw OBS2", marker="x", s=1, color=color(1)
+    # )
+    # ds_SBE.raw_temperature_obs3.plot.scatter(
+    #     ax=axs[1], label="Raw OBS3", marker="x", s=1, color=color(2)
+    # )
+    # ds_SBE.temperature_obs1.plot(ax=axs[1], label="OBS1", color=color(3))
+    # ds_SBE.temperature_obs2.plot(ax=axs[1], label="OBS2", color=color(4))
+    # ds_SBE.temperature_obs3.plot(ax=axs[1], label="OBS3", color=color(5))
+
+    # axs[0].legend(ncols=2)
+    # axs[1].legend(ncols=2)
+
+    # t_zoom = slice(
+    #     datetime.datetime(2025, 10, 15, 11, 30, 0),
+    #     datetime.datetime(2025, 10, 15, 12, 30, 0),
+    # )
+    # fig, axs = plt.subplots(2, 1, sharex=True)
+
+    # ds_SBE.raw_immersion_obs1.sel(time_obs1=t_zoom).plot.scatter(
+    #     ax=axs[0], label="Raw OBS1", marker="x", s=1, color=color(0)
+    # )
+    # ds_SBE.raw_immersion_obs2.sel(time_obs2=t_zoom).plot.scatter(
+    #     ax=axs[0], label="Raw OBS2", marker="x", s=1, color=color(1)
+    # )
+    # ds_SBE.raw_immersion_obs3.sel(time_obs3=t_zoom).plot.scatter(
+    #     ax=axs[0], label="Raw OBS3", marker="x", s=1, color=color(2)
+    # )
+    # ds_SBE.sel(time=t_zoom).immersion_obs1.plot(ax=axs[0], label="OBS1", color=color(3))
+    # ds_SBE.sel(time=t_zoom).immersion_obs2.plot(ax=axs[0], label="OBS2", color=color(4))
+    # ds_SBE.sel(time=t_zoom).immersion_obs3.plot(ax=axs[0], label="OBS3", color=color(5))
+    # axs[0].set_xlabel("")
+
+    # ds_SBE.raw_temperature_obs1.sel(time_obs1=t_zoom).plot.scatter(
+    #     ax=axs[1], label="Raw OBS1", marker="x", s=1, color=color(0)
+    # )
+    # ds_SBE.raw_temperature_obs2.sel(time_obs2=t_zoom).plot.scatter(
+    #     ax=axs[1], label="Raw OBS2", marker="x", s=1, color=color(1)
+    # )
+    # ds_SBE.raw_temperature_obs3.sel(time_obs3=t_zoom).plot.scatter(
+    #     ax=axs[1], label="Raw OBS3", marker="x", s=1, color=color(2)
+    # )
+    # ds_SBE.sel(time=t_zoom).temperature_obs1.plot(
+    #     ax=axs[1], label="OBS1", color=color(3)
+    # )
+    # ds_SBE.sel(time=t_zoom).temperature_obs2.plot(
+    #     ax=axs[1], label="OBS2", color=color(4)
+    # )
+    # ds_SBE.sel(time=t_zoom).temperature_obs3.plot(
+    #     ax=axs[1], label="OBS3", color=color(5)
+    # )
+
+    # axs[0].legend(ncols=2)
+    # axs[1].legend(ncols=2)
 
 
 # ======================================================================================================================

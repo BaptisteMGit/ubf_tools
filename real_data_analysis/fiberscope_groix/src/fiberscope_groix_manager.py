@@ -1835,7 +1835,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
         """
 
         if self.verbose:
-            print(f"RTF processing of passive recording.")
+            print(f"\nRTF processing of passive recording")
 
         ### Step 1 - Load audio data for the required analysis window ###
         xr_data = self.load_recording(t_start, t_end)
@@ -1964,7 +1964,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
         """
 
         if self.verbose:
-            pass
+            print(f"RTF feature estimation...")
 
         # Derive rtf from recordings
         xr_data = self.get_rtf(xr_data=xr_data, Rv_global=Rv_global)
@@ -2196,8 +2196,17 @@ class PassiveFiberscopeManager(FiberscopeManager):
         tstart = 0
         tend = self.analysis_segment_duration
 
+        prev_progress = 0
+
         # Process sucessive windows
         for i_window in range(n_window):
+
+            prev_progress = progression_bar(
+                index=i_window + 1,
+                index0=0,
+                indexf=n_window,
+                prev_progress=prev_progress,
+            )
 
             # Select the corresponding time window
             x = xr_data.sel(time=slice(tstart, tend))

@@ -210,12 +210,17 @@ class RTF_MFP_Library:
         """
         Method to populate the library
         """
-        self.derive_replicas(
+        # Derive replicas
+        active_replicas_info, passive_replicas_info = self.derive_replicas(
             active_replicas_args=active_replicas_args,
             passive_replicas_args=passive_replicas_args,
         )
-        # self
-        pass
+
+        # Load derived replicas
+        self.load_replicas(
+            active_replicas_info=active_replicas_info,
+            passive_replicas_info=passive_replicas_info,
+        )
 
     def derive_replicas(
         self, active_replicas_args: dict = {}, passive_replicas_args: dict = {}
@@ -223,15 +228,22 @@ class RTF_MFP_Library:
         """
         Method to derive replicas
         """
-        replica_sequence_ids = self.derive_replicas_active(
+        active_replicas_info = self.derive_replicas_active(
             active_replicas_args=active_replicas_args
         )
-        self.derive_replicas_passive(passive_replicas_args=passive_replicas_args)
+        passive_replicas_info = self.derive_replicas_passive(
+            passive_replicas_args=passive_replicas_args
+        )
 
-    def derive_replicas_active(self, active_replicas_args: dict = {}):
+        return active_replicas_info, passive_replicas_info
+
+    def derive_replicas_active(self, active_replicas_args: dict = {}) -> dict:
         """
         Method to derive replicas (active source)
         """
+        if self.verbose:
+            print("\nDeriving replicas for active source...")
+
         # Unpack arguments
         replica_sequence_ids = active_replicas_args.get(
             "replica_sequence_ids", [144]
@@ -239,30 +251,57 @@ class RTF_MFP_Library:
         replica_sequence_ids = np.atleast_1d(
             replica_sequence_ids
         )  # Ensure it's an array
+        load_precomputed_replicas = active_replicas_args.get(
+            "load_precomputed_replicas", True
+        )  # If True, will load precomputed replicas if they exist, otherwise will compute them
 
-        df_arrivals_selected = self.df_arrivals.loc[
-            self.df_arrivals["sequence_id"].isin(replica_sequence_ids)
-        ]
+        replica_sequence_ids_to_compute = (
+            replica_sequence_ids.copy()
+        )  # Initialize list of sequence ids to compute
+        if load_precomputed_replicas:
+            for rep_seq_id in replica_sequence_ids:
+                rep_filepath = os.path.join(
+                    self.root_rtf_data_active, f"sequence_{rep_seq_id}_rtf.nc"
+                )
+                if os.path.exists(rep_filepath):
+                    print(
+                        f"Precomputed replica for sequence {rep_seq_id} found at {rep_filepath}. This sequence will be loaded instead of being computed."
+                    )
+                    # Remove this sequence id from the list of sequence ids to compute
+                    replica_sequence_ids_to_compute = replica_sequence_ids_to_compute[
+                        replica_sequence_ids_to_compute != rep_seq_id
+                    ]
 
-        # # Remove pulse along the transect (quicker)
-        # pulse_max = 250
-        # df_library = df_library.loc[df_library["pulse_id"] <= pulse_max]
+        if len(replica_sequence_ids_to_compute) > 0:
+            df_arrivals_selected = self.df_arrivals.loc[
+                self.df_arrivals["sequence_id"].isin(replica_sequence_ids_to_compute)
+            ]
 
-        # Reset index
-        df_arrivals_selected = df_arrivals_selected.reset_index(drop=True)
+            # # Remove pulse along the transect (quicker)
+            # pulse_max = 250
+            # df_library = df_library.loc[df_library["pulse_id"] <= pulse_max]
 
-        # Derive replicas for selected sequences
-        self.fsm_active.process_analysis(
-            df_arrivals=df_arrivals_selected,
-            set_stft_props=False,
-        )
+            # Reset index
+            df_arrivals_selected = df_arrivals_selected.reset_index(drop=True)
 
-        return replica_sequence_ids
+            # Derive replicas for selected sequences
+            self.fsm_active.process_analysis(
+                df_arrivals=df_arrivals_selected,
+                set_stft_props=False,
+            )
 
-    def derive_replicas_passive(self, passive_replicas_args: dict = {}):
+        active_replicas_info = {
+            "replica_sequence_ids": replica_sequence_ids,
+        }
+        return active_replicas_info
+
+    def derive_replicas_passive(self, passive_replicas_args: dict = {}) -> dict:
         """
         Method to derive replicas (passive source)
         """
+        if self.verbose:
+            print("\nDeriving replicas for passive source...")
+
         # Unpack arguments
         start_datetimes = passive_replicas_args.get(
             "start_datetimes",
@@ -274,14 +313,85 @@ class RTF_MFP_Library:
             [datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00)],
         )
         end_datetimes = np.atleast_1d(end_datetimes)
+        load_precomputed_replicas = passive_replicas_args.get(
+            "load_precomputed_replicas", True
+        )  # If True, will load precomputed replicas if they exist, otherwise will compute them
 
         for start_dt, end_dt in zip(start_datetimes, end_datetimes):
+
+            if load_precomputed_replicas:
+                record_id = f"passive_{datetime.strftime(start_dt, self.fsm_active.datetime_fmt)}_to_{datetime.strftime(end_dt, self.fsm_active.datetime_fmt)}"
+                rep_filepath = os.path.join(
+                    self.root_rtf_data_passive, f"sequence_{record_id}_rtf.nc"
+                )
+                if os.path.exists(rep_filepath):
+                    print(
+                        f"Precomputed replica for passive segment {start_dt} - {end_dt} found at {rep_filepath}. This segment will be loaded instead of being computed."
+                    )
+                    continue
 
             self.fsm_passive.process_analysis(
                 t_start=start_dt,
                 t_end=end_dt,
                 set_stft_props=False,
             )
+
+        passive_replicas_info = {
+            "start_datetimes": start_datetimes,
+            "end_datetimes": end_datetimes,
+        }
+
+        return passive_replicas_info
+
+    def load_replicas(
+        self, active_replicas_info: dict = {}, passive_replicas_info: dict = {}
+    ):
+        """
+        Method to load replicas
+        """
+        self.load_active_replicas(active_replicas_info=active_replicas_info)
+        self.load_passive_replicas(passive_replicas_info=passive_replicas_info)
+
+    def load_active_replicas(self, active_replicas_info: dict = {}):
+        """
+        Method to load replicas (active source)
+        """
+        rep_seq_ids = active_replicas_info.get("replica_sequence_ids", [])
+
+        for rep_seq_id in rep_seq_ids:
+            # Load replica data
+            rep_filepath = os.path.join(
+                self.root_rtf_data_active, f"sequence_{rep_seq_id}_rtf.nc"
+            )
+            if os.path.exists(rep_filepath):
+                ds_replica = xr.open_dataset(rep_filepath)
+            else:
+                print(
+                    f"Replica file for sequence {rep_seq_id} not found at {rep_filepath}."
+                )
+                # Remove this sequence id from the list of sequence ids
+                rep_seq_ids = rep_seq_ids[rep_seq_ids != rep_seq_id]
+
+    def load_passive_replicas(self, passive_replicas_info: dict = {}):
+        """
+        Method to load replicas (passive source)
+        """
+        start_datetimes = passive_replicas_info.get("start_datetimes", [])
+        end_datetimes = passive_replicas_info.get("end_datetimes", [])
+
+        for start_dt, end_dt in zip(start_datetimes, end_datetimes):
+            # Load replica data
+            record_id = f"passive_{datetime.strftime(start_dt, self.fsm_active.datetime_fmt)}_to_{datetime.strftime(end_dt, self.fsm_active.datetime_fmt)}"
+            rep_filepath = os.path.join(
+                self.root_rtf_data_passive, f"sequence_{record_id}_rtf.nc"
+            )
+
+            if os.path.exists(rep_filepath):
+                ds_replica = xr.open_dataset(rep_filepath)
+            else:
+                print(
+                    f"Replica file for passive segment {start_dt} - {end_dt} not found at {rep_filepath}."
+                )
 
 
 # ======================================================================================================================
@@ -322,9 +432,22 @@ def test():
     )
 
     # Populate library
+    active_replicas_args = {
+        "replica_sequence_ids": [144],
+        "load_precomputed_replicas": True,
+    }
+    passive_replicas_args = {
+        "start_datetimes": [
+            datetime(year=2025, month=10, day=15, hour=00, minute=15, second=00)
+        ],
+        "end_datetimes": [
+            datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00)
+        ],
+        "load_precomputed_replicas": True,
+    }
     rtf_mfp_library.populate(
-        active_replicas_args={"replica_sequence_ids": [144]},
-        passive_replicas_args={},
+        active_replicas_args=active_replicas_args,
+        passive_replicas_args=passive_replicas_args,
     )
 
 

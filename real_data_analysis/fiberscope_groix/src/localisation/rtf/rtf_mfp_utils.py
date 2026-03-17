@@ -34,6 +34,10 @@ from real_data_analysis.fiberscope_groix.src.fiberscope_groix_manager import (
     BandFilter,
 )
 
+from real_data_analysis.fiberscope_groix.src.localisation.rtf.rtf_mfp_animation_utils import (
+    rtf_mfp_animation,
+)
+
 
 # def get_dists(fsm, df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
 
@@ -900,10 +904,10 @@ def process_event(ds_wav, t_start, t_end, **process_event_kwargs):
     h_index_ref = process_event_kwargs.get("h_index_ref", 1)
     tau_ir = process_event_kwargs.get("tau_ir", 3)
     plot_feature = process_event_kwargs.get("plot_feature", False)
-    process_pulse_one_by_one = process_event_kwargs.get(
-        "process_pulse_one_by_one", True
-    )
-    estimate_ir_duration = process_event_kwargs.get("estimate_ir_duration", False)
+    # process_pulse_one_by_one = process_event_kwargs.get(
+    #     "process_pulse_one_by_one", True
+    # )
+    # estimate_ir_duration = process_event_kwargs.get("estimate_ir_duration", False)
     rtf_estimator = process_event_kwargs.get("rtf_estimator", "cs-evd")
     analysis_segment_duration = process_event_kwargs.get(
         "analysis_segment_duration", 10
@@ -932,13 +936,14 @@ def process_event(ds_wav, t_start, t_end, **process_event_kwargs):
     # estimate_ir_duration = False
 
     fsm = PassiveFiberscopeManager(
+        ds_wav=ds_wav,
         root_processed_data=root_processed_data,
         h_index_ref=h_index_ref,
         plot_feature=plot_feature,
-        bandfilter=bandfilter,
-        tau_ir=tau_ir,
-        process_pulse_one_by_one=process_pulse_one_by_one,
-        estimate_ir_duration=estimate_ir_duration,
+        # bandfilter=bandfilter,
+        # tau_ir=tau_ir,
+        # process_pulse_one_by_one=process_pulse_one_by_one,
+        # estimate_ir_duration=estimate_ir_duration,
         rtf_estimator=rtf_estimator,
         verbose=verbose,
         analysis_segment_duration=analysis_segment_duration,
@@ -952,7 +957,6 @@ def process_event(ds_wav, t_start, t_end, **process_event_kwargs):
     if compute_rtf_event:
         # Comment below if already computed
         fsm.process_analysis(
-            ds_wav,
             t_start,
             t_end,
             set_stft_props=False,
@@ -1388,7 +1392,6 @@ def process_batch(
     t_end,
     root_results_fig,
     root_results_data,
-    compute_rtf_event=True,
     compute_animation=True,
     theta_dist_kwargs={},
     process_event_kwargs={},

@@ -73,7 +73,8 @@ class FiberscopeManager:
 
     def __init__(
         self,
-        root_processed_data: str,
+        ds_wav: xr.Dataset = None,
+        root_processed_data: str = "",
         root_img: str = p.root_img,
         bandfilter: BandFilter = None,
         tau_ir: float = p.tau_ir,
@@ -127,8 +128,9 @@ class FiberscopeManager:
         self.rtf_estimator = rtf_estimator
 
         # Link to  wav dataset
-        self.ds_wav_fpath = os.path.join(self.root_processed_data, "channel_H_wav.nc")
-        self.ds_wav = xr.open_dataset(self.ds_wav_fpath)
+        # self.ds_wav_fpath = os.path.join(self.root_processed_data, "channel_H_wav.nc")
+        # self.ds_wav = xr.open_dataset(self.ds_wav_fpath)
+        self.ds_wav = ds_wav
         self.datetime_fmt = self.ds_wav.attrs["datetime_format"]
 
         # Define usefull objects
@@ -580,7 +582,8 @@ class ActiveFiberscopeManager(FiberscopeManager):
 
     def __init__(
         self,
-        root_processed_data: str,
+        ds_wav: xr.Dataset = None,
+        root_processed_data: str = "",
         root_img: str = p.root_img,
         bandfilter: BandFilter = None,
         tau_ir: float = p.tau_ir,
@@ -602,6 +605,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
         """
         # Using super() to initialize the parent class
         super().__init__(
+            ds_wav=ds_wav,
             root_processed_data=root_processed_data,
             root_img=root_img,
             bandfilter=bandfilter,
@@ -1060,7 +1064,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
         self,
         df_arrivals,
         set_stft_props=True,
-    ):
+    ) -> None:
 
         i_test = 0
         prev_progress = 0
@@ -1078,7 +1082,9 @@ class ActiveFiberscopeManager(FiberscopeManager):
         n_seq = sequence_ids.size
 
         if self.verbose:
-            print(f"RTF processing of sequences {sequence_ids} ({n_seq})")
+            print(
+                f"\nRTF processing of sequences {sequence_ids} (nb of sequences = {n_seq})"
+            )
 
         for seq_id in sequence_ids:
 
@@ -1123,7 +1129,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
     ):
 
         if self.verbose:
-            print(f"Processing sequence {sequence_id} - RTF estimation")
+            print(f"\nRTF feature estimation for sequence {sequence_id}")
 
         # # Load data
         # fpath = os.path.join(self.root_data_sequence, "active", f"sequence_{sequence_id}.nc")
@@ -1774,16 +1780,17 @@ class PassiveFiberscopeManager(FiberscopeManager):
 
     def __init__(
         self,
-        root_processed_data: str,
+        ds_wav: xr.Dataset = None,
+        root_processed_data: str = "",
         root_img: str = p.root_img,
-        bandfilter: BandFilter = None,
-        tau_ir: float = p.tau_ir,
+        # bandfilter: BandFilter = None,
+        # tau_ir: float = p.tau_ir,
         alpha_overlap: float = p.alpha_overlap,
         h_index_ref: int = p.h_index_ref,
         plot_feature: bool = False,
         theta_statistics: str = "mean",
-        process_pulse_one_by_one: bool = True,
-        estimate_ir_duration: bool = True,
+        # process_pulse_one_by_one: bool = True,
+        # estimate_ir_duration: bool = True,
         rtf_estimator: str = "cs-evd",
         obs_ids: list = [1, 2, 3],
         verbose: bool = False,
@@ -1797,16 +1804,17 @@ class PassiveFiberscopeManager(FiberscopeManager):
         """
         # Using super() to initialize the parent class
         super().__init__(
+            ds_wav=ds_wav,
             root_processed_data=root_processed_data,
             root_img=root_img,
-            bandfilter=bandfilter,
-            tau_ir=tau_ir,
+            bandfilter=None,
+            tau_ir=None,
             alpha_overlap=alpha_overlap,
             h_index_ref=h_index_ref,
             plot_feature=plot_feature,
             theta_statistics=theta_statistics,
-            process_pulse_one_by_one=process_pulse_one_by_one,
-            estimate_ir_duration=estimate_ir_duration,
+            process_pulse_one_by_one=False,
+            estimate_ir_duration=False,
             rtf_estimator=rtf_estimator,
             obs_ids=obs_ids,
             verbose=verbose,
@@ -1818,7 +1826,6 @@ class PassiveFiberscopeManager(FiberscopeManager):
 
     def process_analysis(
         self,
-        ds_wav,
         t_start,
         t_end,
         set_stft_props=True,
@@ -1831,7 +1838,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             print(f"RTF processing of passive recording.")
 
         ### Step 1 - Load audio data for the required analysis window ###
-        xr_data = self.load_recording(ds_wav, t_start, t_end)
+        xr_data = self.load_recording(t_start, t_end)
 
         ### Step 2 - Init CovManager and FeatureProcessor ###
         # If stfts props are already set we dont need to do it
@@ -1845,14 +1852,12 @@ class PassiveFiberscopeManager(FiberscopeManager):
         ### Step 3 - Derive features ###
         self.derive_feature(xr_data)
 
-    def load_recording(self, ds_wav, t_start, t_end):
+    def load_recording(self, t_start, t_end):
         """
         Load data for the required analysis window.
 
         Parameters
         ----------
-        ds_wav : xr.Dataset
-            Wav dataset (containing the entire recordings)
         t_start : datetime.datetime
             Start of the analysis window.
         t_end datetime.datetime
@@ -1864,17 +1869,17 @@ class PassiveFiberscopeManager(FiberscopeManager):
             Selected portion of wav data for the required analysis window (form t_start to t_end).
         """
 
-        datetime_fmt = ds_wav.attrs["datetime_format"]
+        datetime_fmt = self.ds_wav.attrs["datetime_format"]
         for i, obs_id in enumerate(self.obs_ids):
 
             # Name of the time coords in ds_wav
             time_coordsname = f"time{obs_id}"
 
             # Select a window of the signal
-            fs = ds_wav.attrs[f"fs_obs{obs_id}"]
+            fs = self.ds_wav.attrs[f"fs_obs{obs_id}"]
 
             # Start of recording
-            t0 = ds_wav.attrs[f"start_datetime_obs{obs_id}"]
+            t0 = self.ds_wav.attrs[f"start_datetime_obs{obs_id}"]
             t0 = datetime.strptime(t0, datetime_fmt)
 
             # Select the required window
@@ -1884,7 +1889,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             n_end = int(t_from_t0_end_s * fs)
 
             # Slice signal for current OBS
-            ds_wav = ds_wav.isel({time_coordsname: slice(n_start, n_end)})
+            ds_wav = self.ds_wav.isel({time_coordsname: slice(n_start, n_end)})
 
         # Reshape
         signal_mat = np.vstack([ds_wav[f"signal_obs{i}"].values for i in self.obs_ids])

@@ -178,7 +178,7 @@ class RTF_MFP_Library:
         """
         self.fsm_active = ActiveFiberscopeManager(
             ds_wav=self.ds_wav,
-            root_processed_data=self.root_rtf_data,
+            root_processed_data=self.root_data,
             h_index_ref=self.reference_receiver_id,
             plot_feature=self.plot_library_replicas_features,
             bandfilter=self.fsm_active_bandfilter,
@@ -195,7 +195,7 @@ class RTF_MFP_Library:
         """
         self.fsm_passive = PassiveFiberscopeManager(
             ds_wav=self.ds_wav,
-            root_processed_data=self.root_rtf_data,
+            root_processed_data=self.root_data,
             h_index_ref=self.reference_receiver_id,
             plot_feature=self.plot_library_replicas_features,
             analysis_segment_duration=self.fsm_passive_analysis_segment_duration,
@@ -264,13 +264,28 @@ class RTF_MFP_Library:
                     self.root_rtf_data_active, f"sequence_{rep_seq_id}_rtf.nc"
                 )
                 if os.path.exists(rep_filepath):
-                    print(
-                        f"Precomputed replica for sequence {rep_seq_id} found at {rep_filepath}. This sequence will be loaded instead of being computed."
-                    )
-                    # Remove this sequence id from the list of sequence ids to compute
-                    replica_sequence_ids_to_compute = replica_sequence_ids_to_compute[
-                        replica_sequence_ids_to_compute != rep_seq_id
-                    ]
+                    # Check file validity
+                    ds_replica = xr.open_dataset(rep_filepath)
+                    valid = True
+                    if ds_replica.h_index_ref != self.reference_receiver_id:
+                        print(
+                            f"Replica file for sequence {rep_seq_id} found at {rep_filepath} is not valid: reference receiver id mismatch (expected {self.reference_receiver_id}, found {ds_replica.h_index_ref}). This sequence will be recomputed."
+                        )
+                        valid = False
+                        # Avoid permission error when trying to open the file again in the future by closing and deleting the dataset before recomputing
+                        ds_replica.close()  # Close the dataset to avoid memory leak
+                        del ds_replica  # Delete dataset
+
+                    if valid:
+                        print(
+                            f"Precomputed replica for sequence {rep_seq_id} found at {rep_filepath}. This sequence will be loaded instead of being computed."
+                        )
+                        # Remove this sequence id from the list of sequence ids to compute
+                        replica_sequence_ids_to_compute = (
+                            replica_sequence_ids_to_compute[
+                                replica_sequence_ids_to_compute != rep_seq_id
+                            ]
+                        )
 
         if len(replica_sequence_ids_to_compute) > 0:
             df_arrivals_selected = self.df_arrivals.loc[
@@ -325,10 +340,23 @@ class RTF_MFP_Library:
                     self.root_rtf_data_passive, f"sequence_{record_id}_rtf.nc"
                 )
                 if os.path.exists(rep_filepath):
-                    print(
-                        f"Precomputed replica for passive segment {start_dt} - {end_dt} found at {rep_filepath}. This segment will be loaded instead of being computed."
-                    )
-                    continue
+                    # Check file validity
+                    ds_replica = xr.open_dataset(rep_filepath)
+                    valid = True
+                    if ds_replica.h_index_ref != self.reference_receiver_id:
+                        print(
+                            f"Replica file for passive segment {start_dt} - {end_dt} found at {rep_filepath} is not valid: reference receiver id mismatch (expected {self.reference_receiver_id}, found {ds_replica.h_index_ref}). This segment will be recomputed."
+                        )
+                        valid = False
+                        #  Avoid permission error when trying to open the file again in the future by closing and deleting the dataset before recomputing
+                        ds_replica.close()  # Close the dataset to avoid memory leak
+                        del ds_replica  # Delete dataset
+
+                    if valid:
+                        print(
+                            f"Precomputed replica for passive segment {start_dt} - {end_dt} found at {rep_filepath}. This segment will be loaded instead of being computed."
+                        )
+                        continue
 
             self.fsm_passive.process_analysis(
                 t_start=start_dt,
@@ -358,19 +386,47 @@ class RTF_MFP_Library:
         """
         rep_seq_ids = active_replicas_info.get("replica_sequence_ids", [])
 
-        for rep_seq_id in rep_seq_ids:
+        for i, rep_seq_id in enumerate(rep_seq_ids):
             # Load replica data
             rep_filepath = os.path.join(
                 self.root_rtf_data_active, f"sequence_{rep_seq_id}_rtf.nc"
             )
             if os.path.exists(rep_filepath):
                 ds_replica = xr.open_dataset(rep_filepath)
+                # Extract usefull data to store to the library
+                if i == 0:
+                    rtf_amp = ds_replica["rtf_amp_hat"].values
+                    rtf_phase = ds_replica["rtf_phase_hat"].values
+                else:
+                    # Concatenate along the pulse axis : (n_rcv, n_freq, n_pulse) -> (n_rcv, n_freq, n_replicas)
+                    rtf_amp = np.concatenate(
+                        [rtf_amp, ds_replica["rtf_amp_hat"].values], axis=-1
+                    )
+                    rtf_phase = np.concatenate(
+                        [rtf_phase, ds_replica["rtf_phase_hat"].values], axis=-1
+                    )
+
             else:
                 print(
                     f"Replica file for sequence {rep_seq_id} not found at {rep_filepath}."
                 )
                 # Remove this sequence id from the list of sequence ids
                 rep_seq_ids = rep_seq_ids[rep_seq_ids != rep_seq_id]
+
+        # Store replicas in active_library
+        ds_active_library = xr.Dataset(
+            data_vars={
+                "rtf_amp": (("h_index", "f_rtf", "replica_id"), rtf_amp),
+                "rtf_phase": (("h_index", "f_rtf", "replica_id"), rtf_phase),
+            },
+            coords={
+                "h_index": ds_replica["h_index"].values,
+                "f_rtf": ds_replica["f_rtf"].values,
+                "replica_id": np.arange(rtf_amp.shape[-1]),
+            },
+        )
+
+        return ds_active_library
 
     def load_passive_replicas(self, passive_replicas_info: dict = {}):
         """
@@ -379,6 +435,7 @@ class RTF_MFP_Library:
         start_datetimes = passive_replicas_info.get("start_datetimes", [])
         end_datetimes = passive_replicas_info.get("end_datetimes", [])
 
+        i = 0
         for start_dt, end_dt in zip(start_datetimes, end_datetimes):
             # Load replica data
             record_id = f"passive_{datetime.strftime(start_dt, self.fsm_active.datetime_fmt)}_to_{datetime.strftime(end_dt, self.fsm_active.datetime_fmt)}"
@@ -388,10 +445,36 @@ class RTF_MFP_Library:
 
             if os.path.exists(rep_filepath):
                 ds_replica = xr.open_dataset(rep_filepath)
+
+                if i == 0:
+                    rtf_amp = ds_replica["rtf_amp_hat"].values
+                    rtf_phase = ds_replica["rtf_phase_hat"].values
+                else:
+                    # Concatenate along the time axis : (n_rcv, n_freq, n_segment_dt) -> (n_rcv, n_freq, n_replicas)
+                    rtf_amp = np.concatenate(
+                        [rtf_amp, ds_replica["rtf_amp_hat"].values], axis=-1
+                    )
+                    rtf_phase = np.concatenate(
+                        [rtf_phase, ds_replica["rtf_phase_hat"].values], axis=-1
+                    )
             else:
                 print(
                     f"Replica file for passive segment {start_dt} - {end_dt} not found at {rep_filepath}."
                 )
+
+        # Store replicas in passive_library
+        ds_passive_library = xr.Dataset(
+            data_vars={
+                "rtf_amp": (("h_index", "f_rtf", "replica_id"), rtf_amp),
+                "rtf_phase": (("h_index", "f_rtf", "replica_id"), rtf_phase),
+            },
+            coords={
+                "h_index": ds_replica["h_index"].values,
+                "f_rtf": ds_replica["f_rtf"].values,
+                "replica_id": np.arange(rtf_amp.shape[-1]),
+            },
+        )
+        return ds_passive_library
 
 
 # ======================================================================================================================
@@ -404,7 +487,7 @@ def test():
     Test function
     """
     root_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data"
-    ref_rcv_id = 1
+    ref_rcv_id = 2
     rtf_estimator = "cs-evd"
 
     tau_ir_hat = 0.2  # estimated impulse response duration from sequence 144
@@ -433,7 +516,7 @@ def test():
 
     # Populate library
     active_replicas_args = {
-        "replica_sequence_ids": [144],
+        "replica_sequence_ids": [147],
         "load_precomputed_replicas": True,
     }
     passive_replicas_args = {

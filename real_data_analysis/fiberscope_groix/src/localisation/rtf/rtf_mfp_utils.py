@@ -900,14 +900,8 @@ def process_event(ds_wav, t_start, t_end, **process_event_kwargs):
     # Unpack kwargs
     compute_rtf_event = process_event_kwargs.get("compute_rtf_event", True)
     root_processed_data = process_event_kwargs.get("root_processed_data", None)
-    bandfilter = process_event_kwargs.get("bandfilter", None)
     h_index_ref = process_event_kwargs.get("h_index_ref", 1)
-    tau_ir = process_event_kwargs.get("tau_ir", 3)
     plot_feature = process_event_kwargs.get("plot_feature", False)
-    # process_pulse_one_by_one = process_event_kwargs.get(
-    #     "process_pulse_one_by_one", True
-    # )
-    # estimate_ir_duration = process_event_kwargs.get("estimate_ir_duration", False)
     rtf_estimator = process_event_kwargs.get("rtf_estimator", "cs-evd")
     analysis_segment_duration = process_event_kwargs.get(
         "analysis_segment_duration", 10

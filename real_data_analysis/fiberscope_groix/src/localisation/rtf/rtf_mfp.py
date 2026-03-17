@@ -266,13 +266,22 @@ class RTF_MFP_Library:
         # Unpack arguments
         start_datetimes = passive_replicas_args.get(
             "start_datetimes",
-            [datetime(year=2025, month=10, day=15, hour=1, minute=30, second=00)],
+            [datetime(year=2025, month=10, day=15, hour=00, minute=15, second=00)],
         )
-        self.fsm_passive.process_analysis(
-            t_start,
-            t_end,
-            set_stft_props=False,
+        start_datetimes = np.atleast_1d(start_datetimes)
+        end_datetimes = passive_replicas_args.get(
+            "end_datetimes",
+            [datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00)],
         )
+        end_datetimes = np.atleast_1d(end_datetimes)
+
+        for start_dt, end_dt in zip(start_datetimes, end_datetimes):
+
+            self.fsm_passive.process_analysis(
+                t_start=start_dt,
+                t_end=end_dt,
+                set_stft_props=False,
+            )
 
 
 # ======================================================================================================================

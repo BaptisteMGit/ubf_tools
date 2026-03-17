@@ -1869,17 +1869,19 @@ class PassiveFiberscopeManager(FiberscopeManager):
             Selected portion of wav data for the required analysis window (form t_start to t_end).
         """
 
-        datetime_fmt = self.ds_wav.attrs["datetime_format"]
+        ds_wav = self.ds_wav.copy()  # To avoid modifying original dataset
+        datetime_fmt = ds_wav.attrs["datetime_format"]
+
         for i, obs_id in enumerate(self.obs_ids):
 
             # Name of the time coords in ds_wav
             time_coordsname = f"time{obs_id}"
 
             # Select a window of the signal
-            fs = self.ds_wav.attrs[f"fs_obs{obs_id}"]
+            fs = ds_wav.attrs[f"fs_obs{obs_id}"]
 
             # Start of recording
-            t0 = self.ds_wav.attrs[f"start_datetime_obs{obs_id}"]
+            t0 = ds_wav.attrs[f"start_datetime_obs{obs_id}"]
             t0 = datetime.strptime(t0, datetime_fmt)
 
             # Select the required window
@@ -1889,7 +1891,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             n_end = int(t_from_t0_end_s * fs)
 
             # Slice signal for current OBS
-            ds_wav = self.ds_wav.isel({time_coordsname: slice(n_start, n_end)})
+            ds_wav = ds_wav.isel({time_coordsname: slice(n_start, n_end)})
 
         # Reshape
         signal_mat = np.vstack([ds_wav[f"signal_obs{i}"].values for i in self.obs_ids])

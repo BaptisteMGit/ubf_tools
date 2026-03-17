@@ -217,9 +217,14 @@ class RTF_MFP_Library:
         )
 
         # Load derived replicas
-        self.load_replicas(
+        ds_active_library, ds_passive_library = self.load_replicas(
             active_replicas_info=active_replicas_info,
             passive_replicas_info=passive_replicas_info,
+        )
+
+        # Fusion active and passive replicas
+        ds_library = xr.concat(
+            [ds_active_library, ds_passive_library], dim="replica_id"
         )
 
     def derive_replicas(
@@ -377,8 +382,14 @@ class RTF_MFP_Library:
         """
         Method to load replicas
         """
-        self.load_active_replicas(active_replicas_info=active_replicas_info)
-        self.load_passive_replicas(passive_replicas_info=passive_replicas_info)
+        ds_active_library = self.load_active_replicas(
+            active_replicas_info=active_replicas_info
+        )
+        ds_passive_library = self.load_passive_replicas(
+            passive_replicas_info=passive_replicas_info
+        )
+
+        return ds_active_library, ds_passive_library
 
     def load_active_replicas(self, active_replicas_info: dict = {}):
         """
@@ -517,7 +528,7 @@ def test():
     # Populate library
     active_replicas_args = {
         "replica_sequence_ids": [147],
-        "load_precomputed_replicas": True,
+        "load_precomputed_replicas": False,
     }
     passive_replicas_args = {
         "start_datetimes": [

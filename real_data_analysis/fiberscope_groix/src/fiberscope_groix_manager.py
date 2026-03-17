@@ -88,6 +88,7 @@ class FiberscopeManager:
         obs_ids: list = [1, 2, 3],
         verbose: bool = False,
         plot_signal: bool = False,
+        limit_frequency_band: bool = False,
     ):
         """
         Constructor
@@ -141,6 +142,9 @@ class FiberscopeManager:
 
         # Verbose flag
         self.verbose = verbose
+
+        # Flag to limit the frequency band used for the analysis to the one of the emitted signal (instead of using the entire available band)
+        self.limit_frequency_band = limit_frequency_band
 
         # Plot audio signal flag
         self.plot_signal = plot_signal
@@ -598,6 +602,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
         verbose: bool = False,
         plot_signal: bool = False,
         deconvolution_method: str = "wiener",
+        limit_frequency_band: bool = False,
     ):
         """
         Class constructor
@@ -620,6 +625,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
             obs_ids=obs_ids,
             verbose=verbose,
             plot_signal=plot_signal,
+            limit_frequency_band=limit_frequency_band,
         )
 
         self.deconvolution_method = deconvolution_method
@@ -1150,9 +1156,10 @@ class ActiveFiberscopeManager(FiberscopeManager):
 
         # Slice along frequency axis to ensure we never use information outside of the signal bandwidth
         # This also reduce the memory size required
-        xr_data = xr_data.sel(f_rtf=slice(xr_data.fmin, xr_data.fmax))
-        xr_data = xr_data.sel(f_ir=slice(xr_data.fmin, xr_data.fmax))
-        xr_data = xr_data.sel(f_csdm=slice(xr_data.fmin, xr_data.fmax))
+        if self.limit_frequency_band:
+            xr_data = xr_data.sel(f_rtf=slice(xr_data.fmin, xr_data.fmax))
+            xr_data = xr_data.sel(f_ir=slice(xr_data.fmin, xr_data.fmax))
+            xr_data = xr_data.sel(f_csdm=slice(xr_data.fmin, xr_data.fmax))
 
         # Plot feature components for analysis if required
         if self.plot_feature:

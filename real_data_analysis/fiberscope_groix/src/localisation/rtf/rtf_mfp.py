@@ -38,7 +38,7 @@ WAV_DATASET_FILEPATH = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data
 # ======================================================================================================================
 
 
-class RTF_MFP:
+class RTF_MFP_Processor:
     """
     Mother class to handle RTF-MFP
     """
@@ -51,7 +51,7 @@ class RTF_MFP:
         fsm_active_kwargs: dict = {},
         fsm_passive_kwargs: dict = {},
         mode="overwrite",
-        plot_library_replicas_features: bool = False,
+        plot_replicas_features: bool = False,
         verbose: bool = False,
     ) -> None:
         """
@@ -73,7 +73,7 @@ class RTF_MFP:
         self.mode = mode
 
         # Flags
-        self.plot_library_replicas_features = plot_library_replicas_features
+        self.plot_replicas_features = plot_replicas_features
         self.verbose = verbose
 
         # Define Fiberscope Managers
@@ -199,7 +199,7 @@ class RTF_MFP:
             ds_wav=self.ds_wav,
             root_processed_data=self.root_data,
             h_index_ref=self.reference_receiver_id,
-            plot_feature=self.plot_library_replicas_features,
+            plot_feature=self.plot_replicas_features,
             bandfilter=self.fsm_active_bandfilter,
             tau_ir=self.fsm_active_tau_ir,
             process_pulse_one_by_one=self.fsm_active_process_pulse_one_by_one,
@@ -217,7 +217,7 @@ class RTF_MFP:
             ds_wav=self.ds_wav,
             root_processed_data=self.root_data,
             h_index_ref=self.reference_receiver_id,
-            plot_feature=self.plot_library_replicas_features,
+            plot_feature=self.plot_replicas_features,
             analysis_segment_duration=self.fsm_passive_analysis_segment_duration,
             analysis_segment_alpha_overlap=self.fsm_passive_analysis_segment_alpha_overlap,
             rtf_estimator=self.rtf_estimator,
@@ -257,6 +257,38 @@ class RTF_MFP:
         # Write associated metadata file with the same ID as the library to keep track of the library content and properties
         # TODO ?
         # self.save_library_metadata(ds_library=ds_library, active_feature_info=active_feature_info, passive_feature_info=passive_feature_info)
+
+    def compute_library(
+        self,
+        active_feature_args: dict = {},
+        passive_feature_args: dict = {},
+        id: int = None,
+    ):
+        """Method to compute library dataset"""
+
+        self.compute(
+            active_feature_args=active_feature_args,
+            passive_feature_args=passive_feature_args,
+            ds_type="library",
+            id=id,
+            single_vessel_per_segment=True,  # For the library we wish to use segment containing only one vessel to ensure the quality of the passive replicas
+        )
+
+    def compute_event(
+        self,
+        active_feature_args: dict = {},
+        passive_feature_args: dict = {},
+        id: int = None,
+    ):
+        """Method to compute event dataset"""
+
+        self.compute(
+            active_feature_args=active_feature_args,
+            passive_feature_args=passive_feature_args,
+            ds_type="event",
+            id=id,
+            single_vessel_per_segment=False,  # For the event we want to be able to use segments containing multiple vessels to be able to test the method in more complex scenarios
+        )
 
     def fusion(self, ds_active: xr.Dataset, ds_passive: xr.Dataset) -> xr.Dataset:
 
@@ -713,118 +745,6 @@ class RTF_MFP:
         return ds_passive
 
 
-# ======================================================================================================================
-# Library
-# ======================================================================================================================
-
-
-class RTF_MFP_Library(RTF_MFP):
-    """
-    Class to handle RTF-MFP library
-    """
-
-    def __init__(
-        self,
-        root_data: str = ROOT_DATA,
-        reference_receiver_id: int = REF_RCV_ID,
-        rtf_estimator: str = RTF_ESTIMATOR,
-        fsm_active_kwargs: dict = {},
-        fsm_passive_kwargs: dict = {},
-        mode="overwrite",
-        plot_library_replicas_features: bool = False,
-        verbose: bool = False,
-    ) -> None:
-        """
-        Constructor of the class
-        """
-
-        super().__init__(
-            root_data=root_data,
-            reference_receiver_id=reference_receiver_id,
-            rtf_estimator=rtf_estimator,
-            fsm_active_kwargs=fsm_active_kwargs,
-            fsm_passive_kwargs=fsm_passive_kwargs,
-            mode=mode,
-            plot_library_replicas_features=plot_library_replicas_features,
-            verbose=verbose,
-        )
-
-    def compute(
-        self,
-        active_feature_args: dict = {},
-        passive_feature_args: dict = {},
-        id: int = None,
-    ):
-        """
-        Method to populate the library
-        """
-
-        # Call the mother compute method with ds_type = library to save the computed dataset in the library folder
-        super().compute(
-            active_feature_args=active_feature_args,
-            passive_feature_args=passive_feature_args,
-            ds_type="library",
-            id=id,
-            single_vessel_per_segment=True,  # For the library we wish to use segment containing only one vessel to ensure the quality of the passive replicas
-        )
-
-
-# =====================================================================================================================
-# Event
-# =====================================================================================================================
-
-
-class RTF_MFP_Event(RTF_MFP):
-    """
-    Class to handle RTF-MFP event
-    """
-
-    def __init__(
-        self,
-        root_data: str = ROOT_DATA,
-        reference_receiver_id: int = REF_RCV_ID,
-        rtf_estimator: str = RTF_ESTIMATOR,
-        fsm_active_kwargs: dict = {},
-        fsm_passive_kwargs: dict = {},
-        mode="overwrite",
-        plot_library_replicas_features: bool = False,
-        verbose: bool = False,
-    ) -> None:
-        """
-        Constructor of the class
-        """
-
-        super().__init__(
-            root_data=root_data,
-            reference_receiver_id=reference_receiver_id,
-            rtf_estimator=rtf_estimator,
-            fsm_active_kwargs=fsm_active_kwargs,
-            fsm_passive_kwargs=fsm_passive_kwargs,
-            mode=mode,
-            plot_library_replicas_features=plot_library_replicas_features,
-            verbose=verbose,
-        )
-
-    def compute(
-        self,
-        active_feature_args: dict = {},
-        passive_feature_args: dict = {},
-        id: int = None,
-    ):
-        """
-        Method to compute event features
-        """
-
-        # Call the mother compute method with ds_type = event to save the computed dataset in the event folder
-        super().compute(
-            active_feature_args=active_feature_args,
-            passive_feature_args=passive_feature_args,
-            ds_type="event",
-            id=id,
-            single_vessel_per_segment=False,  # For the event we want to be able to use segments containing multiple vessels to be able to test the method in more complex scenarios
-        )
-
-
 # =====================================================================================================================
 # Test
 # =====================================================================================================================
@@ -851,20 +771,20 @@ def test():
         "analysis_segment_alpha_overlap": 0.5,
     }
 
-    ###########################
-    # Test library computation
-    ###########################
-
-    rtf_mfp_library = RTF_MFP_Library(
+    rtf_mfp_processor = RTF_MFP_Processor(
         root_data=root_data,
         reference_receiver_id=ref_rcv_id,
         rtf_estimator=rtf_estimator,
         fsm_active_kwargs=fsm_active_kwargs,
         fsm_passive_kwargs=fsm_passive_kwargs,
         mode="overwrite",
-        plot_library_replicas_features=False,
+        plot_replicas_features=False,
         verbose=True,
     )
+
+    ###########################
+    # Library computation
+    ###########################
 
     # Populate library
     active_replicas_args = {
@@ -880,28 +800,17 @@ def test():
         ],
         "load_precomputed_feature": True,
     }
-    rtf_mfp_library.compute(
+    rtf_mfp_processor.compute_library(
         active_feature_args=active_replicas_args,
         passive_feature_args=passive_replicas_args,
         id=0,
     )
 
     ###########################
-    # Test event computation
+    # Event computation
     ###########################
 
-    rtf_mfp_event = RTF_MFP_Event(
-        root_data=root_data,
-        reference_receiver_id=ref_rcv_id,
-        rtf_estimator=rtf_estimator,
-        fsm_active_kwargs=fsm_active_kwargs,
-        fsm_passive_kwargs=fsm_passive_kwargs,
-        mode="overwrite",
-        plot_library_replicas_features=False,
-        verbose=True,
-    )
-
-    # Populate library
+    # Derive event
     active_feature_args = {
         "replica_sequence_ids": [],
         "load_precomputed_feature": True,
@@ -915,11 +824,15 @@ def test():
         ],
         "load_precomputed_feature": True,
     }
-    rtf_mfp_event.compute(
+    rtf_mfp_processor.compute_event(
         active_feature_args=active_feature_args,
         passive_feature_args=passive_feature_args,
         id=0,
     )
+
+    ###########################
+    # Matching library and event features and localization
+    ###########################
 
 
 if __name__ == "__main__":

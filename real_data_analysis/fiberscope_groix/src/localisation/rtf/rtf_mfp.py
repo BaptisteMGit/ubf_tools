@@ -15,7 +15,13 @@
 import os
 import numpy as np
 import xarray as xr
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
 from datetime import datetime
+from scipy.spatial.distance import cdist
+from propa.rtf.rtf_utils import D_hermitian_angle_fast
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from real_data_analysis.fiberscope_groix.src.fiberscope_groix_manager import (
     ActiveFiberscopeManager,
     PassiveFiberscopeManager,
@@ -224,6 +230,9 @@ class RTF_MFP_Processor:
             verbose=self.verbose,
         )
 
+    ###########################
+    # Compute
+    ###########################
     def compute(
         self,
         active_feature_args: dict = {},
@@ -249,7 +258,7 @@ class RTF_MFP_Processor:
         )
 
         # Concatenate active and passive features
-        ds = self.fusion(ds_active=ds_active, ds_passive=ds_passive)
+        ds = self.fusion(ds_active=ds_active, ds_passive=ds_passive, ds_type=ds_type)
 
         # Save
         self.save(ds=ds, ds_type=ds_type, id=id)
@@ -290,7 +299,9 @@ class RTF_MFP_Processor:
             single_vessel_per_segment=False,  # For the event we want to be able to use segments containing multiple vessels to be able to test the method in more complex scenarios
         )
 
-    def fusion(self, ds_active: xr.Dataset, ds_passive: xr.Dataset) -> xr.Dataset:
+    def fusion(
+        self, ds_active: xr.Dataset, ds_passive: xr.Dataset, ds_type: str = "library"
+    ) -> xr.Dataset:
 
         # Fusion active and passive replicas
         if ds_active is not None and ds_passive is not None:
@@ -308,7 +319,15 @@ class RTF_MFP_Processor:
             "rtf_estimator": self.rtf_estimator,
             "replica_type_1": "active",
             "replica_type_2": "passive",
+            "description": f"{ds_type.capitalize()} dataset containing RTF-MFP features for active and passive sources",
+            "type": ds_type,
         }
+
+        # Add receiver positions as attributes to the dataset
+        for k in ["obs1", "obs2", "obs3"]:
+            ds.attrs[f"{k}_e_apriori"] = self.ds_gps.attrs[f"{k}_e_apriori"]
+            ds.attrs[f"{k}_n_apriori"] = self.ds_gps.attrs[f"{k}_n_apriori"]
+            ds.attrs[f"{k}_u_apriori"] = self.ds_gps.attrs[f"{k}_u_apriori"]
 
         # Add attributes to each variables
         ds["rtf_amp"].attrs = {
@@ -403,12 +422,18 @@ class RTF_MFP_Processor:
                 )
                 return
 
+        # Add ID as attribute to the dataset
+        ds.attrs["id"] = id
+
         ds_filepath = os.path.join(root_data, f"{ds_type}_{id}.nc")
         ds.to_netcdf(ds_filepath)
 
         if self.verbose:
             print(f"Dataset ({ds_type}) saved at {ds_filepath}.")
 
+    ###########################
+    # Derive features
+    ###########################
     def derive_feature(
         self, active_feature_args: dict = {}, passive_feature_args: dict = {}
     ):
@@ -559,6 +584,9 @@ class RTF_MFP_Processor:
 
         return passive_feature_info
 
+    ###########################
+    # Load features
+    ###########################
     def load_feature(
         self,
         active_feature_info: dict = {},
@@ -744,6 +772,347 @@ class RTF_MFP_Processor:
         )
         return ds_passive
 
+    ###########################
+    # Matrching library and event features
+    ###########################
+
+    def match(self, id_library: int = None, id_event: int = None):
+        """
+        Method to match library and event features
+        """
+        # Load data to match
+        ds_library = xr.open_dataset(
+            os.path.join(self.root_library_data, f"library_{id_library}.nc")
+        )
+        ds_event = xr.open_dataset(
+            os.path.join(self.root_event_data, f"event_{id_event}.nc")
+        )
+
+        # Plot positions fo the library replicas
+        # plot_mfp_dataset(ds=ds_library, cmap="managua")
+        # Plot positions of the event replicas
+        # plot_mfp_dataset(ds=ds_event, cmap="vanimo")
+
+        # Plot library and event replicas positions together
+        plot_mfp_datasets(ds_library, ds_event)
+
+        # Compute distance matrix between library and event replicas
+        ds_results = ambiguity(
+            ds_library=ds_library,
+            ds_event=ds_event,
+            fmin=100,
+            fmax=900,
+            dist_type="hermitian_angle",
+            use_weighted_mean=False,
+            verbose=True,
+        )
+
+        # Plot distances
+        plot_results_dist(ds_results=ds_results)
+
+        plt.show()
+
+
+# =======================================================================================================================
+# Utils
+# =======================================================================================================================
+
+
+def plot_mfp_datasets(ds_library, ds_event):
+
+    fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+
+    # Plot receiver positions
+    keys = ["obs1", "obs2", "obs3"]
+    for k in keys:
+        e = ds_library.attrs[f"{k}_e_apriori"]
+        n = ds_library.attrs[f"{k}_n_apriori"]
+        ax.scatter(
+            e,
+            n,
+            marker="D",
+            label=k,
+            zorder=1,
+            s=150,
+        )
+
+    # Plot library replicas positions
+    e_library = ds_library["e_replica"].values
+    n_library = ds_library["n_replica"].values
+    im_lib = ax.scatter(
+        e_library,
+        n_library,
+        marker="+",
+        label=f"{ds_library.type.capitalize()} ({ds_library.id})",
+        c=np.arange(e_library.size),
+        cmap="managua",
+    )
+
+    # Plot event replicas positions
+    e_event = ds_event["e_replica"].values
+    n_event = ds_event["n_replica"].values
+    im_event = ax.scatter(
+        e_event,
+        n_event,
+        marker="x",
+        label=f"{ds_event.type.capitalize()} ({ds_event.id})",
+        c=np.arange(e_event.size),
+        cmap="vanimo",
+    )
+
+    # Add colorbars
+    plt.colorbar(im_lib, label="Library replica index")
+    plt.colorbar(im_event, label="Event replica index")
+
+    plt.legend(fontsize=12)
+    plt.xlabel("E [m]")
+    plt.ylabel("N [m]")
+
+    # plt.show()
+
+
+def plot_mfp_dataset(ds, cmap="jet"):
+
+    fig, ax = plt.subplots(1, 1, figsize=(16, 8))
+
+    # Plot receiver positions
+    keys = ["obs1", "obs2", "obs3"]
+    for k in keys:
+        e = ds.attrs[f"{k}_e_apriori"]
+        n = ds.attrs[f"{k}_n_apriori"]
+        ax.scatter(
+            e,
+            n,
+            marker="D",
+            label=k,
+            zorder=1,
+            s=150,
+        )
+
+    # Plot replicas positions
+    e_library = ds["e_replica"].values
+    n_library = ds["n_replica"].values
+    im = ax.scatter(
+        e_library,
+        n_library,
+        marker="+",
+        label=f"{ds.type.capitalize()} ({ds.id})",
+        c=np.arange(e_library.size),
+        cmap=cmap,
+    )
+    plt.colorbar(im, label="Replica index")
+
+    plt.legend(fontsize=12)
+    plt.xlabel("E [m]")
+    plt.ylabel("N [m]")
+
+    plt.show()
+
+
+def ambiguity(
+    ds_library,
+    ds_event,
+    fmin=100,
+    fmax=900,
+    dist_type="hermitian_angle",
+    use_weighted_mean=False,
+    verbose=False,
+):
+
+    if dist_type == "hermitian_angle":
+        dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
+        comment = "Compute distance using hermitian angle distance (in C^N)"
+    elif dist_type == "euclidean":
+        comment = "Compute distance using euclidean distance (in C^N)"
+    elif dist_type == "euclidean_module":
+        comment = "Compute distance using euclidean distance on the module of RTF vectors (in R^N)"
+    elif dist_type == "euclidean_phase":
+        comment = "Compute distance using euclidean distance on the phase of RTF vectors (in R^N)"
+    else:
+        print("Warning : unknown distance, set to default -> hermitian angle")
+        dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
+        comment = "Compute distance using hermitian angle distance (in C^N)"
+
+    if verbose:
+        print(comment)
+
+    # Define comon frequency band to use
+    fmin_common_band = max(fmin, max(ds_library.f_rtf.min(), ds_event.f_rtf.min()))
+    fmax_common_band = min(fmax, min(ds_library.f_rtf.max(), ds_event.f_rtf.max()))
+
+    # Slice common band
+    ds_library = ds_library.sel(f_rtf=slice(fmin_common_band, fmax_common_band))
+    ds_event = ds_event.sel(f_rtf=slice(fmin_common_band, fmax_common_band))
+
+    # Library RTFs
+    library_replicas = ds_library.rtf_amp * np.exp(1j * ds_library.rtf_phase)
+
+    # Event RTFs
+    event_feature = ds_event.rtf_amp * np.exp(1j * ds_event.rtf_phase)
+    # Reshape to 4D array to be able to apply distance function : (n_rcv, n_freq, n_segment_dt) -> (n_rcv, n_freq, n_segment_dt, 1)
+    event_feature_4d = event_feature.values[..., np.newaxis]
+
+    rtf_distances = []
+
+    # TODO : add option to use weighted mean
+
+    if dist_type == "hermitian_angle":
+        # Iterate of each replica of the library
+        for rep_id in library_replicas.replica_id.values:
+
+            replica_i = library_replicas.sel(replica_id=rep_id)
+            dist = D_hermitian_angle_fast(
+                rtf_ref=replica_i.values,
+                rtf=event_feature_4d,
+                **dist_kwargs,
+            )
+
+            rtf_distances.append(dist)
+    rtf_dist = np.array(rtf_distances)
+    rtf_dist = (
+        rtf_dist.T
+    )  # Transpose to have shape (n_event_feature, n_library_replica)
+
+    # Spatial distance between library and event replicas
+    event_e = ds_event["e_replica"].values
+    event_n = ds_event["n_replica"].values
+    libray_e = ds_library["e_replica"].values
+    libray_n = ds_library["n_replica"].values
+    event_coords = np.column_stack((event_e, event_n))
+    library_coords = np.column_stack((libray_e, libray_n))
+
+    spatial_dist = cdist(event_coords, library_coords, metric="euclidean")
+
+    # Build results dataset
+    ds_results = xr.Dataset(
+        data_vars={
+            "rtf_dist": (("event_replica_id", "library_replica_id"), rtf_dist),
+            "spatial_dist": (("event_replica_id", "library_replica_id"), spatial_dist),
+        },
+        coords={
+            "event_replica_id": ds_event.replica_id.values,
+            "library_replica_id": ds_library.replica_id.values,
+        },
+    )
+
+    # Add attributes to the dataset
+    ds_results.attrs = {
+        "description": f"Distance matrix between library and event replicas computed using {dist_type} distance for the RTF features and euclidean distance for the spatial coordinates.",
+        "rtf_dist_type": dist_type,
+        "spatial_dist_type": "euclidean",
+    }
+    # Add attributes to variables
+    ds_results["rtf_dist"].attrs = {
+        "description": f"Distance between library and event replicas computed using {dist_type} distance on the RTF features.",
+        "units": "°",
+        "long_name": r"$\theta$",
+    }
+    ds_results["spatial_dist"].attrs = {
+        "description": "Euclidean distance between library and event replicas in the spatial domain.",
+        "units": "m",
+        "long_name": "Spatial distance",
+    }
+
+    # Add attributes to coordinates
+    ds_results["event_replica_id"].attrs = {
+        "description": "ID of the event replica",
+        "long_name": "Event replica ID",
+    }
+    ds_results["library_replica_id"].attrs = {
+        "description": "ID of the library replica",
+        "long_name": "Library replica ID",
+    }
+
+    return ds_results
+
+
+def plot_results_dist(ds_results):
+
+    print(f"\tPlotting RTF distance vs spatial distance")
+
+    # Define colorbar limits
+    vmin = np.percentile(ds_results.rtf_dist.values, 0.1)
+    vmax = np.percentile(ds_results.rtf_dist.values, 50)
+
+    # # GPS Jules
+    # cpa_idx = ds_spatial_dist.spatial_dist.argmin(...)
+    # cpa_idx_segment_dt = cpa_idx["segment_dt"].values
+    # # cpa_idx = ds_spatial_dist.spatial_dist.argmin(...)
+    # # cpa_idx_time = cpa_idx["time"].values
+    # cpa_segment_dt = ds_spatial_dist.isel(
+    #     segment_dt=cpa_idx_segment_dt
+    # ).segment_dt.values
+    # cpa_idx_replica_id = cpa_idx["replica_id"].values
+    # cpa_replica_id = ds_spatial_dist.isel(
+    #     replica_id=cpa_idx_replica_id
+    # ).replica_id.values
+
+    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(16, 12))
+
+    # Theta distance
+    ds_results.rtf_dist.plot(
+        x="event_replica_id",
+        y="library_replica_id",
+        vmin=vmin,
+        vmax=vmax,
+        cmap="magma",
+        ax=axs[0],
+    )
+    axs[0].set_xlabel("")
+
+    # # Add marker at CPA time and replica id
+    # axs[0].scatter(
+    #     cpa_time,
+    #     cpa_replica_id,
+    #     marker="X",
+    #     s=100,
+    #     color="cyan",
+    #     # label="CPA",
+    #     zorder=5,
+    # )
+    # # Annotate CPA point
+    # axs[0].annotate(
+    #     "CPA",
+    #     xy=(cpa_segment_dt, cpa_replica_id),
+    #     xytext=(cpa_segment_dt + np.timedelta64(0, "s"), cpa_replica_id + 20),
+    #     arrowprops=dict(facecolor="cyan", shrink=0.05, width=4, headwidth=8),
+    #     fontsize=14,
+    #     color="cyan",
+    #     ha="center",
+    # )
+
+    # Spatial distance
+    ds_results.spatial_dist.plot(
+        x="event_replica_id",
+        y="library_replica_id",
+        cmap="magma",
+        vmin=0,
+        vmax=1000,
+        ax=axs[1],
+    )
+    # axs[1].scatter(
+    #     cpa_time,
+    #     cpa_replica_id,
+    #     marker="X",
+    #     s=100,
+    #     color="cyan",
+    #     # label="CPA",
+    #     zorder=5,
+    # )
+    # Annotate CPA point
+    # axs[1].annotate(
+    #     "CPA",
+    #     xy=(cpa_segment_dt, cpa_replica_id),
+    #     xytext=(cpa_segment_dt + np.timedelta64(0, "s"), cpa_replica_id + 20),
+    #     arrowprops=dict(facecolor="cyan", shrink=0.05, width=4, headwidth=8),
+    #     fontsize=14,
+    #     color="cyan",
+    #     ha="center",
+    # )
+
+    # fpath = os.path.join(root_fig, f"theta_vs_distance_gps_Jules.png")
+    # plt.savefig(fpath, bbox_inches="tight")
+
 
 # =====================================================================================================================
 # Test
@@ -788,7 +1157,7 @@ def test():
 
     # Populate library
     active_replicas_args = {
-        "replica_sequence_ids": [144, 146],
+        "replica_sequence_ids": [],
         "load_precomputed_feature": True,
     }
     passive_replicas_args = {
@@ -800,6 +1169,11 @@ def test():
         ],
         "load_precomputed_feature": True,
     }
+    # passive_replicas_args = {
+    #     "start_datetimes": [],
+    #     "end_datetimes": [],
+    #     "load_precomputed_feature": True,
+    # }
     rtf_mfp_processor.compute_library(
         active_feature_args=active_replicas_args,
         passive_feature_args=passive_replicas_args,
@@ -820,7 +1194,7 @@ def test():
             datetime(year=2025, month=10, day=15, hour=1, minute=40, second=00)
         ],
         "end_datetimes": [
-            datetime(year=2025, month=10, day=15, hour=1, minute=45, second=00)
+            datetime(year=2025, month=10, day=15, hour=1, minute=50, second=00)
         ],
         "load_precomputed_feature": True,
     }
@@ -831,8 +1205,10 @@ def test():
     )
 
     ###########################
-    # Matching library and event features and localization
+    # Matching library and event features
     ###########################
+
+    rtf_mfp_processor.match(id_library=0, id_event=0)
 
 
 if __name__ == "__main__":

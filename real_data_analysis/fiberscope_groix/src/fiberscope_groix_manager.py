@@ -1122,6 +1122,8 @@ class ActiveFiberscopeManager(FiberscopeManager):
             ### Step 3 - Derive features ###
             self.derive_feature(xr_data=xr_data, sequence_id=seq_id)
 
+        # return df_arrivals
+
     def estimate_global_csdm(self, xr_data):
         # TODO : set dedicated fct for active loc ?
         pass

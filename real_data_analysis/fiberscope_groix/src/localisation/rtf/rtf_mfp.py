@@ -34,6 +34,7 @@ from real_data_analysis.fiberscope_groix.src.localisation.rtf.rtf_mfp_utils impo
 
 # DEFAUTS # TODO move this in a dedicated file ?
 ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data"
+ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\img\rtf_mfp"
 REF_RCV_ID = 1
 RTF_ESTIMATOR = "cs-evd"
 WAV_DATASET_FILEPATH = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data\sequences\wav_dataset.csv"
@@ -52,6 +53,7 @@ class RTF_MFP_Processor:
     def __init__(
         self,
         root_data: str = ROOT_DATA,
+        root_img: str = ROOT_IMG,
         reference_receiver_id: int = REF_RCV_ID,
         rtf_estimator: str = RTF_ESTIMATOR,
         fsm_active_kwargs: dict = {},
@@ -66,6 +68,8 @@ class RTF_MFP_Processor:
 
         # Path to data folder
         self.root_data = root_data
+        # Path to img folder
+        self.root_img = root_img
         # Paths
         self.set_paths()
         # Load datasets
@@ -116,12 +120,16 @@ class RTF_MFP_Processor:
         self.root_library_data = os.path.join(self.root_data, "library")
         self.root_event_data = os.path.join(self.root_data, "event")
 
+        # Folder to save results figures
+        self.root_results_fig = os.path.join(self.root_img, "results")
+
         for path in [
             self.root_rtf_data,
             self.root_rtf_data_active,
             self.root_rtf_data_passive,
             self.root_library_data,
             self.root_event_data,
+            self.root_results_fig,
         ]:
             os.makedirs(path, exist_ok=True)
 
@@ -788,13 +796,18 @@ class RTF_MFP_Processor:
             os.path.join(self.root_event_data, f"event_{id_event}.nc")
         )
 
+        root_img = os.path.join(
+            self.root_results_fig, f"library_{id_library}_event_{id_event}"
+        )
+        os.makedirs(root_img, exist_ok=True)
+
         # Plot positions fo the library replicas
-        # plot_mfp_dataset(ds=ds_library, cmap="managua")
+        plot_mfp_dataset(ds=ds_library, cmap="managua", root_img=root_img)
         # Plot positions of the event replicas
-        # plot_mfp_dataset(ds=ds_event, cmap="vanimo")
+        plot_mfp_dataset(ds=ds_event, cmap="vanimo", root_img=root_img)
 
         # Plot library and event replicas positions together
-        plot_mfp_datasets(ds_library, ds_event)
+        plot_mfp_datasets(ds_library, ds_event, root_img=root_img)
 
         # Compute distance matrix between library and event replicas
         ds_results = ambiguity(
@@ -808,7 +821,9 @@ class RTF_MFP_Processor:
         )
 
         # Plot distances
-        plot_results_dist(ds_results=ds_results)
+        plot_results_dist(ds_results=ds_results, root_img=root_img)
+
+        plot_results_sorted_dist(ds_results=ds_results, root_img=root_img)
 
         plt.show()
 
@@ -818,7 +833,11 @@ class RTF_MFP_Processor:
 # =======================================================================================================================
 
 
-def plot_mfp_datasets(ds_library, ds_event):
+def plot_mfp_datasets(ds_library, ds_event, root_img: str = None):
+
+    if root_img is not None:
+        os.makedirs(root_img, exist_ok=True)
+        save_fig = True
 
     fig, ax = plt.subplots(1, 1, figsize=(16, 8))
 
@@ -868,10 +887,19 @@ def plot_mfp_datasets(ds_library, ds_event):
     plt.xlabel("E [m]")
     plt.ylabel("N [m]")
 
-    # plt.show()
+    if save_fig:
+        fpath = os.path.join(
+            root_img,
+            f"{ds_library.type}_{ds_library.id}_and_{ds_event.type}_{ds_event.id}_positions.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight")
 
 
-def plot_mfp_dataset(ds, cmap="jet"):
+def plot_mfp_dataset(ds, cmap="jet", root_img: str = None):
+
+    if root_img is not None:
+        os.makedirs(root_img, exist_ok=True)
+        save_fig = True
 
     fig, ax = plt.subplots(1, 1, figsize=(16, 8))
 
@@ -906,7 +934,9 @@ def plot_mfp_dataset(ds, cmap="jet"):
     plt.xlabel("E [m]")
     plt.ylabel("N [m]")
 
-    plt.show()
+    if save_fig:
+        fpath = os.path.join(root_img, f"{ds.type}_{ds.id}_positions.png")
+        plt.savefig(fpath, bbox_inches="tight")
 
 
 def ambiguity(
@@ -1000,6 +1030,8 @@ def ambiguity(
         "description": f"Distance matrix between library and event replicas computed using {dist_type} distance for the RTF features and euclidean distance for the spatial coordinates.",
         "rtf_dist_type": dist_type,
         "spatial_dist_type": "euclidean",
+        "library_id": ds_library.id,
+        "event_id": ds_event.id,
     }
     # Add attributes to variables
     ds_results["rtf_dist"].attrs = {
@@ -1026,28 +1058,28 @@ def ambiguity(
     return ds_results
 
 
-def plot_results_dist(ds_results):
+def plot_results_dist(ds_results, root_img: str = None):
 
     print(f"\tPlotting RTF distance vs spatial distance")
+
+    if root_img is not None:
+        os.makedirs(root_img, exist_ok=True)
+        save_fig = True
+
+    # Find crossing point between library replicas and event replicas in the spatial domain
+    min_dist_ids = ds_results.spatial_dist.argmin(...)
+    min_dist_event_replica_id = min_dist_ids["event_replica_id"].values
+    min_dist_library_replica_id = min_dist_ids["library_replica_id"].values
+    min_dist_results = ds_results.isel(
+        event_replica_id=min_dist_event_replica_id,
+        library_replica_id=min_dist_library_replica_id,
+    )
+
+    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(16, 12))
 
     # Define colorbar limits
     vmin = np.percentile(ds_results.rtf_dist.values, 0.1)
     vmax = np.percentile(ds_results.rtf_dist.values, 50)
-
-    # # GPS Jules
-    # cpa_idx = ds_spatial_dist.spatial_dist.argmin(...)
-    # cpa_idx_segment_dt = cpa_idx["segment_dt"].values
-    # # cpa_idx = ds_spatial_dist.spatial_dist.argmin(...)
-    # # cpa_idx_time = cpa_idx["time"].values
-    # cpa_segment_dt = ds_spatial_dist.isel(
-    #     segment_dt=cpa_idx_segment_dt
-    # ).segment_dt.values
-    # cpa_idx_replica_id = cpa_idx["replica_id"].values
-    # cpa_replica_id = ds_spatial_dist.isel(
-    #     replica_id=cpa_idx_replica_id
-    # ).replica_id.values
-
-    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(16, 12))
 
     # Theta distance
     ds_results.rtf_dist.plot(
@@ -1060,26 +1092,16 @@ def plot_results_dist(ds_results):
     )
     axs[0].set_xlabel("")
 
-    # # Add marker at CPA time and replica id
-    # axs[0].scatter(
-    #     cpa_time,
-    #     cpa_replica_id,
-    #     marker="X",
-    #     s=100,
-    #     color="cyan",
-    #     # label="CPA",
-    #     zorder=5,
-    # )
-    # # Annotate CPA point
-    # axs[0].annotate(
-    #     "CPA",
-    #     xy=(cpa_segment_dt, cpa_replica_id),
-    #     xytext=(cpa_segment_dt + np.timedelta64(0, "s"), cpa_replica_id + 20),
-    #     arrowprops=dict(facecolor="cyan", shrink=0.05, width=4, headwidth=8),
-    #     fontsize=14,
-    #     color="cyan",
-    #     ha="center",
-    # )
+    # Add marker at minimum spatial distance point
+    axs[0].scatter(
+        min_dist_results.event_replica_id,
+        min_dist_results.library_replica_id,
+        marker="X",
+        s=80,
+        color="cyan",
+        label="Minimum spatial distance",
+        zorder=5,
+    )
 
     # Spatial distance
     ds_results.spatial_dist.plot(
@@ -1090,28 +1112,94 @@ def plot_results_dist(ds_results):
         vmax=1000,
         ax=axs[1],
     )
-    # axs[1].scatter(
-    #     cpa_time,
-    #     cpa_replica_id,
-    #     marker="X",
-    #     s=100,
-    #     color="cyan",
-    #     # label="CPA",
-    #     zorder=5,
-    # )
-    # Annotate CPA point
-    # axs[1].annotate(
-    #     "CPA",
-    #     xy=(cpa_segment_dt, cpa_replica_id),
-    #     xytext=(cpa_segment_dt + np.timedelta64(0, "s"), cpa_replica_id + 20),
-    #     arrowprops=dict(facecolor="cyan", shrink=0.05, width=4, headwidth=8),
-    #     fontsize=14,
-    #     color="cyan",
-    #     ha="center",
-    # )
 
-    # fpath = os.path.join(root_fig, f"theta_vs_distance_gps_Jules.png")
-    # plt.savefig(fpath, bbox_inches="tight")
+    # Add marker at minimum spatial distance point
+    axs[1].scatter(
+        min_dist_results.event_replica_id,
+        min_dist_results.library_replica_id,
+        marker="X",
+        s=80,
+        color="cyan",
+        label="Minimum spatial distance",
+        zorder=5,
+    )
+
+    axs[0].legend(fontsize=12)
+    axs[1].legend(fontsize=12)
+
+    if save_fig:
+        fpath = os.path.join(
+            root_img,
+            f"res_library_{ds_results.library_id}_event_{ds_results.event_id}_distances.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight")
+
+
+def plot_results_sorted_dist(
+    ds_results: xr.Dataset, offset_around_min_dist: int = 2, root_img: str = None
+):
+
+    print(f"\tPlotting RTF distance vs spatial distance (sorted by distance)")
+
+    if root_img is not None:
+        os.makedirs(root_img, exist_ok=True)
+        save_fig = True
+
+    # Find crossing point between library replicas and event replicas in the spatial domain
+    min_dist_ids = ds_results.spatial_dist.argmin(...)
+    min_dist_event_replica_id = min_dist_ids["event_replica_id"].values
+    min_dist_library_replica_id = min_dist_ids["library_replica_id"].values
+    min_dist_results = ds_results.isel(
+        event_replica_id=min_dist_event_replica_id,
+        library_replica_id=min_dist_library_replica_id,
+    )
+
+    # Compare RTF distance and spatial distance for a few replicas around the minimum spatial distance point
+    fig, axs = plt.subplots(2, 1, sharex=True, figsize=(16, 12))
+
+    # Extract rtf distance for a few replicas around the minimum spatial distance point
+    min_rep = max(0, min_dist_results.library_replica_id - offset_around_min_dist)
+    max_rep = min(
+        ds_results.library_replica_id.max().values,
+        min_dist_results.library_replica_id + offset_around_min_dist,
+    )
+    ds_results_around_min_dist = ds_results.sel(
+        library_replica_id=slice(min_rep, max_rep)
+    )
+
+    ds_results_around_min_dist.rtf_dist.plot(ax=axs[0], hue="library_replica_id")
+    ds_results_around_min_dist.spatial_dist.plot(ax=axs[1], hue="library_replica_id")
+
+    if save_fig:
+        fpath = os.path.join(
+            root_img,
+            f"res_library_{ds_results.library_id}_event_{ds_results.event_id}_var_around_min_dist.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight")
+
+    # Extract theta and dist variation for the selected replica
+    ds_results_min_dist = ds_results.sel(
+        library_replica_id=min_dist_results.library_replica_id.values
+    )
+    dist_to_cpa_argsort = np.argsort(ds_results_min_dist.spatial_dist.values)
+    sorted_spatial_dist = ds_results_min_dist.spatial_dist.values[dist_to_cpa_argsort]
+    sorted_rtf_dist = ds_results_min_dist.rtf_dist.values[dist_to_cpa_argsort]
+
+    plt.figure()
+    plt.scatter(
+        sorted_spatial_dist,
+        sorted_rtf_dist,
+        # label=f"{pos} ({theta_dist_obs[pos]['id']})",
+    )
+    plt.xlabel("Spatial distance to closest replica [m]")
+    plt.ylabel(r"$\theta$ [°]")
+
+    if save_fig:
+        fpath = os.path.join(
+            root_img,
+            f"res_library_{ds_results.library_id}_event_{ds_results.event_id}_sorted_var_at_min_dist.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight")
 
 
 # =====================================================================================================================
@@ -1124,6 +1212,7 @@ def test():
     Test function
     """
     root_data = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data"
+    root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\img\rtf_mfp"
     ref_rcv_id = 2
     rtf_estimator = "cs-evd"
 
@@ -1142,6 +1231,7 @@ def test():
 
     rtf_mfp_processor = RTF_MFP_Processor(
         root_data=root_data,
+        root_img=root_img,
         reference_receiver_id=ref_rcv_id,
         rtf_estimator=rtf_estimator,
         fsm_active_kwargs=fsm_active_kwargs,

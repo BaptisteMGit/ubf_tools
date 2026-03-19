@@ -317,6 +317,18 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
             dist = np.rad2deg(dist)
 
         if apply_mean:
+            # Check if weights are provided
+            if weights is None:
+                # If no weights are provided, use uniform weights
+                weights = np.ones_like(dist)
+            # Ensure weights is a 1D array
+            # if weights.shape
+
+            # We can either use ma.average or do it by manually
+            idx_nan = np.isnan(dist)
+            weights[idx_nan] = np.nan
+            dist = np.nansum(dist * weights, axis=0) * 1 / (np.nansum(weights, axis=0))
+
             dist = np.nanmean(dist)
         elif apply_median:
             dist = np.nanmedian(dist)

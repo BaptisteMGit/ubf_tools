@@ -15,6 +15,7 @@
 import os
 import numpy as np
 import xarray as xr
+import scipy.signal as sp
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
@@ -265,6 +266,7 @@ class RTF_MFP_Processor:
             single_vessel_per_segment=single_vessel_per_segment,
         )
 
+        #
         # Concatenate active and passive features
         ds = self.fusion(ds_active=ds_active, ds_passive=ds_passive, ds_type=ds_type)
 
@@ -347,6 +349,10 @@ class RTF_MFP_Processor:
             "description": "Estimated RTF phase",
             "units": "rad",
             "long_name": r"$\angle \Pi$",
+        }
+        ds["feature_weights"].attrs = {
+            "description": "Weights to derive mean distance over frequency band.",
+            "long_name": r"$w_k$",
         }
 
         for coord in ["e", "n", "u"]:
@@ -632,10 +638,10 @@ class RTF_MFP_Processor:
                 self.root_rtf_data_active, f"sequence_{rep_seq_id}_rtf.nc"
             )
             if os.path.exists(rep_filepath):
-                ds_replica = xr.open_dataset(rep_filepath)
+                ds_feature = xr.open_dataset(rep_filepath)
 
                 # Get replica position
-                rep_pulse_ids = ds_replica["pulse_id"].values
+                rep_pulse_ids = ds_feature["pulse_id"].values
                 # Slice current sequence
                 df_arrivals_processed_seq = df_arrivals_processed.loc[
                     df_arrivals_processed["sequence_id"] == rep_seq_id
@@ -645,29 +651,37 @@ class RTF_MFP_Processor:
                 ]  # keep only detected pulse
 
                 # Get replica position from arrivals
-                e_replica = df_arrivals_processed_seq["emission_interp_e_gps"]
-                n_replica = df_arrivals_processed_seq["emission_interp_n_gps"]
-                u_replica = df_arrivals_processed_seq["emission_interp_u_gps"]
+                e_feature = df_arrivals_processed_seq["emission_interp_e_gps"]
+                n_feature = df_arrivals_processed_seq["emission_interp_n_gps"]
+                u_feature = df_arrivals_processed_seq["emission_interp_u_gps"]
+
+                # Derive weights
+                feature_weights = self.get_feature_weights(
+                    ds_feature=ds_feature, src_type="active"
+                )
 
                 # Extract usefull data to store to the library
                 if i == 0:
-                    rtf_amp = ds_replica["rtf_amp_hat"].values
-                    rtf_phase = ds_replica["rtf_phase_hat"].values
-                    e_replica_all = e_replica.values
-                    n_replica_all = n_replica.values
-                    u_replica_all = u_replica.values
+                    rtf_amp = ds_feature["rtf_amp_hat"].values
+                    rtf_phase = ds_feature["rtf_phase_hat"].values
+                    e_feature_all = e_feature.values
+                    n_feature_all = n_feature.values
+                    u_feature_all = u_feature.values
+                    feature_weights_all = feature_weights
                 else:
                     # Concatenate along the pulse axis : (n_rcv, n_freq, n_pulse) -> (n_rcv, n_freq, n_feature)
                     rtf_amp = np.concatenate(
-                        [rtf_amp, ds_replica["rtf_amp_hat"].values], axis=-1
+                        [rtf_amp, ds_feature["rtf_amp_hat"].values], axis=-1
                     )
                     rtf_phase = np.concatenate(
-                        [rtf_phase, ds_replica["rtf_phase_hat"].values], axis=-1
+                        [rtf_phase, ds_feature["rtf_phase_hat"].values], axis=-1
                     )
-                    e_replica_all = np.concatenate([e_replica_all, e_replica.values])
-                    n_replica_all = np.concatenate([n_replica_all, n_replica.values])
-                    u_replica_all = np.concatenate([u_replica_all, u_replica.values])
-
+                    e_feature_all = np.concatenate([e_feature_all, e_feature.values])
+                    n_feature_all = np.concatenate([n_feature_all, n_feature.values])
+                    u_feature_all = np.concatenate([u_feature_all, u_feature.values])
+                    feature_weights_all = np.concatenate(
+                        [feature_weights_all, feature_weights], axis=0
+                    )
             else:
                 print(
                     f"Replica file for sequence {rep_seq_id} not found at {rep_filepath}."
@@ -680,14 +694,18 @@ class RTF_MFP_Processor:
             data_vars={
                 "rtf_amp": (("h_index", "f_rtf", "replica_id"), rtf_amp),
                 "rtf_phase": (("h_index", "f_rtf", "replica_id"), rtf_phase),
-                "e_replica": (("replica_id"), e_replica_all.astype(np.float32)),
-                "n_replica": (("replica_id"), n_replica_all.astype(np.float32)),
-                "u_replica": (("replica_id"), u_replica_all.astype(np.float32)),
+                "feature_weights": (
+                    ("f_rtf", "replica_id"),
+                    feature_weights_all.T.astype(np.float32),
+                ),
+                "e_replica": (("replica_id"), e_feature_all.astype(np.float32)),
+                "n_replica": (("replica_id"), n_feature_all.astype(np.float32)),
+                "u_replica": (("replica_id"), u_feature_all.astype(np.float32)),
                 "replica_type": (("replica_id"), [1] * rtf_amp.shape[-1]),
             },
             coords={
-                "h_index": ds_replica["h_index"].values,
-                "f_rtf": ds_replica["f_rtf"].values,
+                "h_index": ds_feature["h_index"].values,
+                "f_rtf": ds_feature["f_rtf"].values,
                 "replica_id": np.arange(rtf_amp.shape[-1]),
             },
         )
@@ -715,48 +733,68 @@ class RTF_MFP_Processor:
             )
 
             if os.path.exists(rep_filepath):
-                ds_replica = xr.open_dataset(rep_filepath)
+                ds_feature = xr.open_dataset(rep_filepath)
 
                 # Extract source position
-                ais_replica = self.ds_ais.sel(time=slice(start_dt, end_dt))
-                ais_replica = filter_ais(ais_event=ais_replica)
+                ais_feature = self.ds_ais.sel(time=slice(start_dt, end_dt))
+                ais_feature = filter_ais(ais_event=ais_feature)
 
+                # print(len(ais_feature["mmsi"].values))
                 # Ensure only one vessel in the segment
-                if single_vessel_per_segment and (len(ais_replica["mmsi"].values) > 1):
+                if single_vessel_per_segment and (len(ais_feature["mmsi"].values) > 1):
                     print(
                         f"Warning: more than one vessel detected in the AIS data for passive segment {start_dt} - {end_dt} while using single_vessel_per_segment = True. This segment will be skipped."
                     )
+                    # plt.figure()
+                    # ais_feature.e.plot(hue="mmsi")
+                    # plt.savefig("test.png")
+
+                    continue
+                elif len(ais_feature["mmsi"].values) == 0:
+                    print(
+                        f"Warning: no vessel detected in the AIS data for passive segment {start_dt} - {end_dt}. This segment will be skipped."
+                    )
                     continue
                 else:
-                    ais_replica = ais_replica.isel(mmsi=0)  # Keep only the first vessel
+                    ais_feature = ais_feature.isel(mmsi=0)  # Keep only the first vessel
 
-                e_replica = ais_replica.e.interp(
-                    time=ds_replica.segment_dt.values
+                # TODO : derive weights here
+                feature_weights = self.get_feature_weights(
+                    ds_feature=ds_feature, src_type="passive"
+                )  # Shape (n_segment_dt, n_freq)
+
+                e_feature = ais_feature.e.interp(
+                    time=ds_feature.segment_dt.values
                 ).values
-                n_replica = ais_replica.n.interp(
-                    time=ds_replica.segment_dt.values
+                n_feature = ais_feature.n.interp(
+                    time=ds_feature.segment_dt.values
                 ).values
-                u_replica = ais_replica.u.interp(
-                    time=ds_replica.segment_dt.values
+                u_feature = ais_feature.u.interp(
+                    time=ds_feature.segment_dt.values
                 ).values
 
                 if i == 0:
-                    rtf_amp = ds_replica["rtf_amp_hat"].values
-                    rtf_phase = ds_replica["rtf_phase_hat"].values
-                    e_replica_all = e_replica
-                    n_replica_all = n_replica
-                    u_replica_all = u_replica
+                    rtf_amp = ds_feature["rtf_amp_hat"].values
+                    rtf_phase = ds_feature["rtf_phase_hat"].values
+                    e_feature_all = e_feature
+                    n_feature_all = n_feature
+                    u_feature_all = u_feature
+                    feature_weights_all = feature_weights
+                    i += 1
                 else:
                     # Concatenate along the time axis : (n_rcv, n_freq, n_segment_dt) -> (n_rcv, n_freq, n_feature)
                     rtf_amp = np.concatenate(
-                        [rtf_amp, ds_replica["rtf_amp_hat"].values], axis=-1
+                        [rtf_amp, ds_feature["rtf_amp_hat"].values], axis=-1
                     )
                     rtf_phase = np.concatenate(
-                        [rtf_phase, ds_replica["rtf_phase_hat"].values], axis=-1
+                        [rtf_phase, ds_feature["rtf_phase_hat"].values], axis=-1
                     )
-                    e_replica_all = np.concatenate([e_replica_all, e_replica])
-                    n_replica_all = np.concatenate([n_replica_all, n_replica])
-                    u_replica_all = np.concatenate([u_replica_all, u_replica])
+                    e_feature_all = np.concatenate([e_feature_all, e_feature])
+                    n_feature_all = np.concatenate([n_feature_all, n_feature])
+                    u_feature_all = np.concatenate([u_feature_all, u_feature])
+                    feature_weights_all = np.concatenate(
+                        [feature_weights_all, feature_weights], axis=0
+                    )
             else:
                 print(
                     f"Replica file for passive segment {start_dt} - {end_dt} not found at {rep_filepath}."
@@ -767,18 +805,113 @@ class RTF_MFP_Processor:
             data_vars={
                 "rtf_amp": (("h_index", "f_rtf", "replica_id"), rtf_amp),
                 "rtf_phase": (("h_index", "f_rtf", "replica_id"), rtf_phase),
-                "e_replica": (("replica_id"), e_replica_all.astype(np.float32)),
-                "n_replica": (("replica_id"), n_replica_all.astype(np.float32)),
-                "u_replica": (("replica_id"), u_replica_all.astype(np.float32)),
+                "feature_weights": (
+                    ("f_rtf", "replica_id"),
+                    feature_weights_all.T.astype(np.float32),
+                ),
+                "e_replica": (("replica_id"), e_feature_all.astype(np.float32)),
+                "n_replica": (("replica_id"), n_feature_all.astype(np.float32)),
+                "u_replica": (("replica_id"), u_feature_all.astype(np.float32)),
                 "replica_type": (("replica_id"), [2] * rtf_amp.shape[-1]),
             },
             coords={
-                "h_index": ds_replica["h_index"].values,
-                "f_rtf": ds_replica["f_rtf"].values,
+                "h_index": ds_feature["h_index"].values,
+                "f_rtf": ds_feature["f_rtf"].values,
                 "replica_id": np.arange(rtf_amp.shape[-1]),
             },
         )
         return ds_passive
+
+    def get_feature_weights(self, ds_feature: xr.Dataset, src_type: str = "active"):
+
+        replica_weights = []
+
+        if src_type == "active":
+            ts = ds_feature.ts
+
+            t_pulse = ds_feature.pulse_duration
+            t_interp_pulse = ds_feature.inter_pulse_period
+
+            # Time to add to ensure we englobe entire signal including last reflexions
+            t_silence = t_interp_pulse - t_pulse
+            tau_plus = 0.9 * t_silence  # Avoid to include following pulse
+            tau_minus = 0.9 * (
+                t_silence - self.fsm_active.tau_ir
+            )  # Avoid to include previous pulse
+            tau_minus = np.max(tau_minus, 0)  # In case tau_ir > t_silence
+
+            # Process each emission
+            for i_pulse, pulse_id in enumerate(ds_feature.pulse_id.values):
+
+                # Smallest arrival time in seconds from start (ie corresponding to closest OBS)
+                tstart = ds_feature.arr_time_in_sec_from_start.sel(
+                    pulse_id=pulse_id
+                ).min()
+                # Select the corresponding time window
+                active_sig_seg = ds_feature.signal.sel(
+                    time=slice(
+                        tstart - tau_minus - ts / 2,
+                        tstart + t_pulse + tau_plus + ts / 2,
+                    )
+                )
+
+                # Compute weights using signal from the reference receiver
+                active_sig_seg_rcv_ref = active_sig_seg.sel(
+                    h_index=ds_feature.h_index_ref
+                )
+
+                weights_kwargs = {
+                    "fs": ds_feature.fs,
+                    "nperseg": self.fsm_passive.nperseg,
+                    "noverlap": self.fsm_passive.noverlap,
+                    "fmin": ds_feature.f_rtf.min().values,
+                    "fmax": ds_feature.f_rtf.max().values,
+                }
+                w_k = get_weights(
+                    signal=active_sig_seg_rcv_ref.values,
+                    weights_type="psd",
+                    **weights_kwargs,
+                )
+
+                replica_weights.append(w_k)
+
+        elif src_type == "passive":
+
+            start_seg = 0
+            end_seg = ds_feature.analysis_segment_duration
+            segment_shift = ds_feature.analysis_segment_duration * (
+                1 - ds_feature.analysis_segment_alpha_overlap
+            )
+
+            for i_seg in range(ds_feature.sizes["segment_dt"]):
+                # Get signal corresponding to the current segment
+                passive_sig_seg = ds_feature.signal.sel(time=slice(start_seg, end_seg))
+                # Compute weights using signal from the reference receiver
+                passive_sig_seg_rcv_ref = passive_sig_seg.sel(
+                    h_index=ds_feature.h_index_ref
+                )
+
+                weights_kwargs = {
+                    "fs": ds_feature.fs,
+                    "nperseg": self.fsm_passive.nperseg,
+                    "noverlap": self.fsm_passive.noverlap,
+                    "fmin": ds_feature.f_rtf.min().values,
+                    "fmax": ds_feature.f_rtf.max().values,
+                }
+                w_k = get_weights(
+                    signal=passive_sig_seg_rcv_ref.values,
+                    weights_type="psd",
+                    **weights_kwargs,
+                )
+
+                replica_weights.append(w_k)
+
+                end_seg += segment_shift
+                start_seg += segment_shift
+
+        replica_weights = np.array(replica_weights)  # Shape (n_seg, nf)
+
+        return replica_weights
 
     ###########################
     # Matrching library and event features
@@ -825,12 +958,55 @@ class RTF_MFP_Processor:
 
         plot_results_sorted_dist(ds_results=ds_results, root_img=root_img)
 
-        plt.show()
+        # plt.show()
 
 
 # =======================================================================================================================
 # Utils
 # =======================================================================================================================
+
+
+def get_weights(signal, weights_type: str = "psd", **kwargs):
+
+    if weights_type == "psd":
+        # Unpack kwargs
+        fs = kwargs.get("fs", 2000)
+        nperseg = kwargs.get("nperseg", None)
+        noverlap = kwargs.get("noverlap", None)
+        fmin = kwargs.get("fmin", 100)
+        fmax = kwargs.get("fmax", 900)
+
+        if nperseg is None or noverlap is None:
+            # Raise an error if nperseg or noverlap is not provided
+            raise ValueError(
+                "nperseg and noverlap must be provided when using weights_type = 'psd'."
+            )
+
+        # Compute PSD of the signal
+        ff, Pxx_seg = sp.welch(
+            signal,
+            fs=fs,
+            nperseg=nperseg,
+            noverlap=noverlap,
+            window="hann",
+        )
+
+        # Select frequency band of interest
+        idx_ff_in_band = np.logical_and(
+            (ff >= fmin),
+            (ff <= fmax),
+        )
+        ff = ff[idx_ff_in_band]
+        Pxx_seg = Pxx_seg[idx_ff_in_band]
+        # Convert to dB
+        Pxx_seg = 10 * np.log10(Pxx_seg)
+
+        # Compute weights (normalized PSD)
+        w_k = (Pxx_seg + np.abs(np.min(Pxx_seg))) / np.max(
+            Pxx_seg + np.abs(np.min(Pxx_seg))
+        )
+
+        return w_k
 
 
 def plot_mfp_datasets(ds_library, ds_event, root_img: str = None):
@@ -984,11 +1160,15 @@ def ambiguity(
 
     rtf_distances = []
 
-    # TODO : add option to use weighted mean
-
     if dist_type == "hermitian_angle":
         # Iterate of each replica of the library
         for rep_id in library_replicas.replica_id.values:
+
+            # TODO : add option to use weighted mean
+            library_weights_rep_i = ds_library.feature_weights.sel(replica_id=rep_id)
+            if use_weighted_mean:
+                # dist_kwargs["weights"] =
+                pass
 
             replica_i = library_replicas.sel(replica_id=rep_id)
             dist = D_hermitian_angle_fast(
@@ -1247,23 +1427,31 @@ def test():
 
     # Populate library
     active_replicas_args = {
-        "replica_sequence_ids": [],
+        "replica_sequence_ids": [144],
         "load_precomputed_feature": True,
     }
     passive_replicas_args = {
         "start_datetimes": [
-            datetime(year=2025, month=10, day=15, hour=00, minute=15, second=00)
+            datetime(year=2025, month=10, day=14, hour=1, minute=35, second=00),
+            datetime(year=2025, month=10, day=14, hour=4, minute=10, second=00),
+            datetime(year=2025, month=10, day=14, hour=22, minute=55, second=00),
+            datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
+            datetime(year=2025, month=10, day=15, hour=22, minute=00, second=00),
+            # datetime(year=2025, month=10, day=16, hour=20, minute=55, second=00),
+            # datetime(year=2025, month=10, day=15, hour=1, minute=40, second=00),
         ],
         "end_datetimes": [
-            datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00)
+            datetime(year=2025, month=10, day=14, hour=1, minute=50, second=00),
+            datetime(year=2025, month=10, day=14, hour=4, minute=20, second=00),
+            datetime(year=2025, month=10, day=14, hour=23, minute=15, second=00),
+            datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
+            datetime(year=2025, month=10, day=15, hour=22, minute=30, second=00),
+            # datetime(year=2025, month=10, day=16, hour=21, minute=15, second=00),
+            # datetime(year=2025, month=10, day=15, hour=1, minute=50, second=00),
         ],
         "load_precomputed_feature": True,
     }
-    # passive_replicas_args = {
-    #     "start_datetimes": [],
-    #     "end_datetimes": [],
-    #     "load_precomputed_feature": True,
-    # }
+
     rtf_mfp_processor.compute_library(
         active_feature_args=active_replicas_args,
         passive_feature_args=passive_replicas_args,
@@ -1281,10 +1469,14 @@ def test():
     }
     passive_feature_args = {
         "start_datetimes": [
-            datetime(year=2025, month=10, day=15, hour=1, minute=40, second=00)
+            # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
+            # datetime(year=2025, month=10, day=15, hour=1, minute=40, second=00),
+            datetime(year=2025, month=10, day=16, hour=20, minute=55, second=00),
         ],
         "end_datetimes": [
-            datetime(year=2025, month=10, day=15, hour=1, minute=50, second=00)
+            # datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
+            # datetime(year=2025, month=10, day=15, hour=1, minute=50, second=00)
+            datetime(year=2025, month=10, day=16, hour=21, minute=15, second=00),
         ],
         "load_precomputed_feature": True,
     }

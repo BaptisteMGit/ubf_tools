@@ -86,16 +86,16 @@ class BruitfmManager:
             )
 
     def run_full_scraping_procedure(self):
-        # Step 1: Parse stations from html
-        networks = self.parse_stations_from_html(save=True)
-        print(f"Found {len(networks)} networks.")
+        # # Step 1: Parse stations from html
+        # networks = self.parse_stations_from_html(save=True)
+        # print(f"Found {len(networks)} networks.")
 
         # Step 2: Scrap stations for each network
-        self.scrap_networks_stations(networks=networks)
+        self.scrap_networks_stations()
         print("Scraping of stations completed.")
 
         # Step 3: Merge all networks into a single csv file
-        self.merge_networks(networks=networks)
+        self.merge_scraped_networks()
         print("Merging of networks completed.")
 
         # Step 4: Compute elevation difference with GEBCO bathymetry

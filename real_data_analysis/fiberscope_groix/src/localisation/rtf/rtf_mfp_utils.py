@@ -609,8 +609,9 @@ def get_dists_2_passive_event(
     )
 
 
-def filter_ais(ais_event):
-    print("\tFiltering AIS data ...")
+def filter_ais(ais_event, verbose=False):
+    if verbose:
+        print("\tFiltering AIS data ...")
     # Filter AIS data in area
     e_min = -1000
     e_max = +1000

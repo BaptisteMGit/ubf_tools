@@ -558,11 +558,15 @@ class RTF_MFP_Processor:
                 # Slice pulse
                 seq_slice = replica_pulse_slice_to_compute[i_seq]
 
-                if seq_slice[0] is not None and seq_slice[1] is not None:
-                    df_arrivals_selected_i = df_arrivals_selected_i.loc[
-                        (df_arrivals_selected_i["pulse_id"] >= seq_slice[0])
-                        & (df_arrivals_selected_i["pulse_id"] <= seq_slice[1])
-                    ]
+                if seq_slice[0] is None:
+                    seq_slice = (0, seq_slice[1])
+                if seq_slice[1] is None:
+                    seq_slice = (seq_slice[0], df_arrivals_selected_i["pulse_id"].max())
+
+                df_arrivals_selected_i = df_arrivals_selected_i.loc[
+                    (df_arrivals_selected_i["pulse_id"] >= seq_slice[0])
+                    & (df_arrivals_selected_i["pulse_id"] <= seq_slice[1])
+                ]
 
                 if i_seq == 0:
                     df_arrivals_selected_sliced = df_arrivals_selected_i
@@ -1843,10 +1847,16 @@ def test():
 
     # Populate library
     active_replicas_args = {
-        "replica_sequence_ids": [144, 146],
-        "replica_pulse_slice": [(0, 300), (None, None)],
-        "load_precomputed_feature": False,
+        "replica_sequence_ids": [144],
+        "replica_pulse_slice": [(0, 200)],
+        "load_precomputed_feature": True,
     }
+    # active_replicas_args = {
+    #     "replica_sequence_ids": [146],
+    #     "replica_pulse_slice": [(300, None)],
+    #     "load_precomputed_feature": False,
+    # }
+
     # passive_replicas_args = {
     #     "start_datetimes": [
     #         datetime(year=2025, month=10, day=14, hour=1, minute=30, second=00),  # OK
@@ -2024,12 +2034,23 @@ def test():
 
     # Passage du Jules au dessus de la fibre
     target_mmsi = 226916000
+    # Séquence entiere
+    # passive_feature_args = {
+    #     "start_datetimes": [
+    #         datetime(year=2025, month=10, day=15, hour=10, minute=10, second=00),  # OK
+    #     ],
+    #     "end_datetimes": [
+    #         datetime(year=2025, month=10, day=15, hour=11, minute=20, second=00),  # OK
+    #     ],
+    #     "load_precomputed_feature": True,
+    # }
+    # Uniquement le passage proche de l'OBS 2 en début de séquence
     passive_feature_args = {
         "start_datetimes": [
             datetime(year=2025, month=10, day=15, hour=10, minute=10, second=00),  # OK
         ],
         "end_datetimes": [
-            datetime(year=2025, month=10, day=15, hour=11, minute=20, second=00),  # OK
+            datetime(year=2025, month=10, day=15, hour=10, minute=20, second=00),  # OK
         ],
         "load_precomputed_feature": True,
     }

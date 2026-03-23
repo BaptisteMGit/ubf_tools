@@ -15,6 +15,7 @@
 import os
 import numpy as np
 import xarray as xr
+import pandas as pd
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -249,6 +250,7 @@ class RTF_MFP_Processor:
         ds_type: str = "library",
         id: int = None,
         single_vessel_per_segment: bool = True,
+        target_mmsi: int = None,
     ):
         """
         Method to compute dataset
@@ -264,6 +266,7 @@ class RTF_MFP_Processor:
             active_feature_info=active_feature_info,
             passive_feature_info=passive_feature_info,
             single_vessel_per_segment=single_vessel_per_segment,
+            target_mmsi=target_mmsi,
         )
 
         #
@@ -282,6 +285,7 @@ class RTF_MFP_Processor:
         active_feature_args: dict = {},
         passive_feature_args: dict = {},
         id: int = None,
+        target_mmsi: int = None,
     ):
         """Method to compute library dataset"""
 
@@ -291,12 +295,14 @@ class RTF_MFP_Processor:
             ds_type="library",
             id=id,
             single_vessel_per_segment=True,  # For the library we wish to use segment containing only one vessel to ensure the quality of the passive replicas
+            target_mmsi=target_mmsi,
         )
 
     def compute_event(
         self,
         active_feature_args: dict = {},
         passive_feature_args: dict = {},
+        target_mmsi: int = None,
         id: int = None,
     ):
         """Method to compute event dataset"""
@@ -307,6 +313,7 @@ class RTF_MFP_Processor:
             ds_type="event",
             id=id,
             single_vessel_per_segment=False,  # For the event we want to be able to use segments containing multiple vessels to be able to test the method in more complex scenarios
+            target_mmsi=target_mmsi,
         )
 
     def fusion(
@@ -486,6 +493,17 @@ class RTF_MFP_Processor:
         replica_sequence_ids = np.atleast_1d(
             replica_sequence_ids
         )  # Ensure it's an array
+        replica_pulse_slice = active_feature_args.get(
+            "replica_pulse_slice", [(None, None)]
+        )
+        # Ensure replica_pulse_slice match replica_sequence_ids size
+        if len(replica_pulse_slice) != replica_sequence_ids.size:
+            replica_pulse_slice = [(None, None)] * replica_sequence_ids.size
+            if self.verbose:
+                print(
+                    "\nProvided pulse slices dont match number of sequences, no slice applied."
+                )
+
         load_precomputed_feature = active_feature_args.get(
             "load_precomputed_feature", True
         )  # If True, will load precomputed replicas if they exist, otherwise will compute them
@@ -493,6 +511,7 @@ class RTF_MFP_Processor:
         replica_sequence_ids_to_compute = (
             replica_sequence_ids.copy()
         )  # Initialize list of sequence ids to compute
+        replica_pulse_slice_to_compute = replica_pulse_slice.copy()  # Initialize
         if load_precomputed_feature:
             for rep_seq_id in replica_sequence_ids:
                 rep_filepath = os.path.join(
@@ -516,23 +535,44 @@ class RTF_MFP_Processor:
                             f"Precomputed replica for sequence {rep_seq_id} found at {rep_filepath}. This sequence will be loaded instead of being computed."
                         )
                         # Remove this sequence id from the list of sequence ids to compute
+                        removed_idx = replica_sequence_ids_to_compute != rep_seq_id
                         replica_sequence_ids_to_compute = (
-                            replica_sequence_ids_to_compute[
-                                replica_sequence_ids_to_compute != rep_seq_id
-                            ]
+                            replica_sequence_ids_to_compute[removed_idx]
                         )
+                        # Remove correesponding slice
+                        replica_pulse_slice_to_compute = replica_pulse_slice_to_compute[
+                            removed_idx
+                        ]
 
         if len(replica_sequence_ids_to_compute) > 0:
             df_arrivals_selected = self.df_arrivals.loc[
                 self.df_arrivals["sequence_id"].isin(replica_sequence_ids_to_compute)
             ]
 
-            # # Remove pulse along the transect (quicker)
-            # pulse_max = 250
-            # df_library = df_library.loc[df_library["pulse_id"] <= pulse_max]
+            # Select the required pulse within sequence
+
+            for i_seq, seq_id in enumerate(replica_sequence_ids_to_compute):
+                df_arrivals_selected_i = df_arrivals_selected.loc[
+                    df_arrivals_selected["sequence_id"] == seq_id
+                ]
+                # Slice pulse
+                seq_slice = replica_pulse_slice_to_compute[i_seq]
+
+                if seq_slice[0] is not None and seq_slice[1] is not None:
+                    df_arrivals_selected_i = df_arrivals_selected_i.loc[
+                        (df_arrivals_selected_i["pulse_id"] >= seq_slice[0])
+                        & (df_arrivals_selected_i["pulse_id"] <= seq_slice[1])
+                    ]
+
+                if i_seq == 0:
+                    df_arrivals_selected_sliced = df_arrivals_selected_i
+                else:
+                    df_arrivals_selected_sliced = pd.concat(
+                        [df_arrivals_selected_sliced, df_arrivals_selected_i]
+                    )
 
             # Reset index
-            df_arrivals_selected = df_arrivals_selected.reset_index(drop=True)
+            df_arrivals_selected = df_arrivals_selected_sliced.reset_index(drop=True)
 
             # Derive replicas for selected sequences
             self.fsm_active.process_analysis(
@@ -542,6 +582,7 @@ class RTF_MFP_Processor:
 
         active_feature_info = {
             "replica_sequence_ids": replica_sequence_ids,
+            "replica_pulse_slice": replica_pulse_slice,
             # "df_arrivals_processed": df_arrivals_processed,
         }
         return active_feature_info
@@ -615,6 +656,7 @@ class RTF_MFP_Processor:
         active_feature_info: dict = {},
         passive_feature_info: dict = {},
         single_vessel_per_segment: bool = True,
+        target_mmsi: int = None,
     ):
         """
         Method to load features
@@ -623,6 +665,7 @@ class RTF_MFP_Processor:
         ds_passive = self.load_passive_feature(
             passive_feature_info=passive_feature_info,
             single_vessel_per_segment=single_vessel_per_segment,
+            target_mmsi=target_mmsi,
         )
 
         return ds_active, ds_passive
@@ -734,7 +777,10 @@ class RTF_MFP_Processor:
         return ds_active
 
     def load_passive_feature(
-        self, passive_feature_info: dict = {}, single_vessel_per_segment: bool = True
+        self,
+        passive_feature_info: dict = {},
+        single_vessel_per_segment: bool = True,
+        target_mmsi: int = None,
     ):
         """
         Method to load replicas (passive source)
@@ -777,7 +823,19 @@ class RTF_MFP_Processor:
                     )
                     continue
                 else:
-                    ais_feature = ais_feature.isel(mmsi=0)  # Keep only the first vessel
+                    if (
+                        target_mmsi is not None
+                        and target_mmsi in ais_feature.mmsi.values
+                    ):
+                        ais_feature = ais_feature.sel(mmsi=target_mmsi)
+                        print(f"Using target vessel : mmsi={target_mmsi}")
+                    else:
+                        ais_feature = ais_feature.isel(
+                            mmsi=0
+                        )  # Keep only the first vessel
+                        print(
+                            f"Using first vessel in list (default behavior) : mmsi={ais_feature.mmsi.values[0]}"
+                        )
 
                 # TODO : derive weights here
                 # feature_weights = self.get_feature_weights(
@@ -1495,20 +1553,19 @@ def ambiguity(
                     **dist_kwargs,
                 )
 
-                if rep_id == 60:
-                    plt.figure()
-                    plt.hist(dist[:, 28], bins=100)
-                    plt.legend()
-                    plt.savefig("test1")
+                # if rep_id == 60:
+                #     plt.figure()
+                #     plt.hist(dist[:, 28], bins=100)
+                #     plt.savefig("test1")
 
-                    d = (dist[:, 28] - min(dist[:, 28])) / (
-                        max(dist[:, 28]) - min(dist[:, 28])
-                    )
-                    plt.figure()
-                    plt.plot(ds_library.f_rtf.values, d, label="d")
-                    plt.plot(ds_library.f_rtf.values, weights[:, 28], label="w")
-                    plt.legend()
-                    plt.savefig("test2")
+                #     d = (dist[:, 28] - min(dist[:, 28])) / (
+                #         max(dist[:, 28]) - min(dist[:, 28])
+                #     )
+                #     plt.figure()
+                #     plt.plot(ds_library.f_rtf.values, d, label="d")
+                #     plt.plot(ds_library.f_rtf.values, weights[:, 28], label="w")
+                #     plt.legend()
+                #     plt.savefig("test2")
 
                 idx_nan = np.isnan(dist)
                 weights[idx_nan] = np.nan
@@ -1786,8 +1843,9 @@ def test():
 
     # Populate library
     active_replicas_args = {
-        "replica_sequence_ids": [144],
-        "load_precomputed_feature": True,
+        "replica_sequence_ids": [144, 146],
+        "replica_pulse_slice": [(0, 300), (None, None)],
+        "load_precomputed_feature": False,
     }
     # passive_replicas_args = {
     #     "start_datetimes": [
@@ -1965,6 +2023,7 @@ def test():
     # }
 
     # Passage du Jules au dessus de la fibre
+    target_mmsi = 226916000
     passive_feature_args = {
         "start_datetimes": [
             datetime(year=2025, month=10, day=15, hour=10, minute=10, second=00),  # OK
@@ -1979,6 +2038,7 @@ def test():
         active_feature_args=active_feature_args,
         passive_feature_args=passive_feature_args,
         id=0,
+        target_mmsi=target_mmsi,
     )
 
     ###########################

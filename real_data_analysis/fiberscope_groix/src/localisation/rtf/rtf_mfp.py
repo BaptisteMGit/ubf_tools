@@ -315,6 +315,10 @@ class RTF_MFP_Processor:
 
         # Fusion active and passive replicas
         if ds_active is not None and ds_passive is not None:
+            # Reindex replica_id coords to ensure there is no duplicated replica_id
+            ds_passive = ds_passive.assign_coords(
+                replica_id=ds_passive.replica_id + ds_active.replica_id.max() + 1
+            )
             ds = xr.concat([ds_active, ds_passive], dim="replica_id")
         elif ds_active is not None and ds_passive is None:
             ds = ds_active
@@ -350,9 +354,14 @@ class RTF_MFP_Processor:
             "units": "rad",
             "long_name": r"$\angle \Pi$",
         }
-        ds["feature_weights"].attrs = {
-            "description": "Weights to derive mean distance over frequency band.",
-            "long_name": r"$w_k$",
+        # ds["feature_weights"].attrs = {
+        #     "description": "Weights to derive mean distance over frequency band.",
+        #     "long_name": r"$w_k$",
+        # }
+
+        ds["feature_psd"].attrs = {
+            "description": "PSD of the signal associated to each feature.",
+            "long_name": r"$S_{xx}$",
         }
 
         for coord in ["e", "n", "u"]:
@@ -655,8 +664,12 @@ class RTF_MFP_Processor:
                 n_feature = df_arrivals_processed_seq["emission_interp_n_gps"]
                 u_feature = df_arrivals_processed_seq["emission_interp_u_gps"]
 
-                # Derive weights
-                feature_weights = self.get_feature_weights(
+                # # Derive weights
+                # feature_weights = self.get_feature_weights(
+                #     ds_feature=ds_feature, src_type="active"
+                # )
+
+                feature_psd = self.get_feature_psd(
                     ds_feature=ds_feature, src_type="active"
                 )
 
@@ -667,7 +680,8 @@ class RTF_MFP_Processor:
                     e_feature_all = e_feature.values
                     n_feature_all = n_feature.values
                     u_feature_all = u_feature.values
-                    feature_weights_all = feature_weights
+                    # feature_weights_all = feature_weights
+                    feature_psd_all = feature_psd
                 else:
                     # Concatenate along the pulse axis : (n_rcv, n_freq, n_pulse) -> (n_rcv, n_freq, n_feature)
                     rtf_amp = np.concatenate(
@@ -679,8 +693,11 @@ class RTF_MFP_Processor:
                     e_feature_all = np.concatenate([e_feature_all, e_feature.values])
                     n_feature_all = np.concatenate([n_feature_all, n_feature.values])
                     u_feature_all = np.concatenate([u_feature_all, u_feature.values])
-                    feature_weights_all = np.concatenate(
-                        [feature_weights_all, feature_weights], axis=0
+                    # feature_weights_all = np.concatenate(
+                    #     [feature_weights_all, feature_weights], axis=0
+                    # )
+                    feature_psd_all = np.concatenate(
+                        [feature_psd_all, feature_psd], axis=0
                     )
             else:
                 print(
@@ -694,9 +711,13 @@ class RTF_MFP_Processor:
             data_vars={
                 "rtf_amp": (("h_index", "f_rtf", "replica_id"), rtf_amp),
                 "rtf_phase": (("h_index", "f_rtf", "replica_id"), rtf_phase),
-                "feature_weights": (
+                # "feature_weights": (
+                #     ("f_rtf", "replica_id"),
+                #     feature_weights_all.T.astype(np.float32),
+                # ),
+                "feature_psd": (
                     ("f_rtf", "replica_id"),
-                    feature_weights_all.T.astype(np.float32),
+                    feature_psd_all.T.astype(np.float32),
                 ),
                 "e_replica": (("replica_id"), e_feature_all.astype(np.float32)),
                 "n_replica": (("replica_id"), n_feature_all.astype(np.float32)),
@@ -759,9 +780,12 @@ class RTF_MFP_Processor:
                     ais_feature = ais_feature.isel(mmsi=0)  # Keep only the first vessel
 
                 # TODO : derive weights here
-                feature_weights = self.get_feature_weights(
+                # feature_weights = self.get_feature_weights(
+                #     ds_feature=ds_feature, src_type="passive"
+                # )  # Shape (n_segment_dt, n_freq)
+                feature_psd = self.get_feature_psd(
                     ds_feature=ds_feature, src_type="passive"
-                )  # Shape (n_segment_dt, n_freq)
+                )
 
                 e_feature = ais_feature.e.interp(
                     time=ds_feature.segment_dt.values
@@ -779,7 +803,9 @@ class RTF_MFP_Processor:
                     e_feature_all = e_feature
                     n_feature_all = n_feature
                     u_feature_all = u_feature
-                    feature_weights_all = feature_weights
+                    # feature_weights_all = feature_weights
+                    feature_psd_all = feature_psd
+
                     i += 1
                 else:
                     # Concatenate along the time axis : (n_rcv, n_freq, n_segment_dt) -> (n_rcv, n_freq, n_feature)
@@ -792,8 +818,11 @@ class RTF_MFP_Processor:
                     e_feature_all = np.concatenate([e_feature_all, e_feature])
                     n_feature_all = np.concatenate([n_feature_all, n_feature])
                     u_feature_all = np.concatenate([u_feature_all, u_feature])
-                    feature_weights_all = np.concatenate(
-                        [feature_weights_all, feature_weights], axis=0
+                    # feature_weights_all = np.concatenate(
+                    #     [feature_weights_all, feature_weights], axis=0
+                    # )
+                    feature_psd_all = np.concatenate(
+                        [feature_psd_all, feature_psd], axis=0
                     )
             else:
                 print(
@@ -805,9 +834,13 @@ class RTF_MFP_Processor:
             data_vars={
                 "rtf_amp": (("h_index", "f_rtf", "replica_id"), rtf_amp),
                 "rtf_phase": (("h_index", "f_rtf", "replica_id"), rtf_phase),
-                "feature_weights": (
+                # "feature_weights": (
+                #     ("f_rtf", "replica_id"),
+                #     feature_weights_all.T.astype(np.float32),
+                # ),
+                "feature_psd": (
                     ("f_rtf", "replica_id"),
-                    feature_weights_all.T.astype(np.float32),
+                    feature_psd_all.T.astype(np.float32),
                 ),
                 "e_replica": (("replica_id"), e_feature_all.astype(np.float32)),
                 "n_replica": (("replica_id"), n_feature_all.astype(np.float32)),
@@ -821,6 +854,91 @@ class RTF_MFP_Processor:
             },
         )
         return ds_passive
+
+    def get_feature_psd(self, ds_feature: xr.Dataset, src_type: str = "active"):
+
+        replica_psd = []
+
+        if src_type == "active":
+            ts = ds_feature.ts
+
+            t_pulse = ds_feature.pulse_duration
+            t_interp_pulse = ds_feature.inter_pulse_period
+
+            # Time to add to ensure we englobe entire signal including last reflexions
+            t_silence = t_interp_pulse - t_pulse
+            tau_plus = 0.9 * t_silence  # Avoid to include following pulse
+            tau_minus = 0.9 * (
+                t_silence - self.fsm_active.tau_ir
+            )  # Avoid to include previous pulse
+            tau_minus = np.max(tau_minus, 0)  # In case tau_ir > t_silence
+
+            # Process each emission
+            for i_pulse, pulse_id in enumerate(ds_feature.pulse_id.values):
+
+                # Smallest arrival time in seconds from start (ie corresponding to closest OBS)
+                tstart = ds_feature.arr_time_in_sec_from_start.sel(
+                    pulse_id=pulse_id
+                ).min()
+                # Select the corresponding time window
+                active_sig_seg = ds_feature.signal.sel(
+                    time=slice(
+                        tstart - tau_minus - ts / 2,
+                        tstart + t_pulse + tau_plus + ts / 2,
+                    )
+                )
+
+                # Compute weights using signal from the reference receiver
+                active_sig_seg_rcv_ref = active_sig_seg.sel(
+                    h_index=ds_feature.h_index_ref
+                )
+
+                psd_kwargs = {
+                    "fs": ds_feature.fs,
+                    "nperseg": self.fsm_active.nperseg,
+                    "noverlap": self.fsm_active.noverlap,
+                    "fmin": ds_feature.f_rtf.min().values,
+                    "fmax": ds_feature.f_rtf.max().values,
+                }
+
+                pxx = get_psd(signal=active_sig_seg_rcv_ref.values, **psd_kwargs)
+
+                replica_psd.append(pxx)
+
+        elif src_type == "passive":
+
+            start_seg = 0
+            end_seg = ds_feature.analysis_segment_duration
+            segment_shift = ds_feature.analysis_segment_duration * (
+                1 - ds_feature.analysis_segment_alpha_overlap
+            )
+
+            for i_seg in range(ds_feature.sizes["segment_dt"]):
+                # Get signal corresponding to the current segment
+                passive_sig_seg = ds_feature.signal.sel(time=slice(start_seg, end_seg))
+                # Compute weights using signal from the reference receiver
+                passive_sig_seg_rcv_ref = passive_sig_seg.sel(
+                    h_index=ds_feature.h_index_ref
+                )
+
+                psd_kwargs = {
+                    "fs": ds_feature.fs,
+                    "nperseg": self.fsm_passive.nperseg,
+                    "noverlap": self.fsm_passive.noverlap,
+                    "fmin": ds_feature.f_rtf.min().values,
+                    "fmax": ds_feature.f_rtf.max().values,
+                }
+
+                pxx = get_psd(signal=passive_sig_seg_rcv_ref.values, **psd_kwargs)
+
+                replica_psd.append(pxx)
+
+                end_seg += segment_shift
+                start_seg += segment_shift
+
+        replica_psd = np.array(replica_psd)  # Shape (n_seg, nf)
+
+        return replica_psd
 
     def get_feature_weights(self, ds_feature: xr.Dataset, src_type: str = "active"):
 
@@ -862,8 +980,8 @@ class RTF_MFP_Processor:
 
                 weights_kwargs = {
                     "fs": ds_feature.fs,
-                    "nperseg": self.fsm_passive.nperseg,
-                    "noverlap": self.fsm_passive.noverlap,
+                    "nperseg": self.fsm_active.nperseg,
+                    "noverlap": self.fsm_active.noverlap,
                     "fmin": ds_feature.f_rtf.min().values,
                     "fmax": ds_feature.f_rtf.max().values,
                 }
@@ -946,10 +1064,10 @@ class RTF_MFP_Processor:
         ds_results = ambiguity(
             ds_library=ds_library,
             ds_event=ds_event,
-            fmin=100,
-            fmax=900,
+            fmin=200,
+            fmax=800,
             dist_type="hermitian_angle",
-            use_weighted_mean=False,
+            use_weighted_mean=True,
             verbose=True,
         )
 
@@ -966,47 +1084,205 @@ class RTF_MFP_Processor:
 # =======================================================================================================================
 
 
-def get_weights(signal, weights_type: str = "psd", **kwargs):
+def get_psd(signal, **kwargs):
+    fs = kwargs.get("fs", 2000)
+    nperseg = kwargs.get("nperseg", None)
+    noverlap = kwargs.get("noverlap", None)
+    fmin = kwargs.get("fmin", 100)
+    fmax = kwargs.get("fmax", 900)
 
-    if weights_type == "psd":
-        # Unpack kwargs
-        fs = kwargs.get("fs", 2000)
-        nperseg = kwargs.get("nperseg", None)
-        noverlap = kwargs.get("noverlap", None)
-        fmin = kwargs.get("fmin", 100)
-        fmax = kwargs.get("fmax", 900)
-
-        if nperseg is None or noverlap is None:
-            # Raise an error if nperseg or noverlap is not provided
-            raise ValueError(
-                "nperseg and noverlap must be provided when using weights_type = 'psd'."
-            )
-
-        # Compute PSD of the signal
-        ff, Pxx_seg = sp.welch(
-            signal,
-            fs=fs,
-            nperseg=nperseg,
-            noverlap=noverlap,
-            window="hann",
+    if nperseg is None or noverlap is None:
+        # Raise an error if nperseg or noverlap is not provided
+        raise ValueError(
+            "nperseg and noverlap must be provided when using weights_type = 'psd'."
         )
 
-        # Select frequency band of interest
-        idx_ff_in_band = np.logical_and(
-            (ff >= fmin),
-            (ff <= fmax),
-        )
-        ff = ff[idx_ff_in_band]
-        Pxx_seg = Pxx_seg[idx_ff_in_band]
-        # Convert to dB
-        Pxx_seg = 10 * np.log10(Pxx_seg)
+    # Compute PSD of the signal
+    ff, Pxx_seg = sp.welch(
+        signal,
+        fs=fs,
+        nperseg=nperseg,
+        noverlap=noverlap,
+        window="hann",
+    )
 
-        # Compute weights (normalized PSD)
-        w_k = (Pxx_seg + np.abs(np.min(Pxx_seg))) / np.max(
-            Pxx_seg + np.abs(np.min(Pxx_seg))
-        )
+    # Select frequency band of interest
+    idx_ff_in_band = np.logical_and(
+        (ff >= fmin),
+        (ff <= fmax),
+    )
+    ff = ff[idx_ff_in_band]
+    Pxx_seg = Pxx_seg[idx_ff_in_band]
 
-        return w_k
+    return Pxx_seg
+
+
+def get_weights_psd(feature_psd, freq_axis: int = 0):
+
+    # Compute PSD of the signal
+
+    # Convert to dB
+    # Pxx = 10 * np.log10(feature_psd)
+
+    # Compute weights (normalized PSD)
+    # w_k = (Pxx + np.abs(np.min(Pxx))) / np.max(
+    #     Pxx + np.abs(np.min(Pxx))
+    # )
+
+    # w_k = Pxx / np.max(Pxx)
+
+    # Shape : (f_rtf, replica_id)
+    # Axis 0 -> frequency
+    gamma = 0.15
+    w_k = (feature_psd / np.max(feature_psd, axis=freq_axis)) ** gamma
+
+    # 2. Normalisation robuste
+    scale = np.percentile(w_k, 99.9, axis=freq_axis)
+    w_k = w_k / scale
+    w_k = np.clip(w_k, 0, 1)
+
+    alpha = 10
+    threshold = 0.3
+    w_k_soft = 1 / (1 + np.exp(-alpha * (w_k - threshold)))
+
+    w_k = w_k_soft
+
+    # # 1. Compression
+    # alpha = 0.45
+    # Pxx_comp = Pxx_seg**alpha
+
+    # # 2. Normalisation robuste
+    # scale = np.percentile(Pxx_comp, 99)
+    # w_k = Pxx_comp / scale
+    # w_k = np.clip(w_k, 0, 1)
+
+    # # 3. Sigmoïde
+    # alpha_sig = 15
+    # threshold = 0.5
+    # w_k = 1 / (1 + np.exp(-alpha_sig * (w_k - threshold)))
+
+    # w_k = (w_k - min(w_k)) / (max(w_k) - min(w_k))
+    # w_k[w_k <= 0.3] = 0
+
+    # plt.figure()
+    # plt.plot(ff, w_k)
+    # # plt.plot(ff, w_k_soft)
+    # plt.savefig("test1")
+
+    # plt.figure()
+    # # plt.plot(ff, w_k)
+    # plt.plot(ff, Pxx_seg)
+    # plt.savefig("test1")
+
+    # plt.figure()
+    # # plt.plot(ff, w_k)
+    # plt.plot(ff, 10 * np.log10(Pxx_seg))
+    # plt.savefig("test2")
+
+    # plt.figure()
+    # # plt.plot(ff, w_k)
+    # plt.plot(ff, 10 * np.log10(10 * np.log10(Pxx_seg)))
+    # plt.savefig("test3")
+
+    return w_k
+
+
+# def get_weights(signal, weights_type: str = "psd", **kwargs):
+
+#     if weights_type == "psd":
+#         # Unpack kwargs
+#         fs = kwargs.get("fs", 2000)
+#         nperseg = kwargs.get("nperseg", None)
+#         noverlap = kwargs.get("noverlap", None)
+#         fmin = kwargs.get("fmin", 100)
+#         fmax = kwargs.get("fmax", 900)
+#         # fmin = 200
+#         # fmax = 800
+
+#         if nperseg is None or noverlap is None:
+#             # Raise an error if nperseg or noverlap is not provided
+#             raise ValueError(
+#                 "nperseg and noverlap must be provided when using weights_type = 'psd'."
+#             )
+
+#         # Compute PSD of the signal
+#         ff, Pxx_seg = sp.welch(
+#             signal,
+#             fs=fs,
+#             nperseg=nperseg,
+#             noverlap=noverlap,
+#             window="hann",
+#         )
+
+#         # Select frequency band of interest
+#         idx_ff_in_band = np.logical_and(
+#             (ff >= fmin),
+#             (ff <= fmax),
+#         )
+#         ff = ff[idx_ff_in_band]
+#         Pxx_seg = Pxx_seg[idx_ff_in_band]
+#         # Convert to dB
+#         # Pxx_seg = 10 * np.log10(Pxx_seg)
+
+#         # Compute weights (normalized PSD)
+#         # w_k = (Pxx_seg + np.abs(np.min(Pxx_seg))) / np.max(
+#         #     Pxx_seg + np.abs(np.min(Pxx_seg))
+#         # )
+
+#         # w_k = Pxx_seg / np.max(Pxx_seg)
+
+#         gamma = 0.15
+#         w_k = (Pxx_seg / np.max(Pxx_seg)) ** gamma
+
+#         # 2. Normalisation robuste
+#         scale = np.percentile(w_k, 99.9)
+#         w_k = w_k / scale
+#         w_k = np.clip(w_k, 0, 1)
+
+#         alpha = 10
+#         threshold = 0.3
+#         w_k_soft = 1 / (1 + np.exp(-alpha * (w_k - threshold)))
+
+#         w_k = w_k_soft
+
+#         # # 1. Compression
+#         # alpha = 0.45
+#         # Pxx_comp = Pxx_seg**alpha
+
+#         # # 2. Normalisation robuste
+#         # scale = np.percentile(Pxx_comp, 99)
+#         # w_k = Pxx_comp / scale
+#         # w_k = np.clip(w_k, 0, 1)
+
+#         # # 3. Sigmoïde
+#         # alpha_sig = 15
+#         # threshold = 0.5
+#         # w_k = 1 / (1 + np.exp(-alpha_sig * (w_k - threshold)))
+
+#         # w_k = (w_k - min(w_k)) / (max(w_k) - min(w_k))
+#         # w_k[w_k <= 0.3] = 0
+
+#         # plt.figure()
+#         # plt.plot(ff, w_k)
+#         # # plt.plot(ff, w_k_soft)
+#         # plt.savefig("test1")
+
+#         # plt.figure()
+#         # # plt.plot(ff, w_k)
+#         # plt.plot(ff, Pxx_seg)
+#         # plt.savefig("test1")
+
+#         # plt.figure()
+#         # # plt.plot(ff, w_k)
+#         # plt.plot(ff, 10 * np.log10(Pxx_seg))
+#         # plt.savefig("test2")
+
+#         # plt.figure()
+#         # # plt.plot(ff, w_k)
+#         # plt.plot(ff, 10 * np.log10(10 * np.log10(Pxx_seg)))
+#         # plt.savefig("test3")
+
+#         return w_k
 
 
 def plot_mfp_datasets(ds_library, ds_event, root_img: str = None):
@@ -1158,26 +1434,106 @@ def ambiguity(
     # Reshape to 4D array to be able to apply distance function : (n_rcv, n_freq, n_segment_dt) -> (n_rcv, n_freq, n_segment_dt, 1)
     event_feature_4d = event_feature.values[..., np.newaxis]
 
+    if use_weighted_mean:
+        dist_kwargs["apply_mean"] = False
+
+        # Compute weights here
+        # library_weights = ds_library.feature_weights.values
+        # event_weights = ds_event.feature_weights.values
+        library_weights = get_weights_psd(
+            feature_psd=ds_library.feature_psd.values, freq_axis=0
+        )
+        event_weights = get_weights_psd(
+            feature_psd=ds_event.feature_psd.values, freq_axis=0
+        )
+
+        # # Renormalize according to the selected frequency band
+        # library_weights = (library_weights - np.min(library_weights, axis=0)) / (
+        #     np.max(library_weights, axis=0) - np.min(library_weights, axis=0)
+        # )
+        # event_weights = (event_weights - np.min(event_weights, axis=0)) / (
+        #     np.max(event_weights, axis=0) - np.min(event_weights, axis=0)
+        # )
+
+        # library_weights_rep_i = ds_library.feature_weights.sel(
+        #     replica_id=rep_id
+        # ).values
+        # weights = (
+        #     library_weights_rep_i[:, np.newaxis]
+        #     + ds_event.feature_weights.values
+        # )
+
     rtf_distances = []
 
     if dist_type == "hermitian_angle":
         # Iterate of each replica of the library
-        for rep_id in library_replicas.replica_id.values:
-
-            # TODO : add option to use weighted mean
-            library_weights_rep_i = ds_library.feature_weights.sel(replica_id=rep_id)
-            if use_weighted_mean:
-                # dist_kwargs["weights"] =
-                pass
+        for i_rep, rep_id in enumerate(library_replicas.replica_id.values):
 
             replica_i = library_replicas.sel(replica_id=rep_id)
-            dist = D_hermitian_angle_fast(
-                rtf_ref=replica_i.values,
-                rtf=event_feature_4d,
-                **dist_kwargs,
-            )
+
+            if use_weighted_mean:
+                w_k_e = event_weights
+                w_k_l = library_weights[:, i_rep][:, np.newaxis]
+                # weights = library_weights[:, i_rep][:, np.newaxis] + event_weights
+                # weights = np.clip(weights, 0, 1.0)
+                # weights = (w_k_l * w_k_e)
+
+                alpha = 1
+                beta = 1
+
+                weights = (w_k_e**alpha) * (w_k_l**beta)
+
+                # weights /= np.max(weights)
+                # weights = (weights - np.min(weights, axis=0)) / (
+                #     np.max(weights, axis=0) - np.min(weights, axis=0)
+                # )
+                # weights[weights <= 0.25] = 0
+
+                dist = D_hermitian_angle_fast(
+                    rtf_ref=replica_i.values,
+                    rtf=event_feature_4d,
+                    **dist_kwargs,
+                )
+
+                if rep_id == 60:
+                    plt.figure()
+                    plt.hist(dist[:, 28], bins=100)
+                    plt.legend()
+                    plt.savefig("test1")
+
+                    d = (dist[:, 28] - min(dist[:, 28])) / (
+                        max(dist[:, 28]) - min(dist[:, 28])
+                    )
+                    plt.figure()
+                    plt.plot(ds_library.f_rtf.values, d, label="d")
+                    plt.plot(ds_library.f_rtf.values, weights[:, 28], label="w")
+                    plt.legend()
+                    plt.savefig("test2")
+
+                idx_nan = np.isnan(dist)
+                weights[idx_nan] = np.nan
+                dist = (
+                    np.nansum(dist * weights, axis=0) * 1 / (np.nansum(weights, axis=0))
+                )
+
+            else:
+                dist = D_hermitian_angle_fast(
+                    rtf_ref=replica_i.values,
+                    rtf=event_feature_4d,
+                    **dist_kwargs,
+                )
 
             rtf_distances.append(dist)
+
+    if use_weighted_mean:
+
+        plt.figure()
+        plt.plot(ds_library.f_rtf.values, event_weights[:, 0], label="lib")
+        plt.plot(ds_library.f_rtf.values, library_weights[:, i_rep], label="event")
+        plt.plot(ds_library.f_rtf.values, weights[:, 0], label="combine")
+        plt.legend()
+        plt.savefig("test")
+
     rtf_dist = np.array(rtf_distances)
     rtf_dist = (
         rtf_dist.T
@@ -1255,6 +1611,9 @@ def plot_results_dist(ds_results, root_img: str = None):
         library_replica_id=min_dist_library_replica_id,
     )
 
+    # Get CPA of lib and event traj for each receiver
+    # for i_rcv in ds_results
+
     fig, axs = plt.subplots(2, 1, sharex=True, figsize=(16, 12))
 
     # Define colorbar limits
@@ -1289,7 +1648,7 @@ def plot_results_dist(ds_results, root_img: str = None):
         y="library_replica_id",
         cmap="magma",
         vmin=0,
-        vmax=1000,
+        vmax=500,
         ax=axs[1],
     )
 
@@ -1406,7 +1765,7 @@ def test():
     }
     fsm_passive_kwargs = {
         "analysis_segment_duration": 10,
-        "analysis_segment_alpha_overlap": 0.5,
+        "analysis_segment_alpha_overlap": 0.75,
     }
 
     rtf_mfp_processor = RTF_MFP_Processor(
@@ -1430,26 +1789,120 @@ def test():
         "replica_sequence_ids": [144],
         "load_precomputed_feature": True,
     }
+    # passive_replicas_args = {
+    #     "start_datetimes": [
+    #         datetime(year=2025, month=10, day=14, hour=1, minute=30, second=00),  # OK
+    #         datetime(year=2025, month=10, day=14, hour=2, minute=00, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=2, minute=35, second=00),      # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=3, minute=15, second=00),      # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=4, minute=5, second=00),       # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=5, minute=0, second=00),       # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=6, minute=50, second=00),      # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=10, minute=15, second=00),     # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=11, minute=25, second=00),  # OK
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=12, minute=10, second=00
+    #         # ),  # SEVERAL VESSELS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=12, minute=35, second=00
+    #         # ),  # SEVERAL VESSELS
+    #         # datetime(year=2025, month=10, day=14, hour=13, minute=7, second=00),  # NO AIS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=13, minute=20, second=00
+    #         # ),  # OK  Jules en bas de la zone papillon
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=13, minute=40, second=00
+    #         # ),  # SEVERAL VESSELS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=16, minute=40, second=00
+    #         # ),  # OK -> Séquence qui passe prependiculairement aux autres : bon candidat d'event
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=18, minute=25, second=00
+    #         # ),  # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=18, minute=35, second=00),  # No AIS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=18, minute=50, second=00
+    #         # ),  # Trou dans la traj AIS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=18, minute=50, second=00
+    #         # ),  # Identique mais avec extrait plus court pour éviter les trous (OK)
+    #         # datetime(year=2025, month=10, day=14, hour=19, minute=50, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=20, minute=30, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=21, minute=15, second=00),   # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=22, minute=55, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=15, hour=1, minute=30, second=00),    # SEVERAL VESSELS
+    #         # datetime(year=2025, month=10, day=15, hour=2, minute=00, second=00),    # NO AIS
+    #         # datetime(year=2025, month=10, day=15, hour=3, minute=50, second=00),  # NO AIS
+    #         # datetime(year=2025, month=10, day=15, hour=4, minute=20, second=00),  #  SEVERAL VESSELS
+    #         # datetime(year=2025, month=10, day=15, hour=22, minute=00, second=00),
+    #         # datetime(year=2025, month=10, day=16, hour=20, minute=50, second=00),
+    #     ],
+    #     "end_datetimes": [
+    #         datetime(year=2025, month=10, day=14, hour=1, minute=50, second=00),  # OK
+    #         datetime(year=2025, month=10, day=14, hour=2, minute=20, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=3, minute=00, second=00),      # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=3, minute=40, second=00),      # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=4, minute=20, second=00),      # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=5, minute=15, second=00),      # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=7, minute=10, second=00),      # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=10, minute=40, second=00),     # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=11, minute=40, second=00),  # OK
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=12, minute=20, second=00
+    #         # ),  # SEVERAL VESSELS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=13, minute=00, second=00
+    #         # ),  # SEVERAL VESSELS
+    #         # datetime(year=2025, month=10, day=14, hour=13, minute=13, second=00),  # NO AIS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=13, minute=30, second=00
+    #         # ),  # OK     # Jules en bas de la zone papillon
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=13, minute=50, second=00
+    #         # ),  # SEVERAL VESSELS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=16, minute=50, second=00
+    #         # ),  # OK       -> Séquence qui passe prependiculairement aux autres : bon candidat d'event
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=18, minute=32, second=00
+    #         # ),  # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=18, minute=45, second=00),  # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=19, minute=10, second=00),  # Trou dans la traj AIS
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=18, minute=53, second=50
+    #         # ),  # Identique mais avec extrait plus court pour éviter les trous (OK)
+    #         # datetime(year=2025, month=10, day=14, hour=20, minute=12, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=20, minute=50, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=21, minute=20, second=00),   # NO AIS
+    #         # datetime(year=2025, month=10, day=14, hour=23, minute=15, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=15, hour=00, minute=40, second=00),  # OK
+    #         # datetime(
+    #         #     year=2025, month=10, day=15, hour=1, minute=50, second=00
+    #         # ),  # SEVERAL VESSELS
+    #         # datetime(year=2025, month=10, day=15, hour=2, minute=15, second=00),    # NO AIS
+    #         # datetime(year=2025, month=10, day=15, hour=4, minute=5, second=00),  #  NO AIS
+    #         # datetime(
+    #         #     year=2025, month=10, day=15, hour=4, minute=40, second=00
+    #         # ),  # SEVERAL VESSELS
+    #         # datetime(year=2025, month=10, day=15, hour=22, minute=30, second=00),
+    #         # datetime(year=2025, month=10, day=16, hour=21, minute=10, second=00),
+    #     ],
+    #     "load_precomputed_feature": True,
+    # }
+
     passive_replicas_args = {
         "start_datetimes": [
-            datetime(year=2025, month=10, day=14, hour=1, minute=35, second=00),
-            datetime(year=2025, month=10, day=14, hour=4, minute=10, second=00),
-            datetime(year=2025, month=10, day=14, hour=22, minute=55, second=00),
-            datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
-            datetime(year=2025, month=10, day=15, hour=22, minute=00, second=00),
-            # datetime(year=2025, month=10, day=16, hour=20, minute=55, second=00),
-            # datetime(year=2025, month=10, day=15, hour=1, minute=40, second=00),
+            # datetime(year=2025, month=10, day=14, hour=1, minute=42, second=00),  # OK
+            # datetime(year=2025, month=10, day=14, hour=2, minute=14, second=00),  # OK
+            # datetime(year=2025, month=10, day=14, hour=19, minute=50, second=00),  # OK
         ],
         "end_datetimes": [
-            datetime(year=2025, month=10, day=14, hour=1, minute=50, second=00),
-            datetime(year=2025, month=10, day=14, hour=4, minute=20, second=00),
-            datetime(year=2025, month=10, day=14, hour=23, minute=15, second=00),
-            datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
-            datetime(year=2025, month=10, day=15, hour=22, minute=30, second=00),
-            # datetime(year=2025, month=10, day=16, hour=21, minute=15, second=00),
-            # datetime(year=2025, month=10, day=15, hour=1, minute=50, second=00),
+            # datetime(year=2025, month=10, day=14, hour=1, minute=48, second=00),  # OK
+            # datetime(year=2025, month=10, day=14, hour=2, minute=20, second=00),  # OK
+            # datetime(year=2025, month=10, day=14, hour=20, minute=12, second=00),  # OK
         ],
-        "load_precomputed_feature": True,
+        "load_precomputed_feature": False,
     }
 
     rtf_mfp_processor.compute_library(
@@ -1467,19 +1920,61 @@ def test():
         "replica_sequence_ids": [],
         "load_precomputed_feature": True,
     }
+    # passive_feature_args = {
+    #     "start_datetimes": [
+    #         # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
+    #         # datetime(year=2025, month=10, day=15, hour=1, minute=40, second=00),
+    #         # datetime(year=2025, month=10, day=16, hour=20, minute=57, second=00),
+    #         datetime(year=2025, month=10, day=14, hour=16, minute=42, second=00),
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=18, minute=50, second=00
+    #         # ),  # Identique mais avec extrait plus court pour éviter les trous (OK)
+    #         # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=19, minute=50, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=20, minute=30, second=00),  # OK
+    #     ],
+    #     "end_datetimes": [
+    #         # datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
+    #         # datetime(year=2025, month=10, day=15, hour=1, minute=50, second=00)
+    #         # datetime(year=2025, month=10, day=16, hour=21, minute=2, second=00),
+    #         datetime(year=2025, month=10, day=14, hour=16, minute=50, second=00),
+    #         # datetime(
+    #         #     year=2025, month=10, day=14, hour=18, minute=53, second=50
+    #         # ),  # Identique mais avec extrait plus court pour éviter les trous (OK)
+    #         # datetime(year=2025, month=10, day=15, hour=00, minute=40, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=20, minute=12, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=20, minute=50, second=00),  # OK
+    #     ],
+    #     "load_precomputed_feature": True,
+    # }
+
+    # passive_feature_args = {
+    #     "start_datetimes": [
+    #         datetime(year=2025, month=10, day=14, hour=16, minute=44, second=30),
+    #         # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
+    #         # datetime(year=2025, month=10, day=14, hour=2, minute=00, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=11, minute=25, second=00),  # OK
+    #     ],
+    #     "end_datetimes": [
+    #         datetime(year=2025, month=10, day=14, hour=16, minute=48, second=30),
+    #         # datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
+    #         # datetime(year=2025, month=10, day=14, hour=2, minute=20, second=00),  # OK
+    #         # datetime(year=2025, month=10, day=14, hour=11, minute=40, second=00),  # OK
+    #     ],
+    #     "load_precomputed_feature": False,
+    # }
+
+    # Passage du Jules au dessus de la fibre
     passive_feature_args = {
         "start_datetimes": [
-            # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
-            # datetime(year=2025, month=10, day=15, hour=1, minute=40, second=00),
-            datetime(year=2025, month=10, day=16, hour=20, minute=55, second=00),
+            datetime(year=2025, month=10, day=15, hour=10, minute=10, second=00),  # OK
         ],
         "end_datetimes": [
-            # datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
-            # datetime(year=2025, month=10, day=15, hour=1, minute=50, second=00)
-            datetime(year=2025, month=10, day=16, hour=21, minute=15, second=00),
+            datetime(year=2025, month=10, day=15, hour=11, minute=20, second=00),  # OK
         ],
         "load_precomputed_feature": True,
     }
+
     rtf_mfp_processor.compute_event(
         active_feature_args=active_feature_args,
         passive_feature_args=passive_feature_args,

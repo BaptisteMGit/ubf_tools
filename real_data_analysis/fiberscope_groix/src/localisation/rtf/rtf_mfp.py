@@ -20,7 +20,7 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from scipy.spatial.distance import cdist
 from propa.rtf.rtf_utils import D_hermitian_angle_fast
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -33,6 +33,8 @@ from real_data_analysis.fiberscope_groix.src.fiberscope_groix_manager import (
 from real_data_analysis.fiberscope_groix.src.localisation.rtf.rtf_mfp_utils import (
     filter_ais,
 )
+from publication.publication_figure import color, PubFigure, set_subfigures_abc_labels
+
 
 # DEFAUTS # TODO move this in a dedicated file ?
 ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data"
@@ -79,6 +81,9 @@ class RTF_MFP_Processor:
 
         # Index of the receiver to use as reference
         self.reference_receiver_id = reference_receiver_id
+        # self.reference_receiver_idx = np.argmin(
+        #     np.abs(self.ds_wav.h_index.values - reference_receiver_id)
+        # )  # Index of receiver might not be sorted or not start at 0
 
         # RTF estimator
         self.rtf_estimator = rtf_estimator
@@ -202,6 +207,15 @@ class RTF_MFP_Processor:
             # Passive manager
             self.fsm_passive.nperseg = self.fsm_nperseg
             self.fsm_passive.noverlap = self.fsm_noverlap
+
+            # # Set cov manager and feature manager with nperseg and noverlap
+            # self.fsm_passive.set_managers(
+            #     fs=fs, idx_rcv_ref=self.reference_receiver_idx
+            # )
+            # self.fsm_passive.set_managers(
+            #     fs=fs, idx_rcv_ref=self.reference_receiver_idx
+            # )
+
         else:
             self.set_fsm()
 
@@ -251,6 +265,7 @@ class RTF_MFP_Processor:
         id: int = None,
         single_vessel_per_segment: bool = True,
         target_mmsi: int = None,
+        Rv_global: np.ndarray = None,
     ):
         """
         Method to compute dataset
@@ -259,6 +274,7 @@ class RTF_MFP_Processor:
         active_feature_info, passive_feature_info = self.derive_feature(
             active_feature_args=active_feature_args,
             passive_feature_args=passive_feature_args,
+            Rv_global=Rv_global,
         )
 
         # Load derived replicas
@@ -286,6 +302,7 @@ class RTF_MFP_Processor:
         passive_feature_args: dict = {},
         id: int = None,
         target_mmsi: int = None,
+        Rv_global: np.ndarray = None,
     ):
         """Method to compute library dataset"""
 
@@ -296,6 +313,7 @@ class RTF_MFP_Processor:
             id=id,
             single_vessel_per_segment=True,  # For the library we wish to use segment containing only one vessel to ensure the quality of the passive replicas
             target_mmsi=target_mmsi,
+            Rv_global=Rv_global,
         )
 
     def compute_event(
@@ -304,6 +322,7 @@ class RTF_MFP_Processor:
         passive_feature_args: dict = {},
         target_mmsi: int = None,
         id: int = None,
+        Rv_global: np.ndarray = None,
     ):
         """Method to compute event dataset"""
 
@@ -314,6 +333,7 @@ class RTF_MFP_Processor:
             id=id,
             single_vessel_per_segment=False,  # For the event we want to be able to use segments containing multiple vessels to be able to test the method in more complex scenarios
             target_mmsi=target_mmsi,
+            Rv_global=Rv_global,
         )
 
     def fusion(
@@ -465,7 +485,10 @@ class RTF_MFP_Processor:
     # Derive features
     ###########################
     def derive_feature(
-        self, active_feature_args: dict = {}, passive_feature_args: dict = {}
+        self,
+        active_feature_args: dict = {},
+        passive_feature_args: dict = {},
+        Rv_global: np.ndarray = None,
     ):
         """
         Method to derive feature
@@ -474,7 +497,7 @@ class RTF_MFP_Processor:
             active_feature_args=active_feature_args
         )
         passive_feature_info = self.derive_feature_passive(
-            passive_feature_args=passive_feature_args
+            passive_feature_args=passive_feature_args, Rv_global=Rv_global
         )
 
         return active_feature_info, passive_feature_info
@@ -535,13 +558,14 @@ class RTF_MFP_Processor:
                             f"Precomputed replica for sequence {rep_seq_id} found at {rep_filepath}. This sequence will be loaded instead of being computed."
                         )
                         # Remove this sequence id from the list of sequence ids to compute
-                        removed_idx = replica_sequence_ids_to_compute != rep_seq_id
+                        keep = replica_sequence_ids_to_compute != rep_seq_id
                         replica_sequence_ids_to_compute = (
-                            replica_sequence_ids_to_compute[removed_idx]
+                            replica_sequence_ids_to_compute[keep]
                         )
                         # Remove correesponding slice
-                        replica_pulse_slice_to_compute = replica_pulse_slice_to_compute[
-                            removed_idx
+                        keep_idx = np.where(keep)[0]
+                        replica_pulse_slice_to_compute = [
+                            replica_pulse_slice_to_compute[ki] for ki in keep_idx
                         ]
 
         if len(replica_sequence_ids_to_compute) > 0:
@@ -591,7 +615,9 @@ class RTF_MFP_Processor:
         }
         return active_feature_info
 
-    def derive_feature_passive(self, passive_feature_args: dict = {}) -> dict:
+    def derive_feature_passive(
+        self, passive_feature_args: dict = {}, Rv_global: np.ndarray = None
+    ) -> dict:
         """
         Method to derive features (passive source)
         """
@@ -643,6 +669,7 @@ class RTF_MFP_Processor:
                 t_start=start_dt,
                 t_end=end_dt,
                 set_stft_props=False,
+                Rv_global=Rv_global,
             )
 
         passive_feature_info = {
@@ -807,7 +834,10 @@ class RTF_MFP_Processor:
                 ds_feature = xr.open_dataset(rep_filepath)
 
                 # Extract source position
-                ais_feature = self.ds_ais.sel(time=slice(start_dt, end_dt))
+                time_offset = timedelta(seconds=60)
+                ais_feature = self.ds_ais.sel(
+                    time=slice(start_dt - time_offset, end_dt + time_offset)
+                )
                 ais_feature = filter_ais(ais_event=ais_feature)
 
                 # print(len(ais_feature["mmsi"].values))
@@ -838,7 +868,7 @@ class RTF_MFP_Processor:
                             mmsi=0
                         )  # Keep only the first vessel
                         print(
-                            f"Using first vessel in list (default behavior) : mmsi={ais_feature.mmsi.values[0]}"
+                            f"Using first vessel in list (default behavior) : mmsi={ais_feature.mmsi.values}"
                         )
 
                 # TODO : derive weights here
@@ -1126,17 +1156,30 @@ class RTF_MFP_Processor:
         ds_results = ambiguity(
             ds_library=ds_library,
             ds_event=ds_event,
-            fmin=200,
-            fmax=800,
+            fmin=100,
+            fmax=400,
             dist_type="hermitian_angle",
             use_weighted_mean=True,
             verbose=True,
         )
 
         # Plot distances
-        plot_results_dist(ds_results=ds_results, root_img=root_img)
+        plot_results_dist(
+            ds_results=ds_results,
+            ds_event=ds_event,
+            ds_library=ds_library,
+            root_img=root_img,
+        )
 
         plot_results_sorted_dist(ds_results=ds_results, root_img=root_img)
+
+        # Plot feature details
+        plot_features(
+            ds_results=ds_results,
+            ds_library=ds_library,
+            ds_event=ds_event,
+            root_img=root_img,
+        )
 
         # plt.show()
 
@@ -1352,6 +1395,8 @@ def plot_mfp_datasets(ds_library, ds_event, root_img: str = None):
     if root_img is not None:
         os.makedirs(root_img, exist_ok=True)
         save_fig = True
+    else:
+        save_fig = False
 
     fig, ax = plt.subplots(1, 1, figsize=(16, 8))
 
@@ -1414,6 +1459,8 @@ def plot_mfp_dataset(ds, cmap="jet", root_img: str = None):
     if root_img is not None:
         os.makedirs(root_img, exist_ok=True)
         save_fig = True
+    else:
+        save_fig = False
 
     fig, ax = plt.subplots(1, 1, figsize=(16, 8))
 
@@ -1466,6 +1513,10 @@ def ambiguity(
     if dist_type == "hermitian_angle":
         dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
         comment = "Compute distance using hermitian angle distance (in C^N)"
+    elif dist_type == "hermitian_angle_along_freq":
+        dist_kwargs = {"ax_rcv": 1, "ax_f": 0, "apply_mean": True}
+        comment = "Compute distance using hermitian angle distance along frequency axis (in C^Nf)"
+        use_weighted_mean = False
     elif dist_type == "euclidean":
         comment = "Compute distance using euclidean distance (in C^N)"
     elif dist_type == "euclidean_module":
@@ -1474,6 +1525,7 @@ def ambiguity(
         comment = "Compute distance using euclidean distance on the phase of RTF vectors (in R^N)"
     else:
         print("Warning : unknown distance, set to default -> hermitian angle")
+        dist_type = "hermitian_angle"
         dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
         comment = "Compute distance using hermitian angle distance (in C^N)"
 
@@ -1586,6 +1638,22 @@ def ambiguity(
 
             rtf_distances.append(dist)
 
+    if dist_type == "hermitian_angle_along_freq":
+        # dist_kwargs = {"ax_rcv": 1, "ax_f": 0, "apply_mean": True}
+
+        # Iterate of each replica of the library
+        for i_rep, rep_id in enumerate(library_replicas.replica_id.values):
+
+            replica_i = library_replicas.sel(replica_id=rep_id)
+
+            dist = D_hermitian_angle_fast(
+                rtf_ref=replica_i.values,
+                rtf=event_feature_4d,
+                **dist_kwargs,
+            )
+
+            rtf_distances.append(dist)
+
     if use_weighted_mean:
 
         plt.figure()
@@ -1629,6 +1697,8 @@ def ambiguity(
         "spatial_dist_type": "euclidean",
         "library_id": ds_library.id,
         "event_id": ds_event.id,
+        "fmin": fmin,
+        "fmax": fmax,
     }
     # Add attributes to variables
     ds_results["rtf_dist"].attrs = {
@@ -1655,13 +1725,15 @@ def ambiguity(
     return ds_results
 
 
-def plot_results_dist(ds_results, root_img: str = None):
+def plot_results_dist(ds_results, ds_event, ds_library, root_img: str = None):
 
     print(f"\tPlotting RTF distance vs spatial distance")
 
     if root_img is not None:
         os.makedirs(root_img, exist_ok=True)
         save_fig = True
+    else:
+        save_fig = False
 
     # Find crossing point between library replicas and event replicas in the spatial domain
     min_dist_ids = ds_results.spatial_dist.argmin(...)
@@ -1673,9 +1745,43 @@ def plot_results_dist(ds_results, root_img: str = None):
     )
 
     # Get CPA of lib and event traj for each receiver
-    # for i_rcv in ds_results
+    e_lib = ds_library["e_replica"].values
+    n_lib = ds_library["n_replica"].values
+    e_event = ds_event["e_replica"].values
+    n_event = ds_event["n_replica"].values
+
+    lib_pos = np.column_stack((e_lib, n_lib))
+    event_pos = np.column_stack((e_event, n_event))
+
+    # lib_dist_to_rcv = []
+    cpa_idx_lib = []
+    # event_dist_to_rcv = []
+    cpa_idx_event = []
+
+    for i_rcv in ds_library.h_index.values:
+        e_rcv = ds_library.attrs[f"obs{i_rcv}_e_apriori"]
+        n_rcv = ds_library.attrs[f"obs{i_rcv}_n_apriori"]
+        rcv_pos = np.column_stack((e_rcv, n_rcv))
+
+        spatial_dist_lib = cdist(lib_pos, rcv_pos, metric="euclidean")
+        cpa_rcv_idx_lib = np.nanargmin(spatial_dist_lib)
+        cpa_idx_lib.append(cpa_rcv_idx_lib)
+
+        spatial_dist_event = cdist(event_pos, rcv_pos, metric="euclidean")
+        cpa_rcv_idx_event = np.nanargmin(spatial_dist_event)
+        cpa_idx_event.append(cpa_rcv_idx_event)
+
+        # dist_to_rcv.append(spatial_dist)
 
     fig, axs = plt.subplots(2, 1, sharex=True, figsize=(16, 12))
+
+    # Plot CPAs
+    for i, i_rcv in enumerate(ds_library.h_index.values):
+        axs[0].axhline(cpa_idx_lib[i], linestyle="--", color=color(i))
+        axs[0].axvline(
+            cpa_idx_event[i], linestyle="--", color=color(i), label=f"CPA OBS{i_rcv}"
+        )
+        # axs[0].scatter()
 
     # Define colorbar limits
     vmin = np.percentile(ds_results.rtf_dist.values, 0.1)
@@ -1744,6 +1850,8 @@ def plot_results_sorted_dist(
     if root_img is not None:
         os.makedirs(root_img, exist_ok=True)
         save_fig = True
+    else:
+        save_fig = False
 
     # Find crossing point between library replicas and event replicas in the spatial domain
     min_dist_ids = ds_results.spatial_dist.argmin(...)
@@ -1802,6 +1910,398 @@ def plot_results_sorted_dist(
         plt.savefig(fpath, bbox_inches="tight")
 
 
+def plot_features(
+    ds_results: xr.Dataset,
+    ds_library: xr.Dataset,
+    ds_event: xr.Dataset,
+    root_img: str = None,
+):
+
+    if root_img is not None:
+        os.makedirs(root_img, exist_ok=True)
+        save_fig = True
+
+    # Find crossing point between library replicas and event replicas in the spatial domain -> main lobe should be here
+    min_dist_ids = ds_results.spatial_dist.argmin(...)
+    min_dist_event_replica_id = min_dist_ids["event_replica_id"].values
+    min_dist_event = ds_event.sel(replica_id=min_dist_event_replica_id)
+    # min_dist_p1_event = ds_event.sel(replica_id=min_dist_event_replica_id + 1)
+    min_dist_library_replica_id = min_dist_ids["library_replica_id"].values
+    min_dist_library = ds_library.sel(replica_id=min_dist_library_replica_id)
+    # min_dist_p1_library = ds_library.sel(replica_id=min_dist_library_replica_id + 1)
+
+    # Find minimum dist in rtf space
+    min_rtf_dist_ids = ds_results.rtf_dist.argmin(...)
+    min_rtf_dist_event_replica_id = min_rtf_dist_ids["event_replica_id"].values
+    min_rtf_dist_event = ds_event.sel(replica_id=min_rtf_dist_event_replica_id)
+    min_rtf_dist_library_replica_id = min_rtf_dist_ids["library_replica_id"].values
+    min_rtf_dist_library = ds_library.sel(replica_id=min_rtf_dist_library_replica_id)
+
+    fmin = ds_results.fmin
+    fmax = ds_results.fmax
+
+    n_rcv = ds_library.h_index.size
+    # Compare module
+    fig, axs = plt.subplots(nrows=n_rcv, ncols=2, sharex=True, figsize=(16, 3 * n_rcv))
+    ax_mod_dist, ax_mod_rtf_dist = axs[:, 0], axs[:, 1]
+
+    # # TODO compute hermitian angle along receiver axis and frequency axis and compare
+    # h_plot = 3
+
+    # ### Compare two adjacent features ###
+    # rtf_1_mod = min_dist_event.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax))
+    # rtf_2_mod = min_dist_p1_event.rtf_amp.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # rtf_1_phase = min_dist_event.rtf_phase.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # # rtf_2_phase = min_dist_p1_event.rtf_phase.sel(h_index=h_plot).sel(
+    # #     f_rtf=slice(fmin, fmax)
+    # # )
+    # rtf_2_phase = rtf_1_phase
+
+    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+
+    # euc_dist = np.linalg.norm(rtf_1 - rtf_2)
+    # euc_mod_dist = np.linalg.norm(rtf_1_mod - rtf_2_mod)
+    # dist_kwargs = {"ax_rcv": 1, "ax_f": 0, "apply_mean": False, "unit": "deg"}
+    # theta_along_f = D_hermitian_angle_fast(
+    #     rtf_ref=np.atleast_2d(rtf_1),
+    #     rtf=np.atleast_2d(rtf_2),
+    #     **dist_kwargs,
+    # )
+    # # Classical hermitian angle
+    # rtf_1_mod = min_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    # rtf_2_mod = min_dist_p1_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    # rtf_1_phase = min_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    # rtf_2_phase = min_dist_p1_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+
+    # euc_dist = np.linalg.norm(rtf_1 - rtf_2)
+    # euc_mod_dist = np.linalg.norm(rtf_1_mod - rtf_2_mod)
+    # dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
+    # theta_along_rcv = D_hermitian_angle_fast(
+    #     rtf_ref=rtf_1.values,
+    #     rtf=rtf_2.values,
+    #     **dist_kwargs,
+    # )
+
+    # print(f"Euclidian distance (module) at d = d_min = {euc_mod_dist}")
+    # print(f"Euclidian distance (in C) at d = d_min = {euc_dist}")
+    # print(f"Hermitian angle distance along freq (in C) at d = d_min = {theta_along_f}°")
+    # print(
+    #     f"Hermitian angle distance along rcv (in C^n_rcv) at d = d_min = {theta_along_rcv}°"
+    # )
+
+    # ### Compare lib and event features ###
+    # rtf_1_mod = min_dist_event.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax))
+    # rtf_2_mod = min_dist_library.rtf_amp.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # rtf_1_phase = min_dist_event.rtf_phase.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # rtf_2_phase = min_dist_library.rtf_phase.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+
+    # euc_dist = np.linalg.norm(rtf_1 - rtf_2)
+    # euc_mod_dist = np.linalg.norm(rtf_1_mod - rtf_2_mod)
+
+    # dist_kwargs = {"ax_rcv": 1, "ax_f": 0, "apply_mean": False}
+    # theta_along_f = D_hermitian_angle_fast(
+    #     rtf_ref=np.atleast_2d(rtf_1),
+    #     rtf=np.atleast_2d(rtf_2),
+    #     **dist_kwargs,
+    # )
+
+    # rtf_1 = rtf_1_mod.rolling(f_rtf=20, center=True).mean() * np.exp(1j * rtf_1_phase)
+    # rtf_2 = rtf_2_mod.rolling(f_rtf=20, center=True).mean() * np.exp(1j * rtf_2_phase)
+
+    # inner_prod = np.abs(np.sum(rtf_1.conj() * rtf_2))
+    # # norm_ref = np.linalg.norm(rtf_1)
+    # # norm_rtf = np.linalg.norm(rtf_2)
+    # norm_ref = np.real(np.sqrt(np.nansum(rtf_1.conj() * rtf_1)))
+    # norm_rtf = np.real(np.sqrt(np.nansum(rtf_2.conj() * rtf_2)))
+
+    # # Cosine of Hermitian angle, clipped for stability
+    # cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
+    # dist = np.arccos(cos_angle)
+    # theta_along_f_roll = np.rad2deg(dist)
+
+    # # Classical hermitian angle
+    # rtf_1_mod = min_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    # rtf_2_mod = min_dist_library.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    # rtf_1_phase = min_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    # rtf_2_phase = min_dist_library.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+    # dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
+    # theta_along_rcv = D_hermitian_angle_fast(
+    #     rtf_ref=rtf_1.values,
+    #     rtf=rtf_2.values,
+    #     **dist_kwargs,
+    # )
+
+    # print(f"Euclidian distance (module) at d = d_min = {euc_mod_dist}")
+    # print(f"Euclidian distance (in C) at d = d_min = {euc_dist}")
+    # print(f"Hermitian angle distance along freq (in C) at d = d_min = {theta_along_f}°")
+    # print(
+    #     f"Hermitian angle distance along rcv (in C^n_rcv) at d = d_min = {theta_along_rcv}°"
+    # )
+
+    # rtf_1_mod = min_rtf_dist_event.rtf_amp.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # rtf_2_mod = min_rtf_dist_library.rtf_amp.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # rtf_1_phase = min_rtf_dist_event.rtf_phase.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # rtf_2_phase = min_rtf_dist_library.rtf_phase.sel(h_index=h_plot).sel(
+    #     f_rtf=slice(fmin, fmax)
+    # )
+    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+
+    # euc_dist = np.linalg.norm(rtf_1 - rtf_2)
+    # euc_mod_dist = np.linalg.norm(rtf_1_mod - rtf_2_mod)
+
+    # dist_kwargs = {"ax_rcv": 1, "ax_f": 0, "apply_mean": False}
+    # theta_along_f = D_hermitian_angle_fast(
+    #     rtf_ref=np.atleast_2d(rtf_1),
+    #     rtf=np.atleast_2d(rtf_2),
+    #     **dist_kwargs,
+    # )
+
+    # # Classical hermitian angle
+    # rtf_1_mod = min_rtf_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    # rtf_2_mod = min_rtf_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    # rtf_1_phase = min_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    # rtf_2_phase = min_rtf_dist_library.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+    # dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
+    # theta_along_rcv = D_hermitian_angle_fast(
+    #     rtf_ref=rtf_1.values,
+    #     rtf=rtf_2.values,
+    #     **dist_kwargs,
+    # )
+
+    # print(f"Euclidian distance (module) at theta = theta_min = {euc_mod_dist}")
+    # print(f"Euclidian distance (in C) at theta = theta_min = {euc_dist}")
+    # print(
+    #     f"Hermitian angle distance along freq (in C) at theta = theta_min = {theta_along_f}°"
+    # )
+    # print(
+    #     f"Hermitian angle distance along rcv (in C^n_rcv) at theta = theta_min = {theta_along_rcv}°"
+    # )
+
+    for i_rcv in range(n_rcv):
+        h_plot = i_rcv + 1
+
+        # Module
+        # Event minimum spatial distance
+        min_dist_event.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax)).plot(
+            ax=ax_mod_dist[i_rcv], label="event (d= d_min)", color=color(0)
+        )
+        # Library minimum spatial distance
+        min_dist_library.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax)).plot(
+            ax=ax_mod_dist[i_rcv], label="library (d= d_min)", color=color(1)
+        )
+        # Event minimum rtf distance
+        min_rtf_dist_event.rtf_amp.sel(h_index=h_plot).sel(
+            f_rtf=slice(fmin, fmax)
+        ).plot(
+            ax=ax_mod_rtf_dist[i_rcv], label="event (theta = theta_min)", color=color(2)
+        )
+        # Library minimum rtf distance
+        min_rtf_dist_library.rtf_amp.sel(h_index=h_plot).sel(
+            f_rtf=slice(fmin, fmax)
+        ).plot(
+            ax=ax_mod_rtf_dist[i_rcv],
+            label="library (theta = theta_min)",
+            color=color(3),
+        )
+
+        # # Event minimum spatial distance
+        # win_size = 20
+        # min_dist_event.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax)).rolling(
+        #     f_rtf=win_size, center=True
+        # ).mean().plot(ax=ax_mod_dist[i_rcv], label="event (d= d_min)", color=color(0))
+        # # Library minimum spatial distance
+        # min_dist_library.rtf_amp.sel(h_index=h_plot).sel(
+        #     f_rtf=slice(fmin, fmax)
+        # ).rolling(f_rtf=win_size, center=True).mean().plot(
+        #     ax=ax_mod_dist[i_rcv], label="library (d= d_min)", color=color(1)
+        # )
+
+        # # Event minimum rtf distance
+        # min_rtf_dist_event.rtf_amp.sel(h_index=h_plot).sel(
+        #     f_rtf=slice(fmin, fmax)
+        # ).rolling(f_rtf=win_size, center=True).mean().plot(
+        #     ax=ax_mod_rtf_dit[i_rcv], label="event (theta = theta_min)", color=color(2)
+        # )
+        # # Library minimum rtf distance
+        # min_rtf_dist_library.rtf_amp.sel(h_index=h_plot).sel(
+        #     f_rtf=slice(fmin, fmax)
+        # ).rolling(f_rtf=win_size, center=True).mean().plot(
+        #     ax=ax_mod_rtf_dit[i_rcv],
+        #     label="library (theta = theta_min)",
+        #     color=color(3),
+        # )
+
+        # ax_mod_dist[i_rcv].set_ylim([0.01, 100])
+        ax_mod_dist[i_rcv].set_yscale("log")
+        ax_mod_dist[i_rcv].set_xlabel("")
+        ax_mod_dist[i_rcv].set_ylabel(r"$|\Pi|$")
+        # ax_mod_dist[i_rcv].set_ylabel("")
+        ax_mod_dist[i_rcv].set_title("")
+        ax_mod_dist[i_rcv].legend(fontsize=10, ncol=3, loc="lower right")
+
+        # ax_mod_rtf_dist[i_rcv].set_ylim([0.01, 100])
+        ax_mod_rtf_dist[i_rcv].set_yscale("log")
+        ax_mod_rtf_dist[i_rcv].set_xlabel("")
+        ax_mod_rtf_dist[i_rcv].set_ylabel(r"$|\Pi|$")
+        # ax_mod_rtf_dist[i_rcv].set_ylabel("")
+        ax_mod_rtf_dist[i_rcv].set_title("")
+        ax_mod_rtf_dist[i_rcv].legend(fontsize=10, ncol=3, loc="lower right")
+
+    set_subfigures_abc_labels(
+        axs=axs, fontsize=14, x_pos=0.015, y_pos=0.98, ha="left", va="top"
+    )
+
+    fig.supxlabel("Frequency [Hz]")
+
+    if save_fig:
+        fpath = os.path.join(
+            root_img,
+            f"res_library_{ds_results.library_id}_event_{ds_results.event_id}_feature_comparison_mod.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight")
+
+    # Compare unwrapped phase
+    fig, axs = plt.subplots(nrows=n_rcv, ncols=2, sharex=True, figsize=(16, 3 * n_rcv))
+    ax_phase_dist, ax_phase_rtf_dist = axs[:, 0], axs[:, 1]
+
+    # TODO compute hermitian angle along receiver axis and frequency axis and compare
+
+    for i_rcv in range(n_rcv):
+        h_plot = i_rcv + 1
+
+        # # Phase
+        # # Event minimum spatial distance
+        # min_dist_event.rtf_phase.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax)).plot(
+        #     ax=ax_phase_dist[i_rcv], label="event (d= d_min)", color=color(0)
+        # )
+        # # Library minimum spatial distance
+        # min_dist_library.rtf_phase.sel(h_index=h_plot).sel(
+        #     f_rtf=slice(fmin, fmax)
+        # ).plot(ax=ax_phase_dist[i_rcv], label="library (d= d_min)", color=color(1))
+        # # Event minimum rtf distance
+        # min_rtf_dist_event.rtf_phase.sel(h_index=h_plot).sel(
+        #     f_rtf=slice(fmin, fmax)
+        # ).plot(
+        #     ax=ax_phase_rtf_dist[i_rcv],
+        #     label="event (theta = theta_min)",
+        #     color=color(2),
+        # )
+        # # Library minimum rtf distance
+        # min_rtf_dist_library.rtf_phase.sel(h_index=h_plot).sel(
+        #     f_rtf=slice(fmin, fmax)
+        # ).plot(
+        #     ax=ax_phase_rtf_dist[i_rcv],
+        #     label="library (theta = theta_min)",
+        #     color=color(3),
+        # )
+
+        # Unwrapped phase
+        # Event minimum spatial distance
+        rtf_event_dist = min_dist_event.rtf_phase.sel(h_index=h_plot).sel(
+            f_rtf=slice(fmin, fmax)
+        )
+        rtf_event_dist_unwrap = np.unwrap(rtf_event_dist)
+        ax_phase_dist[i_rcv].plot(
+            rtf_event_dist.f_rtf,
+            rtf_event_dist_unwrap,
+            color=color(0),
+            label=r"event (d = d_min)",
+        )
+        # Library minimum spatial distance
+        rtf_lib_dist = min_dist_library.rtf_phase.sel(h_index=h_plot).sel(
+            f_rtf=slice(fmin, fmax)
+        )
+        rtf_lib_dist_unwrap = np.unwrap(rtf_lib_dist)
+        ax_phase_dist[i_rcv].plot(
+            rtf_lib_dist.f_rtf,
+            rtf_lib_dist_unwrap,
+            color=color(1),
+            label=r"library (d = d_min)",
+            # marker="o",
+            # linewidth=1,
+            # markersize=3,
+            # alpha=0.7,
+        )
+        # Event minimum rtf distance
+        rtf_event_rtf_dist = min_rtf_dist_event.rtf_phase.sel(h_index=h_plot).sel(
+            f_rtf=slice(fmin, fmax)
+        )
+        rtf_event_rtf_dist_unwrap = np.unwrap(rtf_event_rtf_dist)
+        ax_phase_rtf_dist[i_rcv].plot(
+            rtf_event_rtf_dist.f_rtf,
+            rtf_event_rtf_dist_unwrap,
+            color=color(2),
+            label=r"event (theta = theta_min)",
+        )
+
+        # Library minimum rtf distance
+        rtf_lib_rtf_dist = min_rtf_dist_library.rtf_phase.sel(h_index=h_plot).sel(
+            f_rtf=slice(fmin, fmax)
+        )
+        rtf_lib_rtf_dist_unwrap = np.unwrap(rtf_lib_rtf_dist)
+        ax_phase_rtf_dist[i_rcv].plot(
+            rtf_lib_rtf_dist.f_rtf,
+            rtf_lib_rtf_dist_unwrap,
+            color=color(3),
+            label=r"library (theta = theta_min)",
+            # marker="o",
+            # linewidth=1,
+            # markersize=3,
+            # alpha=0.7,
+        )
+
+        ax_phase_dist[i_rcv].set_xlabel("")
+        ax_phase_dist[i_rcv].set_ylabel(r"$\Phi$")
+        ax_phase_dist[i_rcv].set_title("")
+        # ax_phase_dist[i_rcv].set_ylim([-30, 30])
+        ax_phase_dist[i_rcv].legend(fontsize=10, ncol=3, loc="lower right")
+
+        ax_phase_rtf_dist[i_rcv].set_xlabel("")
+        ax_phase_rtf_dist[i_rcv].set_ylabel(r"$\Phi$")
+        ax_phase_rtf_dist[i_rcv].set_title("")
+        # ax_phase_rtf_dist[i_rcv].set_ylim([-30, 30])
+        ax_phase_rtf_dist[i_rcv].legend(fontsize=10, ncol=3, loc="lower right")
+
+    set_subfigures_abc_labels(
+        axs=axs, fontsize=14, x_pos=0.015, y_pos=0.98, ha="left", va="top"
+    )
+
+    fig.supxlabel("Frequency [Hz]")
+
+    if save_fig:
+        fpath = os.path.join(
+            root_img,
+            f"res_library_{ds_results.library_id}_event_{ds_results.event_id}_feature_comparison_phase.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight")
+
+
 # =====================================================================================================================
 # Test
 # =====================================================================================================================
@@ -1825,7 +2325,7 @@ def test():
         "estimate_ir_duration": False,
     }
     fsm_passive_kwargs = {
-        "analysis_segment_duration": 10,
+        "analysis_segment_duration": 5,
         "analysis_segment_alpha_overlap": 0.75,
     }
 
@@ -1846,16 +2346,16 @@ def test():
     ###########################
 
     # Populate library
+    # active_replicas_args = {
+    #     "replica_sequence_ids": [144],
+    #     "replica_pulse_slice": [(0, 200)],
+    #     "load_precomputed_feature": True,
+    # }
     active_replicas_args = {
-        "replica_sequence_ids": [144],
-        "replica_pulse_slice": [(0, 200)],
+        "replica_sequence_ids": [],
+        "replica_pulse_slice": [],
         "load_precomputed_feature": True,
     }
-    # active_replicas_args = {
-    #     "replica_sequence_ids": [146],
-    #     "replica_pulse_slice": [(300, None)],
-    #     "load_precomputed_feature": False,
-    # }
 
     # passive_replicas_args = {
     #     "start_datetimes": [
@@ -1961,16 +2461,16 @@ def test():
 
     passive_replicas_args = {
         "start_datetimes": [
-            # datetime(year=2025, month=10, day=14, hour=1, minute=42, second=00),  # OK
+            datetime(year=2025, month=10, day=14, hour=1, minute=42, second=00),  # OK
             # datetime(year=2025, month=10, day=14, hour=2, minute=14, second=00),  # OK
             # datetime(year=2025, month=10, day=14, hour=19, minute=50, second=00),  # OK
         ],
         "end_datetimes": [
-            # datetime(year=2025, month=10, day=14, hour=1, minute=48, second=00),  # OK
+            datetime(year=2025, month=10, day=14, hour=1, minute=48, second=00),  # OK
             # datetime(year=2025, month=10, day=14, hour=2, minute=20, second=00),  # OK
             # datetime(year=2025, month=10, day=14, hour=20, minute=12, second=00),  # OK
         ],
-        "load_precomputed_feature": False,
+        "load_precomputed_feature": True,
     }
 
     rtf_mfp_processor.compute_library(
@@ -2016,24 +2516,25 @@ def test():
     #     "load_precomputed_feature": True,
     # }
 
-    # passive_feature_args = {
-    #     "start_datetimes": [
-    #         datetime(year=2025, month=10, day=14, hour=16, minute=44, second=30),
-    #         # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
-    #         # datetime(year=2025, month=10, day=14, hour=2, minute=00, second=00),  # OK
-    #         # datetime(year=2025, month=10, day=14, hour=11, minute=25, second=00),  # OK
-    #     ],
-    #     "end_datetimes": [
-    #         datetime(year=2025, month=10, day=14, hour=16, minute=48, second=30),
-    #         # datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
-    #         # datetime(year=2025, month=10, day=14, hour=2, minute=20, second=00),  # OK
-    #         # datetime(year=2025, month=10, day=14, hour=11, minute=40, second=00),  # OK
-    #     ],
-    #     "load_precomputed_feature": False,
-    # }
+    target_mmsi = None
+    passive_feature_args = {
+        "start_datetimes": [
+            datetime(year=2025, month=10, day=14, hour=16, minute=44, second=30),
+            # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
+            # datetime(year=2025, month=10, day=14, hour=2, minute=00, second=00),  # OK
+            # datetime(year=2025, month=10, day=14, hour=11, minute=25, second=00),  # OK
+        ],
+        "end_datetimes": [
+            datetime(year=2025, month=10, day=14, hour=16, minute=48, second=30),
+            # datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
+            # datetime(year=2025, month=10, day=14, hour=2, minute=20, second=00),  # OK
+            # datetime(year=2025, month=10, day=14, hour=11, minute=40, second=00),  # OK
+        ],
+        "load_precomputed_feature": True,
+    }
 
     # Passage du Jules au dessus de la fibre
-    target_mmsi = 226916000
+    # target_mmsi = 226916000
     # Séquence entiere
     # passive_feature_args = {
     #     "start_datetimes": [
@@ -2044,16 +2545,16 @@ def test():
     #     ],
     #     "load_precomputed_feature": True,
     # }
-    # Uniquement le passage proche de l'OBS 2 en début de séquence
-    passive_feature_args = {
-        "start_datetimes": [
-            datetime(year=2025, month=10, day=15, hour=10, minute=10, second=00),  # OK
-        ],
-        "end_datetimes": [
-            datetime(year=2025, month=10, day=15, hour=10, minute=20, second=00),  # OK
-        ],
-        "load_precomputed_feature": True,
-    }
+    # # Uniquement le passage proche de l'OBS 2 en début de séquence
+    # passive_feature_args = {
+    #     "start_datetimes": [
+    #         datetime(year=2025, month=10, day=15, hour=10, minute=14, second=00),  # OK
+    #     ],
+    #     "end_datetimes": [
+    #         datetime(year=2025, month=10, day=15, hour=10, minute=18, second=00),  # OK
+    #     ],
+    #     "load_precomputed_feature": False,
+    # }
 
     rtf_mfp_processor.compute_event(
         active_feature_args=active_feature_args,

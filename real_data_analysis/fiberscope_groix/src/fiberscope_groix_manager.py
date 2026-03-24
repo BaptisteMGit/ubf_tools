@@ -1263,7 +1263,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
 
                 # Plot Rx
-                mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+                mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax, vmin=0)
                 axs_csdm[0].set_title(r"$\hat{R}_x$")
                 axs_csdm[0].set_xlabel("Index")
                 axs_csdm[0].set_ylabel("Index")
@@ -1272,7 +1272,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
 
                 # Plot Rv
-                mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+                mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax, vmin=0)
                 axs_csdm[1].set_title(r"$\hat{R}_v$")
                 axs_csdm[1].set_xlabel("Index")
                 axs_csdm[1].set_ylabel("Index")
@@ -1281,7 +1281,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
                 # Plot Rs
-                mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+                mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax, vmin=0)
                 axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
                 axs_csdm[2].set_xlabel("Index")
                 axs_csdm[2].set_ylabel("Index")
@@ -1309,10 +1309,11 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 Rs = Rx - Rv
 
                 # Derive a common vmax for comparison purpose
-                vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+                # vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+                vmax = max(Rx.values.max(), Rv.values.max())
 
                 # Plot Rx
-                Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+                Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax, vmin=0)
                 axs_csdm[0].set_title(r"$\hat{R}_x$")
                 axs_csdm[0].set_xlabel("Index")
                 axs_csdm[0].set_ylabel("Index")
@@ -1321,7 +1322,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
 
                 # Plot Rv
-                Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+                Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax, vmin=0)
                 axs_csdm[1].set_title(r"$\hat{R}_v$")
                 axs_csdm[1].set_xlabel("Index")
                 axs_csdm[1].set_ylabel("Index")
@@ -1330,7 +1331,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
                 # Plot Rs
-                Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+                Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax, vmin=0)
                 axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
                 axs_csdm[2].set_xlabel("Index")
                 axs_csdm[2].set_ylabel("Index")
@@ -1442,7 +1443,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
             vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
 
             # Plot Rx
-            mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+            mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[0].set_title(r"$\hat{R}_x$")
             axs_csdm[0].set_xlabel("Index")
             axs_csdm[0].set_ylabel("Index")
@@ -1451,7 +1452,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
             axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
 
             # Plot Rv
-            mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+            mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[1].set_title(r"$\hat{R}_v$")
             axs_csdm[1].set_xlabel("Index")
             axs_csdm[1].set_ylabel("Index")
@@ -1460,7 +1461,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
             axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
             # Plot Rs
-            mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+            mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
             axs_csdm[2].set_xlabel("Index")
             axs_csdm[2].set_ylabel("Index")
@@ -1838,6 +1839,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
         t_start,
         t_end,
         set_stft_props=True,
+        Rv_global: np.ndarray = None,
     ):
         """
         Run analysis on the reduired recording analysis window.
@@ -1859,7 +1861,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
         self.set_managers(fs=xr_data.fs, idx_rcv_ref=idx_rcv_ref)
 
         ### Step 3 - Derive features ###
-        self.derive_feature(xr_data)
+        self.derive_feature(xr_data, Rv_global=Rv_global)
 
     def load_recording(self, t_start, t_end):
         """
@@ -1951,7 +1953,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
     def derive_feature(
         self,
         xr_data,
-        Rv_global=None,
+        Rv_global: np.ndarray = None,
         save=True,
     ):
         """
@@ -2083,7 +2085,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
 
             # Plot Rx
-            mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+            mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[0].set_title(r"$\hat{R}_x$")
             axs_csdm[0].set_xlabel("Index")
             axs_csdm[0].set_ylabel("Index")
@@ -2092,7 +2094,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
 
             # Plot Rv
-            mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+            mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[1].set_title(r"$\hat{R}_v$")
             axs_csdm[1].set_xlabel("Index")
             axs_csdm[1].set_ylabel("Index")
@@ -2101,7 +2103,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
             # Plot Rs
-            mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+            mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
             axs_csdm[2].set_xlabel("Index")
             axs_csdm[2].set_ylabel("Index")
@@ -2129,10 +2131,11 @@ class PassiveFiberscopeManager(FiberscopeManager):
             Rs = Rx - Rv
 
             # Derive a common vmax for comparison purpose
-            vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+            # vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+            vmax = max(Rx.values.max(), Rv.values.max())
 
             # Plot Rx
-            Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax)
+            Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[0].set_title(r"$\hat{R}_x$")
             axs_csdm[0].set_xlabel("Index")
             axs_csdm[0].set_ylabel("Index")
@@ -2141,7 +2144,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
 
             # Plot Rv
-            Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax)
+            Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[1].set_title(r"$\hat{R}_v$")
             axs_csdm[1].set_xlabel("Index")
             axs_csdm[1].set_ylabel("Index")
@@ -2150,7 +2153,7 @@ class PassiveFiberscopeManager(FiberscopeManager):
             axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
             # Plot Rs
-            Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax)
+            Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax, vmin=0)
             axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
             axs_csdm[2].set_xlabel("Index")
             axs_csdm[2].set_ylabel("Index")

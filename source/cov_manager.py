@@ -86,6 +86,18 @@ class CovManager:
         ff, _, stft_arr = self.get_stft_array(
             y, fs, self.nperseg, self.noverlap, self.window
         )
+
+        # TODO : remove this is if not sucessfull
+        # for i_rcv in range(stft_arr.shape[0]):
+        #     # Max l, k
+        #     stft_arr[i_rcv, ...] /= np.max(np.abs(stft_arr[i_rcv, ...]))
+        #     # Max l
+        #     # stft_arr[i_rcv, ...] /= np.max(np.abs(stft_arr[i_rcv, ...]), axis=1)[
+        #     #     :, np.newaxis
+        #     # ]
+        # # Max
+        # stft_arr /= np.max(np.abs(stft_arr))
+
         csdm_y = self.compute_csdm_fast(
             stft_arr, n_seg_cov=0, mask_tt=mask_tt, mask_stft=mask_stft
         )  # (nf x nrcv x nrcv)
@@ -98,7 +110,7 @@ class CovManager:
             # )
 
             # Option 2 : derive diagonal loading based on the CSDM values following different ad-hoc rules from the litterature
-            # 2.1 # Ad-hoc ule propose by ref [30] and presented in Mestre and Lagunas 2006 - Finite sample size effect on minimum variance beamformers: optimum diagonal loading factor for large arrays
+            # 2.1 # Ad-hoc rule propose by ref [30] and presented in Mestre and Lagunas 2006 - Finite sample size effect on minimum variance beamformers: optimum diagonal loading factor for large arrays
             diag_entries = np.diagonal(
                 csdm_y, axis1=1, axis2=2
             )  # Get diagonal entries at each frequencies

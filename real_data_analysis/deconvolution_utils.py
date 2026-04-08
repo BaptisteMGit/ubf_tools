@@ -54,8 +54,8 @@ def wiener_deconvolution(x, y, rho_f=None):
     """Apply Wiener filter to estimate the impulse response"""
     # Derive ffts
     nstft = max(x.size, y.size)
-    x_fft = np.fft.rfft(x, nstft)
-    y_fft = np.fft.rfft(y, nstft)
+    x_fft = np.fft.rfft(x, n=nstft)
+    y_fft = np.fft.rfft(y, n=nstft)
 
     if rho_f is None:
         rho_f = np.ones_like(x_fft)
@@ -71,35 +71,84 @@ def wiener_deconvolution(x, y, rho_f=None):
 
 
 if __name__ == "__main__":
-    import scipy
+    # import scipy
+    # CF deconvolution_test.py
 
-    fc = 50
-    t0 = 1
-    fs = 1000
-    T = 10
-    t = np.arange(0, T, 1 / fs)
-    ns = t.size
-    x = np.random.randn(ns)
-    h_ricker = (1 - 2 * (np.pi * fc * (t - t0)) ** 2) * np.exp(
-        -((np.pi * fc * (t - t0)) ** 2)
-    )
-    y = scipy.fft.irfft(scipy.fft.rfft(x) * scipy.fft.rfft(h_ricker))
+    pass
+    # fc = 50
+    # t0 = 1
+    # fs = 1000
+    # T = 10
+    # t = np.arange(0, T, 1 / fs)
+    # ns = t.size
+    # sigma_x = 1
+    # # x = np.random.normal(size=ns, loc=0, scale=sigma_x)
+    # x = np.repeat([0.0, 1.0, 0.0], ns)
+    # ns = len(x)
+    # t = np.arange(0, ns * 1 / fs, 1 / fs)
+
+    # n_win = 5000
+    # h = scipy.signal.windows.hann(n_win)
+    # y = scipy.signal.convolve(x, h, "same") / sum(h)
+
+    # # h_hat = scipy.signal.deconvolve(signal=y, divisor=x)
+
+    # h_hat = wiener_deconvolution(x, y)
+
+    # fig, axs = plt.subplots(3, 1, sharex=True)
+    # axs[0].set_title("x(t)")
+    # axs[0].plot(t, x)
+
+    # axs[1].set_title("h(t)")
+    # axs[1].plot(t[: h.size], h, label="h", color="k", linestyle="-")
+    # axs[1].plot(t, h_hat, label="h_hat", color="r", linestyle="--")
+
+    # axs[1].legend()
+
+    # axs[2].set_title("y(t) = (h * x) (t)")
+    # axs[2].plot(t, y)
+
+    # plt.show()
+
+    # h_ricker = (1 - 2 * (np.pi * fc * (t - t0)) ** 2) * np.exp(
+    #     -((np.pi * fc * (t - t0)) ** 2)
+    # )
+    # y = scipy.fft.irfft(scipy.fft.rfft(x) * scipy.fft.rfft(h_ricker))
+
+    # y = scipy.signal.convolve(x, h_ricker, "same")
+
+    # sigma_noise = 0.01
+    # noise = np.random.normal(size=ns, loc=0, scale=sigma_noise)
+
+    # snr_pow = sigma_x**2 / sigma_noise**2
+    # print(f"SNR = {snr_pow}")
+
+    # y += noise
+
     # y = np.convolve(x, h_ricker, mode="same")
-    h = crosscorr_deconvolution(x, y)
-    h = scipy.fft.irfft(scipy.fft.rfft(y) / scipy.fft.rfft(x))
-    h = wiener_deconvolution(x, y)
+    # h = crosscorr_deconvolution(x, y)
+    # h = scipy.fft.irfft(scipy.fft.rfft(y) / scipy.fft.rfft(x))
 
-    print(h_ricker / h)
+    # print(np.allclose(h, h_ricker))
 
-    fig, axs = plt.subplots(3, 1, sharex=True)
-    axs[0].plot(t, x)
-    axs[1].plot(t, h_ricker, label="h")
-    axs[1].plot(t, h, label="h_hat")
-    # axs[1].plot(t, h_ricker / h)
-    axs[1].legend()
-    axs[2].plot(t, y)
+    # h_hat = wiener_deconvolution(x, y)
+    # print(np.allclose(h, h_ricker))
 
-    plt.show()
+    # print(np.max(np.abs(h - h_ricker)))
+
+    # fig, axs = plt.subplots(3, 1, sharex=True)
+    # axs[0].set_title("x(t)")
+    # axs[0].plot(t, x)
+
+    # axs[1].set_title("y(t) = (h * x) (t)")
+    # axs[1].plot(t, y)
+
+    # axs[2].set_title("h(t)")
+    # axs[2].plot(t, h_ricker, label="h", color="k")
+    # axs[2].plot(t, h, label="h_hat", color="r", linestyle="--")
+    # axs[2].legend()
+
+    # plt.show()
 
     # r_xy = sp.correlate(x, y, mode="full")
 

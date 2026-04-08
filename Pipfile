@@ -43,6 +43,7 @@ soundfile = "*"
 pympler = "*"
 imageio = {extras = ["ffmpeg"], version = "*"}
 referrers = "*"
+dtaidistance = "*"
 
 [dev-packages]
 ipykernel = "*"

@@ -60,6 +60,7 @@ class RTF_MFP_Processor:
         root_img: str = ROOT_IMG,
         reference_receiver_id: int = REF_RCV_ID,
         rtf_estimator: str = RTF_ESTIMATOR,
+        fsm_props: dict = {},
         fsm_active_kwargs: dict = {},
         fsm_passive_kwargs: dict = {},
         mode="overwrite",
@@ -94,6 +95,10 @@ class RTF_MFP_Processor:
         self.verbose = verbose
 
         # Define Fiberscope Managers
+        self.fs = fsm_props.get("fs", 2000)
+        self.tau_rtf_analysis = fsm_props.get("tau_rtf_analysis", 3)
+        self.alpha_overlap_rtf_analysis = fsm_props.get("alpha_overlap", 0.5)
+
         self.fsm_active = None
         self.fsm_active_bandfilter = fsm_active_kwargs.get("bandfilter", None)
         self.fsm_active_tau_ir = fsm_active_kwargs.get("tau_ir", 3)
@@ -184,17 +189,16 @@ class RTF_MFP_Processor:
         Set Fiberscope Managers properties
         """
         # TODO : update this to avoid hardcoding any params
-        fs = 2000
-        tau_rtf_analysis = 3
+        # fs = 2000
+        # tau_rtf_analysis = 2
 
         # Number of samples corresponding to the assumed impulse response duration
-        n_rtf_analysis = int(tau_rtf_analysis * fs)
+        n_rtf_analysis = int(self.tau_rtf_analysis * self.fs)
         # Get closer power of 2
         nperseg = 2 ** int(
             np.log2(n_rtf_analysis) + 1
         )  # Number of sample per snapshot to use = closest power of two
-        alpha_overlap = 0.75
-        noverlap = int(nperseg * alpha_overlap)
+        noverlap = int(nperseg * self.alpha_overlap_rtf_analysis)
 
         self.fsm_nperseg = nperseg
         self.fsm_noverlap = noverlap
@@ -751,6 +755,12 @@ class RTF_MFP_Processor:
                 if i == 0:
                     rtf_amp = ds_feature["rtf_amp_hat"].values
                     rtf_phase = ds_feature["rtf_phase_hat"].values
+
+                    # Deconvolution solution
+                    rtf_amp_deconv = ds_feature["rtf_amp"].values
+                    rtf_phase_deconv = ds_feature["rtf_phase"].values
+
+                    # Positions
                     e_feature_all = e_feature.values
                     n_feature_all = n_feature.values
                     u_feature_all = u_feature.values
@@ -764,6 +774,15 @@ class RTF_MFP_Processor:
                     rtf_phase = np.concatenate(
                         [rtf_phase, ds_feature["rtf_phase_hat"].values], axis=-1
                     )
+                    # Deconvolution solution
+                    rtf_amp_deconv = np.concatenate(
+                        [rtf_amp_deconv, ds_feature["rtf_amp"].values], axis=-1
+                    )
+                    rtf_phase_deconv = np.concatenate(
+                        [rtf_phase_deconv, ds_feature["rtf_phase"].values], axis=-1
+                    )
+
+                    # Position
                     e_feature_all = np.concatenate([e_feature_all, e_feature.values])
                     n_feature_all = np.concatenate([n_feature_all, n_feature.values])
                     u_feature_all = np.concatenate([u_feature_all, u_feature.values])
@@ -785,6 +804,15 @@ class RTF_MFP_Processor:
             data_vars={
                 "rtf_amp": (("h_index", "f_rtf", "replica_id"), rtf_amp),
                 "rtf_phase": (("h_index", "f_rtf", "replica_id"), rtf_phase),
+                # Deconvolution solution
+                "rtf_amp_deconv": (
+                    ("h_index", "f_deconv", "replica_id"),
+                    rtf_amp_deconv,
+                ),
+                "rtf_phase_deconv": (
+                    ("h_index", "f_deconv", "replica_id"),
+                    rtf_phase_deconv,
+                ),
                 # "feature_weights": (
                 #     ("f_rtf", "replica_id"),
                 #     feature_weights_all.T.astype(np.float32),
@@ -801,6 +829,7 @@ class RTF_MFP_Processor:
             coords={
                 "h_index": ds_feature["h_index"].values,
                 "f_rtf": ds_feature["f_rtf"].values,
+                "f_deconv": ds_feature["f_ir"].values,
                 "replica_id": np.arange(rtf_amp.shape[-1]),
             },
         )
@@ -1127,7 +1156,7 @@ class RTF_MFP_Processor:
     # Matrching library and event features
     ###########################
 
-    def match(self, id_library: int = None, id_event: int = None):
+    def match(self, id_library: int = None, id_event: int = None, dist_args: dict = {}):
         """
         Method to match library and event features
         """
@@ -1153,13 +1182,22 @@ class RTF_MFP_Processor:
         plot_mfp_datasets(ds_library, ds_event, root_img=root_img)
 
         # Compute distance matrix between library and event replicas
+        fmin = dist_args.get("fmin", 100)
+        fmax = dist_args.get("fmax", 400)
+        dist_type = dist_args.get("dist_type", "hermitian_angle")
+        use_weighted_mean = dist_args.get("use_weighted_mean", True)
+
+        # # TODO : remove this
+        # ds_library = ds_library.sel(h_index=[1, 2])
+        # ds_event = ds_event.sel(h_index=[1, 2])
+
         ds_results = ambiguity(
             ds_library=ds_library,
             ds_event=ds_event,
-            fmin=100,
-            fmax=400,
-            dist_type="hermitian_angle",
-            use_weighted_mean=True,
+            fmin=fmin,
+            fmax=fmax,
+            dist_type=dist_type,
+            use_weighted_mean=use_weighted_mean,
             verbose=True,
         )
 
@@ -1519,8 +1557,16 @@ def ambiguity(
         use_weighted_mean = False
     elif dist_type == "euclidean":
         comment = "Compute distance using euclidean distance (in C^N)"
+        use_weighted_mean = False
+    elif dist_type == "hermitian_euclidean_mix":
+        dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
+        comment = "Compute mix distance"
+        use_weighted_mean = True
+
     elif dist_type == "euclidean_module":
         comment = "Compute distance using euclidean distance on the module of RTF vectors (in R^N)"
+        use_weighted_mean = False
+
     elif dist_type == "euclidean_phase":
         comment = "Compute distance using euclidean distance on the phase of RTF vectors (in R^N)"
     else:
@@ -1548,38 +1594,38 @@ def ambiguity(
     # Reshape to 4D array to be able to apply distance function : (n_rcv, n_freq, n_segment_dt) -> (n_rcv, n_freq, n_segment_dt, 1)
     event_feature_4d = event_feature.values[..., np.newaxis]
 
-    if use_weighted_mean:
-        dist_kwargs["apply_mean"] = False
-
-        # Compute weights here
-        # library_weights = ds_library.feature_weights.values
-        # event_weights = ds_event.feature_weights.values
-        library_weights = get_weights_psd(
-            feature_psd=ds_library.feature_psd.values, freq_axis=0
-        )
-        event_weights = get_weights_psd(
-            feature_psd=ds_event.feature_psd.values, freq_axis=0
-        )
-
-        # # Renormalize according to the selected frequency band
-        # library_weights = (library_weights - np.min(library_weights, axis=0)) / (
-        #     np.max(library_weights, axis=0) - np.min(library_weights, axis=0)
-        # )
-        # event_weights = (event_weights - np.min(event_weights, axis=0)) / (
-        #     np.max(event_weights, axis=0) - np.min(event_weights, axis=0)
-        # )
-
-        # library_weights_rep_i = ds_library.feature_weights.sel(
-        #     replica_id=rep_id
-        # ).values
-        # weights = (
-        #     library_weights_rep_i[:, np.newaxis]
-        #     + ds_event.feature_weights.values
-        # )
-
     rtf_distances = []
 
     if dist_type == "hermitian_angle":
+        if use_weighted_mean:
+            dist_kwargs["apply_mean"] = False
+
+            # Compute weights here
+            # library_weights = ds_library.feature_weights.values
+            # event_weights = ds_event.feature_weights.values
+            library_weights = get_weights_psd(
+                feature_psd=ds_library.feature_psd.values, freq_axis=0
+            )
+            event_weights = get_weights_psd(
+                feature_psd=ds_event.feature_psd.values, freq_axis=0
+            )
+
+            # # Renormalize according to the selected frequency band
+            # library_weights = (library_weights - np.min(library_weights, axis=0)) / (
+            #     np.max(library_weights, axis=0) - np.min(library_weights, axis=0)
+            # )
+            # event_weights = (event_weights - np.min(event_weights, axis=0)) / (
+            #     np.max(event_weights, axis=0) - np.min(event_weights, axis=0)
+            # )
+
+            # library_weights_rep_i = ds_library.feature_weights.sel(
+            #     replica_id=rep_id
+            # ).values
+            # weights = (
+            #     library_weights_rep_i[:, np.newaxis]
+            #     + ds_event.feature_weights.values
+            # )
+
         # Iterate of each replica of the library
         for i_rep, rep_id in enumerate(library_replicas.replica_id.values):
 
@@ -1638,7 +1684,21 @@ def ambiguity(
 
             rtf_distances.append(dist)
 
-    if dist_type == "hermitian_angle_along_freq":
+    elif dist_type == "hermitian_angle_real":
+
+        # Iterate of each replica of the library
+        for i_rep, rep_id in enumerate(library_replicas.replica_id.values):
+            rtf_ref = np.abs(replica_i.values)
+            rtf = np.abs(event_feature_4d)
+            dist = D_hermitian_angle_fast(
+                rtf_ref=rtf_ref,
+                rtf=rtf,
+                **dist_kwargs,
+            )
+
+            rtf_distances.append(dist)
+
+    elif dist_type == "hermitian_angle_along_freq":
         # dist_kwargs = {"ax_rcv": 1, "ax_f": 0, "apply_mean": True}
 
         # Iterate of each replica of the library
@@ -1650,6 +1710,123 @@ def ambiguity(
                 rtf_ref=replica_i.values,
                 rtf=event_feature_4d,
                 **dist_kwargs,
+            )
+
+            rtf_distances.append(dist)
+
+    elif dist_type == "euclidean":
+        for i_rep, rep_id in enumerate(library_replicas.replica_id.values):
+
+            replica_i = library_replicas.sel(replica_id=rep_id)
+
+            dist = np.zeros(event_feature.replica_id.size)
+            for i_rcv in range(replica_i.h_index.size):
+                dist += np.linalg.norm(
+                    replica_i.values[i_rcv, ...][:, np.newaxis]
+                    - event_feature[i_rcv, ...],
+                    axis=0,
+                )
+            dist /= replica_i.h_index.size
+
+            rtf_distances.append(dist)
+
+    elif dist_type == "euclidean_module":
+        for i_rep, rep_id in enumerate(library_replicas.replica_id.values):
+
+            replica_i = library_replicas.sel(replica_id=rep_id)
+
+            dist = np.zeros(event_feature.replica_id.size)
+            for i_rcv in range(replica_i.h_index.size):
+                dist += np.linalg.norm(
+                    np.abs(replica_i.values[i_rcv, ...])[:, np.newaxis]
+                    - np.abs(event_feature[i_rcv, ...]),
+                    axis=0,
+                )
+            dist /= replica_i.h_index.size
+
+            rtf_distances.append(dist)
+
+    if dist_type == "hermitian_euclidean_mix":
+        if use_weighted_mean:
+            dist_kwargs["apply_mean"] = False
+
+            # Compute weights here
+            library_weights = get_weights_psd(
+                feature_psd=ds_library.feature_psd.values, freq_axis=0
+            )
+            event_weights = get_weights_psd(
+                feature_psd=ds_event.feature_psd.values, freq_axis=0
+            )
+
+        # Iterate of each replica of the library
+        for i_rep, rep_id in enumerate(library_replicas.replica_id.values):
+
+            replica_i = library_replicas.sel(replica_id=rep_id)
+
+            # Hermitian angle
+            if use_weighted_mean:
+                w_k_e = event_weights
+                w_k_l = library_weights[:, i_rep][:, np.newaxis]
+
+                alpha = 1
+                beta = 1
+
+                weights = (w_k_e**alpha) * (w_k_l**beta)
+
+                dist_theta = D_hermitian_angle_fast(
+                    rtf_ref=replica_i.values,
+                    rtf=event_feature_4d,
+                    **dist_kwargs,
+                )
+
+                idx_nan = np.isnan(dist_theta)
+                weights[idx_nan] = np.nan
+                dist_theta = (
+                    np.nansum(dist_theta * weights, axis=0)
+                    * 1
+                    / (np.nansum(weights, axis=0))
+                )
+
+            else:
+                dist_theta = D_hermitian_angle_fast(
+                    rtf_ref=replica_i.values,
+                    rtf=event_feature_4d,
+                    **dist_kwargs,
+                )
+
+            dist_euc = np.zeros(event_feature.replica_id.size)
+            for i_rcv in range(replica_i.h_index.size):
+                # dist_euc += np.linalg.norm(
+                #     replica_i.values[i_rcv, ...][:, np.newaxis]
+                #     - event_feature[i_rcv, ...],
+                #     axis=0,
+                # )
+                weights
+
+                dist_euc += np.sqrt(
+                    np.sum(
+                        weights
+                        * (
+                            np.abs(
+                                replica_i.values[i_rcv, ...][:, np.newaxis]
+                                - event_feature[i_rcv, ...]
+                            )
+                        )
+                        ** 2,
+                        axis=0,
+                    )
+                )
+            dist_euc /= replica_i.h_index.size
+
+            dist_euc = (dist_euc - dist_euc.min()) / (
+                dist_euc.max() - dist_euc.min()
+            )  # In [0, 1]
+            dist_euc *= 90  # In angle range
+
+            alpha_dist_euc = 0.5
+            alpha_dist_theta = 1 - alpha_dist_euc
+            dist = (alpha_dist_theta * dist_theta + alpha_dist_euc * dist_euc) / (
+                alpha_dist_theta + alpha_dist_euc
             )
 
             rtf_distances.append(dist)
@@ -1744,6 +1921,17 @@ def plot_results_dist(ds_results, ds_event, ds_library, root_img: str = None):
         library_replica_id=min_dist_library_replica_id,
     )
 
+    # Find minimum dist in rtf space
+    min_rtf_dist_ids = ds_results.rtf_dist.argmin(...)
+    min_rtf_dist_event_replica_id = min_rtf_dist_ids["event_replica_id"].values
+    min_rtf_dist_library_replica_id = min_rtf_dist_ids["library_replica_id"].values
+    min_rtf_dist_results = ds_results.isel(
+        event_replica_id=min_rtf_dist_event_replica_id,
+        library_replica_id=min_rtf_dist_library_replica_id,
+    )
+    # min_rtf_dist_event = ds_event.sel(replica_id=min_rtf_dist_event_replica_id)
+    # min_rtf_dist_library = ds_library.sel(replica_id=min_rtf_dist_library_replica_id)
+
     # Get CPA of lib and event traj for each receiver
     e_lib = ds_library["e_replica"].values
     n_lib = ds_library["n_replica"].values
@@ -1809,6 +1997,17 @@ def plot_results_dist(ds_results, ds_event, ds_library, root_img: str = None):
         zorder=5,
     )
 
+    # Add marker at minimum rtf distance point
+    axs[0].scatter(
+        min_rtf_dist_results.event_replica_id,
+        min_rtf_dist_results.library_replica_id,
+        marker="o",
+        s=80,
+        color="cyan",
+        label="Minimum theta distance",
+        zorder=5,
+    )
+
     # Spatial distance
     ds_results.spatial_dist.plot(
         x="event_replica_id",
@@ -1827,6 +2026,16 @@ def plot_results_dist(ds_results, ds_event, ds_library, root_img: str = None):
         s=80,
         color="cyan",
         label="Minimum spatial distance",
+        zorder=5,
+    )
+    # Add marker at minimum rtf distance point
+    axs[1].scatter(
+        min_rtf_dist_results.event_replica_id,
+        min_rtf_dist_results.library_replica_id,
+        marker="o",
+        s=80,
+        color="cyan",
+        label="Minimum theta distance",
         zorder=5,
     )
 
@@ -1942,11 +2151,13 @@ def plot_features(
 
     n_rcv = ds_library.h_index.size
     # Compare module
-    fig, axs = plt.subplots(nrows=n_rcv, ncols=2, sharex=True, figsize=(16, 3 * n_rcv))
+    fig, axs = plt.subplots(
+        nrows=n_rcv, ncols=2, sharex=True, sharey="row", figsize=(16, 3 * n_rcv)
+    )
     ax_mod_dist, ax_mod_rtf_dist = axs[:, 0], axs[:, 1]
 
     # # TODO compute hermitian angle along receiver axis and frequency axis and compare
-    # h_plot = 3
+    h_plot = 1
 
     # ### Compare two adjacent features ###
     # rtf_1_mod = min_dist_event.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax))
@@ -1996,22 +2207,22 @@ def plot_features(
     #     f"Hermitian angle distance along rcv (in C^n_rcv) at d = d_min = {theta_along_rcv}°"
     # )
 
-    # ### Compare lib and event features ###
-    # rtf_1_mod = min_dist_event.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax))
-    # rtf_2_mod = min_dist_library.rtf_amp.sel(h_index=h_plot).sel(
-    #     f_rtf=slice(fmin, fmax)
-    # )
-    # rtf_1_phase = min_dist_event.rtf_phase.sel(h_index=h_plot).sel(
-    #     f_rtf=slice(fmin, fmax)
-    # )
-    # rtf_2_phase = min_dist_library.rtf_phase.sel(h_index=h_plot).sel(
-    #     f_rtf=slice(fmin, fmax)
-    # )
-    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
-    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+    ### Compare lib and event features ###
+    rtf_1_mod = min_dist_event.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax))
+    rtf_2_mod = min_dist_library.rtf_amp.sel(h_index=h_plot).sel(
+        f_rtf=slice(fmin, fmax)
+    )
+    rtf_1_phase = min_dist_event.rtf_phase.sel(h_index=h_plot).sel(
+        f_rtf=slice(fmin, fmax)
+    )
+    rtf_2_phase = min_dist_library.rtf_phase.sel(h_index=h_plot).sel(
+        f_rtf=slice(fmin, fmax)
+    )
+    rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
 
-    # euc_dist = np.linalg.norm(rtf_1 - rtf_2)
-    # euc_mod_dist = np.linalg.norm(rtf_1_mod - rtf_2_mod)
+    euc_dist_at_min_spatial_dist = np.linalg.norm(rtf_1 - rtf_2)
+    euc_mod_dist_at_min_spatial_dist = np.linalg.norm(rtf_1_mod - rtf_2_mod)
 
     # dist_kwargs = {"ax_rcv": 1, "ax_f": 0, "apply_mean": False}
     # theta_along_f = D_hermitian_angle_fast(
@@ -2034,44 +2245,58 @@ def plot_features(
     # dist = np.arccos(cos_angle)
     # theta_along_f_roll = np.rad2deg(dist)
 
-    # # Classical hermitian angle
-    # rtf_1_mod = min_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
-    # rtf_2_mod = min_dist_library.rtf_amp.sel(f_rtf=slice(fmin, fmax))
-    # rtf_1_phase = min_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
-    # rtf_2_phase = min_dist_library.rtf_phase.sel(f_rtf=slice(fmin, fmax))
-    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
-    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
-    # dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
-    # theta_along_rcv = D_hermitian_angle_fast(
+    # Classical hermitian angle
+    rtf_1_mod = min_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    rtf_2_mod = min_dist_library.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    rtf_1_phase = min_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    rtf_2_phase = min_dist_library.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+    # dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": False}
+    # theta_along_rcv_at_min_spatial_dist = D_hermitian_angle_fast(
     #     rtf_ref=rtf_1.values,
     #     rtf=rtf_2.values,
     #     **dist_kwargs,
     # )
 
-    # print(f"Euclidian distance (module) at d = d_min = {euc_mod_dist}")
-    # print(f"Euclidian distance (in C) at d = d_min = {euc_dist}")
+    # plt.figure()
+    # plt.hist(theta_along_rcv_at_min_spatial_dist, bins=100)
+    # plt.ylabel(r"$\theta$ [°]")
+    # plt.savefig("test.png")
+
+    dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
+    theta_along_rcv_at_min_spatial_dist = D_hermitian_angle_fast(
+        rtf_ref=rtf_1.values,
+        rtf=rtf_2.values,
+        **dist_kwargs,
+    )
+
+    print(f"Euclidian distance (module) at d = d_min = {euc_dist_at_min_spatial_dist}")
+    print(
+        f"Euclidian distance (in C) at d = d_min = {euc_mod_dist_at_min_spatial_dist}"
+    )
     # print(f"Hermitian angle distance along freq (in C) at d = d_min = {theta_along_f}°")
-    # print(
-    #     f"Hermitian angle distance along rcv (in C^n_rcv) at d = d_min = {theta_along_rcv}°"
-    # )
+    print(
+        f"Hermitian angle distance along rcv (in C^n_rcv) at d = d_min = {theta_along_rcv_at_min_spatial_dist}°"
+    )
 
-    # rtf_1_mod = min_rtf_dist_event.rtf_amp.sel(h_index=h_plot).sel(
-    #     f_rtf=slice(fmin, fmax)
-    # )
-    # rtf_2_mod = min_rtf_dist_library.rtf_amp.sel(h_index=h_plot).sel(
-    #     f_rtf=slice(fmin, fmax)
-    # )
-    # rtf_1_phase = min_rtf_dist_event.rtf_phase.sel(h_index=h_plot).sel(
-    #     f_rtf=slice(fmin, fmax)
-    # )
-    # rtf_2_phase = min_rtf_dist_library.rtf_phase.sel(h_index=h_plot).sel(
-    #     f_rtf=slice(fmin, fmax)
-    # )
-    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
-    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+    rtf_1_mod = min_rtf_dist_event.rtf_amp.sel(h_index=h_plot).sel(
+        f_rtf=slice(fmin, fmax)
+    )
+    rtf_2_mod = min_rtf_dist_library.rtf_amp.sel(h_index=h_plot).sel(
+        f_rtf=slice(fmin, fmax)
+    )
+    rtf_1_phase = min_rtf_dist_event.rtf_phase.sel(h_index=h_plot).sel(
+        f_rtf=slice(fmin, fmax)
+    )
+    rtf_2_phase = min_rtf_dist_library.rtf_phase.sel(h_index=h_plot).sel(
+        f_rtf=slice(fmin, fmax)
+    )
+    rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
 
-    # euc_dist = np.linalg.norm(rtf_1 - rtf_2)
-    # euc_mod_dist = np.linalg.norm(rtf_1_mod - rtf_2_mod)
+    euc_dist_at_min_theta_dist = np.linalg.norm(rtf_1 - rtf_2)
+    euc_mod_dist_at_min_theta_dist = np.linalg.norm(rtf_1_mod - rtf_2_mod)
 
     # dist_kwargs = {"ax_rcv": 1, "ax_f": 0, "apply_mean": False}
     # theta_along_f = D_hermitian_angle_fast(
@@ -2080,28 +2305,29 @@ def plot_features(
     #     **dist_kwargs,
     # )
 
-    # # Classical hermitian angle
-    # rtf_1_mod = min_rtf_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
-    # rtf_2_mod = min_rtf_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
-    # rtf_1_phase = min_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
-    # rtf_2_phase = min_rtf_dist_library.rtf_phase.sel(f_rtf=slice(fmin, fmax))
-    # rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
-    # rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
-    # dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
-    # theta_along_rcv = D_hermitian_angle_fast(
-    #     rtf_ref=rtf_1.values,
-    #     rtf=rtf_2.values,
-    #     **dist_kwargs,
-    # )
+    # Classical hermitian angle
+    rtf_1_mod = min_rtf_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    rtf_2_mod = min_rtf_dist_library.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    rtf_1_phase = min_rtf_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    rtf_2_phase = min_rtf_dist_library.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+    dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
+    theta_along_rcv_at_min_theta_dist = D_hermitian_angle_fast(
+        rtf_ref=rtf_1.values,
+        rtf=rtf_2.values,
+        **dist_kwargs,
+    )
 
-    # print(f"Euclidian distance (module) at theta = theta_min = {euc_mod_dist}")
-    # print(f"Euclidian distance (in C) at theta = theta_min = {euc_dist}")
-    # print(
-    #     f"Hermitian angle distance along freq (in C) at theta = theta_min = {theta_along_f}°"
-    # )
-    # print(
-    #     f"Hermitian angle distance along rcv (in C^n_rcv) at theta = theta_min = {theta_along_rcv}°"
-    # )
+    print(
+        f"Euclidian distance (module) at theta = theta_min = {euc_mod_dist_at_min_theta_dist}"
+    )
+    print(
+        f"Euclidian distance (in C) at theta = theta_min = {euc_dist_at_min_theta_dist}"
+    )
+    print(
+        f"Hermitian angle distance along rcv (in C^n_rcv) at theta = theta_min = {theta_along_rcv_at_min_theta_dist}°"
+    )
 
     for i_rcv in range(n_rcv):
         h_plot = i_rcv + 1
@@ -2114,6 +2340,10 @@ def plot_features(
         # Library minimum spatial distance
         min_dist_library.rtf_amp.sel(h_index=h_plot).sel(f_rtf=slice(fmin, fmax)).plot(
             ax=ax_mod_dist[i_rcv], label="library (d= d_min)", color=color(1)
+        )
+
+        ax_mod_dist[i_rcv].set_title(
+            f"theta = {theta_along_rcv_at_min_spatial_dist:.1f}°, d_euc = {euc_dist_at_min_spatial_dist:.1f}, d_euc_mod = {euc_mod_dist_at_min_spatial_dist:.1f} "
         )
         # Event minimum rtf distance
         min_rtf_dist_event.rtf_amp.sel(h_index=h_plot).sel(
@@ -2128,6 +2358,9 @@ def plot_features(
             ax=ax_mod_rtf_dist[i_rcv],
             label="library (theta = theta_min)",
             color=color(3),
+        )
+        ax_mod_rtf_dist[i_rcv].set_title(
+            f"theta = {theta_along_rcv_at_min_theta_dist:.1f}°, d_euc = {euc_dist_at_min_theta_dist:.1f}, d_euc_mod = {euc_mod_dist_at_min_theta_dist:.1f} "
         )
 
         # # Event minimum spatial distance
@@ -2162,7 +2395,7 @@ def plot_features(
         ax_mod_dist[i_rcv].set_xlabel("")
         ax_mod_dist[i_rcv].set_ylabel(r"$|\Pi|$")
         # ax_mod_dist[i_rcv].set_ylabel("")
-        ax_mod_dist[i_rcv].set_title("")
+        # ax_mod_dist[i_rcv].set_title("")
         ax_mod_dist[i_rcv].legend(fontsize=10, ncol=3, loc="lower right")
 
         # ax_mod_rtf_dist[i_rcv].set_ylim([0.01, 100])
@@ -2170,7 +2403,7 @@ def plot_features(
         ax_mod_rtf_dist[i_rcv].set_xlabel("")
         ax_mod_rtf_dist[i_rcv].set_ylabel(r"$|\Pi|$")
         # ax_mod_rtf_dist[i_rcv].set_ylabel("")
-        ax_mod_rtf_dist[i_rcv].set_title("")
+        # ax_mod_rtf_dist[i_rcv].set_title("")
         ax_mod_rtf_dist[i_rcv].legend(fontsize=10, ncol=3, loc="lower right")
 
     set_subfigures_abc_labels(
@@ -2298,6 +2531,106 @@ def plot_features(
         fpath = os.path.join(
             root_img,
             f"res_library_{ds_results.library_id}_event_{ds_results.event_id}_feature_comparison_phase.png",
+        )
+        plt.savefig(fpath, bbox_inches="tight")
+
+    # Hermitian angle vs frequency
+    fig, axs = plt.subplots(nrows=1, ncols=2, sharey=True, figsize=(16, 8))
+
+    rtf_1_mod = min_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    rtf_2_mod = min_dist_library.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    rtf_1_phase = min_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    rtf_2_phase = min_dist_library.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+    dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": False}
+    theta_along_rcv_at_min_spatial_dist = D_hermitian_angle_fast(
+        rtf_ref=rtf_1.values,
+        rtf=rtf_2.values,
+        **dist_kwargs,
+    )
+
+    rtf_1_mod = min_rtf_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    rtf_2_mod = min_rtf_dist_event.rtf_amp.sel(f_rtf=slice(fmin, fmax))
+    rtf_1_phase = min_rtf_dist_event.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    rtf_2_phase = min_rtf_dist_library.rtf_phase.sel(f_rtf=slice(fmin, fmax))
+    rtf_1 = rtf_1_mod * np.exp(1j * rtf_1_phase)
+    rtf_2 = rtf_2_mod * np.exp(1j * rtf_2_phase)
+    dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": False}
+    theta_along_rcv_at_min_theta_dist = D_hermitian_angle_fast(
+        rtf_ref=rtf_1.values,
+        rtf=rtf_2.values,
+        **dist_kwargs,
+    )
+
+    axs[0].plot(
+        rtf_1.f_rtf.values,
+        theta_along_rcv_at_min_spatial_dist,
+        label="d = d_min",
+        color=color(0),
+    )
+    axs[1].plot(
+        rtf_2.f_rtf.values,
+        theta_along_rcv_at_min_theta_dist,
+        label="theta = theta_min",
+        color=color(2),
+    )
+
+    axs[0].axhline(
+        np.percentile(theta_along_rcv_at_min_spatial_dist, 25),
+        label="25 th percentile",
+        color=color(4),
+    )
+    axs[0].axhline(
+        np.percentile(theta_along_rcv_at_min_spatial_dist, 50),
+        label="50 th percentile",
+        color=color(5),
+    )
+    axs[0].axhline(
+        np.percentile(theta_along_rcv_at_min_spatial_dist, 75),
+        label="75 th percentile",
+        color=color(6),
+    )
+    axs[0].axhline(
+        np.mean(theta_along_rcv_at_min_spatial_dist),
+        label="mean",
+        color=color(7),
+    )
+
+    axs[1].axhline(
+        np.percentile(theta_along_rcv_at_min_theta_dist, 25),
+        label="25 th percentile",
+        color=color(4),
+    )
+    axs[1].axhline(
+        np.percentile(theta_along_rcv_at_min_theta_dist, 50),
+        label="50 th percentile",
+        color=color(5),
+    )
+    axs[1].axhline(
+        np.percentile(theta_along_rcv_at_min_theta_dist, 75),
+        label="75 th percentile",
+        color=color(6),
+    )
+    axs[1].axhline(
+        np.mean(theta_along_rcv_at_min_theta_dist),
+        label="mean",
+        color=color(7),
+    )
+    axs[0].legend()
+    axs[1].legend()
+
+    set_subfigures_abc_labels(
+        axs=axs, fontsize=14, x_pos=0.015, y_pos=0.98, ha="left", va="top"
+    )
+
+    fig.supxlabel("Frequency [Hz]")
+    fig.supylabel(r"$\theta$ [°]")
+
+    if save_fig:
+        fpath = os.path.join(
+            root_img,
+            f"res_library_{ds_results.library_id}_event_{ds_results.event_id}_feature_comparison_theta_vs_freq.png",
         )
         plt.savefig(fpath, bbox_inches="tight")
 
@@ -2519,13 +2852,13 @@ def test():
     target_mmsi = None
     passive_feature_args = {
         "start_datetimes": [
-            datetime(year=2025, month=10, day=14, hour=16, minute=44, second=30),
+            datetime(year=2025, month=10, day=14, hour=16, minute=40, second=30),
             # datetime(year=2025, month=10, day=15, hour=00, minute=10, second=00),
             # datetime(year=2025, month=10, day=14, hour=2, minute=00, second=00),  # OK
             # datetime(year=2025, month=10, day=14, hour=11, minute=25, second=00),  # OK
         ],
         "end_datetimes": [
-            datetime(year=2025, month=10, day=14, hour=16, minute=48, second=30),
+            datetime(year=2025, month=10, day=14, hour=16, minute=50, second=30),
             # datetime(year=2025, month=10, day=15, hour=00, minute=30, second=00),
             # datetime(year=2025, month=10, day=14, hour=2, minute=20, second=00),  # OK
             # datetime(year=2025, month=10, day=14, hour=11, minute=40, second=00),  # OK

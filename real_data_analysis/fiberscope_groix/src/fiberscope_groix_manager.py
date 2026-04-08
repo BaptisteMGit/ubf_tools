@@ -887,6 +887,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                     ),
                     h_index=hydro_idx,
                 )
+
                 # Note: +/- ts/2 to ensure we include boundary samples
 
                 # # Extract the emission
@@ -903,7 +904,31 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 if self.deconvolution_method == "crosscorr":
                     h_hat = crosscorr_deconvolution(x=x, y=y.values)
                 elif self.deconvolution_method == "wiener":
-                    h_hat = wiener_deconvolution(x=x, y=y.values)
+
+                    v = xr_data.signal.sel(
+                        time=slice(
+                            t0 + t_pulse + ts / 2,
+                            t0 + t_interp_pulse + ts / 2,
+                        ),
+                        h_index=hydro_idx,
+                    )
+
+                    nstft = max(x.size, y.size)
+                    Yf = np.fft.rfft(y.values, n=nstft)
+                    Vf = np.fft.rfft(v.values, n=nstft)
+                    rho_f = np.abs(Yf) ** 2 / np.abs(Vf) ** 2
+                    # rho_f = np.abs(Yf) / np.abs(Vf)
+
+                    h_hat = wiener_deconvolution(x=x, y=y.values, rho_f=rho_f)
+                    # h_hat = wiener_deconvolution(x=x, y=y.values)
+
+                    # # Filter h in signal band
+                    # h_hat_f = np.fft.rfft(h_hat)
+                    # f_h_hat = np.fft.rfftfreq(h_hat.size, ts)
+                    # h_hat_f[f_h_hat < f0] = 0
+                    # h_hat_f[f_h_hat > f1] = 0
+                    # h_hat = np.fft.irfft(h_hat_f)
+
                 else:
                     raise ValueError(
                         f"Deconvolution method {self.deconvolution_method} not recognized. Please choose 'crosscorr' or 'wiener'."
@@ -1720,6 +1745,8 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 ["f_csdm", "h_index", "h_index_bis"],
                 np.abs(Rv).astype(np.float32),
             )
+
+        xr_data.attrs["pulse_window_length_s"] = tau_minus + t_pulse + tau_plus
 
         return xr_data
 

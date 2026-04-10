@@ -248,6 +248,7 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
     apply_sum = kwargs.get("apply_sum", False)
     ax_rcv = kwargs.get("ax_rcv", 3 if rtf.ndim == 4 else 1)
     ax_f = kwargs.get("ax_f", 1)
+    data_space = kwargs.get("data_space", "complex")
 
     # Moveaxis to fit with the reference order (nf, nrcv, ...)
     rtf = np.moveaxis(rtf, [ax_f, ax_rcv], [0, 1])
@@ -259,13 +260,28 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
         # Expand rtf_ref along the necessary axes for broadcasting
         rtf_ref_expanded = cast_matrix_to_target_shape(rtf_ref, rtf.shape)
 
-        # Calculate inner product and norms along the receiver axis
-        inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=1))
+        # Calculate inner product along the receiver axis
+        if data_space == "real":
+            # In real space (R^n) we use the traditionnal angle definition in euclidian space
+            # Thus, we should not use abs values to define the angle.
+            # Otherwise vectors with opposite directions leads to theta = 0° (<=> perfect match) which does not make sense
+            inner_prod = np.sum(rtf_ref_expanded.conj() * rtf, axis=1)
+        elif data_space == "complex":
+            # Traditionnal definition of hermitian angle in C^n
+            inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=1))
+
+        # Calculate norms along the receiver axis
         norm_ref = np.linalg.norm(rtf_ref_expanded, axis=1)
         norm_rtf = np.linalg.norm(rtf, axis=1)
 
-        # Calculate cosine of Hermitian angle, clipped to [-1, 1] for stability
-        cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
+        if data_space == "real":
+            # Clip to [-1, 1] for stability
+            cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
+
+        elif data_space == "complex":
+            # Calculate cosine of Hermitian angle, clipped to [0, 1] for stability
+            cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), 0, 1.0)
+
         dist = np.arccos(cos_angle)
 
         if unit == "deg":
@@ -305,12 +321,31 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
     elif rtf.ndim == 2:
         # Calculate inner product and norms along the receiver axis (axis=1)
         # ax_rcv = 1
-        inner_prod = np.abs(np.sum(rtf_ref.conj() * rtf, axis=1))
+
+        # Calculate inner product along the receiver axis
+        if data_space == "real":
+            # In real space (R^n) we use the traditionnal angle definition in euclidian space
+            # Thus, we should not use abs values to define the angle.
+            # Otherwise vectors with opposite directions leads to theta = 0° (<=> perfect match) which does not make sense
+            inner_prod = np.sum(rtf_ref.conj() * rtf, axis=1)
+        elif data_space == "complex":
+            # Traditionnal definition of hermitian angle in C^n
+            inner_prod = np.abs(np.sum(rtf_ref.conj() * rtf, axis=1))
+
+        # inner_prod = np.abs(np.sum(rtf_ref.conj() * rtf, axis=1))
         norm_ref = np.linalg.norm(rtf_ref, axis=1)
         norm_rtf = np.linalg.norm(rtf, axis=1)
 
+        if data_space == "real":
+            # Clip to [-1, 1] for stability
+            cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
+
+        elif data_space == "complex":
+            # Calculate cosine of Hermitian angle, clipped to [0, 1] for stability
+            cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), 0, 1.0)
+
         # Cosine of Hermitian angle, clipped for stability
-        cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
+        # cos_angle = np.clip(inner_prod / (norm_ref * norm_rtf), -1.0, 1.0)
         dist = np.arccos(cos_angle)
 
         if unit == "deg":

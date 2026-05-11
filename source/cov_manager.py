@@ -87,17 +87,6 @@ class CovManager:
             y, fs, self.nperseg, self.noverlap, self.window
         )
 
-        # TODO : remove this if not sucessfull
-        # for i_rcv in range(stft_arr.shape[0]):
-        #     # Max l, k
-        #     # stft_arr[i_rcv, ...] /= np.max(np.abs(stft_arr[i_rcv, ...]))
-        #     # Max l
-        #     stft_arr[i_rcv, ...] /= np.max(np.abs(stft_arr[i_rcv, ...]), axis=1)[
-        #         :, np.newaxis
-        #     ]
-        # # Max
-        # stft_arr /= np.max(np.abs(stft_arr))
-
         csdm_y = self.compute_csdm_fast(
             stft_arr, n_seg_cov=0, mask_tt=mask_tt, mask_stft=mask_stft
         )  # (nf x nrcv x nrcv)

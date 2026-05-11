@@ -23,6 +23,7 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from datetime import datetime, timedelta
 from scipy.signal import butter, lfilter
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import source.global_constants as gc
 import real_data_analysis.fiberscope_groix.src.params as p
@@ -34,6 +35,7 @@ from real_data_analysis.deconvolution_utils import (
     crosscorr_deconvolution,
     wiener_deconvolution,
 )
+from publication.publication_figure import LargeFigure, color, set_subfigures_abc_labels
 from real_data_analysis.fiberscope_20.src.read_tdms import load_fiberscope_data
 
 # import referrers
@@ -228,13 +230,16 @@ class FiberscopeManager:
 
     def get_signal_presence_mask_ft(self, x, tstart, tend, nperseg, noverlap):
 
-        # Dummy stft calculation to get ff and tt (should be replace by single stft calc)
+        # Dummy stft calculation to get ff and tt (can be easily optimized by directly calculating the ff and tt vectors)
         ff, tt, stft_x = self.cm.get_stft_array(
             x.signal.T,
             fs=x.fs,
             nperseg=nperseg,
             noverlap=noverlap,
         )
+        # dff = 1 / (x.ts * nperseg)
+        # dtt = x.ts * (nperseg - noverlap)
+        # ff = np.arange(0, x.fs / 2 + dff, dff)
 
         t_first_arr_in_slice = (tstart - x.time.min()).values
         t_last_arr_in_slice = (tend - x.time.min()).values
@@ -257,26 +262,46 @@ class FiberscopeManager:
         right_tt = np.interp(tt, t, right_bound)
 
         # Define mask
-        TT, FF = np.meshgrid(tt, ff)
+        TT, FF = np.meshgrid(tt, ff)  # FF -> (nff, ntt)
         mask_stft = np.logical_and(
             (FF <= left_tt[np.newaxis, :]), (FF >= right_tt[np.newaxis, :])
         )
 
         # Plot mask
         if self.plot_csdm_mask:
+
+            fig, axs = plt.subplots(stft_x.shape[0], 1, sharex=True, figsize=(16, 12))
+
+            spectro = np.abs(stft_x) / np.max(
+                np.abs(stft_x)
+            )  # Normalize spectrogram for better visualization
+            spectro_dB = 10 * np.log10(
+                spectro + 1e-10
+            )  # Convert to dB, add small value to avoid log(0)
+            vmin = np.percentile(
+                spectro_dB, 5
+            )  # Set vmin to 5th percentile for better contrast
+            vmax = np.percentile(
+                spectro_dB, 95
+            )  # Set vmax to 95th percentile for better contrast
+
             for ircv in range(stft_x.shape[0]):
-                stft_i = np.abs(stft_x[ircv, ...])
-                stft_i /= np.max(stft_i)
-                plt.figure()
-                plt.pcolormesh(tt, ff, 10 * np.log10(stft_i), vmin=-30, cmap="jet")
-                plt.colorbar(label="[dB]")
-                plt.plot(
+                # stft_i = np.abs(stft_x[ircv, ...])
+                # stft_i /= np.max(stft_i)
+                spectro_dB_i = spectro_dB[ircv, ...]
+
+                # plt.figure()
+                im = axs[ircv].pcolormesh(
+                    tt, ff, spectro_dB_i, vmin=vmin, vmax=vmax, cmap="magma"
+                )
+                # axs[ircv].colorbar(label="Magnitude [dB re max]")  # Should be clarified
+                axs[ircv].plot(
                     tt,
                     left_tt,
                     linewidth=4,
                     color="k",
                 )
-                plt.plot(
+                axs[ircv].plot(
                     tt,
                     right_tt,
                     linewidth=4,
@@ -285,7 +310,7 @@ class FiberscopeManager:
 
                 # Mask overlay
                 alpha_mask = mask_stft.astype(float) * 0.45
-                plt.pcolormesh(
+                axs[ircv].pcolormesh(
                     tt,
                     ff,
                     np.ones_like(mask_stft),
@@ -294,11 +319,24 @@ class FiberscopeManager:
                     shading="auto",
                 )
 
-                plt.xlabel("Time [s]")
-                plt.ylabel("Frequency [Hz]")
-                plt.ylim([0, 1000])
-                fpath = os.path.join(x.root_img, f"csdm_mask_definition_rcv{ircv}.png")
-                plt.savefig(fpath)
+                axs[ircv].set_xlabel("")
+                axs[ircv].set_ylabel("")
+                axs[ircv].set_title(f"OBS {ircv+1}")
+                axs[ircv].set_ylim([0, x.fs / 2])
+
+                # divider = make_axes_locatable(axs[ircv])
+                # cax = divider.append_axes("right", size="2%", pad=0.10)
+                # fig.colorbar(im, cax=cax, orientation="vertical", label=clabel)
+
+            clabel = "Magnitude [dB re max]"  # Should be clarified
+            fig.colorbar(
+                im, ax=axs.ravel().tolist(), orientation="vertical", label=clabel
+            )
+
+            fig.supxlabel("Time [s]")
+            fig.supylabel("Frequency [Hz]")
+            fpath = os.path.join(x.root_img, f"csdm_mask_definition_all_rcvs.png")
+            plt.savefig(fpath)
 
             self.plot_csdm_mask = False  # Plot only one time
 
@@ -1216,57 +1254,82 @@ class ActiveFiberscopeManager(FiberscopeManager):
             for pulse_id in xr_data.pulse_id.values:
                 xr_data_pulse = xr_data.sel(pulse_id=pulse_id)
 
-                nrcv = xr_data.sizes["h_index"]
+                idx_rcv_plot = [
+                    idx for idx in xr_data.h_index.values if idx != xr_data.h_index_ref
+                ]
+                nrcv = len(idx_rcv_plot)
                 f_amp, axs_amp = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
                 f_phase, axs_phase = plt.subplots(nrows=nrcv, ncols=1, sharex=True)
                 i = 0
-                for rcv_idx in xr_data.h_index.values:
+
+                for rcv_idx in idx_rcv_plot:
 
                     # Plot RTF amplitude
                     max_amp = xr_data_pulse.rtf_amp.max() * 1.2
                     min_amp = xr_data_pulse.rtf_amp.min() * 0.8
                     xr_data_pulse.rtf_amp.sel(h_index=rcv_idx).plot(
-                        ax=axs_amp[i], color="k", label=f"Ref - {rcv_idx}"
+                        ax=axs_amp[i], color=color(0), label=f"Deconvolution"
                     )
                     xr_data_pulse.rtf_amp_hat.sel(h_index=rcv_idx).plot(
                         ax=axs_amp[i],
-                        color="b",
+                        color=color(1),
                         marker="o",
                         markersize=1,
                         linewidth=1,
-                        linestyle="--",
-                        label=f"{self.rtf_estimator.upper()} - {rcv_idx}",
+                        linestyle="-",
+                        label=f"{self.rtf_estimator.upper()}",
                     )
                     axs_amp[i].set_xlabel("")
                     axs_amp[i].set_ylabel(r"$|\Pi|$")
                     axs_amp[i].set_ylim(min_amp, max_amp)
                     axs_amp[i].set_yscale("log")
-                    axs_amp[i].set_title("")
-                    axs_amp[i].legend(fontsize=8)
+                    # axs_amp[i].set_title("")
+                    axs_amp[i].set_title(f"OBS {rcv_idx}")
+                    axs_amp[i].legend(fontsize=10, loc="upper right")
 
                     # Plot RTF phase
                     xr_data_pulse.rtf_phase.sel(h_index=rcv_idx).plot(
-                        ax=axs_phase[i], color="k", label=f"Ref - {rcv_idx}"
+                        ax=axs_phase[i], color=color(0), label=f"Deconvolution"
                     )
                     xr_data_pulse.rtf_phase_hat.sel(h_index=rcv_idx).plot(
                         ax=axs_phase[i],
-                        color="b",
+                        color=color(1),
                         marker="o",
                         markersize=1,
                         linewidth=1,
-                        linestyle="--",
-                        label=f"{self.rtf_estimator.upper()} - {rcv_idx}",
+                        linestyle="-",
+                        label=f"{self.rtf_estimator.upper()}",
                     )
                     axs_phase[i].set_xlabel("")
                     axs_phase[i].set_ylabel(r"$\Phi$")
-                    axs_phase[i].set_title("")
-                    axs_phase[i].legend(fontsize=8)
+                    # axs_phase[i].set_title("")
+                    axs_phase[i].set_title(f"OBS {rcv_idx}")
+                    axs_phase[i].legend(fontsize=10, loc="upper right")
 
                     i += 1
+
+                # Set abc labels
+                set_subfigures_abc_labels(
+                    axs=axs_amp,
+                    fontsize=14,
+                    x_pos=0.01,
+                    y_pos=0.98,
+                    ha="left",
+                    va="top",
+                )
+                set_subfigures_abc_labels(
+                    axs=axs_phase,
+                    fontsize=14,
+                    x_pos=0.01,
+                    y_pos=0.98,
+                    ha="left",
+                    va="top",
+                )
 
                 # Save figures
                 fpath = os.path.join(xr_data.root_img, f"rtf_amp_pulseID{pulse_id}.png")
                 f_amp.savefig(fpath)
+
                 fpath = os.path.join(
                     xr_data.root_img, f"rtf_phase_pulseID{pulse_id}.png"
                 )
@@ -1274,8 +1337,12 @@ class ActiveFiberscopeManager(FiberscopeManager):
 
                 plt.close("all")
 
+                nrcv = xr_data.sizes["h_index"]
+
                 # Plot csdms (noise, noisy signal, signal)
-                f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
+                f_csdm, axs_csdm = plt.subplots(
+                    nrows=1, ncols=3, sharey=True, figsize=(16, 8)
+                )
                 f_csdm.suptitle("CSDM")
 
                 # Mean CSDMs
@@ -1284,11 +1351,25 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 Rs = xr_data_pulse.Rx - xr_data_pulse.Rv
                 mean_Rs = Rs.mean(dim="f_csdm")
 
+                # Convert to log scale for better visual inspection
+                max_mean_R = np.max([mean_Rx, mean_Rv, mean_Rs])
+                mean_Rx = 10 * np.log10(mean_Rx / max_mean_R + 1e-10)
+                mean_Rv = 10 * np.log10(mean_Rv / max_mean_R + 1e-10)
+                mean_Rs = 10 * np.log10(mean_Rs / max_mean_R + 1e-10)
+
                 # Derive a common vmax for comparison purpose
                 vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
+                vmin = min(mean_Rx.values.min(), mean_Rv.values.min())
 
                 # Plot Rx
-                mean_Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax, vmin=0)
+                mean_Rx.plot(
+                    ax=axs_csdm[0],
+                    cmap="jet",
+                    x="h_index",
+                    vmax=vmax,
+                    vmin=vmin,
+                    add_colorbar=False,
+                )
                 axs_csdm[0].set_title(r"$\hat{R}_x$")
                 axs_csdm[0].set_xlabel("Index")
                 axs_csdm[0].set_ylabel("Index")
@@ -1297,7 +1378,14 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
 
                 # Plot Rv
-                mean_Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax, vmin=0)
+                mean_Rv.plot(
+                    ax=axs_csdm[1],
+                    cmap="jet",
+                    x="h_index",
+                    vmax=vmax,
+                    vmin=0,
+                    add_colorbar=False,
+                )
                 axs_csdm[1].set_title(r"$\hat{R}_v$")
                 axs_csdm[1].set_xlabel("Index")
                 axs_csdm[1].set_ylabel("Index")
@@ -1306,13 +1394,30 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
                 # Plot Rs
-                mean_Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax, vmin=0)
+                im = mean_Rs.plot(
+                    ax=axs_csdm[2],
+                    cmap="jet",
+                    x="h_index",
+                    vmax=vmax,
+                    vmin=vmin,
+                    add_colorbar=False,
+                )
                 axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
                 axs_csdm[2].set_xlabel("Index")
                 axs_csdm[2].set_ylabel("Index")
                 # Ticks
                 axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
                 axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
+
+                clabel = "Magnitude [dB]"
+                f_csdm.colorbar(
+                    im,
+                    ax=axs_csdm.ravel().tolist(),
+                    label=clabel,
+                    orientation="vertical",
+                    fraction=1.0,
+                    pad=0.03,
+                )
 
                 # Save figure
                 fpath = os.path.join(
@@ -1323,7 +1428,9 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 plt.close("all")
 
                 # Plot csdms (noise, noisy signal, signal)
-                f_csdm, axs_csdm = plt.subplots(nrows=1, ncols=3, sharey=True)
+                f_csdm, axs_csdm = plt.subplots(
+                    nrows=1, ncols=3, sharey=True, figsize=(16, 8)
+                )
 
                 # CSDMs at a center freq
                 fc = (xr_data.fmax - xr_data.fmin) / 2
@@ -1333,12 +1440,26 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 Rv = xr_data_pulse.Rv.sel(f_csdm=fc, method="nearest")
                 Rs = Rx - Rv
 
+                # Convert to log scale for better visual inspection
+                max_R = np.max([Rx, Rv, Rs])
+                Rx = 10 * np.log10(Rx / max_R + 1e-10)
+                Rv = 10 * np.log10(Rv / max_R + 1e-10)
+                Rs = 10 * np.log10(Rs / max_R + 1e-10)
+
                 # Derive a common vmax for comparison purpose
-                # vmax = max(mean_Rx.values.max(), mean_Rv.values.max())
                 vmax = max(Rx.values.max(), Rv.values.max())
+                vmin = min(Rx.values.min(), Rv.values.min())
+                # vmax = max(Rx.values.max(), Rv.values.max())
 
                 # Plot Rx
-                Rx.plot(ax=axs_csdm[0], cmap="jet", x="h_index", vmax=vmax, vmin=0)
+                Rx.plot(
+                    ax=axs_csdm[0],
+                    cmap="jet",
+                    x="h_index",
+                    vmax=vmax,
+                    vmin=vmin,
+                    add_colorbar=False,
+                )
                 axs_csdm[0].set_title(r"$\hat{R}_x$")
                 axs_csdm[0].set_xlabel("Index")
                 axs_csdm[0].set_ylabel("Index")
@@ -1347,7 +1468,14 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[0].set_yticks(np.arange(1, nrcv + 1, 1))
 
                 # Plot Rv
-                Rv.plot(ax=axs_csdm[1], cmap="jet", x="h_index", vmax=vmax, vmin=0)
+                Rv.plot(
+                    ax=axs_csdm[1],
+                    cmap="jet",
+                    x="h_index",
+                    vmax=vmax,
+                    vmin=vmin,
+                    add_colorbar=False,
+                )
                 axs_csdm[1].set_title(r"$\hat{R}_v$")
                 axs_csdm[1].set_xlabel("Index")
                 axs_csdm[1].set_ylabel("Index")
@@ -1356,13 +1484,30 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
                 # Plot Rs
-                Rs.plot(ax=axs_csdm[2], cmap="jet", x="h_index", vmax=vmax, vmin=0)
+                im = Rs.plot(
+                    ax=axs_csdm[2],
+                    cmap="jet",
+                    x="h_index",
+                    vmax=vmax,
+                    vmin=vmin,
+                    add_colorbar=False,
+                )
                 axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
                 axs_csdm[2].set_xlabel("Index")
                 axs_csdm[2].set_ylabel("Index")
                 # Ticks
                 axs_csdm[2].set_xticks(np.arange(1, nrcv + 1, 1))
                 axs_csdm[2].set_yticks(np.arange(1, nrcv + 1, 1))
+
+                clabel = "Magnitude [dB]"
+                f_csdm.colorbar(
+                    im,
+                    ax=axs_csdm.ravel().tolist(),
+                    label=clabel,
+                    orientation="vertical",
+                    fraction=1.0,
+                    pad=0.03,
+                )
 
                 # Save figure
                 fpath = os.path.join(

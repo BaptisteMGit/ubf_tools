@@ -59,9 +59,9 @@ pfig = PubFigure()
 def plot_tl_pi_frequency_range_plan(
     intensity_1_dB, intensity_2_dB, rtf2_mod, x_coord="r", y_coord="f"
 ):
-    fig, axs = plt.subplots(3, 1, figsize=(16, 12), sharex=True)
+    fig, axs = plt.subplots(1, 3, figsize=(18, 12), sharex=True, sharey=True)
 
-    vmin = max(np.percentile(intensity_1_dB, 0.1), np.percentile(intensity_2_dB, 0.1))
+    vmin = max(np.percentile(intensity_1_dB, 5), np.percentile(intensity_2_dB, 5))
     vmax = min(np.percentile(intensity_1_dB, 95), np.percentile(intensity_2_dB, 95))
 
     intensity_1_dB.plot(
@@ -78,7 +78,8 @@ def plot_tl_pi_frequency_range_plan(
         vmax=vmax,
     )
     axs[0].set_title(
-        r"$\text{TL}_1(r, f) = -10 \log_{10}(\lvert 4 \pi H_1(f, r) \rvert^2)$"
+        r"$\text{TL}_1(r, f) = -10 \log_{10}(\lvert 4 \pi H_1(f, r) \rvert^2)$",
+        fontsize=16,
     )
     axs[0].set_xlabel("")
     axs[0].set_ylabel("")
@@ -97,7 +98,8 @@ def plot_tl_pi_frequency_range_plan(
         vmax=vmax,
     )
     axs[1].set_title(
-        r"$\text{TL}_2(r, f) = -10 \log_{10}(\lvert 4 \pi H_2(f, r) \rvert^2)$"
+        r"$\text{TL}_2(r, f) = -10 \log_{10}(\lvert 4 \pi H_2(f, r) \rvert^2)$",
+        fontsize=16,
     )
     axs[1].set_xlabel("")
     axs[1].set_ylabel("")
@@ -121,13 +123,18 @@ def plot_tl_pi_frequency_range_plan(
     )
     axs[2].set_title(
         # r"$10 \log_{10} \left( \lvert \Pi_2(f, r) \rvert^2 \right) = \left \lvert \frac{H_2(f, r)}{H_1(f, r)}  \right \rvert$"
-        r"$10 \log_{10} \left( \lvert \Pi_2(f, r) \rvert^2 \right) =  \text{TL}_1(r, f) - \text{TL}_2(r, f) $"
+        r"$10 \log_{10} \left( \lvert \Pi_2(f, r) \rvert^2 \right) =  \text{TL}_1(r, f) - \text{TL}_2(r, f) $",
+        fontsize=16,
     )
     axs[2].set_xlabel("")
     axs[2].set_ylabel("")
+    if x_coord == "r":
+        fig.supxlabel("Range [m]")
+        fig.supylabel("Frequency [Hz]")
+    elif x_coord == "f":
+        fig.supylabel("Range [m]")
+        fig.supxlabel("Frequency [Hz]")
 
-    fig.supxlabel("Range [m]")
-    fig.supylabel("Frequency [Hz]")
     # axs[0].set_xlim([0, 3000])
     # plt.ylim([21.5, 26])
 
@@ -156,8 +163,14 @@ def plot_intensity(intensity_dB, fmin, fmax, step_f=0.5):
     axs[0].set_ylim([80, 0])
     axs[0].legend(ncols=3)
     axs[0].set_xlabel("")
+    axs[0].set_ylabel(
+        r"$\text{TL}(r)$ [dB]",
+    )
+    axs[0].set_title("")
 
-    vmin, vmax = 20, 70
+    # vmin, vmax = 20, 70
+    vmin = np.percentile(intensity_dB, 10)
+    vmax = np.percentile(intensity_dB, 90)
     im = intensity_dB.plot(
         ax=axs[1],
         x="r",
@@ -302,6 +315,8 @@ def compute_rtf_dataset(
     # Add usefull attrs
     ds.f.attrs = {"unit": "Hz", "long_name": "Frequency"}
     ds.r.attrs = {"unit": "m", "long_name": "Range"}
+    ds.H1.attrs = {"long_name": r"$H_1$", "units": "1"}
+    ds.H2.attrs = {"long_name": r"$H_2$", "units": "1"}
 
     print("Dataset computed")
 
@@ -422,7 +437,7 @@ def get_dist(ds, distances="all"):
             "ax_f": 1,
             "apply_mean": False,
             "apply_median": True,
-            "data_space": "complex",
+            "data_space": "real",
         }
         x = np.abs(rtf_ref)
         y = np.abs(rtf)

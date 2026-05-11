@@ -266,6 +266,7 @@ def D_hermitian_angle_fast(rtf_ref, rtf, **kwargs):
             # Thus, we should not use abs values to define the angle.
             # Otherwise vectors with opposite directions leads to theta = 0° (<=> perfect match) which does not make sense
             inner_prod = np.sum(rtf_ref_expanded.conj() * rtf, axis=1)
+
         elif data_space == "complex":
             # Traditionnal definition of hermitian angle in C^n
             inner_prod = np.abs(np.sum(rtf_ref_expanded.conj() * rtf, axis=1))

@@ -783,6 +783,7 @@ def run_full_study(
     r_grid_km = r_grid / 1e3
     r_grid1 = r_grid  # Range from source to receiver 1
     r_grid2 = r_grid + d_inter_rcv  # Range from source to receiver 2
+    # r_grid2 = np.abs(r_grid - d_inter_rcv)  # Range from source to receiver 2
 
     f = np.linspace(fmin, fmax, nfgrid)  # Frequency vector
 

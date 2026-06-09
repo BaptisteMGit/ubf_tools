@@ -25,7 +25,6 @@ import multiprocessing
 import scipy.stats as sst
 import scipy.fft as sp_fft
 
-
 # import moviepy.editor as mpy
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -33,6 +32,33 @@ import matplotlib.transforms as transforms
 
 from PIL import Image
 from matplotlib.patches import Ellipse
+from scipy.signal import butter, lfilter
+
+
+# ======================================================================================================================
+# Band filtering class
+# ======================================================================================================================
+class BandFilter:
+    """
+    Wrapping class to apply Butterworth filtering using scipy.signal.butter and scipy.signal.lfilter
+    """
+
+    def __init__(
+        self,
+        order: int = 4,
+        lowcut: float = 1,
+        highcut: float = 50,
+    ):
+
+        self.order = order
+        self.lowcut = lowcut
+        self.highcut = highcut
+
+    def apply_filter(self, signal, fs):
+        b, a = butter(self.order, [self.lowcut, self.highcut], fs=fs, btype="band")
+        signal_filter = lfilter(b, a, signal)
+
+        return signal_filter
 
 
 def mult_along_axis(A, B, axis):

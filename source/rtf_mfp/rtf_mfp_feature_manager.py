@@ -24,7 +24,6 @@ import matplotlib.dates as mdates
 
 from scipy import stats
 from datetime import datetime
-from scipy.signal import butter, lfilter
 
 from misc import progression_bar
 from source.cov_manager import CovManager
@@ -32,31 +31,7 @@ from source.feature_processor import FeatureProcessor
 
 import real_data_analysis.fiberscope_groix.src.params as p
 
-
-# ======================================================================================================================
-# Band filtering class
-# ======================================================================================================================
-class BandFilter:
-    """
-    Wrapping class to apply Butterworth filtering using scipy.signal.butter and scipy.signal.lfilter
-    """
-
-    def __init__(
-        self,
-        order: int = 4,
-        lowcut: float = 1,
-        highcut: float = 50,
-    ):
-
-        self.order = order
-        self.lowcut = lowcut
-        self.highcut = highcut
-
-    def apply_filter(self, signal, fs):
-        b, a = butter(self.order, [self.lowcut, self.highcut], fs=fs, btype="band")
-        signal_filter = lfilter(b, a, signal)
-
-        return signal_filter
+from misc import BandFilter
 
 
 class FeatureManager:

@@ -37,7 +37,6 @@ from real_data_analysis.fiberscope_groix.src.localisation.rtf.rtf_mfp_utils impo
 )
 from publication.publication_figure import color, PubFigure, set_subfigures_abc_labels
 
-
 # DEFAUTS # TODO move this in a dedicated file ?
 ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\data"
 ROOT_IMG = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\fiberscope_groix\img\rtf_mfp"
@@ -1492,7 +1491,7 @@ def plot_mfp_datasets(ds_library, ds_event, root_img: str = None):
             e,
             n,
             marker="D",
-            label=k,
+            label=k.upper(),
             zorder=1,
             s=150,
         )
@@ -1507,6 +1506,7 @@ def plot_mfp_datasets(ds_library, ds_event, root_img: str = None):
         label=f"{ds_library.type.capitalize()} ({ds_library.id})",
         c=np.arange(e_library.size),
         cmap="managua",
+        s=100,
     )
 
     # Plot event replicas positions
@@ -1525,7 +1525,7 @@ def plot_mfp_datasets(ds_library, ds_event, root_img: str = None):
     plt.colorbar(im_lib, label="Library replica index")
     plt.colorbar(im_event, label="Event replica index")
 
-    plt.legend(fontsize=12)
+    plt.legend(fontsize=16)
     plt.xlabel("E [m]")
     plt.ylabel("N [m]")
 
@@ -1556,7 +1556,7 @@ def plot_mfp_dataset(ds, cmap="jet", root_img: str = None):
             e,
             n,
             marker="D",
-            label=k,
+            label=k.upper(),
             zorder=1,
             s=150,
         )
@@ -1571,10 +1571,11 @@ def plot_mfp_dataset(ds, cmap="jet", root_img: str = None):
         label=f"{ds.type.capitalize()} ({ds.id})",
         c=np.arange(e_library.size),
         cmap=cmap,
+        s=100,
     )
     plt.colorbar(im, label="Replica index")
 
-    plt.legend(fontsize=12)
+    plt.legend(fontsize=16)
     plt.xlabel("E [m]")
     plt.ylabel("N [m]")
 

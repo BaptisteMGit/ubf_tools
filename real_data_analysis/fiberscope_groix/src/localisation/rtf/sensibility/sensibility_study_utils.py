@@ -25,6 +25,11 @@ import matplotlib.dates as mdates
 import matplotlib.colors as colors
 
 
+import cartopy.crs as ccrs
+import cartopy.feature as cfeature
+from matplotlib.colors import LightSource
+from matplotlib.patches import Rectangle
+
 from scipy.special import kl_div
 from scipy.interpolate import interp1d
 from scipy.spatial.distance import cdist, jensenshannon
@@ -119,8 +124,934 @@ def plot_seq_replica_positions(df_seq, ds_gps, root_fig):
     plt.xlabel("E [m]")
     plt.ylabel("N [m]")
 
-    fpath = os.path.join(root_fig, "emission_positions.png")
-    plt.savefig(fpath)
+    if root_fig is not None:
+        fpath = os.path.join(root_fig, "emission_positions.png")
+        plt.savefig(fpath)
+
+
+def plot_seq_replica_positions_wgs84(
+    df_seq,
+    ds_gps,
+    ds_bathy,
+    root_fig=None,
+):
+    """
+    Plot:
+        - regional bathymetric context (main map)
+        - zoom on replica sequence and OBS geometry (inset)
+
+    Parameters
+    ----------
+    df_seq : pandas.DataFrame
+
+        Must contain:
+            emission_longitude_gps
+            emission_latitude_gps
+            sequence_id
+
+    ds_gps : xr.Dataset
+
+        Must contain attributes:
+            obs1_lon_apriori
+            obs1_lat_apriori
+            obs2_lon_apriori
+            obs2_lat_apriori
+            obs3_lon_apriori
+            obs3_lat_apriori
+
+    ds_bathy : xr.Dataset
+
+        Must contain:
+            lon
+            lat
+            elevation
+
+    root_fig : str, optional
+    """
+
+    # ======================================================================
+    # OBS positions
+    # ======================================================================
+
+    obs_keys = ["obs1", "obs2", "obs3"]
+
+    obs_lon = np.array(
+        [
+            ds_gps.attrs["obs1_lon_apriori"],
+            ds_gps.attrs["obs2_lon_apriori"],
+            ds_gps.attrs["obs3_lon_apriori"],
+        ]
+    )
+
+    obs_lat = np.array(
+        [
+            ds_gps.attrs["obs1_lat_apriori"],
+            ds_gps.attrs["obs2_lat_apriori"],
+            ds_gps.attrs["obs3_lat_apriori"],
+        ]
+    )
+
+    # ======================================================================
+    # Bathymetry
+    # ======================================================================
+
+    # Main map extent
+    all_lon = np.concatenate(
+        [
+            df_seq["emission_longitude_gps"].values,
+            obs_lon,
+        ]
+    )
+
+    all_lat = np.concatenate(
+        [
+            df_seq["emission_latitude_gps"].values,
+            obs_lat,
+        ]
+    )
+
+    dx = all_lon.max() - all_lon.min()
+    dy = all_lat.max() - all_lat.min()
+
+    pad = 10 * max(dx, dy)
+
+    ds_bathy.sel(lon=slice(all_lon.min() - pad, all_lon.max() + pad)).sel(
+        lat=slice(all_lat.min() - pad, all_lat.max() + pad)
+    )
+
+    # zoom_extent = [
+    #     all_lon.min() - pad,
+    #     all_lon.max() + pad,
+    #     all_lat.min() - pad,
+    #     all_lat.max() + pad,
+    # ]
+
+    lon = ds_bathy.lon.values
+    lat = ds_bathy.lat.values
+    z = -ds_bathy.elevation
+
+    # ls = LightSource(
+    #     azdeg=315,
+    #     altdeg=45,
+    # )
+
+    # rgb = ls.shade(
+    #     -z,
+    #     cmap=plt.cm.Blues,
+    #     vert_exag=8,
+    #     blend_mode="overlay",
+    # )
+
+    # ----------------------------------------------------------------------
+    # Land mask
+    # ----------------------------------------------------------------------
+
+    # land_mask = z >= 0
+
+    # rgb_land = rgb.copy()
+
+    # rgb_land[land_mask, :3] = [0.90, 0.90, 0.90]
+    # rgb_land[~land_mask] = np.nan
+
+    # ======================================================================
+    # Zoom extent
+    # ======================================================================
+
+    # all_lon = np.concatenate(
+    #     [
+    #         df_seq["emission_longitude_gps"].values,
+    #         obs_lon,
+    #     ]
+    # )
+
+    # all_lat = np.concatenate(
+    #     [
+    #         df_seq["emission_latitude_gps"].values,
+    #         obs_lat,
+    #     ]
+    # )
+
+    # dx = all_lon.max() - all_lon.min()
+    # dy = all_lat.max() - all_lat.min()
+
+    pad = 0.75 * max(dx, dy)
+
+    zoom_extent = [
+        all_lon.min() - pad,
+        all_lon.max() + pad,
+        all_lat.min() - pad,
+        all_lat.max() + pad,
+    ]
+
+    ds_bathy_zoom = ds_bathy.sel(lon=slice(zoom_extent[0], zoom_extent[1])).sel(
+        lat=slice(zoom_extent[2], zoom_extent[3])
+    )
+    z_zoom = -ds_bathy_zoom.elevation
+
+    # ======================================================================
+    # Figure
+    # ======================================================================
+
+    fig = plt.figure(figsize=(14, 10))
+
+    # ======================================================================
+    # MAIN MAP : REGIONAL CONTEXT
+    # ======================================================================
+
+    ax = fig.add_axes(
+        [0.05, 0.05, 0.90, 0.90],
+        projection=ccrs.PlateCarree(),
+    )
+
+    # ----------------------------------------------------------------------
+    # Bathymetry
+    # ----------------------------------------------------------------------
+
+    # im = ax.imshow(
+    #     rgb,
+    #     origin="lower",
+    #     extent=[
+    #         lon.min(),
+    #         lon.max(),
+    #         lat.min(),
+    #         lat.max(),
+    #     ],
+    #     transform=ccrs.PlateCarree(),
+    #     zorder=1,
+    # )
+    z_zoom_pos = z_zoom.where(z_zoom > 0)
+    vmin = 0
+    vmax = z_zoom_pos.max() * 0.9
+
+    f = z.plot(
+        x="lon",
+        cmap=plt.cm.Blues,
+        transform=ccrs.PlateCarree(),
+        zorder=1,
+        vmin=vmin,
+        vmax=vmax,
+        # cbar_kwargs={"fontsize": 22},
+    )
+
+    f.colorbar.ax.tick_params(labelsize=26)
+    f.colorbar.set_label("Depth [m]", fontsize=28)
+    # f.cbar.ax.tick_params(labelsize=22)
+    # cb.set_label("Replica ID", fontsize=20, color="white")
+    # cb.ax.tick_params(which="both", color="white", labelcolor="white", labelsize=20)
+
+    levels = np.arange(
+        np.floor(z.min() / 50) * 50,
+        0,
+        50,
+    )
+
+    ax.contour(
+        lon,
+        lat,
+        z,
+        levels=levels,
+        colors="k",
+        linewidths=0.3,
+        alpha=0.4,
+        transform=ccrs.PlateCarree(),
+        zorder=2,
+    )
+
+    # im = ax.imshow(
+    #     rgb_land,
+    #     origin="lower",
+    #     extent=[
+    #         lon.min(),
+    #         lon.max(),
+    #         lat.min(),
+    #         lat.max(),
+    #     ],
+    #     transform=ccrs.PlateCarree(),
+    #     zorder=3,
+    # )
+
+    ax.contour(
+        lon,
+        lat,
+        z,
+        levels=[0],
+        colors="k",
+        linewidths=1,
+        transform=ccrs.PlateCarree(),
+        zorder=4,
+    )
+
+    # # Add bathy colobar
+    # # Create a normalized scalar mappable from bathymetry (not RGB image)
+    # cmap = plt.cm.Blues
+    # norm = plt.Normalize(vmin=np.nanmin(z), vmax=np.nanmax(z))
+
+    # sm = plt.cm.ScalarMappable(norm=norm, cmap=cmap)
+    # sm.set_array([])  # required for older matplotlib compatibility
+
+    # cax = fig.add_axes([0.92, 0.15, 0.015, 0.60])
+
+    # cb = plt.colorbar(sm, cax=cax)
+
+    # ----------------------------------------------------------------------
+    # OBS locations
+    # ----------------------------------------------------------------------
+
+    for ik, obs in enumerate(obs_keys):
+
+        ax.scatter(
+            ds_gps.attrs[f"{obs}_lon_apriori"],
+            ds_gps.attrs[f"{obs}_lat_apriori"],
+            marker="D",
+            label=obs.upper(),
+            s=70,
+            color=color(ik),
+            edgecolors="black",
+            linewidths=0.8,
+            transform=ccrs.PlateCarree(),
+            zorder=20,
+        )
+
+    # ----------------------------------------------------------------------
+    # Sequence trajectory
+    # ----------------------------------------------------------------------
+
+    ax.plot(
+        df_seq["emission_longitude_gps"],
+        df_seq["emission_latitude_gps"],
+        color="red",
+        linewidth=2,
+        transform=ccrs.PlateCarree(),
+        zorder=21,
+        # label=f"Emissions",
+    )
+
+    # start point
+
+    # ax.scatter(
+    #     df_seq["emission_longitude_gps"].iloc[0],
+    #     df_seq["emission_latitude_gps"].iloc[0],
+    #     marker="o",
+    #     s=80,
+    #     color="lime",
+    #     edgecolor="black",
+    #     transform=ccrs.PlateCarree(),
+    #     zorder=22,
+    # )
+
+    # ----------------------------------------------------------------------
+    # Zoom rectangle
+    # ----------------------------------------------------------------------
+
+    rect = Rectangle(
+        (zoom_extent[0], zoom_extent[2]),
+        zoom_extent[1] - zoom_extent[0],
+        zoom_extent[3] - zoom_extent[2],
+        fill=False,
+        edgecolor="red",
+        linewidth=2,
+        transform=ccrs.PlateCarree(),
+        zorder=100,
+    )
+
+    ax.add_patch(rect)
+
+    # ----------------------------------------------------------------------
+    # Regional extent
+    # ----------------------------------------------------------------------
+
+    ax.set_extent(
+        [
+            lon.min(),
+            lon.max(),
+            lat.min(),
+            lat.max(),
+        ]
+    )
+
+    gl = ax.gridlines(
+        draw_labels=True,
+        linestyle=":",
+        linewidth=0.5,
+    )
+
+    gl.top_labels = False
+    gl.right_labels = False
+
+    seq_id = df_seq["sequence_id"].iloc[0]
+
+    # ax.set_title(
+    #     f"Sequence {seq_id} - Regional context",
+    #     fontsize=16,
+    # )
+
+    ax.legend(fontsize=20, loc="upper right")
+    gl.xlabel_style = {"size": 28}
+    gl.ylabel_style = {"size": 28}
+
+    # ======================================================================
+    # INSET : ZOOM ON GEOMETRY
+    # ======================================================================
+
+    # axins = fig.add_axes(
+    #     [0.47, 0.06, 0.35, 0.35],
+    #     projection=ccrs.PlateCarree(),
+    # )
+
+    # inset_map_pos = [0.4, 0.06, 0.35, 0.35]
+    # inset_map_pos = [0.38, 0.6, 0.35, 0.35]
+    inset_map_pos = [0.075, 0.06, 0.35, 0.35]
+
+    axins = fig.add_axes(
+        inset_map_pos,
+        projection=ccrs.PlateCarree(),
+    )
+
+    # ----------------------------------------------------------------------
+    # Bathymetry
+    # ----------------------------------------------------------------------
+
+    z_zoom.plot(
+        x="lon",
+        cmap=plt.cm.Blues,
+        transform=ccrs.PlateCarree(),
+        zorder=1,
+        add_colorbar=False,
+        vmin=vmin,
+        vmax=vmax,
+    )
+
+    # axins.imshow(
+    #     rgb,
+    #     origin="lower",
+    #     extent=[
+    #         lon.min(),
+    #         lon.max(),
+    #         lat.min(),
+    #         lat.max(),
+    #     ],
+    #     transform=ccrs.PlateCarree(),
+    #     zorder=1,
+    # )
+
+    levels = np.arange(
+        np.floor(z.min() / 10) * 10,
+        0,
+        10,
+    )
+
+    axins.contour(
+        lon,
+        lat,
+        z,
+        levels=levels,
+        colors="k",
+        linewidths=0.3,
+        alpha=0.5,
+        transform=ccrs.PlateCarree(),
+        zorder=2,
+    )
+
+    # axins.imshow(
+    #     rgb_land,
+    #     origin="lower",
+    #     extent=[
+    #         lon.min(),
+    #         lon.max(),
+    #         lat.min(),
+    #         lat.max(),
+    #     ],
+    #     transform=ccrs.PlateCarree(),
+    #     zorder=3,
+    # )
+
+    # axins.contour(
+    #     lon,
+    #     lat,
+    #     z,
+    #     levels=[0],
+    #     colors="k",
+    #     linewidths=1,
+    #     transform=ccrs.PlateCarree(),
+    #     zorder=4,
+    # )
+
+    # ----------------------------------------------------------------------
+    # Replica positions
+    # ----------------------------------------------------------------------
+
+    sc = axins.scatter(
+        df_seq["emission_longitude_gps"],
+        df_seq["emission_latitude_gps"],
+        c=np.arange(df_seq.shape[0]),
+        # color="red",
+        cmap="spring",
+        marker="+",
+        s=120,
+        linewidths=2,
+        transform=ccrs.PlateCarree(),
+        zorder=30,
+        label="Emissions",
+    )
+
+    axins.legend(fontsize=20, loc="upper left")
+
+    # ----------------------------------------------------------------------
+    # OBS positions
+    # ----------------------------------------------------------------------
+
+    for ik, obs in enumerate(obs_keys):
+
+        axins.scatter(
+            ds_gps.attrs[f"{obs}_lon_apriori"],
+            ds_gps.attrs[f"{obs}_lat_apriori"],
+            marker="D",
+            s=120,
+            color=color(ik),
+            edgecolors="black",
+            linewidths=1,
+            transform=ccrs.PlateCarree(),
+            zorder=40,
+        )
+
+    # ----------------------------------------------------------------------
+    # Zoom extent
+    # ----------------------------------------------------------------------
+
+    axins.set_extent(
+        zoom_extent,
+        crs=ccrs.PlateCarree(),
+    )
+
+    gl2 = axins.gridlines(
+        draw_labels=True,
+        linestyle=":",
+        linewidth=0.3,
+    )
+
+    gl2.top_labels = False
+    gl2.left_labels = False
+    gl2.right_labels = False
+    gl2.bottom_labels = False
+
+    # axins.set_title(
+    #     "Experiment geometry",
+    #     fontsize=10,
+    # )
+
+    for spine in axins.spines.values():
+        spine.set_edgecolor("red")
+        spine.set_linewidth(2)
+
+    # ======================================================================
+    # Colorbar
+    # ======================================================================
+    # [0.4, 0.06, 0.35, 0.35],
+
+    colorbar_pos = [
+        inset_map_pos[0] + (inset_map_pos[-2] - 0.05),
+        inset_map_pos[1],
+        0.015,
+        inset_map_pos[-1],
+    ]
+    cax = fig.add_axes(colorbar_pos)
+
+    # ticks = np.linspace(
+    #     np.arange(df_seq.shape[0])[0], np.arange(df_seq.shape[0])[-1], 4
+    # )
+
+    cb = plt.colorbar(
+        sc,
+        cax=cax,
+        # ticks=ticks,
+    )
+    from matplotlib.ticker import MaxNLocator
+
+    cb.locator = MaxNLocator(nbins=4)
+    cb.update_ticks()
+    cb.set_label("Replica ID", fontsize=24, color="white")
+    cb.ax.tick_params(which="both", color="white", labelcolor="white", labelsize=24)
+
+    # ======================================================================
+    # Save
+    # ======================================================================
+
+    if root_fig is not None:
+
+        os.makedirs(root_fig, exist_ok=True)
+
+        fpath = os.path.join(
+            root_fig,
+            "emission_positions_context_and_zoom.png",
+        )
+
+        fig.savefig(
+            fpath,
+            dpi=300,
+            bbox_inches="tight",
+        )
+
+    return fig, ax, axins
+
+
+# def plot_seq_replica_positions_wgs84(
+#     df_seq,
+#     ds_gps,
+#     ds_bathy,
+#     root_fig=None,
+# ):
+#     """
+#     Plot replica positions and OBS locations over a hillshaded bathymetric map.
+
+#     Parameters
+#     ----------
+#     df_seq : pandas.DataFrame
+#         DataFrame containing:
+#             - emission_longitude_gps
+#             - emission_latitude_gps
+#             - sequence_id
+
+#     ds_gps : xarray.Dataset
+#         Dataset whose attributes contain:
+#             obs1_lon_apriori, obs1_lat_apriori,
+#             obs2_lon_apriori, obs2_lat_apriori,
+#             obs3_lon_apriori, obs3_lat_apriori
+
+#     ds_bathy : xarray.Dataset
+#         Bathymetry dataset containing:
+#             - lon
+#             - lat
+#             - elevation
+
+#     root_fig : str, optional
+#         Output directory for saving the figure.
+#     """
+
+#     # =========================================================================
+#     # Bathymetry
+#     # =========================================================================
+
+#     z = ds_bathy["elevation"].values
+#     lon = ds_bathy["lon"].values
+#     lat = ds_bathy["lat"].values
+
+#     # Hillshade
+#     ls = LightSource(
+#         azdeg=315,
+#         altdeg=45,
+#     )
+
+#     rgb = ls.shade(
+#         -z,  # invert bathymetry
+#         cmap=plt.cm.Blues,
+#         vert_exag=8,
+#         blend_mode="overlay",
+#     )
+
+#     # =========================================================================
+#     # Figure
+#     # =========================================================================
+
+#     fig = plt.figure(figsize=(12, 10))
+
+#     ax = fig.add_subplot(
+#         111,
+#         projection=ccrs.PlateCarree(),
+#     )
+
+#     # =========================================================================
+#     # Bathymetry background
+#     # =========================================================================
+
+#     ax.imshow(
+#         rgb,
+#         origin="lower",
+#         extent=[
+#             lon.min(),
+#             lon.max(),
+#             lat.min(),
+#             lat.max(),
+#         ],
+#         transform=ccrs.PlateCarree(),
+#         zorder=1,
+#     )
+
+#     # Bathymetric contours
+
+#     contour_step = 10
+
+#     levels = np.arange(
+#         np.floor(z.min() / contour_step) * contour_step,
+#         0,
+#         contour_step,
+#     )
+
+#     ax.contour(
+#         lon,
+#         lat,
+#         z,
+#         levels=levels,
+#         colors="k",
+#         linewidths=0.3,
+#         alpha=0.4,
+#         transform=ccrs.PlateCarree(),
+#         zorder=2,
+#     )
+
+#     # =========================================================================
+#     # Land mask
+#     # =========================================================================
+
+#     land_mask = z >= 0
+
+#     rgb_land = rgb.copy()
+
+#     rgb_land[land_mask, :3] = [0.90, 0.90, 0.90]
+#     rgb_land[~land_mask] = np.nan
+
+#     ax.imshow(
+#         rgb_land,
+#         origin="lower",
+#         extent=[
+#             lon.min(),
+#             lon.max(),
+#             lat.min(),
+#             lat.max(),
+#         ],
+#         transform=ccrs.PlateCarree(),
+#         zorder=3,
+#     )
+
+#     # Coastlines
+
+#     # ax.add_feature(
+#     #     cfeature.LAND,
+#     #     facecolor="lightgray",
+#     #     zorder=4,
+#     # )
+
+#     ax.contour(
+#         ds_bathy.lon, ds_bathy.lat, ds_bathy.elevation, levels=[0], colors="k", zorder=4
+#     )
+
+#     # ax.coastlines(
+#     #     resolution="10m",
+#     #     linewidth=1,
+#     #     zorder=4,
+#     # )
+
+#     # =========================================================================
+#     # Replica positions
+#     # =========================================================================
+
+#     seq_id = df_seq["sequence_id"].iloc[0]
+
+#     sc = ax.scatter(
+#         df_seq["emission_longitude_gps"],
+#         df_seq["emission_latitude_gps"],
+#         c=np.arange(df_seq.shape[0]),
+#         cmap="viridis",
+#         marker="+",
+#         s=100,
+#         linewidths=2,
+#         label=f"Event {seq_id}",
+#         transform=ccrs.PlateCarree(),
+#         zorder=20,
+#     )
+
+#     cbar = plt.colorbar(
+#         sc,
+#         ax=ax,
+#         pad=0.02,
+#     )
+
+#     cbar.set_label("Replica ID")
+
+#     # =========================================================================
+#     # OBS positions
+#     # =========================================================================
+
+#     obs_keys = ["obs1", "obs2", "obs3"]
+
+#     obs_labels = {
+#         "obs1": "OBS1",
+#         "obs2": "OBS2",
+#         "obs3": "OBS3",
+#     }
+
+#     for ik, obs in enumerate(obs_keys):
+
+#         lon_obs = ds_gps.attrs[f"{obs}_lon_apriori"]
+#         lat_obs = ds_gps.attrs[f"{obs}_lat_apriori"]
+
+#         ax.scatter(
+#             lon_obs,
+#             lat_obs,
+#             marker="D",
+#             s=150,
+#             color=color(ik),  # assumes your custom color() function exists
+#             edgecolors="black",
+#             linewidths=1,
+#             label=obs_labels[obs],
+#             transform=ccrs.PlateCarree(),
+#             zorder=30,
+#         )
+
+#     # =========================================================================
+#     # Automatic extent
+#     # =========================================================================
+
+#     obs_lon = np.array(
+#         [
+#             ds_gps.attrs["obs1_lon_apriori"],
+#             ds_gps.attrs["obs2_lon_apriori"],
+#             ds_gps.attrs["obs3_lon_apriori"],
+#         ]
+#     )
+
+#     obs_lat = np.array(
+#         [
+#             ds_gps.attrs["obs1_lat_apriori"],
+#             ds_gps.attrs["obs2_lat_apriori"],
+#             ds_gps.attrs["obs3_lat_apriori"],
+#         ]
+#     )
+
+#     all_lon = np.concatenate(
+#         [
+#             df_seq["emission_longitude_gps"].values,
+#             obs_lon,
+#         ]
+#     )
+
+#     all_lat = np.concatenate(
+#         [
+#             df_seq["emission_latitude_gps"].values,
+#             obs_lat,
+#         ]
+#     )
+
+#     pad = 0.10
+
+#     ax.set_extent(
+#         [
+#             all_lon.min() - pad,
+#             all_lon.max() + pad,
+#             all_lat.min() - pad,
+#             all_lat.max() + pad,
+#         ],
+#         crs=ccrs.PlateCarree(),
+#     )
+
+#     # =========================================================================
+#     # Gridlines
+#     # =========================================================================
+
+#     gl = ax.gridlines(
+#         draw_labels=True,
+#         linestyle=":",
+#         linewidth=0.5,
+#     )
+
+#     gl.top_labels = False
+#     gl.right_labels = False
+
+#     # =========================================================================
+#     # Labels
+#     # =========================================================================
+
+#     ax.set_title(
+#         f"Emission sequence {seq_id}",
+#         fontsize=16,
+#     )
+
+#     ax.legend(
+#         loc="best",
+#         fontsize=12,
+#     )
+
+#     # =========================================================================
+#     # Save
+#     # =========================================================================
+
+#     if root_fig is not None:
+
+#         os.makedirs(root_fig, exist_ok=True)
+
+#         fpath = os.path.join(
+#             root_fig,
+#             "emission_positions_wgs84_bathy.png",
+#         )
+
+#         fig.savefig(
+#             fpath,
+#             dpi=100,
+#             bbox_inches="tight",
+#         )
+
+#     return fig, ax
+
+
+# def plot_seq_replica_positions_wgs84(df_seq, ds_gps, root_fig):
+#     """
+#     Plot the interpolated GPS positions of the source along the sequence, as well as the a priori positions of the OBS in WGS84 coordinates (latitude and longitude).
+#     Parameters
+#     ----------
+#     df_seq : pandas.DataFrame
+#         DataFrame containing the interpolated GPS positions of the source along the sequence.
+#     ds_gps : xarray.Dataset
+#         Dataset containing the a priori positions of the OBS.
+#     root_fig : str
+#         Root directory to save the figure.
+#     """
+#     pfig = PubFigure(size=(10, 8), legend_fontsize=16)
+#     # Plot
+#     plt.figure()
+
+#     seq_id = df_seq["sequence_id"].iloc[0]
+#     # Série de positions successives
+#     plt.scatter(
+#         df_seq["emission_longitude_gps"],
+#         df_seq["emission_latitude_gps"],
+#         marker="+",
+#         label=f"Event ({seq_id})",
+#         c=np.arange(df_seq["emission_longitude_gps"].size),
+#         cmap="vanimo",
+#         s=100,
+#     )
+#     plt.colorbar(label="Replica ID")
+
+#     keys = ["obs1", "obs2", "obs3"]
+#     label = {
+#         "obs1": "OBS1",
+#         "obs2": "OBS2",
+#         "obs3": "OBS3",
+#         "t1": "1",
+#         "t2": "2",
+#         "t3": "3",
+#         "t4": "4",
+#         "t5": "5",
+#     }
+#     for ik, k in enumerate(keys):
+#         e = ds_gps.attrs[f"{k}_lon_apriori"]
+#         n = ds_gps.attrs[f"{k}_lat_apriori"]
+#         plt.scatter(
+#             e,
+#             n,
+#             marker="D",
+#             label=label[k],
+#             zorder=10,
+#             color=color(ik),
+#             s=150,
+#         )
+
+#     plt.legend(fontsize=16)
+#     plt.xlabel("Longitude [°]")
+#     plt.ylabel("Latitude [°]")
+
+#     if root_fig is not None:
+#         fpath = os.path.join(root_fig, "emission_positions_wgs84.png")
+#         plt.savefig(fpath)
 
 
 def plot_passive_positions(ds_replica, ds_gps, root_fig):
@@ -198,6 +1129,8 @@ def plot_speed_along_seq(df_seq, root_fig):
     vs = np.vstack((ve, vn))
     vs_norm = np.linalg.norm(vs, axis=0)
     vs_norm_med = np.median(vs_norm)
+    print(f"Median source speed along traj : vs = {np.median(vs_norm):.2f} m.s-1")
+    print(f"Std source speed along traj : vs = {np.std(vs_norm):.2f} m.s-1")
 
     plt.figure()
     plt.plot(vs_norm, color=color(0), label=r"$\lVert \vec{v_{ship}} \rVert$")
@@ -210,11 +1143,10 @@ def plot_speed_along_seq(df_seq, root_fig):
     plt.xlabel("Replica ID")
     plt.ylabel(r"$\lVert \vec{v_{ship}} \rVert$")
     plt.legend()
-    fpath = os.path.join(root_fig, "speed_along_seq.png")
-    plt.savefig(fpath, dpi=300)
 
-    print(f"Median source speed along traj : vs = {np.median(vs_norm):.2f} m.s-1")
-    print(f"Std source speed along traj : vs = {np.std(vs_norm):.2f} m.s-1")
+    if root_fig is not None:
+        fpath = os.path.join(root_fig, "speed_along_seq.png")
+        plt.savefig(fpath, dpi=300)
 
 
 def plot_sequence_spectrogram(
@@ -302,7 +1234,7 @@ def plot_sequence_spectrogram(
     vmin = np.percentile(sxx_plot, 10)
     vmax = np.percentile(sxx_plot, 99)
 
-    for i in range(sxx_plot.shape[0]):
+    for i, obs_id in enumerate([1, 2, 3]):
         im = axs[i].pcolormesh(
             tt_datetime, ff, sxx_plot[i, ...], cmap=cmap, vmin=vmin, vmax=vmax
         )
@@ -340,8 +1272,95 @@ def plot_sequence_spectrogram(
         va="top",
     )
 
+    if fig_folder is not None:
+        fpath = os.path.join(fig_folder, f"{fname}.png")
+        plt.savefig(fpath, bbox_inches="tight")
+
+
+def plot_gamma_along_sequence(
+    ds,
+    dist_rcv,
+    obs_cpa_idx,
+    reps,
+    fig_folder,
+    replica_id_slice=slice(0, 10000),
+    fmin=200,
+    fmax=900,
+    fname="gamma_along_traj",
+):
+    """
+    Plot the gamma = 20 log10(mod(rtf)) along the sequence, for each OBS. The CPA positions of the OBS are also plotted as horizontal lines.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset containing the RTF estimates and metadata.
+    dist_rcv : numpy.ndarray
+        Array containing the distance from each replica to each receiver.
+    obs_cpa_idx : numpy.ndarray
+        Array containing the index of the replica corresponding to the CPA position of each OBS.
+    reps : numpy.ndarray
+        Array containing the replica IDs.
+    fig_folder : str
+        Root directory to save the figure.
+    """
+
+    n_rcv = ds.h_index.size
+    idx_rcv_plot = [idx for idx in ds.h_index.values if idx != ds.reference_receiver_id]
+
+    fig, axs = plt.subplots(
+        nrows=1, ncols=len(idx_rcv_plot), sharex=True, sharey="row", figsize=(16, 10)
+    )
+    ax_mod = axs
+
+    rtf_cs_evd_amp = ds.rtf_amp
+    # Select frequency range
+    rtf_cs_evd_amp = rtf_cs_evd_amp.sel(f_rtf=slice(fmin, fmax))
+
+    # Module
+    i_ax = 0
+    for id_rcv in idx_rcv_plot:
+        i_rcv = np.argmin(np.abs(ds.h_index.values - id_rcv))
+
+        rtf_cs_evd_amp_rcv = rtf_cs_evd_amp.sel(h_index=id_rcv).sel(
+            replica_id=replica_id_slice
+        )
+        gamma = 20 * np.log10(rtf_cs_evd_amp_rcv)
+        gamma.plot(
+            x="f_rtf",
+            cmap="magma",
+            ax=ax_mod[i_ax],
+            vmin=np.percentile(gamma, 5),
+            vmax=np.percentile(gamma, 95),
+            cbar_kwargs={"label": r"$\gamma(f, r)$"},
+        )
+
+        for i_rcv in range(dist_rcv.shape[0]):
+            if (reps[obs_cpa_idx[i_rcv]] <= replica_id_slice.stop) and (
+                reps[obs_cpa_idx[i_rcv]] >= replica_id_slice.start
+            ):
+                ax_mod[i_ax].axhline(
+                    reps[obs_cpa_idx[i_rcv]],
+                    color=color(2 + i_rcv),
+                    label=f"CPA OBS{i_rcv+1}",
+                    linestyle="--",
+                    zorder=10,
+                )
+
+        ax_mod[i_ax].set_title(f"OBS {id_rcv}")
+        ax_mod[i_ax].set_xlabel("")
+        ax_mod[i_ax].set_ylabel("")
+
+        i_ax += 1
+
+    set_subfigures_abc_labels(
+        axs=axs, fontsize=14, x_pos=0.015, y_pos=0.98, ha="left", va="top"
+    )
+    fig.supxlabel("Frequency [Hz]")
+    fig.supylabel("Replica ID")
+
     fpath = os.path.join(fig_folder, f"{fname}.png")
-    plt.savefig(fpath, bbox_inches="tight")
+    plt.savefig(fpath)
 
 
 def plot_rtf_mod_along_sequence(

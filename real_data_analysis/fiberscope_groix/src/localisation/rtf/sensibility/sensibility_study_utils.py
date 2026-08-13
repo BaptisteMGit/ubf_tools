@@ -29,6 +29,7 @@ import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.colors import LightSource
 from matplotlib.patches import Rectangle
+from matplotlib.ticker import MaxNLocator
 
 from scipy.special import kl_div
 from scipy.interpolate import interp1d
@@ -68,7 +69,7 @@ from misc import progression_bar
 # Plotting routines
 # ======================================================================================================================
 # Tracer des positions d'émission et des positions des OBS sur la carte
-def plot_seq_replica_positions(df_seq, ds_gps, root_fig):
+def plot_seq_replica_positions(df_seq, ds_gps, root_fig=None):
     """
     Plot the interpolated GPS positions of the source along the sequence, as well as the a priori positions of the OBS.
     Parameters
@@ -91,7 +92,8 @@ def plot_seq_replica_positions(df_seq, ds_gps, root_fig):
         df_seq["emission_interp_n_gps"],
         marker="+",
         label=f"Event ({seq_id})",
-        c=np.arange(df_seq["emission_interp_e_gps"].size),
+        # c=np.arange(df_seq["emission_interp_e_gps"].size),
+        c=df_seq["pulse_id"],
         cmap="jet",
     )
     plt.colorbar(label="Replica ID")
@@ -130,10 +132,7 @@ def plot_seq_replica_positions(df_seq, ds_gps, root_fig):
 
 
 def plot_seq_replica_positions_wgs84(
-    df_seq,
-    ds_gps,
-    ds_bathy,
-    root_fig=None,
+    df_seq, ds_gps, ds_bathy, root_fig=None, add_transect_points=False
 ):
     """
     Plot:
@@ -412,6 +411,24 @@ def plot_seq_replica_positions_wgs84(
             zorder=20,
         )
 
+    if add_transect_points:
+        transect_keys = ["t1", "t2", "t3", "t4", "t5"]
+        offset_col = len(obs_keys)  # to avoid color overlap with OBS markers
+        for ik, transect_pt in enumerate(transect_keys):
+
+            ax.scatter(
+                ds_gps.attrs[f"{transect_pt}_lon_apriori"],
+                ds_gps.attrs[f"{transect_pt}_lat_apriori"],
+                marker="o",
+                label=transect_pt.upper(),
+                s=70,
+                color=color(ik + offset_col),
+                edgecolors="black",
+                linewidths=0.8,
+                transform=ccrs.PlateCarree(),
+                zorder=35,
+            )
+
     # ----------------------------------------------------------------------
     # Sequence trajectory
     # ----------------------------------------------------------------------
@@ -451,7 +468,7 @@ def plot_seq_replica_positions_wgs84(
         edgecolor="red",
         linewidth=2,
         transform=ccrs.PlateCarree(),
-        zorder=100,
+        zorder=25,
     )
 
     ax.add_patch(rect)
@@ -665,7 +682,6 @@ def plot_seq_replica_positions_wgs84(
         cax=cax,
         # ticks=ticks,
     )
-    from matplotlib.ticker import MaxNLocator
 
     cb.locator = MaxNLocator(nbins=4)
     cb.update_ticks()
@@ -1112,7 +1128,7 @@ def plot_passive_positions(ds_replica, ds_gps, root_fig):
     plt.savefig(fpath)
 
 
-def plot_speed_along_seq(df_seq, root_fig):
+def plot_speed_along_seq(df_seq, root_fig=None):
     """
     Plot the speed along the sequence, computed from the interpolated GPS positions.
 
@@ -1152,11 +1168,11 @@ def plot_speed_along_seq(df_seq, root_fig):
 def plot_sequence_spectrogram(
     ds_sig,
     ds_wav,
-    fig_folder,
     nperseg=2**12,
     noverlap=2**11,
     fmin=200,
     fmax=900,
+    fig_folder=None,
     fname="spectro_3obs",
 ):
     """
@@ -1282,10 +1298,10 @@ def plot_gamma_along_sequence(
     dist_rcv,
     obs_cpa_idx,
     reps,
-    fig_folder,
     replica_id_slice=slice(0, 10000),
     fmin=200,
     fmax=900,
+    fig_folder=None,
     fname="gamma_along_traj",
 ):
     """
@@ -1305,13 +1321,21 @@ def plot_gamma_along_sequence(
         Root directory to save the figure.
     """
 
-    n_rcv = ds.h_index.size
-    idx_rcv_plot = [idx for idx in ds.h_index.values if idx != ds.reference_receiver_id]
+    # n_rcv = ds.h_index.size
+    idx_rcv_plot = [
+        idx
+        for idx in np.atleast_1d(ds.h_index.values)
+        if idx != ds.reference_receiver_id
+    ]
 
     fig, axs = plt.subplots(
-        nrows=1, ncols=len(idx_rcv_plot), sharex=True, sharey="row", figsize=(16, 10)
+        nrows=1,
+        ncols=len(idx_rcv_plot),
+        sharex=True,
+        sharey="row",
+        figsize=(8 * len(idx_rcv_plot), 10),
     )
-    ax_mod = axs
+    ax_mod = np.atleast_1d(axs)
 
     rtf_cs_evd_amp = ds.rtf_amp
     # Select frequency range
@@ -1332,7 +1356,9 @@ def plot_gamma_along_sequence(
             ax=ax_mod[i_ax],
             vmin=np.percentile(gamma, 5),
             vmax=np.percentile(gamma, 95),
-            cbar_kwargs={"label": r"$\gamma(f, r)$"},
+            # cbar_kwargs={"label": r"$\gamma(f, r)$"},
+            # cbar_kwargs={"label": r"$\vert \Pi(f, r) \rvert$ [dB]"},
+            cbar_kwargs={"label": r"$\vert \Pi \rvert^2$ [dB]"},
         )
 
         for i_rcv in range(dist_rcv.shape[0]):
@@ -1344,23 +1370,28 @@ def plot_gamma_along_sequence(
                     color=color(2 + i_rcv),
                     label=f"CPA OBS{i_rcv+1}",
                     linestyle="--",
+                    linewidth=5,
                     zorder=10,
                 )
 
         ax_mod[i_ax].set_title(f"OBS {id_rcv}")
         ax_mod[i_ax].set_xlabel("")
         ax_mod[i_ax].set_ylabel("")
+        ax_mod[i_ax].xaxis.set_major_locator(MaxNLocator(nbins=4))
 
         i_ax += 1
 
     set_subfigures_abc_labels(
-        axs=axs, fontsize=14, x_pos=0.015, y_pos=0.98, ha="left", va="top"
+        axs=axs, fontsize=22, x_pos=0.99, y_pos=1.01, ha="right", va="bottom"
     )
     fig.supxlabel("Frequency [Hz]")
     fig.supylabel("Replica ID")
 
-    fpath = os.path.join(fig_folder, f"{fname}.png")
-    plt.savefig(fpath)
+    if fig_folder is not None:
+        fpath = os.path.join(fig_folder, f"{fname}.png")
+        plt.savefig(fpath)
+
+    return fig, axs
 
 
 def plot_rtf_mod_along_sequence(

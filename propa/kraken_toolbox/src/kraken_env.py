@@ -683,11 +683,13 @@ class KrakenEnv:
                 self.modes_range = rModes / 1000  # Convert to km
             # Sort by ascending ranges
             self.modes_range.sort()
+            # self.modes_range = np.sort(self.modes_range)
 
         elif rModes is None and self.bathy.use_bathy:
             self.modes_range = self.bathy.bathy_range  # Already in km
             # Sort by ascending ranges
             self.modes_range.sort()
+            # self.modes_range = np.sort(self.modes_range)
 
         # Ensure modes_range contains 0
         if self.bathy.use_bathy and self.modes_range[0] != 0:

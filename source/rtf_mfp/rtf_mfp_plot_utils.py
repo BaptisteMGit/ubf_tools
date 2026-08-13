@@ -96,7 +96,9 @@ def plot_sequence_spectrogram(
             noverlap=noverlap,
             scaling="psd",  # U^2 / Hz
         )
-        sxx = 10 * np.log10(np.abs(stft))  # dB re 1uPa**2 / Hz ou dB re 1 (m/s)^2 / Hz
+        sxx = 10 * np.log10(
+            np.abs(stft) ** 2
+        )  # dB re 1uPa**2 / Hz ou dB re 1 (m/s)^2 / Hz
         # Associated datetime vector
         tt_datetime = pd.date_range(
             t0_slice,

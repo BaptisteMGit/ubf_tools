@@ -35,7 +35,12 @@ from real_data_analysis.deconvolution_utils import (
     crosscorr_deconvolution,
     wiener_deconvolution,
 )
-from publication.publication_figure import LargeFigure, color, set_subfigures_abc_labels
+from publication.publication_figure import (
+    PubFigure,
+    LargeFigure,
+    color,
+    set_subfigures_abc_labels,
+)
 from real_data_analysis.fiberscope_20.src.read_tdms import load_fiberscope_data
 
 # import referrers
@@ -269,13 +274,13 @@ class FiberscopeManager:
 
         # Plot mask
         if self.plot_csdm_mask:
-
+            PubFigure()
             fig, axs = plt.subplots(stft_x.shape[0], 1, sharex=True, figsize=(16, 12))
 
             spectro = np.abs(stft_x) / np.max(
                 np.abs(stft_x)
             )  # Normalize spectrogram for better visualization
-            spectro_dB = 10 * np.log10(
+            spectro_dB = 20 * np.log10(
                 spectro + 1e-10
             )  # Convert to dB, add small value to avoid log(0)
             vmin = np.percentile(
@@ -335,6 +340,16 @@ class FiberscopeManager:
 
             fig.supxlabel("Time [s]")
             fig.supylabel("Frequency [Hz]")
+
+            set_subfigures_abc_labels(
+                axs=axs,
+                fontsize=14,
+                x_pos=0.99,
+                y_pos=1.02,
+                ha="right",
+                va="bottom",
+            )
+
             fpath = os.path.join(x.root_img, f"csdm_mask_definition_all_rcvs.png")
             plt.savefig(fpath)
 
@@ -1393,7 +1408,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                 axs_csdm[1].set_xticks(np.arange(1, nrcv + 1, 1))
                 axs_csdm[1].set_yticks(np.arange(1, nrcv + 1, 1))
 
-                # Plot Rs
+                # Plot Rz
                 im = mean_Rs.plot(
                     ax=axs_csdm[2],
                     cmap="jet",
@@ -1402,7 +1417,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                     vmin=vmin,
                     add_colorbar=False,
                 )
-                axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
+                axs_csdm[2].set_title(r"$\hat{R}_z = \hat{R}_x - \hat{R}_v$")
                 axs_csdm[2].set_xlabel("Index")
                 axs_csdm[2].set_ylabel("Index")
                 # Ticks
@@ -1417,6 +1432,15 @@ class ActiveFiberscopeManager(FiberscopeManager):
                     orientation="vertical",
                     fraction=1.0,
                     pad=0.03,
+                )
+
+                set_subfigures_abc_labels(
+                    axs=axs_csdm,
+                    fontsize=18,
+                    x_pos=0.99,
+                    y_pos=1.01,
+                    ha="right",
+                    va="bottom",
                 )
 
                 # Save figure
@@ -1492,7 +1516,7 @@ class ActiveFiberscopeManager(FiberscopeManager):
                     vmin=vmin,
                     add_colorbar=False,
                 )
-                axs_csdm[2].set_title(r"$\hat{R}_s = \hat{R}_x - \hat{R}_v$")
+                axs_csdm[2].set_title(r"$\hat{R}_z = \hat{R}_x - \hat{R}_v$")
                 axs_csdm[2].set_xlabel("Index")
                 axs_csdm[2].set_ylabel("Index")
                 # Ticks
@@ -1507,6 +1531,15 @@ class ActiveFiberscopeManager(FiberscopeManager):
                     orientation="vertical",
                     fraction=1.0,
                     pad=0.03,
+                )
+
+                set_subfigures_abc_labels(
+                    axs=axs_csdm,
+                    fontsize=18,
+                    x_pos=0.99,
+                    y_pos=1.01,
+                    ha="right",
+                    va="bottom",
                 )
 
                 # Save figure

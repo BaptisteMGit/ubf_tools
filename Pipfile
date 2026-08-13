@@ -41,7 +41,7 @@ geoid-toolkit = "*"
 pydiffmap = "*"
 soundfile = "*"
 pympler = "*"
-imageio = {extras = ["ffmpeg"], version = "*"}
+imageio = {extras = ["ffmpeg"] }
 referrers = "*"
 dtaidistance = "*"
 

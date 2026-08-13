@@ -17,32 +17,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# Load data sample
-# root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ais\ais_monde_2023\donnees baptiste\2023-01-01"
-# fpath = os.path.join(root, "AIS123.parquet")
-
-# df_ais_123 = pd.read_parquet(fpath)
-
-# # Columns to keep
-# sel_col = [
-#     "Date",
-#     "Mmsi",
-#     "Latitude",
-#     "Longitude",
-#     "SpeedOverGround",
-#     "TrueHeadingDegrees",
-# ]
-
-# df_ais_123 = df_ais_123[sel_col]
-
-# print(df_ais_123)
-
-
-# root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ais\ais_monde_2023\donnees baptiste\2023-01-01"
-# fpath = os.path.join(root, "AIS5.parquet")
-
-# df_ais_5 = pd.read_parquet(fpath)
-
 
 def read_ais_123(fpath):
     # Read

@@ -1573,7 +1573,7 @@ def plot_mfp_dataset(ds, cmap="jet", root_img: str = None):
         cmap=cmap,
         s=100,
     )
-    plt.colorbar(im, label="Replica index")
+    plt.colorbar(im, label="ID")
 
     plt.legend(fontsize=16)
     plt.xlabel("E [m]")

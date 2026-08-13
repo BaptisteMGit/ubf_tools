@@ -384,6 +384,8 @@ def gather_bibliographies(manuscript_folder, output_file, verbose=False):
             if file == "biblio.bib" or file.endswith(".bib"):
                 filepath = os.path.join(root, file)
                 with open(filepath, "r", encoding="utf-8") as f:
+                    print(f"Processing file: {filepath}")
+
                     content = f.read()
                     # Split the content into individual entries
                     entries = re.split(r"(@\w+\{[^,]+,)", content)
@@ -878,16 +880,15 @@ if __name__ == "__main__":
     # print(f"{deg}° = {d}°{m}'{s}''")
 
     """Gather acronyms and bibliographies from a manuscript folder"""
-    # # Usage
-    # manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
-    # output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\glossary_acoustics.tex"
+    # Usage
+    manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
+    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\glossary_acoustics.tex"
+    gather_acronyms(manuscript_folder, output_file)
 
-    # # gather_acronyms(manuscript_folder, output_file)
-
-    # # Usage
-    # manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
-    # output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
-    # gather_bibliographies(manuscript_folder, output_file)
+    # Usage
+    manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
+    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\biblio_acoustics.bib"
+    gather_bibliographies(manuscript_folder, output_file)
 
     """ Count publications per year """
     # # Exemple d'utilisation de la fonction
@@ -899,13 +900,13 @@ if __name__ == "__main__":
     # # Utilisation
     # export_to_dat(result_df, result_filepath)
 
-    # Test progress bar
-    index0 = 0
-    indexf = 1000000
-    prev_progress = 0
+    # # Test progress bar
+    # index0 = 0
+    # indexf = 1000000
+    # prev_progress = 0
 
-    for i in range(index0, indexf + 1):
-        prev_progress = progression_bar(i, index0, indexf, prev_progress)
+    # for i in range(index0, indexf + 1):
+    #     prev_progress = progression_bar(i, index0, indexf, prev_progress)
 
 
 # # Test plot_animation_moviepy

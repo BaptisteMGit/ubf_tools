@@ -38,7 +38,6 @@ from real_data_analysis.fiberscope_groix.src.localisation.rtf.rtf_mfp_animation_
     rtf_mfp_animation,
 )
 
-
 # def get_dists(fsm, df_arr, seq_id_ref, seq_id, fmin=600, fmax=800):
 
 #     dist_kwargs = {"ax_rcv": 0, "ax_f": 1, "apply_mean": True}
@@ -803,9 +802,11 @@ def plot_spectro(ds_wav, t_start, t_end, root_fig, **spectro_kwargs):
     if save:
         fpath = os.path.join(root_fig, "spectro_3obs.png")
         plt.savefig(fpath, bbox_inches="tight")
-        plt.close("all")
+        # plt.close("all")
     else:
         plt.show()
+
+    return fig, axs
 
 
 def compute_spatial_dist(gps_event, ais_event, df_library, segment_dt):

@@ -157,7 +157,7 @@ class CovManager:
             nperseg=nperseg,
             noverlap=noverlap,
             axis=0,
-            # nfft=2**16,
+            # nfft=2**14,
         )
         stft_array = np.moveaxis(stft_array, 1, 0)
 

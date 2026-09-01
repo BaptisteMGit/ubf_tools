@@ -22,6 +22,65 @@ from publication.publication_figure import PubFigure, color
 
 PubFigure()
 
+# ======================================================================================================================
+# Image sources
+# ======================================================================================================================
+
+
+def image_sources_arrivals(z_src, z_rcv, r, depth, n, c0=1500):
+    # Number of terms to include in the sum
+    m = np.arange(0, n)
+    # Image source - receiver distance following definitions from Jensen p.104
+    zm1 = 2 * depth * m - z_src + z_rcv
+    zm2 = 2 * depth * (m + 1) - z_src - z_rcv
+    zm3 = 2 * depth * m + z_src + z_rcv
+    zm4 = 2 * depth * (m + 1) + z_src - z_rcv
+
+    # # Correction 27/08/2025
+    # zm1 = 2 * depth * m + z_src - z_rcv
+    # zm2 = 2 * depth * (m + 1) - z_src - z_rcv
+    # zm3 = 2 * depth * m + z_src + z_rcv
+    # zm4 = 2 * depth * (m + 1) + z_src - z_rcv
+
+    Rm1 = np.sqrt(r**2 + zm1.astype(np.float64) ** 2)
+    Rm2 = np.sqrt(r**2 + zm2.astype(np.float64) ** 2)
+    Rm3 = np.sqrt(r**2 + zm3.astype(np.float64) ** 2)
+    Rm4 = np.sqrt(r**2 + zm4.astype(np.float64) ** 2)
+
+    arrivals = np.empty((len(m), 4))
+    for i_m in m:
+        t1 = Rm1[i_m] / c0
+        t2 = Rm2[i_m] / c0
+        t3 = Rm3[i_m] / c0
+        t4 = Rm4[i_m] / c0
+
+        print(
+            f"m = {m[i_m]} : \n"
+            + f"\t t1 = {t1}s \n"
+            + f"\t t2 = {t2}s \n"
+            + f"\t t3 = {t3}s \n"
+            + f"\t t4 = {t4}s \n"
+        )
+        arrivals[i_m][0] = t1
+        arrivals[i_m][1] = t2
+        arrivals[i_m][2] = t3
+        arrivals[i_m][3] = t4
+
+    return arrivals
+
+
+def group_image_source_arrivals(arrivals):
+    all_arrivals = arrivals.flatten()
+    all_arrivals = np.sort(all_arrivals)
+
+    grouped_arrivals = []
+    grp_size = arrivals.shape[1]
+    for grp_idx in range(arrivals.shape[0]):
+        arrivals_grp_i = all_arrivals[grp_idx * grp_size : (grp_idx + 1) * grp_size]
+        grouped_arrivals.append(arrivals_grp_i)
+    grouped_arrivals = np.array(grouped_arrivals)
+    return grouped_arrivals
+
 
 # ======================================================================================================================
 # Pekeris waveguide
@@ -29,38 +88,38 @@ PubFigure()
 
 
 # Fonctions de calcul des nombres d'ondes
-def pekeris_eq_2_lhs(kr, omega, c_w, d):
+def pekeris_eq_2_lhs(kr, omega, c1, d):
     """Left-hand side of transcendental equation (Eq 2.186, Jensen et al. 2011, p.123)"""
     # Water layer
-    kw = omega / c_w  # k in water
-    kz_w = np.sqrt(kw**2 - kr**2)  # kz in water
+    kw = omega / c1  # k in water
+    kz1 = np.sqrt(kw**2 - kr**2)  # kz in water
 
     # Left hand side of transcendental equation (Eq 2.186, Jensen et al. 2011, p.123)
-    lhs = np.tan(d * kz_w)
+    lhs = np.tan(d * kz1)
 
     return lhs
 
 
-def pekeris_eq_2_rhs(kr, omega, c_w, c_s, rho_w, rho_s):
+def pekeris_eq_2_rhs(kr, omega, c1, c2, rho1, rho2):
     """Right-hand side of transcendental equation (Eq 2.186, Jensen et al. 2011, p.123)"""
     # Water layer
-    kw = omega / c_w  # k in water
-    kzm_w = np.sqrt(kw**2 - kr**2)  # kz in water
+    kw = omega / c1  # k in water
+    kzm_1 = np.sqrt(kw**2 - kr**2)  # kz in water
 
     # Sediment layer
-    k_s = omega / c_s  # k in sediment
-    # kz in sediment, kr > k_s for real solution to transcendental equation (complex solution correspond to leaky modes (Jensen et al. 2011, p.123))
-    kzm_s = 1j * np.sqrt(kr**2 - k_s**2)
+    k2 = omega / c2  # k in sediment
+    # kz in sediment, kr > k2 for real solution to transcendental equation (complex solution correspond to leaky modes (Jensen et al. 2011, p.123))
+    kzm_2 = 1j * np.sqrt(kr**2 - k2**2)
 
     # Right hand side of transcendental equation (Eq 2.186, Jensen et al. 2011, p.123)
-    rhs = -(1j * rho_s * kzm_w) / (rho_w * kzm_s)
-    # rhs is real for kr > k_s
+    rhs = -(1j * rho2 * kzm_1) / (rho1 * kzm_2)
+    # rhs is real for kr > k2
     rhs = np.real(rhs)
 
     return rhs
 
 
-def pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d, debug=False):
+def pekeris_kr_m(f, c1, c2, rho1, rho2, d, debug=False):
     """Derive horizontal wavenumbers of the propagating modes in a Pekeris waveguide by
     resolution of the transcendental equation (Eq 5.81, Jensen et al. 2011, p.355, Eq. 27, Pekeris 1948).
     """
@@ -70,14 +129,14 @@ def pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d, debug=False):
     # Implementation with root_scalar (25/08/2026), more robust
     t0 = time.time()
 
-    n_search = int(1e5)
+    n_search = int(1e4)
     krm = []
     for i_f, ff in enumerate(f):
         omega = 2 * np.pi * ff
 
         # Bornes (Cf eq. 2.187) pour avoir des solutions réelles
-        kr_min = omega / c_s * (1 + 1e-15)  # k in sediment
-        kr_max = omega / c_w * (1 - 1e-15)  # k in water
+        kr_min = omega / c2 * (1 + 1e-15)  # k in sediment
+        kr_max = omega / c1 * (1 - 1e-15)  # k in water
 
         if omega == 0:  # No mode for f = 0
             krm.append([])
@@ -86,8 +145,8 @@ def pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d, debug=False):
         kr = np.linspace(kr_min, kr_max, n_search)  # (n_search)
 
         def func_pek(kr):
-            return pekeris_eq_2_lhs(kr, omega, c_w, d) - pekeris_eq_2_rhs(
-                kr, omega, c_w, c_s, rho_w, rho_s
+            return pekeris_eq_2_lhs(kr, omega, c1, d) - pekeris_eq_2_rhs(
+                kr, omega, c1, c2, rho1, rho2
             )
 
         # # Build research intervals
@@ -120,7 +179,7 @@ def pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d, debug=False):
 
         krm.append(krm_f)
 
-    max_nb_modes = np.max(pekeris_n_modes(f, c_w, c_s, d))
+    max_nb_modes = np.max(pekeris_n_modes(f, c1, c2, d))
 
     krm_ = []
     for krm_f in krm:
@@ -147,16 +206,16 @@ def pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d, debug=False):
 
         omega = 2 * np.pi * f
         # Bornes (Cf eq. 2.187) pour avoir des solutions réelles
-        kr_min = omega / c_s * (1 + 1e-10)  # k in sediment
-        kr_max = omega / c_w * (1 - 1e-10)  # k in water
+        kr_min = omega / c2 * (1 + 1e-10)  # k in sediment
+        kr_max = omega / c1 * (1 - 1e-10)  # k in water
         # WARNING : high number of points increases precision but can lead to memory overflow in case we compute kr for many frequencies at the same time
         # n_search = 2 * 1e4 looks like a good compromise
         n_search = int(100 * 1e4)
         kr = np.linspace(kr_min, kr_max, int(2 * 1e4))  # (n_search, nf)
 
         # Find roots (by equating lhs and rhs and then looking for sign changes in diff)
-        lhs = pekeris_eq_2_lhs(kr, omega, c_w, d)  # (n_search, nf)
-        rhs = pekeris_eq_2_rhs(kr, omega, c_w, c_s, rho_w, rho_s)  # (n_search, nf)
+        lhs = pekeris_eq_2_lhs(kr, omega, c1, d)  # (n_search, nf)
+        rhs = pekeris_eq_2_rhs(kr, omega, c1, c2, rho1, rho2)  # (n_search, nf)
         diff = lhs - rhs
         diff_shift = np.roll(diff, 1, axis=0)
         idx_roots = (diff < 0) & (diff_shift > 0)
@@ -166,7 +225,7 @@ def pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d, debug=False):
             kr[idx_roots[:, i_f], i_f] for i_f in range(f.size)
         ]  # Get krm for each frequency
 
-        max_nb_modes = np.max(pekeris_n_modes(f, c_w, c_s, d))
+        max_nb_modes = np.max(pekeris_n_modes(f, c1, c2, d))
 
         krm_ = []
         for krm_f in krm:
@@ -194,21 +253,24 @@ def cp_m(krm, omega):
     return (omega / krm).astype(np.float32)
 
 
-def pekeris_n_modes(f, c_w, c_s, d):
+def pekeris_n_modes(f, c1, c2, d):
     """Calculate the number of propagating modes in a Pekeris waveguide."""
     # Equivalent to Eq. 2.191, Jensen p. 125 or Eq. 8.89, Jensen p.637
-    n_max = np.int32(np.floor(2 * d / c_w * np.sqrt(1 - (c_w / c_s) ** 2) * f + 1 / 2))
+    f = np.atleast_1d(f)
+    n_max = np.int32(np.floor(2 * d / c1 * np.sqrt(1 - (c1 / c2) ** 2) * f + 1 / 2))
+    if f.size == 1:
+        n_max = n_max[0]  # scalar input f -> scalar output n_max
     return n_max
 
 
-def pekeris_cutoff_frequency(m, c_w, c_s, d):
+def pekeris_cutoff_frequency(m, c1, c2, d):
     """Calculate the cut-off frequency of mode m in a Pekeris waveguide."""
     # Eq. 2.191, Jensen p. 125 or Eq. 8.89, Jensen p.637
-    f_c = ((m - 1 / 2) * c_w) / (2 * d * np.sqrt(1 - (c_w / c_s) ** 2))
+    f_c = ((m - 1 / 2) * c1) / (2 * d * np.sqrt(1 - (c1 / c2) ** 2))
     return f_c
 
 
-def pekeris_ir_duration(f, c_w, c_s, rho_w, rho_s, r, d):
+def pekeris_ir_duration(f, c1, c2, rho1, rho2, r, d):
     """Derive signal dispersion in a Pekeris waveguide. This can be used to estimate the duration of the impulse response.
 
     The duration is estimated as the time difference between the fastest arrival, defined by the maximum sound celerity in the
@@ -218,9 +280,9 @@ def pekeris_ir_duration(f, c_w, c_s, rho_w, rho_s, r, d):
     # Eq. 8.16, Jensen p. 616
 
     # Horizontal wavenumbers
-    krm = pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d)
+    krm = pekeris_kr_m(f, c1, c2, rho1, rho2, d)
     # Group speeds
-    cgm = pekeris_cg_m(f, krm, c_w, c_s, rho_w, rho_s, d)
+    cgm = pekeris_cg_m(f, krm, c1, c2, rho1, rho2, d)
 
     # Minimum group speed
     cg_min = np.nanmin(cgm)
@@ -232,35 +294,35 @@ def pekeris_ir_duration(f, c_w, c_s, rho_w, rho_s, r, d):
     # cp_max = np.nanmax(cmp)
 
     # Duration of the impulse response
-    cmax = max(c_w, c_s)
+    cmax = max(c1, c2)
     T_ir = r / cg_min - r / cmax
 
     return T_ir
 
 
-def pekeris_kzm_ws(f, c_w, c_s, krm):
+def pekeris_kzm_12(f, c1, c2, krm):
 
     f = np.atleast_1d(f)
     omega = 2 * np.pi * f
 
     # Water layer
-    k_w = omega / c_w
-    k_w = k_w[:, np.newaxis]  # (nf, 1)
-    kzm_w = np.sqrt(k_w**2 - krm**2)
+    k1 = omega / c1
+    k1 = k1[:, np.newaxis]  # (nf, 1)
+    kzm_1 = np.sqrt(k1**2 - krm**2)
 
     # Sediment layer
-    k_s = omega / c_s
-    k_s = k_s[:, np.newaxis]  # (nf, 1)
+    k2 = omega / c2
+    k2 = k2[:, np.newaxis]  # (nf, 1)
 
-    idx_krm_lt_k_s = krm < k_s
-    kzm_s = np.where(
-        idx_krm_lt_k_s, np.sqrt(k_s**2 - krm**2), 1j * np.sqrt(krm**2 - k_s**2)
+    idx_krm_lt_k2 = krm < k2
+    kzm_2 = np.where(
+        idx_krm_lt_k2, np.sqrt(k2**2 - krm**2), 1j * np.sqrt(krm**2 - k2**2)
     )
 
-    return kzm_w, kzm_s
+    return kzm_1, kzm_2
 
 
-def pekeris_cg_m(f, krm, c_w, c_s, rho_w, rho_s, d):
+def pekeris_cg_m(f, krm, c1, c2, rho1, rho2, d):
 
     # Add an extra frequency point to compute last group speed
     f = np.atleast_1d(f)
@@ -270,7 +332,9 @@ def pekeris_cg_m(f, krm, c_w, c_s, rho_w, rho_s, d):
     fp1 = freq[-1]
 
     # Compute krm for only one more frequency point to reduce computing time
-    krm_fp1 = pekeris_kr_m(fp1, c_w, c_s, rho_w, rho_s, d)
+    krm_fp1 = pekeris_kr_m(fp1, c1, c2, rho1, rho2, d)
+    # Get rid of extra modes (modes that do not exist below krm_fp1)
+    krm_fp1 = krm_fp1[:, 0 : krm.shape[1]]
 
     # Add point
     krm = np.concatenate([krm, krm_fp1], axis=0)
@@ -282,15 +346,15 @@ def pekeris_cg_m(f, krm, c_w, c_s, rho_w, rho_s, d):
     cgm = d_omega / d_krm
 
     # TODO check where it comes from ?
-    # rho_ratio = rho_s / rho_s
-    # a = rho_ratio / (kzm_s**2 + rho_ratio**2 * kzm_w**2)
+    # rho_ratio = rho2 / rho2
+    # a = rho_ratio / (kzm_2**2 + rho_ratio**2 * kzm_1**2)
     # cgm = (
     #     krm
     #     / omega[:, np.newaxis]
-    #     * c_w**2
-    #     * c_s**2
-    #     * (kzm_s * d + a * (kzm_w**2 + kzm_s**2))
-    #     / (c_s**2 * (kzm_s * d + a * kzm_s**2) + c_w**2 * a * kzm_w**2)
+    #     * c1**2
+    #     * c2**2
+    #     * (kzm_2 * d + a * (kzm_1**2 + kzm_2**2))
+    #     / (c2**2 * (kzm_2 * d + a * kzm_2**2) + c1**2 * a * kzm_1**2)
     # )
 
     return cgm.astype(np.float32)
@@ -313,6 +377,10 @@ def plot_pekeris_cg_f(f, cgm, n_modes=None):
     plt.legend()
     # plt.show()
 
+    fig, ax = plt.gcf(), plt.gca()
+
+    return fig, ax
+
 
 def plot_pekeris_cp_f(f, cpm, n_modes=None):
 
@@ -330,6 +398,10 @@ def plot_pekeris_cp_f(f, cpm, n_modes=None):
     plt.ylabel(r"$c_{\phi}$ [m s$^{-1}$]")
     plt.legend()
     # plt.show()
+
+    fig, ax = plt.gcf(), plt.gca()
+
+    return fig, ax
 
 
 def plot_pekeris_cp_cg_f(f, cpm, cgm, n_modes=None):
@@ -366,87 +438,170 @@ def plot_pekeris_cp_cg_f(f, cpm, cgm, n_modes=None):
     fig.supxlabel("Fréquence [Hz]")
     fig.supylabel(r"$c_g, c_{\phi}$ [m s$^{-1}$]")
 
+    return fig, ax
 
-def pekeris_green_fct(f, c_w, c_s, rho_w, rho_s, d, z_s, z_r, r):
+
+def pekeris_green_fct(f, c1, c2, rho1, rho2, d, z_s, z_r, r):
     """Calculate green's functions at depth z in a Pekeris waveguide."""
 
     # Horizontal wavenumbers
-    krm = pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d)  # (n_f, n_modes)
+    krm = pekeris_kr_m(f, c1, c2, rho1, rho2, d)  # (n_f, n_modes)
 
     # Get vertical wavenumber in water and sediment
-    kzm_w, kzm_s = pekeris_kzm_ws(f, c_w, c_s, krm)  # (n_f, n_modes)
+    kzm_1, kzm_2 = pekeris_kzm_12(f, c1, c2, krm)  # (n_f, n_modes)
 
     # Get modal function at z_s and z_r
-    phim_zs = pekeris_modal_fct(z_s, f, c_w, c_s, d, krm)  # (nf, n_modes, 1)
-    phim_zr = pekeris_modal_fct(z_r, f, c_w, c_s, d, krm)  # (nf, n_modes, 1)
+    phim_zs = pekeris_modal_fct(z_s, f, c1, c2, d, krm)  # (nf, n_modes, 1)
+    phim_zr = pekeris_modal_fct(z_r, f, c1, c2, d, krm)  # (nf, n_modes, 1)
 
     # Remove extra dim
-    phim_zs = np.squeeze(phim_zs)
-    phim_zr = np.squeeze(phim_zr)
+    phim_zs = np.squeeze(phim_zs, axis=-1)
+    phim_zr = np.squeeze(phim_zr, axis=-1)
+
+    # Compute modal loss tangent
+    alpha_2_dB_lambda = 10
+    alpha_2 = alpha_dB_lambda_to_nepers_m(f, alpha_2_dB_lambda, c2)
+    # print(
+    #     f"Att coeff in sediment alpha_2 = {alpha_2_dB_lambda} dB / lambda = {alpha_2} nepers / m"
+    # )
+    alpha_m = pekeris_alpha_attn(f, krm, c1, alpha_2, c2, rho2, d)
+    # Apply to krm
+    krm = apply_alpha_att_perturbation(krm, alpha_m)
 
     # Based on Pekeris 1948 formulation
+    f = np.atleast_1d(f)
     omega = 2 * np.pi * f
-    omega_2d = omega[np.newaxis]
-    # r_2d = r[np.newaxis]
+    omega_2d = omega[:, np.newaxis]  # (nf, 1)
+    r = np.atleast_1d(r)
+    r_2d = r[np.newaxis, :]  # (1, nr)
 
     # Common factor (does not depend on f)
-    Q = omega * (rho_w * np.pi / d) * np.sqrt(8 / r) * np.exp(+1j * np.pi / 4)
+    # Q = omega * (rho1 * np.pi / d) * np.sqrt(8 / r) * np.exp(+1j * np.pi / 4)
+    Q = (
+        omega_2d * (rho1 * np.pi / d) * np.sqrt(8 / r_2d) * np.exp(+1j * np.pi / 4)
+    )  # (nf, nr)
 
     # Pekeris 1948, Eq. 25
     def F(x):
         return x / (
-            x
-            - np.sin(x) * np.cos(x)
-            - (rho_w / rho_s) ** 2 * np.sin(x) ** 2 * np.tan(x)
+            x - np.sin(x) * np.cos(x) - (rho1 / rho2) ** 2 * np.sin(x) ** 2 * np.tan(x)
         )
 
     # Modal amplitude
-    Am = F(kzm_w * d) * phim_zs * phim_zr
+    Am = F(kzm_1 * d) * phim_zs * phim_zr  # (nf, nmodes)
     # Modal phase
-    gm = Am * np.exp(-1j * krm * r) / np.sqrt(krm)
+    # gm = Am * np.exp(-1j * krm * r) / np.sqrt(krm)        # r is scalar
+    gm = (
+        Am[..., np.newaxis]
+        * np.exp(-1j * krm[..., np.newaxis] * r_2d[np.newaxis, ...])
+        / np.sqrt(krm[..., np.newaxis])
+    )  # r is 1D array
+
     # Green's function
     gf = Q * np.nansum(gm, axis=1)  # p = Q sum Am e^(-i krm r) / sqrt(krm)
+
+    # Remove dimension if r is scalar
+    gf = np.squeeze(gf)
 
     return gf
 
 
-def pekeris_modal_fct(z, f, c_w, c_s, d, krm):
+def pekeris_modal_fct(z, f, c1, c2, d, krm):
     """Calculate modal functions at depth z in a Pekeris waveguide.
 
     Derivation according to Pekeris 1948 (eq. 38).
     """
 
     # Get vertical wavenumber in water and sediment
-    kzm_w, kzm_s = pekeris_kzm_ws(f, c_w, c_s, krm)  # (n_f, n_modes)
+    kzm_1, kzm_2 = pekeris_kzm_12(f, c1, c2, krm)  # (n_f, n_modes)
 
     # Cast to 3D (nf, nmodes, 1)
-    kzm_w_3d = kzm_w[..., np.newaxis]
-    kzm_s_3d = kzm_s[..., np.newaxis]
+    kzm_1_3d = kzm_1[..., np.newaxis]
+    kzm_2_3d = kzm_2[..., np.newaxis]
 
     # Ensure z is a numpy array
     z = np.atleast_1d(z)
-    z_w = z[z <= d]  # Depths in water
-    z_s = z[z > d]  # Depths in sediment
+    z1 = z[z <= d]  # Depths in water
+    z2 = z[z > d]  # Depths in sediment
 
     # Cast to 2D (1, nz)
-    z_w_2d = z_w[np.newaxis]
-    z_s_2d = z_s[np.newaxis]
+    z1_2d = z1[np.newaxis]
+    z2_2d = z2[np.newaxis]
 
     # Define modal fct according to eq. 48
     # z <= D -> mode in water column
-    phi_m_w = np.sin(kzm_w_3d * z_w_2d)  # (nf, nmodes, nz)
+    phi_m_1 = np.sin(kzm_1_3d * z1_2d)  # (nf, nmodes, nz)
     # z > D -> mode in sediment
-    phi_m_s = np.sin(kzm_w_3d * d) * np.exp(
-        1j * kzm_s_3d * (z_s_2d - d)
+    phi_m_2 = np.sin(kzm_1_3d * d) * np.exp(
+        1j * kzm_2_3d * (z2_2d - d)
     )  # (nf, nmodes, nz)
 
-    # phi_m = np.hstack((phi_m_w, phi_m_s))
-    phi_m = np.concatenate([phi_m_w, phi_m_s], axis=-1)  # (nf, nmodes, nz)
+    # phi_m = np.hstack((phi_m_1, phi_m_2))
+    phi_m = np.concatenate([phi_m_1, phi_m_2], axis=-1)  # (nf, nmodes, nz)
 
     return phi_m
 
 
-def impulse_response(gf, f, fs, output_mult_fact=4):
+def pekeris_alpha_attn(f, krm, c1, alpha_2, c2, rho2, d):
+    """
+    Derive loss tangent alpha.
+
+    Jensen p.387, Eq. 5.180
+    """
+    # Get vertical wavenumber in water and sediment
+    kzm_1, kzm_2 = pekeris_kzm_12(f, c1, c2, krm)  # (n_f, n_modes)
+
+    f = np.atleast_1d(f)
+    omega = 2 * np.pi * f
+    omega_2d = omega[:, np.newaxis]
+
+    alpha_2_2d = alpha_2[:, np.newaxis]
+    # From Eq. 5.180
+    alpha_m = (
+        (1j * alpha_2_2d * omega_2d)
+        / (krm * c2 * rho2)
+        * np.sin(kzm_1 * d) ** 2
+        / (2 * kzm_2)
+    )
+    return alpha_m
+
+
+def apply_alpha_att_perturbation(krm, alpha_m):
+    """Apply perturbation theory.
+    Eq. 5.167
+    For the convention e^(-iwt)
+    krm = krm_0 + 2i * alpham * krm_0
+    e^i(kr - wt) = e^i(kr_0 r - wt) x e^(-2 alpha_m kr_0)
+
+    For the convention e^(+iwt) :
+    krm = krm_0 - 2i * alpham * krm_0  to obtain attenuation
+    e^i(wt - kr) = e^i(wt - kr_0 r) x e^(-2 alpha_m kr_0)
+
+    """
+
+    krm_attn = krm - 2 * 1j * alpha_m * krm
+
+    return krm_attn
+
+
+def alpha_dB_lambda_to_nepers_m(f, alpha, c):
+    """Convert attenuation coefficient from dB / lambda to nepers/m.
+
+    alpha = attenuation coeff in dB / lambda
+    f = frequencies in Hz
+    c = sound celerity in m/s
+
+    alpha_dB_lambda = -20 log ( exp(-alpha(x + lambda)) / exp(-alpha(x)) ) = alpha * lambda * 20 log(e)
+    """
+    f = np.atleast_1d(f)
+    lambd = c / f
+
+    alpha_nepers_m = alpha / (lambd * 20 * np.log10(np.e))
+
+    return alpha_nepers_m
+
+
+def impulse_response(gf, f, fs, tau, output_mult_fact=4):
 
     # Number of freq samples
     df = f[1] - f[0]
@@ -457,9 +612,8 @@ def impulse_response(gf, f, fs, output_mult_fact=4):
     )  # To improve temporal resolution for visual inspection
 
     # # Correct for propagation delay
-    # tau_rcv = 30 * 1e3 / 1500
-    # delay_rcv = np.exp(1j * 2 * np.pi * tau_rcv * f)
-    # gf *= delay_rcv
+    delay = np.exp(1j * 2 * np.pi * tau * f)
+    gf *= delay
 
     # Impulse response in time domain
     gt = np.fft.irfft(gf, n=nfft_inv)
@@ -472,7 +626,17 @@ def impulse_response(gf, f, fs, output_mult_fact=4):
     return t, gt
 
 
-def plot_modal_function(modal_fcts, z, depth=None, n_modes=None):
+def transmission_loss(gf):
+    gf[(gf == 0) | np.isnan(gf)] = 1e-20
+
+    p0 = 1e6  # TODO : This does not make sense but leads to coherent TL values, it needs to be clarified
+    # TL = - 20 log (p/p0)
+    tl = -20 * np.log10(np.abs(gf) / p0)
+
+    return tl
+
+
+def plot_modal_function_single_freq(modal_fcts, z, depth=None, n_modes=None):
 
     if n_modes is None:
         n_modes = modal_fcts.shape[0]
@@ -487,12 +651,12 @@ def plot_modal_function(modal_fcts, z, depth=None, n_modes=None):
     axs[0].invert_yaxis()
 
     max_amp = np.nanmax(np.abs(modal_fcts))
-    axs[0].set_ylabel("Depth [m]")
+    axs[0].set_ylabel("Profondeur [m]")
 
     for i, m in enumerate(modes):
         axs[i].plot(np.real(modal_fcts[i]), z, label=f"Real", linestyle="-", color="k")
         axs[i].plot(np.imag(modal_fcts[i]), z, label=f"Im", linestyle="--", color="r")
-        axs[i].set_xlabel(f"Mode {m}")
+        axs[i].set_title(f"Mode {m}")
         axs[i].set_xlim([-1.1 * max_amp, 1.1 * max_amp])
         axs[i].grid()
 
@@ -500,41 +664,151 @@ def plot_modal_function(modal_fcts, z, depth=None, n_modes=None):
         if depth is not None:
             axs[i].axhline(depth, linestyle="--", color="k")
 
+    return fig, axs
+
+
+def plot_modal_function_multi_freq(modal_fcts, z, f, depth=None, n_modes=None):
+
+    nfreq = modal_fcts.shape[0]
+    if not f.size == nfreq:
+        raise ValueError(f"Incoherent dim for f and modal_fcts.shape[0]")
+
+    if n_modes is None:
+        n_modes = modal_fcts.shape[1]
+
+    # Mode number m
+    modes = np.arange(1, np.max(n_modes) + 1, 1)
+
+    # Plot modal functions
+    fig, axs = plt.subplots(1, len(modes), sharey=True)
+    axs = np.atleast_1d(axs)
+    # Revert y-axis
+    axs[0].invert_yaxis()
+
+    max_amp = np.nanmax(np.abs(modal_fcts))
+    axs[0].set_ylabel("Profondeur [m]")
+
+    for i, m in enumerate(modes):
+        for j in range(nfreq):
+            axs[i].plot(
+                np.real(modal_fcts[j, i, :]),
+                z,
+                # label=f"Real",
+                linestyle="-",
+                color=color(j),
+                label=f"{f[j]} Hz",
+            )
+            axs[i].plot(
+                np.imag(modal_fcts[j, i, :]),
+                z,
+                # label=f"Im",
+                linestyle="--",
+                color=color(j),
+                # label=f"{f[j]} Hz",
+            )
+
+        axs[i].set_title(f"Mode {m}")
+        axs[i].set_xlim([-1.1 * max_amp, 1.1 * max_amp])
+        axs[i].grid()
+        axs[i].legend(loc="upper left")
+
+        # Add depth line
+        if depth is not None:
+            axs[i].axhline(depth, linestyle="--", color="k")
+
+    return fig, axs
+
+
+def plot_modal_function(modal_fcts, z, f=None, depth=None, n_modes=None):
+
+    # Check if multiple freq provided
+    f = np.atleast_1d(f)
+    if f.size > 1:
+        fig, axs = plot_modal_function_multi_freq(
+            modal_fcts=modal_fcts, z=z, f=f, depth=depth, n_modes=n_modes
+        )
+
+    else:
+        fig, axs = plot_modal_function_single_freq(
+            modal_fcts=modal_fcts, z=z, depth=depth, n_modes=n_modes
+        )
+
+    return fig, axs
+
 
 def plot_green_fct(f, gf, z_s, z_r, r):
 
     fig, axs = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
     # Amplitude
-    axs[0].plot(f, np.abs(gf))
+    axs[0].plot(f, np.abs(gf), color="k")
     axs[0].set_ylabel(r"$\lvert H(f) \rvert$")
 
     # Phase
-    axs[1].plot(f, np.angle(gf))
+    axs[1].plot(f, np.angle(gf), color="k")
     axs[1].set_ylabel("arg(H(f)) [rad]")
 
     fig.supxlabel("Fréquence [Hz]")
     fig.suptitle(rf"z_s = {z_s:.1f} m, z_r = {z_r:.1f} m, r = {r:.1f} m")
 
+    return fig, axs
+
 
 def plot_impulse_response(t, gt, z_s, z_r, r):
 
     plt.figure()
-    plt.plot(t, gt)
-    plt.xlabel("Temps [s]")
-    plt.ylabel("h(t)")
+    plt.plot(t, gt, color="k")
+    # plt.xlabel("Temps [s]")
+    plt.xlabel(r"Temps réduit $t - r / c_{max}$ [s]")
+    plt.ylabel("h(t) [Pa]")
     plt.title(rf"z_s = {z_s:.1f} m, z_r = {z_r:.1f} m, r = {r:.1f} m")
+
+    fig, ax = plt.gcf(), plt.gca()
+    return fig, ax
+
+
+def plot_impulse_response_and_source_image_arrivals(t, gt, z_s, z_r, r, arrivals, tau):
+
+    # Plot impulse response
+    fig, ax = plot_impulse_response(t, gt, z_s, z_r, r)
+
+    # Add arrivals
+    # for arr in arrivals.flatten():
+    #     corrected_arr = arr - tau
+    #     ax.axvline(corrected_arr, linestyle="--", color="b")
+
+    for i in range(arrivals.shape[0]):
+        for j in range(arrivals.shape[1]):
+            corrected_arr = arrivals[i, j] - tau
+            if j == 0:
+                ax.axvline(
+                    corrected_arr, linestyle="--", color=color(i), label=f"n = {i}"
+                )
+            else:
+                ax.axvline(corrected_arr, linestyle="--", color=color(i))
+
+    return fig, ax
 
 
 def plot_impulse_response_and_stft(
-    t, gt, z_s, z_r, r, fmax, nfft=1024, nperseg=51, noverlap=50
+    t,
+    gt,
+    z_s,
+    z_r,
+    r,
+    fmax,
+    nfft=1024,
+    nperseg=51,
+    noverlap=50,
+    stft_vmin_percentile=90,
+    stft_vmax_percentile=99.99,
 ):
 
     fig, axs = plt.subplots(2, 1, figsize=(12, 8))
 
     # Signal
-    axs[0].plot(t, gt)
-    axs[0].set_ylabel("h(t)")
+    axs[0].plot(t, gt, color="k")
+    axs[0].set_ylabel("h(t) [Pa]")
     axs[0].set_xlim(t.min(), t.max())
 
     # STFT
@@ -555,28 +829,42 @@ def plot_impulse_response_and_stft(
         f,
         Sxx_db,
         cmap="jet",
-        vmin=np.percentile(Sxx_db, 75),
-        vmax=np.percentile(Sxx_db, 99.5),
+        vmin=np.percentile(Sxx_db, stft_vmin_percentile),
+        vmax=np.percentile(Sxx_db, stft_vmax_percentile),
     )
     # plt.colorbar(im, ax=axs[1])
     axs[1].set_ylim(0, fmax)
 
     axs[1].set_ylabel("Fréquence [Hz]")
 
-    fig.supxlabel("Temps [s]")
+    # fig.supxlabel("Temps [s]")
+    fig.supxlabel(r"Temps réduit $t - r / c_{max}$ [s]")
     fig.suptitle(rf"z_s = {z_s:.1f} m, z_r = {z_r:.1f} m, r = {r:.1f} m")
+
+    return fig, axs
 
 
 def plot_impulse_response_stft_dispersion_curve(
-    t, gt, z_s, z_r, r, fmax, f, cgm, cw, nfft=1024, nperseg=51, noverlap=50
+    t,
+    gt,
+    z_s,
+    z_r,
+    r,
+    fmax,
+    f,
+    cgm,
+    tau,
+    nfft=1024,
+    nperseg=51,
+    noverlap=50,
+    stft_vmin_percentile=90,
+    stft_vmax_percentile=99.99,
 ):
 
     # Theoretical dispersion curves
-    # tm_theo = (
-    #     r / cgm - r / cw
-    # )  # range over group_speed minus correction for time origin
-
-    tm_theo = r / cgm
+    tm_theo = r / cgm - tau
+    # No correction
+    # tm_theo = r / cgm
 
     plt.figure()
 
@@ -598,8 +886,8 @@ def plot_impulse_response_stft_dispersion_curve(
         ff,
         Sxx_db,
         cmap="jet",
-        vmin=np.percentile(Sxx_db, 75),
-        vmax=np.percentile(Sxx_db, 99.5),
+        vmin=np.percentile(Sxx_db, stft_vmin_percentile),
+        vmax=np.percentile(Sxx_db, stft_vmax_percentile),
     )
     # plt.colorbar(im, ax=plt.gca())
 
@@ -609,8 +897,67 @@ def plot_impulse_response_stft_dispersion_curve(
 
     plt.ylim(0, fmax)
     plt.ylabel("Fréquence [Hz]")
-    plt.xlabel("Temps [s]")
+    # plt.xlabel("Temps [s]")
+    plt.xlabel(r"Temps réduit $t - r / c_{max}$ [s]")
     plt.title(rf"z_s = {z_s:.1f} m, z_r = {z_r:.1f} m, r = {r:.1f} m")
+
+    fig, ax = plt.gcf(), plt.gca()
+    return fig, ax
+
+
+def plot_tl_fr(
+    g_fr,
+    r,
+    f,
+    tl_vmin_percentile=1,
+    tl_vmax_percentile=95,
+):
+
+    tl = transmission_loss(g_fr)
+    tlmax = np.percentile(tl, tl_vmax_percentile)
+    tlmin = np.percentile(tl, tl_vmin_percentile)
+
+    plt.figure()
+    im = plt.pcolormesh(r, f, tl, vmin=tlmin, vmax=tlmax, cmap="jet")
+    plt.xlabel("Distance r [m]")
+    plt.ylabel("Fréquence [Hz]")
+    plt.colorbar(im, label="TL [dB]")
+
+    fig, ax = plt.gcf(), plt.gca()
+    return fig, ax
+
+
+def plot_tl_r(
+    g_r,
+    r,
+    spherical_loss=False,
+    cylindrical_loss=False,
+):
+
+    tl = transmission_loss(g_r)
+
+    plt.figure()
+    plt.plot(r, tl, color="k")
+    plt.xlabel("Distance r [m]")
+    plt.ylabel("TL [dB]")
+    plt.gca().invert_yaxis()
+
+    icol = 0
+    if spherical_loss:
+        tl_spherical = 20 * np.log10(r)
+        plt.plot(r, tl_spherical, color=color(icol), label=r"$20 \log_{10} (r)$")
+        icol += 1
+
+    if cylindrical_loss:
+        tl_cylindrical = 10 * np.log10(r)
+        plt.plot(r, tl_cylindrical, color=color(icol), label=r"$10 \log_{10} (r)$")
+        icol += 1
+
+    if spherical_loss or cylindrical_loss:
+        plt.legend()
+
+    fig, ax = plt.gcf(), plt.gca()
+    return fig, ax
 
 
 # ======================================================================================================================
@@ -618,13 +965,13 @@ def plot_impulse_response_stft_dispersion_curve(
 # ======================================================================================================================
 def test_pekeris_env():
     # Waveguide parameters
-    rho_w = 1.0 * 1e3  # density in water (kg/m^3)
-    c_w = 1500  # sound celerity in water (m/s)
-    c_s = 1600  # sound celerity in fluid sediment (m/s)
-    rho_s = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
+    rho1 = 1.0 * 1e3  # density in water (kg/m^3)
+    c1 = 1500  # sound celerity in water (m/s)
+    c2 = 1600  # sound celerity in fluid sediment (m/s)
+    rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
     d = 100  # waveguide depth (m)
 
-    return c_w, c_s, rho_w, rho_s, d
+    return c1, c2, rho1, rho2, d
 
 
 def test_pekeris_sig():
@@ -646,23 +993,23 @@ def test_kr_pekeris():
     """
     f = np.linspace(10, 250, 20)
     # Waveguide parameters
-    c_w, c_s, rho_w, rho_s, d = test_pekeris_env()
+    c1, c2, rho1, rho2, d = test_pekeris_env()
 
     for f_i in f:
-        krm = pekeris_kr_m(f_i, c_w, c_s, rho_w, rho_s, d, debug=True)
+        krm = pekeris_kr_m(f_i, c1, c2, rho1, rho2, d, debug=True)
         print(f"f = {f_i} Hz\n krm = {krm.flatten()}")
 
 
 def test_cp_pekeris():
     """Compute and plot phase speed cp."""
 
-    c_w, c_s, rho_w, rho_s, d = test_pekeris_env()
+    c1, c2, rho1, rho2, d = test_pekeris_env()
     _, _, _, _, freq = test_pekeris_sig()
 
     # Direct array derivation
     omega = 2 * np.pi * freq
     # Horizontal wavenumbers
-    krm = pekeris_kr_m(freq, c_w, c_s, rho_w, rho_s, d)
+    krm = pekeris_kr_m(freq, c1, c2, rho1, rho2, d)
     # Phase speeds
     cpm = cp_m(krm=krm, omega=omega[:, np.newaxis])
 
@@ -673,13 +1020,13 @@ def test_cp_pekeris():
 def test_cg_pekeris():
     """Compute and plot group speed cg."""
 
-    c_w, c_s, rho_w, rho_s, d = test_pekeris_env()
+    c1, c2, rho1, rho2, d = test_pekeris_env()
     _, _, _, _, freq = test_pekeris_sig()
 
     # Horizontal wavenumbers
-    krm = pekeris_kr_m(freq, c_w, c_s, rho_w, rho_s, d)
+    krm = pekeris_kr_m(freq, c1, c2, rho1, rho2, d)
     # Group speeds
-    cgm = pekeris_cg_m(freq, krm, c_w, c_s, rho_w, rho_s, d)
+    cgm = pekeris_cg_m(freq, krm, c1, c2, rho1, rho2, d)
 
     plot_pekeris_cg_f(f=freq, cgm=cgm)
     plt.show()
@@ -690,17 +1037,17 @@ def test_cp_cg_pekeris():
     Compute and plot phase speed cp and group speed cg.
     """
 
-    c_w, c_s, rho_w, rho_s, d = test_pekeris_env()
+    c1, c2, rho1, rho2, d = test_pekeris_env()
     _, _, _, _, freq = test_pekeris_sig()
 
     # Angular freq
     omega = 2 * np.pi * freq
     # Horizontal wavenumbers
-    krm = pekeris_kr_m(freq, c_w, c_s, rho_w, rho_s, d)
+    krm = pekeris_kr_m(freq, c1, c2, rho1, rho2, d)
     # Phase speeds
     cpm = cp_m(krm=krm, omega=omega[:, np.newaxis])
     # Group speeds
-    cgm = pekeris_cg_m(freq, krm, c_w, c_s, rho_w, rho_s, d)
+    cgm = pekeris_cg_m(freq, krm, c1, c2, rho1, rho2, d)
 
     plot_pekeris_cp_cg_f(f=freq, cpm=cpm, cgm=cgm)
     plt.show()
@@ -708,22 +1055,30 @@ def test_cp_cg_pekeris():
 
 def test_modal_fct_pekeris():
 
-    c_w, c_s, rho_w, rho_s, d = test_pekeris_env()
+    c1, c2, rho1, rho2, d = test_pekeris_env()
     _, _, _, _, freq = test_pekeris_sig()
 
     # Horizontal wavenumbers
-    krm = pekeris_kr_m(freq, c_w, c_s, rho_w, rho_s, d)
+    krm = pekeris_kr_m(freq, c1, c2, rho1, rho2, d)
 
     dz = 0.01
     z = np.arange(dz, d + 30, dz)
-    phim_arr = pekeris_modal_fct(z, freq, c_w, c_s, d, krm)
+    phim_arr = pekeris_modal_fct(z, freq, c1, c2, d, krm)
 
+    # Single freq
     f0 = 100
     idx_f0 = np.argmin(np.abs(freq - f0))
     phim_f0 = phim_arr[idx_f0, ...]
-    M_f0 = np.max(pekeris_n_modes(f0, c_w, c_s, d))
-
+    M_f0 = np.max(pekeris_n_modes(f0, c1, c2, d))
     plot_modal_function(modal_fcts=phim_f0, z=z, depth=d, n_modes=M_f0)
+
+    # Multi freq
+    fplot = [25, 50, 75]
+    idx_fplot = [np.argmin(np.abs(freq - f)) for f in fplot]
+    phim_fplot = phim_arr[idx_fplot, :]
+    M_fplot = np.max(pekeris_n_modes(fplot, c1, c2, d))
+    plot_modal_function(modal_fcts=phim_fplot, z=z, f=fplot, depth=d, n_modes=M_fplot)
+
     plt.show()
 
 
@@ -735,52 +1090,83 @@ def run_full_diag(sig_param, env_param, src_rcv_param):
     fs = sig_param.get("fs", None)
     fmax = sig_param.get("fmax", None)
     # Environment
-    c_w = env_param.get("c_w", None)
-    c_s = env_param.get("c_s", None)
-    rho_w = env_param.get("rho_w", None)
-    rho_s = env_param.get("rho_s", None)
+    c1 = env_param.get("c1", None)
+    c2 = env_param.get("c2", None)
+    rho1 = env_param.get("rho1", None)
+    rho2 = env_param.get("rho2", None)
     d = env_param.get("depth", None)
 
     # Source / receiver
     z_s = src_rcv_param.get("z_s", 5)
     z = src_rcv_param.get("z_rcv", 20)
-    r = src_rcv_param.get("r_rcv", 1e4)
+    r_grid = src_rcv_param.get("r_rcv", np.array([1e4]))
+    r0 = src_rcv_param.get("r0", 1e4)
+
+    # Frequency to plot
+    f0 = fmax
+    # Number of modes to reprensent
+    M_f0 = np.max(pekeris_n_modes(f0, c1, c2, d))
+    M_f0 = min(M_f0, 10)
+    if M_f0 > 0:
+        print(f"Maximum number of modes = {M_f0}")
+    else:
+        print("No propagative modes found.")
+        return
 
     ###### Modal group and phase speed ######
     # Angular freq
     omega = 2 * np.pi * freq
     # Horizontal wavenumbers
-    krm = pekeris_kr_m(freq, c_w, c_s, rho_w, rho_s, d)
+    krm = pekeris_kr_m(freq, c1, c2, rho1, rho2, d)
     # Phase speeds
     cpm = cp_m(krm=krm, omega=omega[:, np.newaxis])
     # Group speeds
-    cgm = pekeris_cg_m(freq, krm, c_w, c_s, rho_w, rho_s, d)
+    cgm = pekeris_cg_m(freq, krm, c1, c2, rho1, rho2, d)
     # Plot
-    plot_pekeris_cp_cg_f(f=freq, cpm=cpm, cgm=cgm)
+    plot_pekeris_cp_cg_f(f=freq, cpm=cpm, cgm=cgm, n_modes=M_f0)
 
     ###### Modal function ######
-    dz = 0.1
-    zphi = np.arange(dz, d + 30, dz)
-    phim_arr = pekeris_modal_fct(zphi, freq, c_w, c_s, d, krm)
+    # dz = 0.1
+    # zphi = np.arange(dz, d + 30, dz)
+    nz = 5000
+    zphi = np.linspace(0, d + max(50, 0.1 * d), nz)
+    phim_arr = pekeris_modal_fct(zphi, freq, c1, c2, d, krm)
 
-    # f0 = fmax / 2
-    f0 = fmax
     idx_f0 = np.argmin(np.abs(freq - f0))
     phim_f0 = phim_arr[idx_f0, ...]
-
-    M_f0 = np.max(pekeris_n_modes(f0, c_w, c_s, d))
     plot_modal_function(modal_fcts=phim_f0, z=zphi, depth=d, n_modes=M_f0)
+
+    # # Multi freq
+    # fplot = [25, 50, 75]
+    # idx_fplot = [np.argmin(np.abs(freq - f)) for f in fplot]
+    # phim_fplot = phim_arr[idx_fplot, :]
+    # M_fplot = np.max(pekeris_n_modes(fplot, c1, c2, d))
+    # plot_modal_function(modal_fcts=phim_fplot, z=z, f=fplot, depth=d, n_modes=M_fplot)
 
     ###### Green's function at z, r ######
     # z_s = 5
     # z, r = 20, 10000
-    gf = pekeris_green_fct(freq, c_w, c_s, rho_w, rho_s, d, z_s, z, r)
-    plot_green_fct(freq, gf, z_s=z_s, z_r=z, r=r)
+
+    g_fr = pekeris_green_fct(freq, c1, c2, rho1, rho2, d, z_s, z, r_grid)
+    idx_r0 = np.argmin(np.abs(r_grid - r0))
+    gf = g_fr[:, idx_r0]
+
+    # gf = pekeris_green_fct(freq, c1, c2, rho1, rho2, d, z_s, z, r)
+    plot_green_fct(freq, gf, z_s=z_s, z_r=z, r=r0)
 
     # Impulse response
     output_mult_fact = 4
-    t, gt = impulse_response(gf, freq, fs, output_mult_fact=output_mult_fact)
-    plot_impulse_response(t, gt, z_s, z, r)
+    tau = r0 / max(c2, c1)  # Minimum arrival time
+    t, gt = impulse_response(gf, freq, fs, tau=tau, output_mult_fact=output_mult_fact)
+    plot_impulse_response(t, gt, z_s, z, r0)
+
+    # Comparison to source image method
+    n_img = 10
+    arrivals = image_sources_arrivals(z_src=z_s, z_rcv=z, r=r0, depth=d, n=n_img, c0=c1)
+    # grouped_arrivals = group_image_source_arrivals(arrivals)
+    plot_impulse_response_and_source_image_arrivals(
+        t, gt, z_s, z, r0, arrivals, tau=tau
+    )
 
     # stft
     # Réglage identique au code du tuto de J.Bonnel
@@ -788,7 +1174,7 @@ def run_full_diag(sig_param, env_param, src_rcv_param):
     nperseg = 51 * output_mult_fact
     noverlap = nperseg - 1
     plot_impulse_response_and_stft(
-        t, gt, z_s, z, r, fmax, nfft=nfft, nperseg=nperseg, noverlap=noverlap
+        t, gt, z_s, z, r0, fmax, nfft=nfft, nperseg=nperseg, noverlap=noverlap
     )
 
     # Stft and theoretical dispersion curves
@@ -797,15 +1183,39 @@ def run_full_diag(sig_param, env_param, src_rcv_param):
         gt,
         z_s,
         z,
-        r,
+        r0,
         fmax,
         freq,
         cgm,
-        c_w,
+        tau=tau,
         nfft=nfft,
         nperseg=nperseg,
         noverlap=noverlap,
     )
+
+    # Plot TL(f, r)
+    idx_f_tl = np.logical_and(freq > 50, freq < 60)
+    f_tl = freq[idx_f_tl]
+    g_fr_ftl = g_fr[idx_f_tl, ...]
+    plot_tl_fr(
+        g_fr_ftl,
+        r_grid,
+        f_tl,
+        tl_vmin_percentile=1,
+        tl_vmax_percentile=95,
+    )
+
+    # Plot TL(f=f0, r)
+    f0 = 80
+    idx_f0 = np.argmin(np.abs(freq - f0))
+    g_r_ftl = g_fr[idx_f0, ...]
+    plot_tl_r(
+        g_r_ftl,
+        r_grid,
+        spherical_loss=True,
+        cylindrical_loss=True,
+    )
+
     plt.show()
 
 
@@ -813,10 +1223,10 @@ def test_pekeris_JBonnel():
     "Test Pekeris functions by comparison with results from the Matlab tuto code by JBonnel."
 
     # Waveguide parameters
-    rho_w = 1.0 * 1e3  # density in water (kg/m^3)
-    c_w = 1500  # sound celerity in water (m/s)
-    c_s = 1600  # sound celerity in fluid sediment (m/s)
-    rho_s = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
+    rho1 = 1.0 * 1e3  # density in water (kg/m^3)
+    c1 = 1500  # sound celerity in water (m/s)
+    c2 = 1600  # sound celerity in fluid sediment (m/s)
+    rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
     d = 100  # waveguide depth (m)
 
     # Signal properties
@@ -836,19 +1246,19 @@ def test_pekeris_JBonnel():
     # Run test
     src_rcv_param = {"z_s": z_s, "z_rcv": z_rcv, "r_rcv": r_rcv}
     sig_param = {"freq": freq, "fs": fs, "fmax": fmax}
-    env_param = {"c_w": c_w, "c_s": c_s, "rho_w": rho_w, "rho_s": rho_s, "depth": d}
+    env_param = {"c1": c1, "c2": c2, "rho1": rho1, "rho2": rho2, "depth": d}
     run_full_diag(sig_param=sig_param, env_param=env_param, src_rcv_param=src_rcv_param)
-    # run_full_diag(freq, c_w, c_s, rho_w, rho_s, d, fs, fmax)
+    # run_full_diag(freq, c1, c2, rho1, rho2, d, fs, fmax)
 
 
 def test_pekeris_Jensen_p119():
     "Test Pekeris functions by comparison with results in Jensen. Pekeris definition p.119."
 
     # Waveguide parameters
-    rho_w = 1.0 * 1e3  # density in water (kg/m^3)
-    c_w = 1500  # sound celerity in water (m/s)
-    rho_s = 1.8 * 1e3  # density in fluid sediment (kg/m^3)
-    c_s = 1800  # sound celerity in fluid sediment (m/s)
+    rho1 = 1.0 * 1e3  # density in water (kg/m^3)
+    c1 = 1500  # sound celerity in water (m/s)
+    rho2 = 1.8 * 1e3  # density in fluid sediment (kg/m^3)
+    c2 = 1800  # sound celerity in fluid sediment (m/s)
     d = 100  # waveguide depth (m)
 
     # Signal properties
@@ -867,24 +1277,24 @@ def test_pekeris_Jensen_p119():
     # Run test
     src_rcv_param = {"z_s": z_s, "z_rcv": z_rcv, "r_rcv": r_rcv}
     sig_param = {"freq": freq, "fs": fs, "fmax": fmax}
-    env_param = {"c_w": c_w, "c_s": c_s, "rho_w": rho_w, "rho_s": rho_s, "depth": d}
+    env_param = {"c1": c1, "c2": c2, "rho1": rho1, "rho2": rho2, "depth": d}
     run_full_diag(sig_param=sig_param, env_param=env_param, src_rcv_param=src_rcv_param)
-    # run_full_diag(freq, c_w, c_s, rho_w, rho_s, d, fs, fmax)
+    # run_full_diag(freq, c1, c2, rho1, rho2, d, fs, fmax)
 
 
 def test_pekeris_Jensen_p350():
     "Test Pekeris functions by comparison with results in Jensen. Pekeris definition p.350."
 
     # Waveguide parameters
-    rho_w = 1.0 * 1e3  # density in water (kg/m^3)
-    c_w = 1500  # sound celerity in water (m/s)
-    rho_s = 1.0 * 1e3  # density in fluid sediment (kg/m^3)
-    c_s = 1550  # sound celerity in fluid sediment (m/s)
+    rho1 = 1.0 * 1e3  # density in water (kg/m^3)
+    c1 = 1500  # sound celerity in water (m/s)
+    rho2 = 1.0 * 1e3  # density in fluid sediment (kg/m^3)
+    c2 = 2000  # sound celerity in fluid sediment (m/s)
     d = 100  # waveguide depth (m)
 
     # Signal properties
     fmax = 75  # Max frequency (Hz)
-    T = 22  # Signal duration to generate (s)
+    T = 10  # Signal duration to generate (s)
     fs = 2 * fmax  # Sampling frequency (Hz) = Nyquist
     ts = 1 / fs  # sampling interval (s)
     nt = T * fs  # Number of samples
@@ -898,7 +1308,7 @@ def test_pekeris_Jensen_p350():
     # Run test
     src_rcv_param = {"z_s": z_s, "z_rcv": z_rcv, "r_rcv": r_rcv}
     sig_param = {"freq": freq, "fs": fs, "fmax": fmax}
-    env_param = {"c_w": c_w, "c_s": c_s, "rho_w": rho_w, "rho_s": rho_s, "depth": d}
+    env_param = {"c1": c1, "c2": c2, "rho1": rho1, "rho2": rho2, "depth": d}
     run_full_diag(sig_param=sig_param, env_param=env_param, src_rcv_param=src_rcv_param)
 
 
@@ -906,15 +1316,15 @@ def test_pekeris_Jensen_p636():
     "Test Pekeris functions by comparison with results in Jensen. Pekeris definition p.636."
 
     # Waveguide parameters
-    rho_w = 1.0 * 1e3  # density in water (kg/m^3)
-    c_w = 1500  # sound celerity in water (m/s)
-    rho_s = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
-    c_s = 1600  # sound celerity in fluid sediment (m/s)
+    rho1 = 1.0 * 1e3  # density in water (kg/m^3)
+    c1 = 1500  # sound celerity in water (m/s)
+    rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
+    c2 = 1600  # sound celerity in fluid sediment (m/s)
     d = 100  # waveguide depth (m)
 
     # Signal properties
     fmax = 75  # Max frequency (Hz)
-    T = 22  # Signal duration to generate (s)
+    T = 15  # Signal duration to generate (s)
     fs = 2 * fmax  # Sampling frequency (Hz) = Nyquist
     ts = 1 / fs  # sampling interval (s)
     nt = T * fs  # Number of samples
@@ -928,7 +1338,7 @@ def test_pekeris_Jensen_p636():
     # Run test
     src_rcv_param = {"z_s": z_s, "z_rcv": z_rcv, "r_rcv": r_rcv}
     sig_param = {"freq": freq, "fs": fs, "fmax": fmax}
-    env_param = {"c_w": c_w, "c_s": c_s, "rho_w": rho_w, "rho_s": rho_s, "depth": d}
+    env_param = {"c1": c1, "c2": c2, "rho1": rho1, "rho2": rho2, "depth": d}
     run_full_diag(sig_param=sig_param, env_param=env_param, src_rcv_param=src_rcv_param)
 
 
@@ -936,31 +1346,36 @@ def test_pekeris_short_ir():
     "Test Pekeris functions for a waveguide with short IR."
 
     # Waveguide parameters
-    rho_w = 1.0 * 1e3  # density in water (kg/m^3)
-    c_w = 1500  # sound celerity in water (m/s)
-    rho_s = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
-    c_s = 1600  # sound celerity in fluid sediment (m/s)
+    rho1 = 1.0 * 1e3  # density in water (kg/m^3)
+    c1 = 1500  # sound celerity in water (m/s)
+    rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
+    c2 = 1600  # sound celerity in fluid sediment (m/s)
     d = 100  # waveguide depth (m)
 
     # Signal properties
     fmax = 100  # Max frequency (Hz)
-    T = 15  # Signal duration to generate (s)
+    T = 5  # Signal duration to generate (s)
     fs = 2 * fmax  # Sampling frequency (Hz) = Nyquist
     ts = 1 / fs  # sampling interval (s)
-    nt = T * fs  # Number of samples
+    nt = int(T * fs)  # Number of samples
     freq = np.fft.rfftfreq(n=nt, d=ts)  # Frequency vector
 
     # Source / receiver properties
     z_s = 5
     z_rcv = d - 0.5
-    r_rcv = 30 * 1e3
+    r_rcv = np.linspace(10 * 1e3, 50 * 1e3, int(1e4))
+    r0 = 30 * 1e3
 
     # Run test
-    src_rcv_param = {"z_s": z_s, "z_rcv": z_rcv, "r_rcv": r_rcv}
+    src_rcv_param = {"z_s": z_s, "z_rcv": z_rcv, "r_rcv": r_rcv, "r0": r0}
     sig_param = {"freq": freq, "fs": fs, "fmax": fmax}
-    env_param = {"c_w": c_w, "c_s": c_s, "rho_w": rho_w, "rho_s": rho_s, "depth": d}
+    env_param = {"c1": c1, "c2": c2, "rho1": rho1, "rho2": rho2, "depth": d}
     run_full_diag(sig_param=sig_param, env_param=env_param, src_rcv_param=src_rcv_param)
-    # run_full_diag(freq, c_w, c_s, rho_w, rho_s, d, fs, fmax)
+    # run_full_diag(freq, c1, c2, rho1, rho2, d, fs, fmax)
+
+
+def kraken_validation():
+    pass
 
 
 if __name__ == "__main__":
@@ -969,20 +1384,20 @@ if __name__ == "__main__":
     # test_cp_pekeris()     # OK
     # test_cg_pekeris()     # Ok
     # test_cp_cg_pekeris()  # OK
-    # test_modal_fct_pekeris() # OK
+    # test_modal_fct_pekeris()  # OK
 
     # test_pekeris_JBonnel()  # OK
     # test_pekeris_Jensen_p119()  # OK
     # test_pekeris_Jensen_p636()  # OK
-    test_pekeris_Jensen_p350()
+    # test_pekeris_Jensen_p350()
 
-    # test_pekeris_short_ir()  # OK
+    test_pekeris_short_ir()  # OK
 
 # ======================================================================================================================
 # Left overs
 # ======================================================================================================================
 
-# def pekeris_modes(f, c_w, c_s, rho_w, rho_s, d):
+# def pekeris_modes(f, c1, c2, rho1, rho2, d):
 #     """Calculate the horizontal wavenumbers and phase speeds of the propagating modes in a Pekeris waveguide."""
 
 #     # Handle array of frequencies
@@ -994,7 +1409,7 @@ if __name__ == "__main__":
 
 #     # nf = freq.size
 #     # n_modes = np.max(
-#     #     pekeris_n_modes(freq, c_w, c_s, d)
+#     #     pekeris_n_modes(freq, c1, c2, d)
 #     # )  # Max number of propagating modes
 
 #     # # Init arrays (Set to nan to avoid division by zero in cp_m)
@@ -1006,15 +1421,15 @@ if __name__ == "__main__":
 
 #     # Direct array derivation
 #     omega = 2 * np.pi * freq
-#     k = omega / c_w
+#     k = omega / c1
 #     # Horizontal wavenumbers
-#     krm_arr = pekeris_kr_m(freq, c_w, c_s, rho_w, rho_s, d)
+#     krm_arr = pekeris_kr_m(freq, c1, c2, rho1, rho2, d)
 #     # Vertical wavenumbers in water
 #     kzm_arr = np.sqrt(k[:, np.newaxis] ** 2 - krm_arr**2).astype(np.float32)
 #     # Phase speeds
 #     cpm_arr = cp_m(krm=krm_arr, omega=omega[:, np.newaxis])
 #     # Group speeds
-#     cgm_arr = pekeris_cg_m(f, c_w, c_s, rho_w, rho_s, d)
+#     cgm_arr = pekeris_cg_m(f, c1, c2, rho1, rho2, d)
 #     # Mode angle
 #     thetam_arr = np.arctan(kzm_arr / krm_arr).astype(np.float32) * 180 / np.pi
 
@@ -1022,11 +1437,11 @@ if __name__ == "__main__":
 #     #     omega_i = 2 * np.pi * f
 
 #     #     # Horizontal wavenumbers
-#     #     krm_i = pekeris_kr_m(f, c_w, c_s, rho_w, rho_s, d)
+#     #     krm_i = pekeris_kr_m(f, c1, c2, rho1, rho2, d)
 #     #     krm_arr[i, : len(krm_i)] = krm_i  # Fill array with actual values
 
 #     #     # Vertical wavenumbers in water
-#     #     kzm_i = np.sqrt((omega_i / c_w) ** 2 - krm_i**2)
+#     #     kzm_i = np.sqrt((omega_i / c1) ** 2 - krm_i**2)
 #     #     kzm_arr[i, : len(kzm_i)] = kzm_i  # Fill array with actual values
 
 #     #     # Phase speeds
@@ -1051,7 +1466,7 @@ if __name__ == "__main__":
 #     return krm_arr, kzm_arr, cpm_arr, cgm_arr, thetam_arr
 
 
-# def pekeris_cg_m(f, c_w, c_s, rho_w, rho_s, d):
+# def pekeris_cg_m(f, c1, c2, rho1, rho2, d):
 
 #     # Add an extra frequency point to compute last group speed
 #     f = np.atleast_1d(f)
@@ -1060,7 +1475,7 @@ if __name__ == "__main__":
 #     freq = np.append(f, f[-1] + df)
 
 #     # Get horizontal wavenumbers
-#     krm = pekeris_kr_m(freq, c_w, c_s, rho_w, rho_s, d)
+#     krm = pekeris_kr_m(freq, c1, c2, rho1, rho2, d)
 
 #     # Group speeds (approximation) : forward difference scheme -> u_m = d(omega)/d(kr) = delta_omega / (krm(omega+delta_omega) - krm(omega))
 #     d_omega = 2 * np.pi * np.diff(freq)
@@ -1069,26 +1484,26 @@ if __name__ == "__main__":
 #     cgm = d_omega / d_krm
 
 #     # TODO check where it comes from ?
-#     # rho_ratio = rho_s / rho_s
-#     # a = rho_ratio / (kzm_s**2 + rho_ratio**2 * kzm_w**2)
+#     # rho_ratio = rho2 / rho2
+#     # a = rho_ratio / (kzm_2**2 + rho_ratio**2 * kzm_1**2)
 #     # cgm = (
 #     #     krm
 #     #     / omega[:, np.newaxis]
-#     #     * c_w**2
-#     #     * c_s**2
-#     #     * (kzm_s * d + a * (kzm_w**2 + kzm_s**2))
-#     #     / (c_s**2 * (kzm_s * d + a * kzm_s**2) + c_w**2 * a * kzm_w**2)
+#     #     * c1**2
+#     #     * c2**2
+#     #     * (kzm_2 * d + a * (kzm_1**2 + kzm_2**2))
+#     #     / (c2**2 * (kzm_2 * d + a * kzm_2**2) + c1**2 * a * kzm_1**2)
 #     # )
 
 #     return cgm.astype(np.float32)
 
 
-# def pekeris_diag_test(f, c_w, c_s, rho_w, rho_s, d):
+# def pekeris_diag_test(f, c1, c2, rho1, rho2, d):
 #     """Run test to ensure everything is ok."""
 #     # Derive all modal properties
-#     krm, kzm, cpm, cgm, thetam = pekeris_modes(f, c_w, c_s, rho_w, rho_s, d)
+#     krm, kzm, cpm, cgm, thetam = pekeris_modes(f, c1, c2, rho1, rho2, d)
 #     # Number of modes for each frequency
-#     n_modes = pekeris_n_modes(f, c_w, c_s, d)
+#     n_modes = pekeris_n_modes(f, c1, c2, d)
 
 #     # plot_pekeris_cg_f(f, cgm, n_modes)
 #     # plot_pekeris_cp_f(f, cpm, n_modes)
@@ -1097,14 +1512,14 @@ if __name__ == "__main__":
 #     # plt.show()
 
 
-# def pekeris_green_fct(f, c_w, c_s, rho_w, rho_s, d, z_s, z_r, r):
+# def pekeris_green_fct(f, c1, c2, rho1, rho2, d, z_s, z_r, r):
 #     """Calculate green's functions at depth z in a Pekeris waveguide."""
 
 #     # Derive all modal properties
-#     krm, kzm, cpm, cgm, thetam = pekeris_modes(f, c_w, c_s, rho_w, rho_s, d)
+#     krm, kzm, cpm, cgm, thetam = pekeris_modes(f, c1, c2, rho1, rho2, d)
 
 #     # Get vertical wavenumber in water and sediment
-#     kzm_w, kzm_s = pekeris_kzm_ws(f, c_w, c_s, krm)  # (n_f, n_modes)
+#     kzm_1, kzm_2 = pekeris_kzm_12(f, c1, c2, krm)  # (n_f, n_modes)
 
 #     # Based on Pekeris 1948 formulation
 #     omega = 2 * np.pi * f
@@ -1112,28 +1527,28 @@ if __name__ == "__main__":
 #     # r_2d = r[np.newaxis]
 
 #     # # Common factor
-#     # Q = omega * (rho_w * np.pi / d) * np.sqrt(8 / r) * np.exp(+1j * np.pi / 4)
+#     # Q = omega * (rho1 * np.pi / d) * np.sqrt(8 / r) * np.exp(+1j * np.pi / 4)
 
 #     # def F(x):
 #     #     """Equation 25 and A73"""
 #     #     return x / (
 #     #         x
 #     #         - np.sin(x) * np.cos(x)
-#     #         - (rho_w / rho_s) ** 2 * np.sin(x) ** 2 * np.tan(x)
+#     #         - (rho1 / rho2) ** 2 * np.sin(x) ** 2 * np.tan(x)
 #     #     )
 
 #     # # # Solution in water layer
 #     # # if z_r < d:
 #     # #     A_m = (
-#     # #         F(kzm_w * d) * np.sin(kzm_w * z_s) * np.sin(kzm_w * z_r)
+#     # #         F(kzm_1 * d) * np.sin(kzm_1 * z_s) * np.sin(kzm_1 * z_r)
 #     # #     )  # Modal amplitude
 #     # # # Solutution in sediment
 #     # # else:
 #     # #     A_m = (
-#     # #         F(kzm_w * d)
-#     # #         * np.sin(kzm_w * z_s)
-#     # #         * np.sin(kzm_w * d)
-#     # #         * np.exp(1j * kzm_s * (z_r - d))
+#     # #         F(kzm_1 * d)
+#     # #         * np.sin(kzm_1 * z_s)
+#     # #         * np.sin(kzm_1 * d)
+#     # #         * np.exp(1j * kzm_2 * (z_r - d))
 #     # #     )  # Modal amplitude
 
 #     # # A_m *= np.exp(-1j * krm * r) / np.sqrt(krm)  # Propagative term
@@ -1143,24 +1558,24 @@ if __name__ == "__main__":
 #     # Adaptation from Bonnel et al 2020 (MATLAB provided tool box) # TODO : update and verify according to Jensen2011
 #     A_2 = (
 #         2
-#         * rho_w
-#         * kzm_w
-#         * kzm_s
+#         * rho1
+#         * kzm_1
+#         * kzm_2
 #         / (
-#             kzm_w * kzm_s * d
-#             - 1 / 2 * kzm_s * np.sin(2 * kzm_w * d)
-#             + rho_w / rho_s * kzm_w * np.sin(kzm_w * d) ** 2
+#             kzm_1 * kzm_2 * d
+#             - 1 / 2 * kzm_2 * np.sin(2 * kzm_1 * d)
+#             + rho1 / rho2 * kzm_1 * np.sin(kzm_1 * d) ** 2
 #         )
 #     )
 #     # Global multiplicative factor
-#     A_2 = 1 / 4 * A_2 * 1j * np.exp(1j * np.pi / 4) / rho_w
+#     A_2 = 1 / 4 * A_2 * 1j * np.exp(1j * np.pi / 4) / rho1
 
 #     gfm = (
 #         A_2
-#         * np.sin(kzm_w * z_s)
+#         * np.sin(kzm_1 * z_s)
 #         * np.exp(-1j * krm * r)
 #         / np.sqrt(krm * r)
-#         * np.sin(kzm_w * z_r)
+#         * np.sin(kzm_1 * z_r)
 #     )
 
 #     # # Replace np.nan by 0

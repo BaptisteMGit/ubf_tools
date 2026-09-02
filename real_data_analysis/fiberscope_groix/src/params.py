@@ -27,8 +27,8 @@ channels_order = {
 }
 hydro_channel = "H"
 
-pre_reception_time = 10
-post_reception_time = 15.0
+pre_reception_time = 5
+post_reception_time = 5
 
 tau_ir = 0.1
 h_index_ref = 2

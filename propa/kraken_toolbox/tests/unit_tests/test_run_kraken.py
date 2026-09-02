@@ -115,16 +115,24 @@ class TestWorkingDirs(TempDirTestCase):
 # ======================================================================
 class TestRunkrakenBroadbandRangeDependent(TempDirTestCase):
     def _build_range_dependent_env(self, nmedia=2):
-        from propa.kraken_toolbox.src.kraken_env import Bathymetry
+        from propa.kraken_toolbox.src.kraken_env import Bathymetry, KrakenField
 
         bathy_path = os.path.join(self.tmp_dir, "bathy.csv")
         with open(bathy_path, "w") as f:
             f.write("0,100\n5,150\n")
         bathy = Bathymetry(bathy_path, units="km")
         medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        # NOTE: rcv_z_max is set comfortably beyond the default buffered
+        # bottom's sedim_layer_max_depth -- see
+        # KrakenEnv.write_range_dependent_lines's docstring for why
+        # FIELD.exe requires this for a coupled-mode, buffered-bottom,
+        # range-dependent run. Unrelated to what these tests actually
+        # check; just needed for write_env() to succeed.
+        field = KrakenField(rcv_z_max=2000.0)
         env = KrakenEnv(
             title="t", env_root=self.tmp_dir, env_filename="rdenv",
             freq=[10.0, 20.0], kraken_medium=medium, kraken_bathy=bathy, nmedia=nmedia,
+            kraken_field=field,
         )
         env.write_env()
         return env
@@ -257,6 +265,43 @@ class TestRunkrakenBroadbandRangeDependent(TempDirTestCase):
         self.assertIsNone(pressure)
         self.assertIsNone(field_pos)
         self.assertEqual(all_modes, [])
+
+    def test_restores_the_original_working_directory(self):
+        # NOTE: regression test for the fixed bug -- matches
+        # test_kraken_manager.py's identical test for
+        # KrakenManager.runkraken_broadband_range_dependent().
+        env = self._build_range_dependent_env(nmedia=2)
+
+        class DummyFlp:
+            def __init__(self, flp_fpath):
+                self.flp_fpath = flp_fpath
+
+            def write_flp(self):
+                with open(self.flp_fpath, "w") as f:
+                    f.write("dummy flp\n")
+
+        flp = DummyFlp(os.path.join(self.tmp_dir, "rdenv_cwd.flp"))
+
+        def fake_run_field_exec(filename, *args, **kwargs):
+            open(os.path.join(os.getcwd(), f"{filename}.mod"), "w").close()
+
+        fake_pressure = np.zeros((1, 1, 1, 1), dtype=complex)
+
+        cwd_before = os.getcwd()
+        with mock.patch.object(run_kraken, "run_kraken_exec"), \
+             mock.patch.object(run_kraken, "run_field_exec", side_effect=fake_run_field_exec), \
+             mock.patch.object(
+                 run_kraken, "readshd",
+                 return_value=(None, None, None, None, None, None, {}, fake_pressure),
+             ), \
+             mock.patch.object(
+                 run_kraken, "readmodes",
+                 return_value={"M": 1, "phi": np.zeros((1, 1))},
+             ):
+            run_kraken.runkraken_broadband_range_dependent(
+                env=env, flp=flp, frequencies=np.array([10.0, 20.0])
+            )
+        self.assertEqual(os.getcwd(), cwd_before)
 
 
 if __name__ == "__main__":

@@ -141,30 +141,42 @@ class KrakenManager:
         if self.verbose:
             print(f"Running Kraken  (parallel = {self.parallel})...")
 
-        os.chdir(env.root)
-        env.write_env()
-        flp.write_flp()
+        # NOTE (bug fixed): os.chdir(env.root) below used to never be
+        # undone, silently leaking a global process-wide side effect
+        # (the current working directory) past the end of this call.
+        # Confirmed to break OTHER, unrelated code afterwards: a test
+        # elsewhere that creates a temp directory, calls this method
+        # (or runkraken_broadband_range_dependent() directly, which has
+        # the same issue -- see there), and cleans up its temp
+        # directory in tearDown() left the process's cwd pointing at a
+        # now-deleted directory, causing a `FileNotFoundError` in
+        # completely unrelated code (e.g. numpy.savetxt with a relative
+        # path) run afterwards in the same process. Wrapped in
+        # try/finally so the caller's own cwd is always restored,
+        # success or exception.
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(env.root)
+            env.write_env()
+            flp.write_flp()
 
-        if env.range_dependent_env and env.broadband_run:
-            return self._run_broadband_range_dependent(env, flp, frequencies)
-        return self._run_native(env, flp, frequencies)
+            if env.range_dependent_env and env.broadband_run:
+                return self._run_broadband_range_dependent(env, flp, frequencies)
+            return self._run_native(env, flp, frequencies)
+        finally:
+            os.chdir(original_cwd)
 
     def _run_broadband_range_dependent(self, env, flp, frequencies):
         """'Broadband + variable bottom' case: not natively supported by
         KRAKEN (see module docstring) -> re-run once per frequency and
         merge the results."""
         if self.parallel:
-            pressure_field, field_pos, all_modes = (
-                self._run_broadband_range_dependent_parallel(env, flp, frequencies)
+            pressure_field, field_pos, all_modes = self._run_broadband_range_dependent_parallel(
+                env, flp, frequencies
             )
         else:
-            if self.clear:
-                self.clear_kraken_parallel_working_dir(root=env.root)
-
-            pressure_field, field_pos, all_modes = (
-                self.runkraken_broadband_range_dependent(
-                    env=env, flp=flp, frequencies=frequencies
-                )
+            pressure_field, field_pos, all_modes = self.runkraken_broadband_range_dependent(
+                env=env, flp=flp, frequencies=frequencies
             )
         # NOTE: see the module/README note on why this can't just be a
         # third return value of runkraken() itself -- runkraken()'s
@@ -273,9 +285,7 @@ class KrakenManager:
                     mode="equally_distributed",
                 )
             else:
-                assigned_frequency_ranges = cls._split_optimal(
-                    frequencies, n_workers, nf
-                )
+                assigned_frequency_ranges = cls._split_optimal(frequencies, n_workers, nf)
         else:
             raise ValueError(f"Mode {mode} not implemented.")
 
@@ -332,11 +342,8 @@ class KrakenManager:
                 on Windows).
         """
         cls.run_exec(
-            exec="field",
-            filename=filename,
-            parallel=parallel,
-            worker_pid=worker_pid,
-            silent=silent,
+            exec="field", filename=filename, parallel=parallel,
+            worker_pid=worker_pid, silent=silent,
         )
 
     @classmethod
@@ -344,11 +351,8 @@ class KrakenManager:
         """Run the KRAKEN executable on '<filename>.env'. Same
         parameters as run_field_exec."""
         cls.run_exec(
-            exec="kraken",
-            filename=filename,
-            parallel=parallel,
-            worker_pid=worker_pid,
-            silent=silent,
+            exec="kraken", filename=filename, parallel=parallel,
+            worker_pid=worker_pid, silent=silent,
         )
 
     @staticmethod
@@ -372,9 +376,7 @@ class KrakenManager:
 
         if parallel and (os.name == "nt"):
             if worker_pid is None:
-                raise ValueError(
-                    "worker_pid must be specified with parallel set to True."
-                )
+                raise ValueError("worker_pid must be specified with parallel set to True.")
             subprocess_working_dir = os.path.join(os.getcwd(), "bin")
             cmd = os.path.join(subprocess_working_dir, exec)
         else:
@@ -497,70 +499,84 @@ class KrakenManager:
         function (mirroring plotshd_from_pressure_field()).
         """
         worker_pid = os.getpid()
-        env_root = env.root
-        broadband_pressure_field = None
-        field_pos = None
-        all_modes = []
+        # NOTE (bug fixed): os.chdir(env.root) below (called once per
+        # frequency) used to never be restored once this function
+        # returned, leaking a global process-wide side effect past the
+        # end of this call -- confirmed to break unrelated code run
+        # afterwards in the same process (e.g. a test that deletes its
+        # own temp directory in tearDown() after this function chdir'd
+        # into it, leaving the process's cwd pointing at a now-deleted
+        # directory). Wrapped in try/finally so the caller's own cwd is
+        # always restored, success or exception -- matches the same fix
+        # in KrakenManager.runkraken().
+        original_cwd = os.getcwd()
+        try:
+            env_root = env.root
+            broadband_pressure_field = None
+            field_pos = None
+            all_modes = []
 
-        for ifreq, freq in enumerate(frequencies):
-            # Rebuild an identical environment but at a single frequency:
-            # KRAKEN must be re-run from scratch for every frequency in
-            # range-dependent mode (see module docstring).
-            env = KrakenEnv(
-                title=env.simulation_title,
-                env_root=env.root,
-                env_filename=env.filename,
-                freq=freq,
-                kraken_top_hs=env.top_hs,
-                kraken_medium=env.medium,
-                kraken_attenuation=env.att,
-                kraken_bottom_hs=env.bottom_hs,
-                kraken_field=env.field,
-                kraken_bathy=env.bathy,
-                rModes=env.modes_range,
-                nmedia=env.nmedia,
-            )
-
-            cls.init_parallel_kraken_working_dirs(env, env_root, worker_pid)
-            os.chdir(env.root)
-
-            flp.flp_fpath = env.flp_fpath
-            env.write_env()
-            if ifreq == 0:
-                # The '.flp' file does not depend on frequency: write it
-                # only once.
-                flp.write_flp()
-
-            cls.run_kraken_exec(env.filename, parallel, worker_pid)
-            try:
-                cls.run_field_exec(env.filename, parallel, worker_pid)
-                _, _, _, _, _read_freq, _, field_pos, pressure = readshd(
-                    filename=env.filename + ".shd", freq=freq
+            for ifreq, freq in enumerate(frequencies):
+                # Rebuild an identical environment but at a single frequency:
+                # KRAKEN must be re-run from scratch for every frequency in
+                # range-dependent mode (see module docstring).
+                env = KrakenEnv(
+                    title=env.simulation_title,
+                    env_root=env.root,
+                    env_filename=env.filename,
+                    freq=freq,
+                    kraken_top_hs=env.top_hs,
+                    kraken_medium=env.medium,
+                    kraken_attenuation=env.att,
+                    kraken_bottom_hs=env.bottom_hs,
+                    kraken_field=env.field,
+                    kraken_bathy=env.bathy,
+                    rModes=env.modes_range,
+                    nmedia=env.nmedia,
                 )
-                # NOTE (bug fixed, see docstring): read right away,
-                # before the NEXT iteration overwrites this frequency's
-                # '.mod' file with the next one's.
-                Modes = readmodes(env.filename + ".mod", freq=freq)
-            except Exception as exc:
-                # NOTE: the original code used a bare `except:` (which
-                # also catches KeyboardInterrupt/SystemExit) and just
-                # printed a message. We narrow this to Exception and
-                # include the error message, but keep the "do not
-                # interrupt the loop" behaviour so as not to change
-                # existing behaviour: you may want to decide whether a
-                # failing frequency should instead abort the whole
-                # simulation.
-                print(f"Error running field executable for frequency {freq}: {exc}")
-                continue
 
-            if broadband_pressure_field is None:
-                broadband_shape = (len(frequencies),) + pressure.shape
-                broadband_pressure_field = np.zeros(broadband_shape, dtype=complex)
+                cls.init_parallel_kraken_working_dirs(env, env_root, worker_pid)
+                os.chdir(env.root)
 
-            broadband_pressure_field[ifreq, ...] = pressure
-            all_modes.append(Modes)
+                flp.flp_fpath = env.flp_fpath
+                env.write_env()
+                if ifreq == 0:
+                    # The '.flp' file does not depend on frequency: write it
+                    # only once.
+                    flp.write_flp()
 
-        return broadband_pressure_field, field_pos, all_modes
+                cls.run_kraken_exec(env.filename, parallel, worker_pid)
+                try:
+                    cls.run_field_exec(env.filename, parallel, worker_pid)
+                    _, _, _, _, _read_freq, _, field_pos, pressure = readshd(
+                        filename=env.filename + ".shd", freq=freq
+                    )
+                    # NOTE (bug fixed, see docstring): read right away,
+                    # before the NEXT iteration overwrites this frequency's
+                    # '.mod' file with the next one's.
+                    Modes = readmodes(env.filename + ".mod", freq=freq)
+                except Exception as exc:
+                    # NOTE: the original code used a bare `except:` (which
+                    # also catches KeyboardInterrupt/SystemExit) and just
+                    # printed a message. We narrow this to Exception and
+                    # include the error message, but keep the "do not
+                    # interrupt the loop" behaviour so as not to change
+                    # existing behaviour: you may want to decide whether a
+                    # failing frequency should instead abort the whole
+                    # simulation.
+                    print(f"Error running field executable for frequency {freq}: {exc}")
+                    continue
+
+                if broadband_pressure_field is None:
+                    broadband_shape = (len(frequencies),) + pressure.shape
+                    broadband_pressure_field = np.zeros(broadband_shape, dtype=complex)
+
+                broadband_pressure_field[ifreq, ...] = pressure
+                all_modes.append(Modes)
+
+            return broadband_pressure_field, field_pos, all_modes
+        finally:
+            os.chdir(original_cwd)
 
     # ------------------------------------------------------------------
     # Reading results ('.shd')

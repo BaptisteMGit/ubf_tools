@@ -215,7 +215,7 @@ REAL_MOD_PATH = os.path.join(FIXTURES_DIR, "real_kraken.mod")
 class TestRunkrakenBroadbandRangeDependentModesCollection(TempDirTestCase):
     def _build_range_dependent_env(self, env_filename):
         from propa.kraken_toolbox.src.kraken_env import (
-            KrakenEnv, KrakenMedium, Bathymetry,
+            KrakenEnv, KrakenMedium, KrakenField, Bathymetry,
         )
 
         bathy_path = os.path.join(self.tmp_dir, "bathy.csv")
@@ -223,9 +223,16 @@ class TestRunkrakenBroadbandRangeDependentModesCollection(TempDirTestCase):
             f.write("0,100\n5,150\n")
         bathy = Bathymetry(bathy_path, units="km")
         medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        # NOTE: rcv_z_max is set comfortably beyond the default buffered
+        # bottom's sedim_layer_max_depth -- see
+        # KrakenEnv.write_range_dependent_lines's docstring for why
+        # FIELD.exe requires this for a coupled-mode, buffered-bottom,
+        # range-dependent run. Unrelated to what this test actually
+        # checks; just needed for write_env() to succeed.
+        field = KrakenField(rcv_z_max=2000.0)
         env = KrakenEnv(
             title="t", env_root=self.tmp_dir, env_filename=env_filename,
-            freq=[10.0, 20.0], kraken_medium=medium, kraken_bathy=bathy,
+            freq=[10.0, 20.0], kraken_medium=medium, kraken_bathy=bathy, kraken_field=field,
         )
         env.write_env()
         return env
@@ -281,6 +288,50 @@ class TestRunkrakenBroadbandRangeDependentModesCollection(TempDirTestCase):
         for Modes in all_modes:
             self.assertIn("phi", Modes)
             self.assertGreater(Modes["M"], 0)
+
+    def test_restores_the_original_working_directory(self):
+        # NOTE: regression test for the fixed bug -- os.chdir(env.root)
+        # used to never be restored, leaking a global process-wide side
+        # effect past the end of this call. Confirmed to break OTHER,
+        # unrelated code afterwards: a test that deletes its own temp
+        # directory in tearDown() after this method chdir'd into it left
+        # the process's cwd pointing at a now-deleted directory,
+        # breaking any later relative-path filesystem operation
+        # (anywhere else in the same test run) with a confusing
+        # FileNotFoundError.
+        env_filename = "rdenv_cwd"
+        env = self._build_range_dependent_env(env_filename)
+
+        class DummyFlp:
+            def __init__(self, flp_fpath):
+                self.flp_fpath = flp_fpath
+
+            def write_flp(self):
+                with open(self.flp_fpath, "w") as f:
+                    f.write("dummy flp\n")
+
+        flp = DummyFlp(os.path.join(self.tmp_dir, f"{env_filename}.flp"))
+        fake_pressure = np.zeros((1, 1, 1, 1), dtype=complex)
+
+        def fake_run_field_exec(filename, *args, **kwargs):
+            # No real '.mod' needed here (readmodes is mocked below too).
+            open(os.path.join(os.getcwd(), f"{filename}.mod"), "w").close()
+
+        cwd_before = os.getcwd()
+        with mock.patch.object(KrakenManager, "run_kraken_exec"), \
+             mock.patch.object(KrakenManager, "run_field_exec", side_effect=fake_run_field_exec), \
+             mock.patch(
+                 "propa.kraken_toolbox.src.kraken_manager.readshd",
+                 return_value=(None, None, None, None, None, None, {}, fake_pressure),
+             ), \
+             mock.patch(
+                 "propa.kraken_toolbox.src.kraken_manager.readmodes",
+                 return_value={"M": 1, "phi": np.zeros((1, 1))},
+             ):
+            KrakenManager.runkraken_broadband_range_dependent(
+                env=env, flp=flp, frequencies=np.array([10.0, 20.0])
+            )
+        self.assertEqual(os.getcwd(), cwd_before)
 
 
 if __name__ == "__main__":

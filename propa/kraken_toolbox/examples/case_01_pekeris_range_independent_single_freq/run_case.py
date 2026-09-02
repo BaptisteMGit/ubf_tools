@@ -49,13 +49,13 @@ from propa.kraken_toolbox import plot_utils as pu
 HERE = os.path.dirname(os.path.abspath(__file__))
 ENV_FILENAME = "case_01_pekeris_ri_single_freq"
 RUN_KRAKEN = os.environ.get("KRAKEN_EXAMPLES_RUN_KRAKEN", "0") == "1"
-RUN_KRAKEN = True
+# RUN_KRAKEN = True
 # ----------------------------------------------------------------------
 # 1. Environment: Pekeris waveguide
 # ----------------------------------------------------------------------
-WATER_DEPTH = 100.0  # m
-FREQ = 100.0  # Hz
-SRC_DEPTH = 25.0  # m
+WATER_DEPTH = 5000.0  # m
+FREQ = 10.0  # Hz
+SRC_DEPTH = 500.0  # m
 
 medium = KrakenMedium(
     ssp_interpolation_method="C_linear",
@@ -67,17 +67,17 @@ medium = KrakenMedium(
 bottom_hs = KrakenBottomHalfspace(
     halfspace_properties={
         "z": WATER_DEPTH,
-        "c_p": 1700.0,
+        "c_p": 2000.0,
         "c_s": 0.0,  # fluid sediment: no shear waves
-        "rho": 1.5,
-        "a_p": 0.5,  # dB/wavelength
+        "rho": 2.0,
+        "a_p": 0.0,  # dB/wavelength
         "a_s": 0.0,
     },
     add_sediment_buffer_layer=False,  # direct half-space -> classic Pekeris model
 )
 
 field = KrakenField(
-    phase_speed_limits=[0, 2000],
+    phase_speed_limits=[0, 2000],  # With clim_max = cmax we only get propagative modes
     src_depth=SRC_DEPTH,
     n_rcv_z=201,
     rcv_z_min=0.0,
@@ -111,7 +111,9 @@ flp = KrakenFlp(
     rcv_z_max=WATER_DEPTH,
     n_rcv_r=501,
     rcv_r_min=0.0,
-    rcv_r_max=5.0,
+    rcv_r_max=200.0,
+    # rcv_r_min=200.0,
+    # rcv_r_max=220.0,
 )
 flp.write_flp()
 print(f"Wrote {flp.flp_fpath}")
@@ -151,9 +153,10 @@ if __name__ == "__main__":
             shd_fpath,
             freq=FREQ,
             rcv_depth=SRC_DEPTH,
+            # rcv_depth=2500,
             units="km",
-            spherical_loss=True,
-            cylindrical_loss=True,
+            show_spherical_loss=True,
+            show_cylindrical_loss=True,
         )
         fig3.savefig(os.path.join(HERE, "tl_profile_at_source_depth.png"))
         plt.close(fig3)

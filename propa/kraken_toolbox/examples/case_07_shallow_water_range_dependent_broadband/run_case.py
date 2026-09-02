@@ -29,7 +29,17 @@ each profile's own local depth, so every profile ends up tabulated
 deep enough regardless of where the true deepest point falls along the
 range -- see KrakenEnv.write_range_dependent_lines's docstring for the
 full explanation, and KrakenBottomHalfspace's docstring for the buffer
-mechanism itself.
+mechanism itself. FIELD.exe also requires the receiver depth grid
+KRAKEN.EXE TABULATES MODES ONTO (KrakenField's own 'rcv_z_max', left at
+MAX_WATER_DEPTH=120 m below) to reach the bottom of that buffer
+sediment layer -- KrakenEnv.write_env() now extends it there
+automatically (with a printed note), so no extra step is needed here
+beyond using a buffer sediment layer in the first place. This is
+entirely separate from KrakenFlp's own 'rcv_z_max' below (the '.flp'
+file's PRESSURE-FIELD OUTPUT grid, where FIELD.exe reports pressure to
+the user), which is left untouched at 120 m -- there is no need to
+compute pressure any deeper than the water column itself just because
+the sediment tabulation goes deeper.
 
 Environment:
     - Water column: depth-varying SSP (same shape as Cases 5/6),
@@ -50,7 +60,6 @@ environment variable (and make sure kraken.exe/field.exe are reachable)
 to also run the simulation and produce the mode-shape/TL figures -- or
 run every case at once with examples/run_all_cases.py.
 """
-
 import os
 
 import numpy as np
@@ -72,34 +81,24 @@ BATHY_CSV = os.path.join(HERE, "bathy.csv")  # range_km, depth_m
 ENV_FILENAME = "case_07_shallow_rd_broadband"
 RUN_KRAKEN = os.environ.get("KRAKEN_EXAMPLES_RUN_KRAKEN", "0") == "1"
 PARALLEL = os.environ.get("KRAKEN_EXAMPLES_PARALLEL", "0") == "1"
-RUN_KRAKEN = True
 
 # ----------------------------------------------------------------------
 # 1. Environment: shallow water, realistic SSP + realistic bathymetry
 # ----------------------------------------------------------------------
-MAX_WATER_DEPTH = 200.0  # m, deepest point of the bathymetry
+MAX_WATER_DEPTH = 120.0  # m, deepest point of the bathymetry
 FREQS = np.array([100.0, 200.0, 300.0])  # Hz
 SRC_DEPTH = 20.0  # m
 MAX_RANGE_KM = 15.0
 
 # Same shape as Cases 5/6, extended to 120 m for the deepest profile.
-SSP_Z = np.array([0.0, 10.0, 20.0, 30.0, 40.0, 60.0, 80.0, 100.0, 200.0])
-SSP_CP = np.array(
-    [1520.0, 1518.0, 1512.0, 1498.0, 1490.0, 1487.0, 1486.0, 1485.0, 1484.0]
-)
+SSP_Z = np.array([0.0, 10.0, 20.0, 30.0, 40.0, 60.0, 80.0, 100.0, 120.0])
+SSP_CP = np.array([1520.0, 1518.0, 1512.0, 1498.0, 1490.0, 1487.0, 1486.0, 1485.0, 1484.0])
 
-medium = KrakenMedium(
-    ssp_interpolation_method="C_linear", z_ssp=SSP_Z, c_p=SSP_CP, rho=1.0
-)
+medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=SSP_Z, c_p=SSP_CP, rho=1.0)
 
 bottom_hs = KrakenBottomHalfspace(
     halfspace_properties={
-        "z": 0,
-        "c_p": 1650.0,
-        "c_s": 0.0,
-        "rho": 1.8,
-        "a_p": 0.8,
-        "a_s": 0.0,
+        "z": 0, "c_p": 1650.0, "c_s": 0.0, "rho": 1.8, "a_p": 0.8, "a_s": 0.0,
     },
     # NOTE (bug fixed): this bathymetry's deepest point is NOT at r=0
     # (100 m there vs. 120 m at r=15 km) -- with a DIRECT half-space
@@ -129,7 +128,7 @@ field = KrakenField(
     src_depth=SRC_DEPTH,
     n_rcv_z=201,
     rcv_z_min=0.0,
-    rcv_z_max=400,
+    rcv_z_max=MAX_WATER_DEPTH,
     rcv_r_max=0.0,
 )
 
@@ -148,11 +147,17 @@ assert env.nmedia == 2  # water + buffer sediment layer (see bottom_hs above)
 assert env.bathy.use_bathy
 assert env.broadband_run
 env.write_env()
+# NOTE: write_env() auto-extends env.field.rcv_z_max (originally
+# MAX_WATER_DEPTH=120 m above) to reach the bottom of the buffer
+# sediment layer -- FIELD.exe requires this to compute the coupled-mode
+# coupling coefficients (see KrakenEnv.write_range_dependent_lines's
+# docstring). This does NOT affect KrakenFlp below: its own rcv_z_max
+# (the '.flp' file's pressure-field OUTPUT grid) is independent, and
+# stays at whatever the caller sets it to -- see KrakenFlp's own
+# rcv_z_max below, left at MAX_WATER_DEPTH.
 assert env.range_dependent_env
-print(
-    f"Wrote {env.env_fpath} (nmedia={env.nmedia}, {env.modes_range.size} profiles, "
-    f"{env.freq.size} frequencies)"
-)
+print(f"Wrote {env.env_fpath} (nmedia={env.nmedia}, {env.modes_range.size} profiles, "
+      f"{env.freq.size} frequencies, receivers to {env.field.rcv_depth_max:.0f} m)")
 
 flp = KrakenFlp(
     env=env,
@@ -176,9 +181,7 @@ print(f"Wrote {flp.flp_fpath}")
 # ----------------------------------------------------------------------
 if RUN_KRAKEN:
     manager = KrakenManager(verbose=True, parallel=PARALLEL)
-    pressure_field, field_pos = manager.runkraken(
-        env=env, flp=flp, frequencies=env.freq
-    )
+    pressure_field, field_pos = manager.runkraken(env=env, flp=flp, frequencies=env.freq)
     print("KRAKEN/FIELD run completed.")
 
 
@@ -204,23 +207,14 @@ if __name__ == "__main__":
         # manager.last_modes (mode shapes) and pressure_field/field_pos
         # (already returned by runkraken() above, aggregated across
         # every frequency).
-        fig1 = pu.plotmode_from_data(
-            manager.last_modes, freq=FREQS, bathy_depth=bathy.bathy_depth[0]
-        )
+        fig1 = pu.plotmode_from_data(manager.last_modes, freq=FREQS, bathy_depth=bathy.bathy_depth[0])
         fig1.savefig(os.path.join(HERE, "mode_shapes_all_frequencies.png"))
         plt.close(fig1)
 
         ref_freq_idx = int(np.argmin(np.abs(FREQS - ref_freq)))
         fig2 = pu.plotshd_from_pressure_field(
-            None,
-            pressure_field=pressure_field[ref_freq_idx],
-            freq=ref_freq,
-            pos=field_pos,
-            base_title=env.simulation_title,
-            units="km",
-            bathy=bathy,
-            tl_min=50,
-            tl_max=110,
+            None, pressure_field=pressure_field[ref_freq_idx], freq=ref_freq,
+            pos=field_pos, base_title=env.simulation_title, units="km", bathy=bathy,
         )
         fig2.savefig(os.path.join(HERE, f"transmission_loss_{ref_freq:.0f}Hz.png"))
         plt.close(fig2)

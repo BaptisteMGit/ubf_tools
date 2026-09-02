@@ -476,6 +476,91 @@ class TestPlotTlProfile(unittest.TestCase):
         ax = fig.axes[0]
         self.assertEqual(len(ax.lines), 3)
 
+    # ------------------------------------------------------------------
+    # New: optional spherical/cylindrical spreading-loss reference curves
+    # ------------------------------------------------------------------
+    def test_no_reference_curves_by_default(self):
+        fig = pu.plot_tl_profile(SHD_PATH, freq=30, rcv_depth=0.0, units="km")
+        self.assertEqual(len(fig.axes[0].lines), 1)
+
+    def test_spherical_loss_reference_curve(self):
+        fig = pu.plot_tl_profile(
+            SHD_PATH, freq=30, rcv_depth=0.0, units="km", show_spherical_loss=True,
+        )
+        ax = fig.axes[0]
+        self.assertEqual(len(ax.lines), 2)
+        labels = [ln.get_label() for ln in ax.lines]
+        self.assertTrue(any("Spherical" in lab for lab in labels))
+
+    def test_cylindrical_loss_reference_curve(self):
+        fig = pu.plot_tl_profile(
+            SHD_PATH, freq=30, rcv_depth=0.0, units="km", show_cylindrical_loss=True,
+        )
+        ax = fig.axes[0]
+        self.assertEqual(len(ax.lines), 2)
+        labels = [ln.get_label() for ln in ax.lines]
+        self.assertTrue(any("Cylindrical" in lab for lab in labels))
+
+    def test_both_reference_curves_together(self):
+        fig = pu.plot_tl_profile(
+            SHD_PATH, freq=30, rcv_depth=0.0, units="km",
+            show_spherical_loss=True, show_cylindrical_loss=True,
+        )
+        self.assertEqual(len(fig.axes[0].lines), 3)
+
+    def test_spherical_curve_matches_20log10r_formula(self):
+        fig = pu.plot_tl_profile(
+            SHD_PATH, freq=30, rcv_depth=0.0, units="m", show_spherical_loss=True,
+        )
+        ax = fig.axes[0]
+        ref_line = next(ln for ln in ax.lines if "Spherical" in ln.get_label())
+        r = ref_line.get_xdata()
+        tl = ref_line.get_ydata()
+        # skip r=0 (deliberately left as a gap, not 20*log10(0)=-inf)
+        nonzero = r > 0
+        np.testing.assert_allclose(tl[nonzero], 20 * np.log10(r[nonzero]))
+
+    def test_cylindrical_curve_matches_10log10r_formula(self):
+        fig = pu.plot_tl_profile(
+            SHD_PATH, freq=30, rcv_depth=0.0, units="m", show_cylindrical_loss=True,
+        )
+        ax = fig.axes[0]
+        ref_line = next(ln for ln in ax.lines if "Cylindrical" in ln.get_label())
+        r = ref_line.get_xdata()
+        tl = ref_line.get_ydata()
+        nonzero = r > 0
+        np.testing.assert_allclose(tl[nonzero], 10 * np.log10(r[nonzero]))
+
+    def test_reference_curve_uses_meters_regardless_of_display_units(self):
+        # The formula is always 20/10*log10(r_METERS), even when the
+        # x-axis itself is displayed in km.
+        fig_km = pu.plot_tl_profile(
+            SHD_PATH, freq=30, rcv_depth=0.0, units="km", show_spherical_loss=True,
+        )
+        ax = fig_km.axes[0]
+        ref_line = next(ln for ln in ax.lines if "Spherical" in ln.get_label())
+        r_km = ref_line.get_xdata()
+        tl_km_axis = ref_line.get_ydata()
+        nonzero = r_km > 0
+        np.testing.assert_allclose(tl_km_axis[nonzero], 20 * np.log10(r_km[nonzero] * 1000.0))
+
+    def test_reference_curves_on_multi_freq_variant(self):
+        fig = pu.plot_tl_profile_multi_freq(
+            SHD_PATH, freqs=[10, 20], rcv_depth=0.0, units="km",
+            show_spherical_loss=True, show_cylindrical_loss=True,
+        )
+        # 2 frequency curves + 2 reference curves
+        self.assertEqual(len(fig.axes[0].lines), 4)
+
+    def test_reference_curves_on_multi_freq_from_data_variant(self):
+        field_pos = {"r": {"r": np.linspace(0, 10000, 10), "z": np.linspace(0, 100, 21)}}
+        pressure_field = (np.random.rand(2, 21, 10) + 1j * np.random.rand(2, 21, 10)) * 1e-3
+        fig = pu.plot_tl_profile_multi_freq_from_data(
+            pressure_field, [10.0, 20.0], field_pos, rcv_depth=0.0, units="km",
+            show_spherical_loss=True, show_cylindrical_loss=True,
+        )
+        self.assertEqual(len(fig.axes[0].lines), 4)
+
     def test_units_km_is_smaller_than_units_m(self):
         # Sanity check tying this module's TL-profile helpers to the
         # m/km fix already validated in read_shd.py / test_read_shd.py.

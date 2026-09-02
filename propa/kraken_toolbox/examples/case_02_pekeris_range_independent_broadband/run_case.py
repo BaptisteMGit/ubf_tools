@@ -141,8 +141,8 @@ if __name__ == "__main__":
             freq=FREQS[-1],
             rcv_depth=SRC_DEPTH,
             units="km",
-            spherical_loss=True,
-            cylindrical_loss=True,
+            # spherical_loss=True,
+            # cylindrical_loss=True,
         )
         fig3.savefig(os.path.join(HERE, "tl_profile_at_source_depth_fmax.png"))
         plt.close(fig3)

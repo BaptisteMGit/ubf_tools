@@ -421,6 +421,13 @@ class TestKrakenEnvRangeDependent(TempDirTestCase):
         _make_bathy_csv(bathy_path, [(0, 100), (5, 150), (10, 200)])
         bathy = Bathymetry(data_file=bathy_path, units="km")
         medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        # NOTE: rcv_z_max is set comfortably beyond the default buffered
+        # bottom's sedim_layer_max_depth (~1700 m here, with the default
+        # fmin=10 Hz) -- see KrakenEnv.write_range_dependent_lines's
+        # docstring for why FIELD.exe requires this for a coupled-mode,
+        # buffered-bottom, range-dependent run. Unrelated to what these
+        # tests actually check; just needed for write_env() to succeed.
+        field = KrakenField(rcv_z_max=2000.0)
         return KrakenEnv(
             title="range dependent test",
             env_root=self.tmp_dir,
@@ -428,6 +435,7 @@ class TestKrakenEnvRangeDependent(TempDirTestCase):
             freq=50.0,
             kraken_medium=medium,
             kraken_bathy=bathy,
+            kraken_field=field,
         )
 
     def test_modes_range_sorted_and_includes_zero(self):
@@ -607,6 +615,82 @@ class TestKrakenEnvRangeDependent(TempDirTestCase):
         # (120 m), not just the first profile's own local depth (100 m).
         self.assertGreater(bottom_hs.sedim_layer_max_depth, 120.0)
 
+    # ------------------------------------------------------------------
+    # Regression tests for the fixed "receivers must reach the bottom
+    # of medium 2" bug.
+    #
+    # Root cause: FIELD.exe requires the receiver depth grid (both the
+    # one written into each profile block of the '.env', via
+    # KrakenField, and the one in the '.flp', via KrakenFlp) to extend
+    # all the way down to the bottom of the buffer sediment layer when
+    # one is used, or it fails with "Fatal Error: modes must be
+    # tabulated throughout the ocean and sediment to compute the
+    # coupling coefs." Confirmed with a real KRAKEN/FIELD run and its
+    # field.prt output, which cites the exact mismatched depths.
+    # ------------------------------------------------------------------
+    def _build_buffered_env(self, rcv_z_max):
+        bathy_path = os.path.join(self.tmp_dir, "bathy_buffered.csv")
+        _make_bathy_csv(bathy_path, [(0, 100), (5, 80), (10, 110), (15, 120)])
+        bathy = Bathymetry(data_file=bathy_path, units="km")
+        medium = KrakenMedium(z_ssp=[0, 120], c_p=[1500, 1500])
+        bottom_hs = KrakenBottomHalfspace(
+            halfspace_properties={"z": 0, "c_p": 1650.0, "c_s": 0.0, "rho": 1.8, "a_p": 0.8, "a_s": 0.0},
+            add_sediment_buffer_layer=True,
+            fmin=100.0,  # -> sedim_layer_max_depth = 300.0 m (120 + 150, rounded)
+        )
+        field = KrakenField(rcv_z_max=rcv_z_max)
+        env = KrakenEnv(
+            title="buffered rcv depth test", env_root=self.tmp_dir, env_filename="rcvdepth",
+            freq=300.0, kraken_medium=medium, kraken_bottom_hs=bottom_hs, kraken_bathy=bathy,
+            kraken_field=field,
+        )
+        return env, bottom_hs
+
+    def test_env_write_auto_extends_receivers_to_sediment_bottom(self):
+        # NOTE: behaviour changed from "raise ValueError" to "auto-fix"
+        # -- see KrakenEnv.write_range_dependent_lines's docstring/NOTE.
+        env, bottom_hs = self._build_buffered_env(rcv_z_max=120.0)  # water depth only
+        env.write_env()  # must NOT raise -- auto-extended instead
+        self.assertEqual(env.field.rcv_depth_max, bottom_hs.sedim_layer_max_depth)
+        with open(env.env_fpath) as f:
+            content = f.read()
+        self.assertIn(f"0.0 {bottom_hs.sedim_layer_max_depth:.1f}", content)
+
+    def test_env_write_leaves_sufficient_rcv_z_max_untouched(self):
+        env, bottom_hs = self._build_buffered_env(rcv_z_max=300.0)
+        env.write_env()  # must not raise
+        self.assertEqual(env.field.rcv_depth_max, 300.0)
+
+    def test_flp_never_touches_rcv_z_max(self):
+        # NOTE: regression test for a CORRECTION to an earlier version
+        # of this fix, which used to also auto-extend KrakenFlp's own
+        # 'rcv_z_max' (mirroring KrakenEnv's). Confirmed against a real
+        # KRAKEN/FIELD run that this was an overreach: the '.flp' file's
+        # receiver depth grid is the PRESSURE-FIELD OUTPUT grid (where
+        # FIELD.exe reports pressure), entirely independent of the
+        # '.env' file's mode-tabulation depth that the coupling-
+        # coefficient computation actually needs -- the user is free to
+        # request pressure at a single, shallow (r, z) point regardless
+        # of how deep the sediment buffer extends. KrakenFlp must leave
+        # 'rcv_z_max' exactly as given, in every case.
+        env, bottom_hs = self._build_buffered_env(rcv_z_max=300.0)
+        env.write_env()
+        for theory in ("coupled", "adiabatic"):
+            flp = KrakenFlp(env=env, src_depth=20.0, mode_theory=theory, rcv_z_max=120.0)
+            self.assertEqual(flp.rcv_z_max, 120.0)
+
+    def test_flp_never_touches_rcv_z_max_even_at_a_single_shallow_point(self):
+        # The extreme case explicitly called out above: a single,
+        # shallow receiver depth, far shallower than the sediment
+        # buffer -- must be accepted as-is.
+        env, bottom_hs = self._build_buffered_env(rcv_z_max=300.0)
+        env.write_env()
+        flp = KrakenFlp(
+            env=env, src_depth=20.0, mode_theory="coupled",
+            rcv_z_min=10.0, rcv_z_max=10.0, n_rcv_z=1,
+        )
+        self.assertEqual(flp.rcv_z_max, 10.0)
+
     def test_flat_bottom_never_triggers_the_check(self):
         # No bathymetry at all (flat bottom, range-independent by
         # definition) -> self.bathy.use_bathy is False -> the new check
@@ -670,12 +754,13 @@ class TestKrakenFlp(TempDirTestCase):
         _make_bathy_csv(bathy_path, [(0, 100), (5, 150), (10, 200)])
         bathy = Bathymetry(data_file=bathy_path, units="km")
         medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        field = KrakenField(rcv_z_max=2000.0)  # see TestKrakenEnvRangeDependent._build_env
         env = KrakenEnv(
             title="rd", env_root=self.tmp_dir, env_filename="rdflp",
-            freq=50.0, kraken_medium=medium, kraken_bathy=bathy,
+            freq=50.0, kraken_medium=medium, kraken_bathy=bathy, kraken_field=field,
         )
         env.write_env()
-        flp = KrakenFlp(env=env, src_depth=50)
+        flp = KrakenFlp(env=env, src_depth=50, rcv_z_max=2000.0)
         self.assertEqual(flp.n_profiles, 3)
 
     def test_write_flp_creates_file(self):
@@ -686,6 +771,95 @@ class TestKrakenFlp(TempDirTestCase):
         with open(flp.flp_fpath) as f:
             content = f.read()
         self.assertIn("flp test", content)
+
+
+# ======================================================================
+# plot_env / plot_medium / plot_bottom_halfspace -- sediment gradient fix
+# ======================================================================
+class TestPlotEnvSedimentGradient(unittest.TestCase):
+    def tearDown(self):
+        import matplotlib.pyplot as plt
+        plt.close("all")
+
+    def _build_env_with_gradient(self):
+        medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        bottom_hs = KrakenBottomHalfspace(
+            halfspace_properties={"c_p": 1800.0, "c_s": 0.0, "rho": 1.9, "a_p": 0.3, "a_s": 0.0},
+            sediment_top_properties={"c_p": 1600.0, "c_s": 0.0, "rho": 1.5, "a_p": 0.8, "a_s": 0.0},
+            fmin=100.0, alpha_wavelength=10,
+        )
+        env = KrakenEnv(
+            title="gradient test", env_root="/tmp", env_filename="gradient_plot_test",
+            freq=100.0, kraken_medium=medium, kraken_bottom_hs=bottom_hs,
+        )
+        return env, bottom_hs
+
+    def test_plot_env_reflects_sediment_gradient(self):
+        # NOTE: regression test for the fixed bug -- plot_env() used to
+        # broadcast the SAME terminal halfspace value (cp_bot_halfspace)
+        # to both ends of the sediment layer, always drawing a flat
+        # (isovelocity) bottom even when a genuine gradient was
+        # configured via 'sediment_top_properties' -- which the '.env'
+        # file itself already wrote correctly. The plotted celerity
+        # curve's two bottom points must now show the actual top/bottom
+        # values (1600 -> 1800), not the same value twice.
+        env, bottom_hs = self._build_env_with_gradient()
+        fig = env.plot_env()
+        cwave_line = next(ln for ln in fig.axes[0].get_lines() if ln.get_label() == "C-wave")
+        cp_values = cwave_line.get_xdata()
+        # Last two points are the sediment layer's top and bottom.
+        self.assertAlmostEqual(cp_values[-2], 1600.0)
+        self.assertAlmostEqual(cp_values[-1], 1800.0)
+
+    def test_plot_env_density_reflects_sediment_gradient(self):
+        env, bottom_hs = self._build_env_with_gradient()
+        fig = env.plot_env()
+        rho_line = fig.axes[2].get_lines()[0]
+        rho_values = rho_line.get_xdata()
+        self.assertAlmostEqual(rho_values[-2], 1.5)
+        self.assertAlmostEqual(rho_values[-1], 1.9)
+
+    def test_plot_env_flat_bottom_when_no_gradient_configured(self):
+        # No regression for the common (non-gradient) case: both ends
+        # of the sediment layer must still show the SAME value.
+        medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        bottom_hs = KrakenBottomHalfspace(
+            halfspace_properties={"c_p": 1650.0, "c_s": 0.0, "rho": 1.8, "a_p": 0.8, "a_s": 0.0},
+        )
+        env = KrakenEnv(
+            title="flat test", env_root="/tmp", env_filename="flat_plot_test",
+            freq=100.0, kraken_medium=medium, kraken_bottom_hs=bottom_hs,
+        )
+        fig = env.plot_env()
+        cwave_line = next(ln for ln in fig.axes[0].get_lines() if ln.get_label() == "C-wave")
+        cp_values = cwave_line.get_xdata()
+        self.assertAlmostEqual(cp_values[-2], cp_values[-1])
+
+    def test_plot_env_direct_halfspace_still_flat(self):
+        # The genuinely semi-infinite, no-buffer case (see
+        # KrakenBottomHalfspace's docstring) has no real gradient
+        # concept -- must still render as a flat symbolic extension.
+        medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        bottom_hs = KrakenBottomHalfspace(
+            halfspace_properties={"z": 0, "c_p": 1700.0, "c_s": 0.0, "rho": 1.5, "a_p": 0.5, "a_s": 0.0},
+            add_sediment_buffer_layer=False,
+        )
+        env = KrakenEnv(
+            title="direct test", env_root="/tmp", env_filename="direct_plot_test",
+            freq=100.0, kraken_medium=medium, kraken_bottom_hs=bottom_hs,
+        )
+        fig = env.plot_env()  # must not raise
+        cwave_line = next(ln for ln in fig.axes[0].get_lines() if ln.get_label() == "C-wave")
+        cp_values = cwave_line.get_xdata()
+        self.assertAlmostEqual(cp_values[-2], cp_values[-1])
+
+    def test_plot_bottom_halfspace_reflects_sediment_gradient(self):
+        _, bottom_hs = self._build_env_with_gradient()
+        fig = bottom_hs.plot_bottom_halfspace()
+        cwave_line = next(ln for ln in fig.axes[0].get_lines() if ln.get_label() == "C-wave")
+        cp_values = cwave_line.get_xdata()
+        self.assertAlmostEqual(cp_values[0], 1600.0)
+        self.assertAlmostEqual(cp_values[1], 1800.0)
 
 
 if __name__ == "__main__":

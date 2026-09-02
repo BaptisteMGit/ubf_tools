@@ -204,5 +204,84 @@ class TestReadshdDelegation(unittest.TestCase):
         self.assertIs(result, sentinel)
 
 
+FIXTURES_DIR = os.path.join(os.path.dirname(__file__), "fixtures")
+REAL_MOD_PATH = os.path.join(FIXTURES_DIR, "real_kraken.mod")
+
+
+# ======================================================================
+# runkraken_broadband_range_dependent -- per-frequency mode collection
+# ======================================================================
+@unittest.skipUnless(os.path.exists(REAL_MOD_PATH), "real_kraken.mod fixture not present")
+class TestRunkrakenBroadbandRangeDependentModesCollection(TempDirTestCase):
+    def _build_range_dependent_env(self, env_filename):
+        from propa.kraken_toolbox.src.kraken_env import (
+            KrakenEnv, KrakenMedium, Bathymetry,
+        )
+
+        bathy_path = os.path.join(self.tmp_dir, "bathy.csv")
+        with open(bathy_path, "w") as f:
+            f.write("0,100\n5,150\n")
+        bathy = Bathymetry(bathy_path, units="km")
+        medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        env = KrakenEnv(
+            title="t", env_root=self.tmp_dir, env_filename=env_filename,
+            freq=[10.0, 20.0], kraken_medium=medium, kraken_bathy=bathy,
+        )
+        env.write_env()
+        return env
+
+    def test_modes_are_collected_per_frequency_before_being_overwritten(self):
+        # NOTE: regression test for the fixed bug -- each frequency's
+        # '.mod' file used to be silently overwritten by the next
+        # iteration, with no attempt to read it in the meantime: a
+        # caller reading the '.mod' file AFTER this loop only ever saw
+        # the last frequency's modes (or hit a FileNotFoundError,
+        # since the file that does exist afterwards sits in a
+        # different, per-worker subdirectory than a naive caller would
+        # expect). readmodes() must now be called once per frequency,
+        # INSIDE the loop, right after that frequency's '.mod' file is
+        # written, with the results collected in order.
+        env_filename = "rdenv"
+        env = self._build_range_dependent_env(env_filename)
+
+        class DummyFlp:
+            def __init__(self, flp_fpath):
+                self.flp_fpath = flp_fpath
+
+            def write_flp(self):
+                with open(self.flp_fpath, "w") as f:
+                    f.write("dummy flp\n")
+
+        flp = DummyFlp(os.path.join(self.tmp_dir, f"{env_filename}.flp"))
+        frequencies = np.array([10.0, 20.0])
+
+        # Every frequency's KRAKEN/FIELD run is faked: run_kraken_exec is
+        # a no-op, and run_field_exec copies the SAME real fixture
+        # '.mod' file into place under the CURRENT working filename --
+        # exactly mimicking each iteration overwriting the same on-disk
+        # filename with (what would be) new content.
+        def fake_run_field_exec(filename, *args, **kwargs):
+            shutil.copyfile(REAL_MOD_PATH, os.path.join(os.getcwd(), f"{filename}.mod"))
+
+        fake_pressure = np.zeros((1, 1, 1, 1), dtype=complex)
+
+        with mock.patch.object(KrakenManager, "run_kraken_exec"), \
+             mock.patch.object(KrakenManager, "run_field_exec", side_effect=fake_run_field_exec), \
+             mock.patch(
+                 "propa.kraken_toolbox.src.kraken_manager.readshd",
+                 return_value=(None, None, None, None, None, None, {}, fake_pressure),
+             ):
+            pressure, field_pos, all_modes = KrakenManager.runkraken_broadband_range_dependent(
+                env=env, flp=flp, frequencies=frequencies
+            )
+
+        # One real (not mocked) readmodes() result per frequency,
+        # collected before the next iteration overwrote the file.
+        self.assertEqual(len(all_modes), 2)
+        for Modes in all_modes:
+            self.assertIn("phi", Modes)
+            self.assertGreater(Modes["M"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

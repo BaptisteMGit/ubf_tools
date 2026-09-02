@@ -160,6 +160,10 @@ class TestRunkrakenBroadbandRangeDependent(TempDirTestCase):
                  mock.patch.object(
                      run_kraken, "readshd",
                      return_value=(None, None, None, None, None, None, {}, np.zeros((1, 1, 1, 1))),
+                 ), \
+                 mock.patch.object(
+                     run_kraken, "readmodes",
+                     return_value={"M": 0, "z": np.array([]), "phi": np.zeros((0, 0))},
                  ):
                 run_kraken.runkraken_broadband_range_dependent(
                     env=env, flp=flp, frequencies=np.array([10.0, 20.0])
@@ -168,6 +172,55 @@ class TestRunkrakenBroadbandRangeDependent(TempDirTestCase):
         # One reconstruction per frequency, all must carry nmedia=2
         self.assertEqual(len(seen_nmedia), 2)
         self.assertTrue(all(n == 2 for n in seen_nmedia))
+
+    def test_modes_are_collected_per_frequency_before_being_overwritten(self):
+        # NOTE: regression test for the fixed bug -- mirrors
+        # test_kraken_manager.py's
+        # TestRunkrakenBroadbandRangeDependentModesCollection. Each
+        # frequency's '.mod' file used to be silently overwritten by
+        # the next iteration, with no attempt to read it in the
+        # meantime: a caller reading the '.mod' file AFTER this loop
+        # only ever saw the last frequency's modes (or hit a
+        # FileNotFoundError). readmodes() must now be called once per
+        # frequency, INSIDE the loop, with the results collected in
+        # order.
+        real_mod_path = os.path.join(
+            os.path.dirname(__file__), "fixtures", "real_kraken.mod"
+        )
+        if not os.path.exists(real_mod_path):
+            self.skipTest("real_kraken.mod fixture not present")
+
+        env = self._build_range_dependent_env(nmedia=2)
+
+        class DummyFlp:
+            def __init__(self, flp_fpath):
+                self.flp_fpath = flp_fpath
+
+            def write_flp(self):
+                with open(self.flp_fpath, "w") as f:
+                    f.write("dummy flp\n")
+
+        flp = DummyFlp(os.path.join(self.tmp_dir, "rdenv.flp"))
+
+        def fake_run_field_exec(filename, *args, **kwargs):
+            shutil.copyfile(real_mod_path, os.path.join(os.getcwd(), f"{filename}.mod"))
+
+        fake_pressure = np.zeros((1, 1, 1, 1), dtype=complex)
+
+        with mock.patch.object(run_kraken, "run_kraken_exec"), \
+             mock.patch.object(run_kraken, "run_field_exec", side_effect=fake_run_field_exec), \
+             mock.patch.object(
+                 run_kraken, "readshd",
+                 return_value=(None, None, None, None, None, None, {}, fake_pressure),
+             ):
+            pressure, field_pos, all_modes = run_kraken.runkraken_broadband_range_dependent(
+                env=env, flp=flp, frequencies=np.array([10.0, 20.0])
+            )
+
+        self.assertEqual(len(all_modes), 2)
+        for Modes in all_modes:
+            self.assertIn("phi", Modes)
+            self.assertGreater(Modes["M"], 0)
 
     def test_field_error_for_one_frequency_does_not_abort_the_loop(self):
         env = self._build_range_dependent_env(nmedia=2)
@@ -198,11 +251,12 @@ class TestRunkrakenBroadbandRangeDependent(TempDirTestCase):
                 # Must not raise: errors for individual frequencies are
                 # caught and logged, matching the original (bare-except)
                 # behaviour, just with a narrower exception type.
-                pressure, field_pos = run_kraken.runkraken_broadband_range_dependent(
+                pressure, field_pos, all_modes = run_kraken.runkraken_broadband_range_dependent(
                     env=env, flp=flp, frequencies=np.array([10.0, 20.0])
                 )
         self.assertIsNone(pressure)
         self.assertIsNone(field_pos)
+        self.assertEqual(all_modes, [])
 
 
 if __name__ == "__main__":

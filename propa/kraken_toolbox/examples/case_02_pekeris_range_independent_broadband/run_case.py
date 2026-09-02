@@ -22,6 +22,7 @@ environment variable (and make sure kraken.exe/field.exe are reachable)
 to also run the simulation and produce the mode-shape/TL figures -- or
 run every case at once with examples/run_all_cases.py.
 """
+
 import os
 
 import numpy as np
@@ -57,7 +58,12 @@ medium = KrakenMedium(
 
 bottom_hs = KrakenBottomHalfspace(
     halfspace_properties={
-        "z": WATER_DEPTH, "c_p": 1700.0, "c_s": 0.0, "rho": 1.5, "a_p": 0.5, "a_s": 0.0,
+        "z": WATER_DEPTH,
+        "c_p": 1700.0,
+        "c_s": 0.0,
+        "rho": 1.5,
+        "a_p": 0.5,
+        "a_s": 0.0,
     },
     add_sediment_buffer_layer=False,
 )
@@ -122,7 +128,7 @@ if __name__ == "__main__":
         shd_fpath = env.shd_fpath
         ref_freq = float(FREQS[0])
 
-        fig1 = pu.plotmode_several_freqs(mod_fpath, freq=FREQS)
+        fig1 = pu.plotmode(mod_fpath, freq=FREQS)
         fig1.savefig(os.path.join(HERE, "mode_shapes_all_frequencies.png"))
         plt.close(fig1)
 
@@ -130,9 +136,24 @@ if __name__ == "__main__":
         fig2.savefig(os.path.join(HERE, f"transmission_loss_{ref_freq:.0f}Hz.png"))
         plt.close(fig2)
 
-        fig3 = pu.plot_tl_profile_multi_freq(shd_fpath, freqs=FREQS, rcv_depth=SRC_DEPTH, units="km")
-        fig3.savefig(os.path.join(HERE, "tl_profiles_all_frequencies.png"))
+        fig3 = pu.plot_tl_profile(
+            shd_fpath,
+            freq=FREQS[-1],
+            rcv_depth=SRC_DEPTH,
+            units="km",
+            spherical_loss=True,
+            cylindrical_loss=True,
+        )
+        fig3.savefig(os.path.join(HERE, "tl_profile_at_source_depth_fmax.png"))
         plt.close(fig3)
+
+        fig4 = pu.plot_tl_profile_multi_freq(
+            shd_fpath, freqs=FREQS, rcv_depth=SRC_DEPTH, units="km"
+        )
+        fig4.savefig(
+            os.path.join(HERE, "tl_profiles_at_source_depth_all_frequencies.png")
+        )
+        plt.close(fig4)
 
         print("Figures saved.")
     else:

@@ -35,6 +35,7 @@ environment variable (and make sure kraken.exe/field.exe are reachable)
 to also run the simulation and produce the mode-shape/TL figures -- or
 run every case at once with examples/run_all_cases.py.
 """
+
 import os
 
 import matplotlib.pyplot as plt
@@ -59,7 +60,7 @@ RUN_KRAKEN = os.environ.get("KRAKEN_EXAMPLES_RUN_KRAKEN", "0") == "1"
 # 1. Environment: sloping-bottom Pekeris-type wedge
 # ----------------------------------------------------------------------
 MAX_WATER_DEPTH = 200.0  # m, at r=0 (see bathy.csv)
-FREQ = 25.0  # Hz
+FREQ = 50.0  # Hz
 SRC_DEPTH = 50.0  # m
 MAX_RANGE_KM = 10.0
 
@@ -72,7 +73,12 @@ medium = KrakenMedium(
 
 bottom_hs = KrakenBottomHalfspace(
     halfspace_properties={
-        "z": 0, "c_p": 1700.0, "c_s": 0.0, "rho": 1.5, "a_p": 0.5, "a_s": 0.0,
+        "z": 0,
+        "c_p": 1700.0,
+        "c_s": 0.0,
+        "rho": 1.5,
+        "a_p": 0.5,
+        "a_s": 0.0,
     },
     add_sediment_buffer_layer=False,
 )

@@ -530,6 +530,99 @@ class TestKrakenEnvRangeDependent(TempDirTestCase):
         # cp should be interpolated (constant profile here -> stays 1500)
         self.assertAlmostEqual(medium_at_5km.cp_ssp[-1], 1500.0)
 
+    # ------------------------------------------------------------------
+    # Regression tests for the fixed "deepest point not at r=0" bug.
+    #
+    # Root cause: with a DIRECT half-space bottom
+    # (add_sediment_buffer_layer=False), FIELD.exe crashes with a
+    # cryptic Fortran runtime error ('Non-existing record number') --
+    # or, depending on version, "Fatal Error: modes must be tabulated
+    # throughout the ocean and sediment to compute the coupling coefs."
+    # -- whenever the FIRST profile (r=0) is not the single deepest
+    # point along the whole bathymetry. Confirmed with a real
+    # KRAKEN/FIELD run (a failing and a working reproduction of the
+    # exact same environment, differing only in how deep the first
+    # profile's tabulation reaches). A buffer sediment layer
+    # (add_sediment_buffer_layer=True) avoids this entirely: its
+    # thickness is derived from the bathymetry's GLOBAL maximum depth
+    # (see __init__), not each profile's own local depth.
+    # ------------------------------------------------------------------
+    def test_direct_halfspace_raises_when_deepest_point_is_not_at_r0(self):
+        bathy_path = os.path.join(self.tmp_dir, "bathy_undulating.csv")
+        _make_bathy_csv(bathy_path, [(0, 100), (5, 80), (10, 110), (15, 120)])
+        bathy = Bathymetry(data_file=bathy_path, units="km")
+        medium = KrakenMedium(z_ssp=[0, 120], c_p=[1500, 1500])
+        bottom_hs = KrakenBottomHalfspace(
+            halfspace_properties={"z": 0, "c_p": 1650.0, "c_s": 0.0, "rho": 1.8, "a_p": 0.8, "a_s": 0.0},
+            add_sediment_buffer_layer=False,
+        )
+        env = KrakenEnv(
+            title="undulating", env_root=self.tmp_dir, env_filename="undulating",
+            freq=300.0, kraken_medium=medium, kraken_bottom_hs=bottom_hs, kraken_bathy=bathy,
+        )
+        with self.assertRaises(ValueError) as ctx:
+            env.write_env()
+        self.assertIn("deepest point at r=0", str(ctx.exception))
+        self.assertIn("add_sediment_buffer_layer=True", str(ctx.exception))
+
+    def test_direct_halfspace_does_not_raise_when_deepest_point_is_at_r0(self):
+        # Same shape of bathymetry as above, but monotonically
+        # decreasing (deepest point genuinely at r=0) -- matches this
+        # project's other range-dependent "wedge"-style examples, which
+        # never triggered this bug.
+        bathy_path = os.path.join(self.tmp_dir, "bathy_wedge.csv")
+        _make_bathy_csv(bathy_path, [(0, 200), (5, 200), (10, 50)])
+        bathy = Bathymetry(data_file=bathy_path, units="km")
+        medium = KrakenMedium(z_ssp=[0, 200], c_p=[1500, 1500])
+        bottom_hs = KrakenBottomHalfspace(
+            halfspace_properties={"z": 0, "c_p": 1700.0, "c_s": 0.0, "rho": 1.5, "a_p": 0.5, "a_s": 0.0},
+            add_sediment_buffer_layer=False,
+        )
+        env = KrakenEnv(
+            title="wedge", env_root=self.tmp_dir, env_filename="wedge",
+            freq=25.0, kraken_medium=medium, kraken_bottom_hs=bottom_hs, kraken_bathy=bathy,
+        )
+        env.write_env()  # must not raise
+
+    def test_buffered_bottom_does_not_raise_regardless_of_bathymetry_order(self):
+        # The exact bathymetry that raises above must NOT raise when a
+        # buffer sediment layer is used instead -- this is the
+        # documented fix.
+        bathy_path = os.path.join(self.tmp_dir, "bathy_undulating2.csv")
+        _make_bathy_csv(bathy_path, [(0, 100), (5, 80), (10, 110), (15, 120)])
+        bathy = Bathymetry(data_file=bathy_path, units="km")
+        medium = KrakenMedium(z_ssp=[0, 120], c_p=[1500, 1500])
+        bottom_hs = KrakenBottomHalfspace(
+            halfspace_properties={"z": 0, "c_p": 1650.0, "c_s": 0.0, "rho": 1.8, "a_p": 0.8, "a_s": 0.0},
+            add_sediment_buffer_layer=True,
+            fmin=100.0,
+        )
+        env = KrakenEnv(
+            title="undulating buffered", env_root=self.tmp_dir, env_filename="undulating_buffered",
+            freq=300.0, kraken_medium=medium, kraken_bottom_hs=bottom_hs, kraken_bathy=bathy,
+        )
+        env.write_env()  # must not raise
+
+        # And the resulting buffer must reach past the GLOBAL max depth
+        # (120 m), not just the first profile's own local depth (100 m).
+        self.assertGreater(bottom_hs.sedim_layer_max_depth, 120.0)
+
+    def test_flat_bottom_never_triggers_the_check(self):
+        # No bathymetry at all (flat bottom, range-independent by
+        # definition) -> self.bathy.use_bathy is False -> the new check
+        # must be a complete no-op, regardless of add_sediment_buffer_layer.
+        medium = KrakenMedium(z_ssp=[0, 100], c_p=[1500, 1500])
+        bottom_hs = KrakenBottomHalfspace(
+            halfspace_properties={"z": 0, "c_p": 1650.0, "c_s": 0.0, "rho": 1.8, "a_p": 0.8, "a_s": 0.0},
+            add_sediment_buffer_layer=False,
+        )
+        env = KrakenEnv(
+            title="flat", env_root=self.tmp_dir, env_filename="flat",
+            freq=100.0, kraken_medium=medium, kraken_bottom_hs=bottom_hs,
+        )
+        env.write_env()  # must not raise; also not range-dependent at all
+        self.assertFalse(env.range_dependent_env)
+
 
 # ======================================================================
 # KrakenFlp

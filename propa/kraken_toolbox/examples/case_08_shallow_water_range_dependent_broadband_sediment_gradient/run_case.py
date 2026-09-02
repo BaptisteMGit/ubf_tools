@@ -39,6 +39,7 @@ environment variable (and make sure kraken.exe/field.exe are reachable)
 to also run the simulation and produce the mode-shape/TL figures -- or
 run every case at once with examples/run_all_cases.py.
 """
+
 import os
 
 import numpy as np
@@ -70,19 +71,32 @@ SRC_DEPTH = 20.0  # m
 MAX_RANGE_KM = 15.0
 
 SSP_Z = np.array([0.0, 10.0, 20.0, 30.0, 40.0, 60.0, 80.0, 100.0, 120.0])
-SSP_CP = np.array([1520.0, 1518.0, 1512.0, 1498.0, 1490.0, 1487.0, 1486.0, 1485.0, 1484.0])
+SSP_CP = np.array(
+    [1520.0, 1518.0, 1512.0, 1498.0, 1490.0, 1487.0, 1486.0, 1485.0, 1484.0]
+)
 
-medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=SSP_Z, c_p=SSP_CP, rho=1.0)
+medium = KrakenMedium(
+    ssp_interpolation_method="C_linear", z_ssp=SSP_Z, c_p=SSP_CP, rho=1.0
+)
 
 # Sediment gradient: soft/slow/attenuative at the top, hard/fast/less
 # attenuative near the basement -- a standard, simplified geoacoustic
 # compaction model.
 bottom_hs = KrakenBottomHalfspace(
     halfspace_properties={  # bottom of the sediment layer / basement
-        "z": 0, "c_p": 1800.0, "c_s": 0.0, "rho": 1.9, "a_p": 0.3, "a_s": 0.0,
+        "z": 0,
+        "c_p": 1800.0,
+        "c_s": 0.0,
+        "rho": 1.9,
+        "a_p": 0.3,
+        "a_s": 0.0,
     },
     sediment_top_properties={  # top of the sediment layer, just below the seafloor
-        "c_p": 1600.0, "c_s": 0.0, "rho": 1.5, "a_p": 0.8, "a_s": 0.0,
+        "c_p": 1600.0,
+        "c_s": 0.0,
+        "rho": 1.5,
+        "a_p": 0.8,
+        "a_s": 0.0,
     },
     add_sediment_buffer_layer=True,  # needed to have a sediment layer at all
     fmin=100.0,  # sizes the sediment layer thickness (10 wavelengths at 100 Hz)
@@ -96,7 +110,7 @@ field = KrakenField(
     src_depth=SRC_DEPTH,
     n_rcv_z=201,
     rcv_z_min=0.0,
-    rcv_z_max=MAX_WATER_DEPTH,
+    rcv_z_max=300,
     rcv_r_max=0.0,
 )
 
@@ -116,9 +130,11 @@ assert env.bathy.use_bathy
 assert env.broadband_run
 env.write_env()
 assert env.range_dependent_env
-print(f"Wrote {env.env_fpath} (nmedia={env.nmedia}, {env.modes_range.size} profiles, "
-      f"{env.freq.size} frequencies, sediment thickness = "
-      f"{bottom_hs.sedim_layer_depth:.1f} m)")
+print(
+    f"Wrote {env.env_fpath} (nmedia={env.nmedia}, {env.modes_range.size} profiles, "
+    f"{env.freq.size} frequencies, sediment thickness = "
+    f"{bottom_hs.sedim_layer_depth:.1f} m)"
+)
 
 flp = KrakenFlp(
     env=env,
@@ -142,7 +158,9 @@ print(f"Wrote {flp.flp_fpath}")
 # ----------------------------------------------------------------------
 if RUN_KRAKEN:
     manager = KrakenManager(verbose=True, parallel=PARALLEL)
-    manager.runkraken(env=env, flp=flp, frequencies=env.freq)
+    pressure_field, field_pos = manager.runkraken(
+        env=env, flp=flp, frequencies=env.freq
+    )
     print("KRAKEN/FIELD run completed.")
 
 
@@ -162,19 +180,40 @@ if __name__ == "__main__":
     plt.close(fig_bathy)
 
     if RUN_KRAKEN:
-        mod_fpath = env.env_fpath.replace(".env", ".mod")
-        shd_fpath = env.shd_fpath
         ref_freq = float(FREQS[1])
 
-        fig1 = pu.plotmode_several_freqs(mod_fpath, freq=FREQS)
+        # NOTE: this is a broadband + range-dependent run, so KRAKEN was
+        # actually re-run once per frequency (see
+        # KrakenManager.runkraken_broadband_range_dependent's module
+        # docstring), each time overwriting the SAME '.mod'/'.shd'
+        # files -- there is no single on-disk file left containing
+        # every frequency's data to read back here. Use the in-memory
+        # results collected during that per-frequency loop instead:
+        # manager.last_modes (mode shapes) and pressure_field/field_pos
+        # (already returned by runkraken() above, aggregated across
+        # every frequency).
+        fig1 = pu.plotmode_from_data(
+            manager.last_modes, freq=FREQS, bathy_depth=bathy.bathy_depth[0]
+        )
         fig1.savefig(os.path.join(HERE, "mode_shapes_all_frequencies.png"))
         plt.close(fig1)
 
-        fig2 = pu.plotshd(shd_fpath, freq=ref_freq, units="km", bathy=bathy)
+        ref_freq_idx = int(np.argmin(np.abs(FREQS - ref_freq)))
+        fig2 = pu.plotshd_from_pressure_field(
+            None,
+            pressure_field=pressure_field[ref_freq_idx],
+            freq=ref_freq,
+            pos=field_pos,
+            base_title=env.simulation_title,
+            units="km",
+            bathy=bathy,
+        )
         fig2.savefig(os.path.join(HERE, f"transmission_loss_{ref_freq:.0f}Hz.png"))
         plt.close(fig2)
 
-        fig3 = pu.plot_tl_profile_multi_freq(shd_fpath, freqs=FREQS, rcv_depth=SRC_DEPTH, units="km")
+        fig3 = pu.plot_tl_profile_multi_freq_from_data(
+            pressure_field, FREQS, field_pos, rcv_depth=SRC_DEPTH, units="km"
+        )
         fig3.savefig(os.path.join(HERE, "tl_profiles_all_frequencies.png"))
         plt.close(fig3)
 

@@ -534,22 +534,25 @@ class KrakenTestCase:
         after a KRAKEN/FIELD run (self.run())."""
         fpath = os.path.join(self.io_files_dir, self.env.filename)
 
-        plotmode(fpath, freq=self.src.freq, modes=modes)
-        axs = plt.gca()
-        axs.axhline(
-            self.bathy.bathy_depth[0], color="r", linestyle="--", label="Bathy depth"
+        # NOTE (bug fixed): the bathymetry line used to be added
+        # manually, via plt.gca(), AFTER plotmode() returned -- meaning
+        # it only ever landed on the LAST subplot plotmode() had
+        # created, not on every mode's panel. plotmode() now draws this
+        # line (and a single legend entry for it, instead of a
+        # duplicated per-call plt.legend()) on every panel itself.
+        fig_modes = plotmode(
+            fpath, freq=self.src.freq, modes=modes, bathy_depth=self.bathy.bathy_depth[0]
         )
-        plt.legend()
-        plt.savefig(os.path.join(self.imgs_outputs_dir, "modes.png"))
+        fig_modes.savefig(os.path.join(self.imgs_outputs_dir, "modes.png"))
 
-        plotshd(
+        fig_tl = plotshd(
             fpath + ".shd",
             title=f"{self.name} - f={self.src.freq}Hz",
             bathy=self.bathy,
             tl_min=tl_min,
             tl_max=tl_max,
         )
-        plt.savefig(os.path.join(self.imgs_outputs_dir, "tl.png"))
+        fig_tl.savefig(os.path.join(self.imgs_outputs_dir, "tl.png"))
 
     def plot_ssp_tl(self, tl_min=None, tl_max=None, publi=False):
         """Plot a publication-ready figure combining the SSP profile and

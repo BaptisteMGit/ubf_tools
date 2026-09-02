@@ -36,6 +36,7 @@ the other cases (one full KRAKEN/FIELD run per frequency); set
 'parallel=True' in KrakenManager(...) below to speed it up on a
 multi-core machine.
 """
+
 import os
 
 import numpy as np
@@ -62,7 +63,7 @@ PARALLEL = os.environ.get("KRAKEN_EXAMPLES_PARALLEL", "0") == "1"
 # 1. Environment: same sloping-bottom wedge as Case 3, several frequencies
 # ----------------------------------------------------------------------
 MAX_WATER_DEPTH = 200.0  # m
-FREQS = np.array([15.0, 25.0, 50.0])  # Hz
+FREQS = np.array([15.0, 25.0, 50.0, 100.0])  # Hz
 SRC_DEPTH = 50.0  # m
 MAX_RANGE_KM = 10.0
 
@@ -75,7 +76,12 @@ medium = KrakenMedium(
 
 bottom_hs = KrakenBottomHalfspace(
     halfspace_properties={
-        "z": 0, "c_p": 1700.0, "c_s": 0.0, "rho": 1.5, "a_p": 0.5, "a_s": 0.0,
+        "z": 0,
+        "c_p": 1700.0,
+        "c_s": 0.0,
+        "rho": 1.5,
+        "a_p": 0.5,
+        "a_s": 0.0,
     },
     add_sediment_buffer_layer=False,
 )
@@ -107,8 +113,10 @@ assert env.bathy.use_bathy
 assert env.broadband_run
 env.write_env()
 assert env.range_dependent_env
-print(f"Wrote {env.env_fpath} (nmedia={env.nmedia}, {env.modes_range.size} profiles, "
-      f"{env.freq.size} frequencies)")
+print(
+    f"Wrote {env.env_fpath} (nmedia={env.nmedia}, {env.modes_range.size} profiles, "
+    f"{env.freq.size} frequencies)"
+)
 
 flp = KrakenFlp(
     env=env,
@@ -133,7 +141,9 @@ print(f"Wrote {flp.flp_fpath}")
 # ----------------------------------------------------------------------
 if RUN_KRAKEN:
     manager = KrakenManager(verbose=True, parallel=PARALLEL)
-    manager.runkraken(env=env, flp=flp, frequencies=env.freq)
+    pressure_field, field_pos = manager.runkraken(
+        env=env, flp=flp, frequencies=env.freq
+    )
     print("KRAKEN/FIELD run completed.")
 
 
@@ -147,19 +157,40 @@ if __name__ == "__main__":
     plt.close(fig_bathy)
 
     if RUN_KRAKEN:
-        mod_fpath = env.env_fpath.replace(".env", ".mod")
-        shd_fpath = env.shd_fpath
-        ref_freq = float(FREQS[0])
+        ref_freq = float(FREQS[-1])
 
-        fig1 = pu.plotmode_several_freqs(mod_fpath, freq=FREQS, bathy_depth=bathy.bathy_depth[0])
+        # NOTE: this is a broadband + range-dependent run, so KRAKEN was
+        # actually re-run once per frequency (see
+        # KrakenManager.runkraken_broadband_range_dependent's module
+        # docstring), each time overwriting the SAME '.mod'/'.shd'
+        # files -- there is no single on-disk file left containing
+        # every frequency's data to read back here. Use the in-memory
+        # results collected during that per-frequency loop instead:
+        # manager.last_modes (mode shapes) and pressure_field/field_pos
+        # (already returned by runkraken() above, aggregated across
+        # every frequency).
+        fig1 = pu.plotmode_from_data(
+            manager.last_modes, freq=FREQS, bathy_depth=bathy.bathy_depth[0]
+        )
         fig1.savefig(os.path.join(HERE, "mode_shapes_all_frequencies.png"))
         plt.close(fig1)
 
-        fig2 = pu.plotshd(shd_fpath, freq=ref_freq, units="km", bathy=bathy)
+        ref_freq_idx = int(np.argmin(np.abs(FREQS - ref_freq)))
+        fig2 = pu.plotshd_from_pressure_field(
+            None,
+            pressure_field=pressure_field[ref_freq_idx],
+            freq=ref_freq,
+            pos=field_pos,
+            base_title=env.simulation_title,
+            units="km",
+            bathy=bathy,
+        )
         fig2.savefig(os.path.join(HERE, f"transmission_loss_{ref_freq:.0f}Hz.png"))
         plt.close(fig2)
 
-        fig3 = pu.plot_tl_profile_multi_freq(shd_fpath, freqs=FREQS, rcv_depth=SRC_DEPTH, units="km")
+        fig3 = pu.plot_tl_profile_multi_freq_from_data(
+            pressure_field, FREQS, field_pos, rcv_depth=SRC_DEPTH, units="km"
+        )
         fig3.savefig(os.path.join(HERE, "tl_profiles_all_frequencies.png"))
         plt.close(fig3)
 

@@ -24,6 +24,7 @@ environment variable (and make sure kraken.exe/field.exe are reachable)
 to also run the simulation and produce the mode-shape/TL figures -- or
 run every case at once with examples/run_all_cases.py.
 """
+
 import os
 
 import numpy as np
@@ -53,11 +54,18 @@ SRC_DEPTH = 20.0  # m
 SSP_Z = np.array([0.0, 10.0, 20.0, 30.0, 40.0, 60.0, 80.0, 100.0])
 SSP_CP = np.array([1520.0, 1518.0, 1512.0, 1498.0, 1490.0, 1487.0, 1486.0, 1485.0])
 
-medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=SSP_Z, c_p=SSP_CP, rho=1.0)
+medium = KrakenMedium(
+    ssp_interpolation_method="C_linear", z_ssp=SSP_Z, c_p=SSP_CP, rho=1.0
+)
 
 bottom_hs = KrakenBottomHalfspace(
     halfspace_properties={
-        "z": WATER_DEPTH, "c_p": 1650.0, "c_s": 0.0, "rho": 1.8, "a_p": 0.8, "a_s": 0.0,
+        "z": WATER_DEPTH,
+        "c_p": 1650.0,
+        "c_s": 0.0,
+        "rho": 1.8,
+        "a_p": 0.8,
+        "a_s": 0.0,
     },
     add_sediment_buffer_layer=False,
 )
@@ -122,7 +130,8 @@ if __name__ == "__main__":
         shd_fpath = env.shd_fpath
         ref_freq = float(FREQS[2])  # 300 Hz, a mid-band frequency
 
-        fig1 = pu.plotmode_several_freqs(mod_fpath, freq=FREQS)
+        # fig1 = pu.plotmode_several_freqs(mod_fpath, freq=FREQS)
+        fig1 = pu.plotmode(mod_fpath, freq=FREQS)
         fig1.savefig(os.path.join(HERE, "mode_shapes_all_frequencies.png"))
         plt.close(fig1)
 
@@ -130,7 +139,9 @@ if __name__ == "__main__":
         fig2.savefig(os.path.join(HERE, f"transmission_loss_{ref_freq:.0f}Hz.png"))
         plt.close(fig2)
 
-        fig3 = pu.plot_tl_profile_multi_freq(shd_fpath, freqs=FREQS, rcv_depth=SRC_DEPTH, units="km")
+        fig3 = pu.plot_tl_profile_multi_freq(
+            shd_fpath, freqs=FREQS, rcv_depth=SRC_DEPTH, units="km"
+        )
         fig3.savefig(os.path.join(HERE, "tl_profiles_all_frequencies.png"))
         plt.close(fig3)
 

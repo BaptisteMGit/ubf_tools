@@ -42,6 +42,7 @@ frequencies): a KRAKEN/FIELD run will take noticeably longer than the
 shallow-water cases; set 'parallel=True' in KrakenManager(...) below to
 speed it up.
 """
+
 import os
 
 import numpy as np
@@ -87,17 +88,24 @@ def munk_profile(z, c1=1500.0, eps=0.00737, zaxis=1300.0, B=1300.0):
 # ----------------------------------------------------------------------
 MAX_WATER_DEPTH = 5000.0  # m, deepest point of the bathymetry
 FREQS = np.array([50.0, 100.0, 200.0])  # Hz
-SRC_DEPTH = 50.0  # m, near-surface source
+SRC_DEPTH = 1300.0  # m, in the SOFAR
 MAX_RANGE_KM = 50.0
 
 SSP_Z = np.linspace(0.0, MAX_WATER_DEPTH, 51)
 SSP_CP = munk_profile(SSP_Z)
 
-medium = KrakenMedium(ssp_interpolation_method="C_linear", z_ssp=SSP_Z, c_p=SSP_CP, rho=1.0)
+medium = KrakenMedium(
+    ssp_interpolation_method="C_linear", z_ssp=SSP_Z, c_p=SSP_CP, rho=1.0
+)
 
 bottom_hs = KrakenBottomHalfspace(
     halfspace_properties={
-        "z": 0, "c_p": 1600.0, "c_s": 0.0, "rho": 1.8, "a_p": 0.2, "a_s": 0.0,
+        "z": 0,
+        "c_p": 1600.0,
+        "c_s": 0.0,
+        "rho": 1.8,
+        "a_p": 0.2,
+        "a_s": 0.0,
     },
     add_sediment_buffer_layer=False,
 )
@@ -129,8 +137,10 @@ assert env.bathy.use_bathy
 assert env.broadband_run
 env.write_env()
 assert env.range_dependent_env
-print(f"Wrote {env.env_fpath} (nmedia={env.nmedia}, {env.modes_range.size} profiles, "
-      f"{env.freq.size} frequencies)")
+print(
+    f"Wrote {env.env_fpath} (nmedia={env.nmedia}, {env.modes_range.size} profiles, "
+    f"{env.freq.size} frequencies)"
+)
 
 flp = KrakenFlp(
     env=env,
@@ -154,7 +164,9 @@ print(f"Wrote {flp.flp_fpath}")
 # ----------------------------------------------------------------------
 if RUN_KRAKEN:
     manager = KrakenManager(verbose=True, parallel=PARALLEL)
-    manager.runkraken(env=env, flp=flp, frequencies=env.freq)
+    pressure_field, field_pos = manager.runkraken(
+        env=env, flp=flp, frequencies=env.freq
+    )
     print("KRAKEN/FIELD run completed.")
 
 
@@ -168,19 +180,40 @@ if __name__ == "__main__":
     plt.close(fig_bathy)
 
     if RUN_KRAKEN:
-        mod_fpath = env.env_fpath.replace(".env", ".mod")
-        shd_fpath = env.shd_fpath
         ref_freq = float(FREQS[1])  # 100 Hz
 
-        fig1 = pu.plotmode_several_freqs(mod_fpath, freq=FREQS)
+        # NOTE: this is a broadband + range-dependent run, so KRAKEN was
+        # actually re-run once per frequency (see
+        # KrakenManager.runkraken_broadband_range_dependent's module
+        # docstring), each time overwriting the SAME '.mod'/'.shd'
+        # files -- there is no single on-disk file left containing
+        # every frequency's data to read back here. Use the in-memory
+        # results collected during that per-frequency loop instead:
+        # manager.last_modes (mode shapes) and pressure_field/field_pos
+        # (already returned by runkraken() above, aggregated across
+        # every frequency).
+        fig1 = pu.plotmode_from_data(
+            manager.last_modes, freq=FREQS, bathy_depth=bathy.bathy_depth[0]
+        )
         fig1.savefig(os.path.join(HERE, "mode_shapes_all_frequencies.png"))
         plt.close(fig1)
 
-        fig2 = pu.plotshd(shd_fpath, freq=ref_freq, units="km", bathy=bathy)
+        ref_freq_idx = int(np.argmin(np.abs(FREQS - ref_freq)))
+        fig2 = pu.plotshd_from_pressure_field(
+            None,
+            pressure_field=pressure_field[ref_freq_idx],
+            freq=ref_freq,
+            pos=field_pos,
+            base_title=env.simulation_title,
+            units="km",
+            bathy=bathy,
+        )
         fig2.savefig(os.path.join(HERE, f"transmission_loss_{ref_freq:.0f}Hz.png"))
         plt.close(fig2)
 
-        fig3 = pu.plot_tl_profile_multi_freq(shd_fpath, freqs=FREQS, rcv_depth=SRC_DEPTH, units="km")
+        fig3 = pu.plot_tl_profile_multi_freq_from_data(
+            pressure_field, FREQS, field_pos, rcv_depth=SRC_DEPTH, units="km"
+        )
         fig3.savefig(os.path.join(HERE, "tl_profiles_all_frequencies.png"))
         plt.close(fig3)
 

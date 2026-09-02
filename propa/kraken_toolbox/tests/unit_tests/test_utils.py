@@ -45,7 +45,8 @@ class TestGetComponent(unittest.TestCase):
             get_component(Modes, "X")
 
     def test_single_acoustic_medium(self):
-        # 1 medium, 3 ACOUSTIC points, 1 mode -> trivial 1-to-1 mapping
+        # 1 medium, 3 ACOUSTIC points, 1 mode -> phi already has exactly
+        # one row per depth (no ELASTIC medium anywhere) -> fast path.
         Modes = {
             "Nmedia": 1,
             "N": np.array([3]),
@@ -55,6 +56,32 @@ class TestGetComponent(unittest.TestCase):
         }
         phi = get_component(Modes, "H")
         np.testing.assert_array_equal(phi.real.flatten(), [0, 1, 2])
+
+    def test_acoustic_medium_with_mesh_count_mismatching_output_grid(self):
+        # NOTE: regression test for the fixed bug -- confirmed on a REAL
+        # KRAKEN mode file that Modes["N"] (the number of MESH
+        # SUBDIVISIONS requested in the '.env' file, e.g. N=[25]) does
+        # NOT generally equal the number of points in the '.mod' file's
+        # actual output z/phi grid (e.g. 2601 points for that same
+        # medium) -- KRAKEN typically interpolates internally onto a
+        # much finer grid. The previous version of this function walked
+        # media using Modes["N"] as the per-medium point count
+        # regardless, so it only filled the first N[medium] output rows
+        # and silently left the rest at zero. Reproduced here with a
+        # deliberately mismatched (small) N against a larger real grid:
+        # since Modes["phi"] already has one row per depth (no ELASTIC
+        # medium), the fast path must return it as-is, ignoring the
+        # (irrelevant, and here deliberately wrong) N value entirely.
+        n_points = 10
+        Modes = {
+            "Nmedia": 1,
+            "N": np.array([3]),  # deliberately much smaller than n_points
+            "Mater": np.array(["ACOUSTIC"], dtype=object),
+            "z": np.arange(n_points, dtype=float),
+            "phi": np.arange(n_points).reshape(n_points, 1).astype(complex),
+        }
+        phi = get_component(Modes, "H")
+        np.testing.assert_array_equal(phi.real.flatten(), np.arange(n_points))
 
     def test_two_media_acoustic_then_elastic(self):
         # NOTE: regression test for the fixed bug -- the original code

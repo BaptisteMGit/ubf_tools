@@ -385,6 +385,14 @@ def run_sensitivity_study(test_arg_name, test_arg_values, all_arg_dict, model="k
 # ======================================================================================================================
 # Build datasets
 # ======================================================================================================================
+def celerity_density_Hamilton_Bachman_1982(rho):
+    # Appendix of Hamilton and Bachman 1982
+    
+    # Continental terrace (T)
+    cp = 487.7 * rho**2 - 1257.0 * rho + 2330.4
+
+    return cp  
+
 def build_kraken(freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid):
 
     # Keeps only frequencies above mode 1 cut-off
@@ -528,7 +536,7 @@ def build_sensitivity_dataset(
 ):
     
     print(f"Processing {test_arg_name}...")
-    
+
     # We will build the args to pass to the test function at each iteration
     all_args = all_arg_dict.copy()
 
@@ -628,7 +636,7 @@ if __name__ == "__main__":
 
     size_per_test_Ko = 110000
     nb_param = 4
-    npt = 2
+    npt = 200
     total_size = size_per_test_Ko * nb_param * npt
     print(f"Total memory size = {total_size*1e-6} Go")
 
@@ -654,17 +662,6 @@ if __name__ == "__main__":
         test_arg_name, test_arg_values, all_arg_dict, model="kraken"
     )
 
-    # Bottom celerity
-    test_arg_name = "c2"
-    c2_min = 1550.0
-    c2_max = 1900.0
-    c2_test = np.linspace(c2_min, c2_max, npt)
-    test_arg_values = c2_test
-
-    build_sensitivity_dataset(
-        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    )
-
     # Bottom density
     test_arg_name = "rho2"
     rho2_min = 1.0 * 1e3
@@ -672,6 +669,19 @@ if __name__ == "__main__":
     rho2_test = np.linspace(rho2_min, rho2_max, npt)
     test_arg_values = rho2_test
 
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )
+
+    # Bottom celerity
+    test_arg_name = "c2"
+    # c2_min = 1550.0
+    # c2_max = 1900.0
+    # c2_test = np.linspace(c2_min, c2_max, npt)
+    c2_test = celerity_density_Hamilton_Bachman_1982(rho2_test * 1e-3)
+    test_arg_values = c2_test
+
+    # print(rho2_test, c2_test)
     build_sensitivity_dataset(
         test_arg_name, test_arg_values, all_arg_dict, model="kraken"
     )

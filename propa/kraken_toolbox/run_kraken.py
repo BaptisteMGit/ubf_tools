@@ -62,6 +62,7 @@ from cst import N_CORES
 from propa.kraken_toolbox.params import KRAKEN_BIN_DIRECTORY
 from propa.kraken_toolbox.src.kraken_env import KrakenEnv
 from propa.kraken_toolbox.read_shd import readshd
+from propa.kraken_toolbox.read_modes import readmodes
 from propa.kraken_toolbox.utils import find_optimal_intervals
 
 
@@ -112,13 +113,23 @@ def _run_broadband_range_dependent(env, flp, frequencies, parallel, verbose, cle
     """'Broadband + variable bottom' case: not natively supported by
     KRAKEN -> re-run once per frequency and merge the results."""
     if parallel:
-        pressure_field, field_pos = _run_broadband_range_dependent_parallel(
+        pressure_field, field_pos, _all_modes = _run_broadband_range_dependent_parallel(
             env, flp, frequencies, clear=clear, n_workers=n_workers
         )
     else:
-        pressure_field, field_pos = runkraken_broadband_range_dependent(
+        pressure_field, field_pos, _all_modes = runkraken_broadband_range_dependent(
             env=env, flp=flp, frequencies=frequencies
         )
+    # NOTE: '_all_modes' (per-frequency mode shapes, see
+    # runkraken_broadband_range_dependent's docstring) is discarded
+    # here so this function's return signature stays a plain
+    # (pressure_field, field_pos) 2-tuple, like every other case. If you
+    # need the per-frequency mode data (e.g. to plot it with
+    # plot_utils.plotmode_from_data), call
+    # runkraken_broadband_range_dependent() directly instead of going
+    # through this wrapper -- exactly like KrakenManager.runkraken()
+    # exposes it via the separate 'self.last_modes' attribute rather
+    # than changing its own return signature.
 
     if verbose:
         print("Broadband range dependent kraken simulation completed.")
@@ -128,7 +139,9 @@ def _run_broadband_range_dependent(env, flp, frequencies, parallel, verbose, cle
 def _run_broadband_range_dependent_parallel(env, flp, frequencies, clear, n_workers):
     """Distribute frequencies across several processes, each handling
     its own frequency range via runkraken_broadband_range_dependent(),
-    then concatenate the resulting pressure fields."""
+    then concatenate the resulting pressure fields (and mode lists, in
+    the same frequency order -- each worker's frequency batch is
+    contiguous and in order, see assign_frequency_intervalls)."""
     if clear:
         clear_kraken_parallel_working_dir(root=env.root)
 
@@ -158,7 +171,8 @@ def _run_broadband_range_dependent_parallel(env, flp, frequencies, clear, n_work
 
     field_pos = result[0][1]
     pressure_field = np.concatenate([r[0] for r in result], axis=0)
-    return pressure_field, field_pos
+    all_modes = [Modes for r in result for Modes in r[2]]
+    return pressure_field, field_pos, all_modes
 
 
 def _run_native(env, flp, frequencies, verbose):
@@ -402,13 +416,39 @@ def runkraken_broadband_range_dependent(env, flp, frequencies, parallel=False):
             init_parallel_kraken_working_dirs).
 
     Returns:
-        tuple(np.ndarray, dict): broadband pressure field of shape
-        (n_freq, ...) and receiver grid positions.
+        tuple(np.ndarray, dict, list): broadband pressure field of
+        shape (n_freq, ...), receiver grid positions, and a list of
+        per-frequency Modes dicts (see read_modes.readmodes), in the
+        same order as 'frequencies' -- see the NOTE below for why this
+        third value exists.
+
+    NOTE (bug fixed): every frequency in this loop re-runs KRAKEN into
+    the SAME working directory with the SAME '.env'/'.mod'/'.shd'
+    filename (only the content differs). This is already handled
+    correctly for the pressure field: it is read via readshd() and
+    accumulated into 'broadband_pressure_field' INSIDE this loop,
+    before the next iteration overwrites the '.shd' file. Mode shapes
+    were NOT collected the same way: a caller had no choice but to read
+    the '.mod' file again afterwards, by which point it only ever
+    contained the LAST frequency's modes -- confirmed to fail with
+    `FileNotFoundError` for a caller expecting to find the top-level,
+    original filename (the file that actually exists after this loop
+    sits in a 'parallel_working_dir' subdirectory instead, and even
+    there holds only the last frequency's data). Fixed the same way as
+    the pressure field: read the '.mod' file with read_modes.readmodes()
+    INSIDE the loop, right after it is written, and accumulate the
+    per-frequency results into a list returned alongside the pressure
+    field. See plot_utils.plotmode_from_data() for the corresponding
+    plotting function (mirroring plotshd_from_pressure_field()). This
+    mirrors the identical fix already applied to
+    KrakenManager.runkraken_broadband_range_dependent() in
+    kraken_manager.py.
     """
     worker_pid = os.getpid()
     env_root = env.root
     broadband_pressure_field = None
     field_pos = None
+    all_modes = []
 
     for ifreq, freq in enumerate(frequencies):
         # Rebuild an identical environment but at a single frequency:
@@ -450,6 +490,10 @@ def runkraken_broadband_range_dependent(env, flp, frequencies, parallel=False):
             _, _, _, _, _read_freq, _, field_pos, pressure = readshd(
                 filename=env.filename + ".shd", freq=freq
             )
+            # NOTE (bug fixed, see docstring): read right away, before
+            # the NEXT iteration overwrites this frequency's '.mod'
+            # file with the next one's.
+            Modes = readmodes(env.filename + ".mod", freq=freq)
         except Exception as exc:
             # NOTE (bug fixed): the original code used a bare `except:`
             # (which also catches KeyboardInterrupt/SystemExit) and just
@@ -466,8 +510,9 @@ def runkraken_broadband_range_dependent(env, flp, frequencies, parallel=False):
             broadband_pressure_field = np.zeros(broadband_shape, dtype=complex)
 
         broadband_pressure_field[ifreq, ...] = pressure
+        all_modes.append(Modes)
 
-    return broadband_pressure_field, field_pos
+    return broadband_pressure_field, field_pos, all_modes
 
 
 if __name__ == "__main__":

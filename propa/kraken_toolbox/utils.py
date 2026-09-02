@@ -48,11 +48,6 @@ def get_component(Modes, comp):
         order H (horizontal), V (vertical), T (tangential stress), N
         (normal stress) -- see _COMPONENT_INDEX.
 
-    This function walks through Modes["z"] medium by medium (using
-    Modes["N"], the number of points per medium) and picks out the
-    requested component for every point, returning a single array with
-    one row per point of Modes["z"] (regardless of material).
-
     Args:
         Modes (dict): as returned by read_modes.readmodes(). Must
             contain 'Nmedia', 'N' (points per medium), 'Mater' (material
@@ -69,38 +64,58 @@ def get_component(Modes, comp):
             (kept as a plain Exception, matching the original code, for
             backward compatibility with any existing `except Exception`
             handling elsewhere in your codebase).
+
+    NOTE (bug found -- and this function's earlier "fix" retracted):
+    the previous version of this function (still visible in git
+    history) walked Modes["z"] medium by medium, using
+    Modes["N"][medium] to decide how many rows of that medium's
+    material to consume. That was validated only against a
+    self-constructed synthetic example where N happened to add up to
+    len(Modes["z"]) by construction. On a REAL KRAKEN mode file, this
+    assumption is false: Modes["N"] is the number of MESH SUBDIVISIONS
+    requested in the '.env' file's medium block (KrakenMedium's own
+    'nmesh' parameter), not the number of points in the '.mod' file's
+    actual output z/phi grid, which KRAKEN typically interpolates onto a
+    much finer grid internally. Confirmed on a real single-ACOUSTIC-
+    medium mode file: Modes["N"] = [25] while the actual z/phi grid had
+    2601 points for that same medium -- the medium-by-medium walk filled
+    only the first 25 output rows and silently left the remaining 2576
+    at zero, visibly corrupting every mode shape read this way (see
+    propa/kraken_toolbox/plot_utils.py's plotmode(), which no longer
+    uses this function for exactly this reason -- it reads
+    Modes["phi"] directly instead, which is both simpler and correct
+    for the common ACOUSTIC-only case).
+
+    This version fixes that confirmed failure mode with a fast path:
+    when Modes["phi"] already has exactly one row per depth in
+    Modes["z"] (true whenever there is no ELASTIC medium at all, i.e.
+    NMat == Ntot), it is returned directly -- no medium-by-medium
+    accounting needed or possible to get wrong. The original
+    medium-by-medium walk (still using Modes["N"] as the per-medium
+    point count) is kept ONLY as a fallback for genuinely mixed/ELASTIC
+    mode files, where Modes["phi"] has more rows than Modes["z"] has
+    depths. This fallback path has NOT been validated against a real
+    ELASTIC '.mod' file (none was available); treat its output with the
+    same caution the previous "fix" deserved, and verify independently
+    before relying on it.
     """
     if comp not in _COMPONENT_INDEX:
         raise Exception("Fatal Error in get_component: Unknown component")
     comp_index = _COMPONENT_INDEX[comp]
 
-    num_modes = Modes["phi"].shape[1]
     n_points_total = len(Modes["z"])
+
+    # Fast, confirmed-correct path: no ELASTIC medium at all, so
+    # Modes["phi"] already has exactly one row per depth, in order.
+    if Modes["phi"].shape[0] == n_points_total:
+        return Modes["phi"]
+
+    # Fallback for mixed/ELASTIC mode files -- see NOTE above: uses
+    # Modes["N"] as the per-medium point count, same as the previous
+    # version of this function, NOT validated against real ELASTIC data.
+    num_modes = Modes["phi"].shape[1]
     phi = np.zeros((n_points_total, num_modes), dtype=np.complex64)
 
-    # NOTE (bug fixed): the original code used
-    # `for ii in range(len(Modes["z"])):` as the INNER loop bound, i.e.
-    # the same bound (the TOTAL number of points, across every medium)
-    # regardless of which medium was currently being processed. Since
-    # `Modes["N"][medium]` (points belonging to that specific medium) is
-    # available and is exactly what should bound the inner loop, using
-    # `len(Modes["z"])` instead means the first medium's inner loop
-    # would try to process every point of the whole grid -- including
-    # points that actually belong to later media, wrongly attributing
-    # them to the first medium's material. This corrupts values at
-    # medium boundaries and can silently overwrite already-computed rows
-    # in `phi`. Confirmed with a synthetic 2-medium (ACOUSTIC + ELASTIC)
-    # example: the original code returned [3, 1, 2] instead of the
-    # expected [0, 1, 2] for the first mode/component (see
-    # test_utils.py::TestGetComponent for the full reproduction).
-    #
-    # Fixed by using two separate counters:
-    #   - `point_idx` walks Modes["z"] once, in order, across all media
-    #     (this is the output row index, and what the outer+inner loop
-    #     nesting should have produced together);
-    #   - `k` walks the raw Modes["phi"] storage, advancing by 1 row per
-    #     ACOUSTIC point and by 4 rows per ELASTIC point, exactly as in
-    #     the original code.
     k = 0
     point_idx = 0
     for medium in range(Modes["Nmedia"]):
@@ -229,15 +244,22 @@ def get_rcv_pos_idx(
         kraken_range (np.ndarray|None): full grid of ranges (as used by
             KRAKEN/FIELD). Must be supplied together with kraken_depth,
             or left as None (together with kraken_depth) to read both
-            from shd_fpath instead.
-        kraken_depth (np.ndarray|None): full grid of depths. See
+            from shd_fpath instead. When read from shd_fpath, this is in
+            METERS (read_shd.readshd's own convention -- see its
+            docstring); if you supply kraken_range yourself, make sure
+            'rcv_range' below uses the SAME units (this function does
+            not know or convert units, it only compares like-for-like).
+        kraken_depth (np.ndarray|None): full grid of depths (m). See
             kraken_range.
         shd_fpath (str|None): path to a '.shd' file, used to read
             kraken_range/kraken_depth when neither is supplied directly.
-        rcv_depth (array-like|None): specific receiver depths to locate
-            in kraken_depth. None -> every depth of the grid is used.
+        rcv_depth (array-like|None): specific receiver depths (m) to
+            locate in kraken_depth. None -> every depth of the grid is
+            used.
         rcv_range (array-like|None): specific receiver ranges to locate
-            in kraken_range. None -> every range of the grid is used.
+            in kraken_range, in the SAME units as kraken_range (meters
+            if kraken_range came from shd_fpath). None -> every range of
+            the grid is used.
 
     Returns:
         tuple(rr, zz, field_pos):

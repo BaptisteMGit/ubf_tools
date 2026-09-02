@@ -1208,8 +1208,66 @@ class KrakenEnv:
         """Fill self.env_lines for a variable-bottom environment: a full
         environment profile is written for every range in
         self.modes_range, with the SSP profile truncated/extended to
-        stop exactly at the local bottom depth."""
+        stop exactly at the local bottom depth.
+
+        Raises:
+            ValueError: if the bottom is a DIRECT half-space
+                (self.bottom_hs.add_sediment_buffer_layer is False) and
+                the bathymetry's deepest point is NOT at r=0 (the first
+                profile) -- see the check just below for why.
+        """
         self.env_lines = []
+
+        # NOTE (bug fixed): confirmed with a real KRAKEN/FIELD run
+        # (comparing a failing and a working reproduction of the exact
+        # same environment) that FIELD.exe crashes -- with a cryptic
+        # Fortran runtime error ('Non-existing record number' in
+        # EvaluateCMMod.f90) or, depending on version, the clearer
+        # "Fatal Error: modes must be tabulated throughout the ocean and
+        # sediment to compute the coupling coefs." -- whenever a DIRECT
+        # half-space bottom (add_sediment_buffer_layer=False) is used in
+        # a range-dependent run AND the first profile (r=0) is NOT the
+        # single deepest point along the whole bathymetry. FIELD.exe
+        # appears to size its per-profile mode-file record length from
+        # the FIRST profile's own tabulated depth; any LATER, deeper
+        # profile then needs more records than that size allows,
+        # crashing the read. This was never checked or handled before,
+        # producing a hard, unrelated-looking crash instead of a clear
+        # explanation. When a buffer sediment layer IS used instead
+        # (add_sediment_buffer_layer=True, the default), this cannot
+        # happen: its thickness is already derived from the
+        # bathymetry's GLOBAL maximum depth (see __init__ and
+        # KrakenBottomHalfspace.derive_sedim_layer_max_depth), so EVERY
+        # profile's terminal boundary -- including the first -- already
+        # sits at least as deep as every other profile, regardless of
+        # where the true deepest point falls along the range. So: fail
+        # loudly and explain the fix, rather than let this reach
+        # FIELD.exe at all.
+        if self.bathy.use_bathy and not self.bottom_hs.add_sediment_buffer_layer:
+            deepest_at_start = self.bathy.bathy_depth[0] >= self.bathy.bathy_depth.max()
+            if not deepest_at_start:
+                deepest_r = self.bathy.bathy_range[np.argmax(self.bathy.bathy_depth)]
+                raise ValueError(
+                    "This range-dependent environment's bathymetry does not "
+                    f"have its deepest point at r=0: the first profile is "
+                    f"{self.bathy.bathy_depth[0]:.1f} m deep, but the "
+                    f"bathymetry reaches {self.bathy.bathy_depth.max():.1f} m "
+                    f"at r={deepest_r:.2f} km. With a DIRECT half-space bottom "
+                    "(KrakenBottomHalfspace(add_sediment_buffer_layer=False)), "
+                    "FIELD.exe requires the FIRST profile to be tabulated at "
+                    "least as deep as every other profile along the range, or "
+                    "it crashes with a cryptic Fortran runtime error "
+                    "('Non-existing record number') or "
+                    "\"Fatal Error: modes must be tabulated throughout the "
+                    "ocean and sediment to compute the coupling coefs.\" -- "
+                    "confirmed with a real KRAKEN/FIELD run. Fix: use "
+                    "KrakenBottomHalfspace(add_sediment_buffer_layer=True, "
+                    "...) instead (the default), which sizes its buffer "
+                    "sediment layer from the bathymetry's global maximum "
+                    "depth automatically, satisfying this requirement for "
+                    "every profile regardless of where the deepest point "
+                    "falls along the range."
+                )
 
         self.top_hs.write_lines(
             kraken_medium=self.medium,

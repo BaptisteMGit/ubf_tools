@@ -17,6 +17,17 @@ import numpy as np
 import scipy.signal as sp
 import matplotlib.pyplot as plt
 
+from propa.kraken_toolbox.src.kraken_env import (
+    KrakenEnv,
+    KrakenMedium,
+    KrakenBottomHalfspace,
+    KrakenField,
+    KrakenFlp,
+)
+from propa.kraken_toolbox.src.kraken_manager import KrakenManager
+
+# from propa.kraken_toolbox import plot_utils as pu
+
 from scipy.optimize import root_scalar
 from publication.publication_figure import PubFigure, color
 
@@ -441,7 +452,7 @@ def plot_pekeris_cp_cg_f(f, cpm, cgm, n_modes=None):
     return fig, ax
 
 
-def pekeris_green_fct(f, c1, c2, rho1, rho2, d, z_s, z_r, r):
+def pekeris_green_fct(f, c1, c2, rho1, rho2, attn2, d, z_s, z_r, r):
     """Calculate green's functions at depth z in a Pekeris waveguide."""
 
     # Horizontal wavenumbers
@@ -459,8 +470,8 @@ def pekeris_green_fct(f, c1, c2, rho1, rho2, d, z_s, z_r, r):
     phim_zr = np.squeeze(phim_zr, axis=-1)
 
     # Compute modal loss tangent
-    alpha_2_dB_lambda = 10
-    alpha_2 = alpha_dB_lambda_to_nepers_m(f, alpha_2_dB_lambda, c2)
+    # alpha_2_dB_lambda = 10
+    alpha_2 = alpha_dB_lambda_to_nepers_m(f, attn2, c2)
     # print(
     #     f"Att coeff in sediment alpha_2 = {alpha_2_dB_lambda} dB / lambda = {alpha_2} nepers / m"
     # )
@@ -500,8 +511,8 @@ def pekeris_green_fct(f, c1, c2, rho1, rho2, d, z_s, z_r, r):
     # Green's function
     gf = Q * np.nansum(gm, axis=1)  # p = Q sum Am e^(-i krm r) / sqrt(krm)
 
-    # Remove dimension if r is scalar
-    gf = np.squeeze(gf)
+    # # Remove dimension if r is scalar
+    # gf = np.squeeze(gf)
 
     return gf
 
@@ -1094,6 +1105,7 @@ def run_full_diag(sig_param, env_param, src_rcv_param):
     c2 = env_param.get("c2", None)
     rho1 = env_param.get("rho1", None)
     rho2 = env_param.get("rho2", None)
+    attn2 = env_param.get("attn2", None)
     d = env_param.get("depth", None)
 
     # Source / receiver
@@ -1101,6 +1113,8 @@ def run_full_diag(sig_param, env_param, src_rcv_param):
     z = src_rcv_param.get("z_rcv", 20)
     r_grid = src_rcv_param.get("r_rcv", np.array([1e4]))
     r0 = src_rcv_param.get("r0", 1e4)
+
+    r_grid = np.atleast_1d(r_grid)
 
     # Frequency to plot
     f0 = fmax
@@ -1147,7 +1161,7 @@ def run_full_diag(sig_param, env_param, src_rcv_param):
     # z_s = 5
     # z, r = 20, 10000
 
-    g_fr = pekeris_green_fct(freq, c1, c2, rho1, rho2, d, z_s, z, r_grid)
+    g_fr = pekeris_green_fct(freq, c1, c2, rho1, rho2, attn2, d, z_s, z, r_grid)
     idx_r0 = np.argmin(np.abs(r_grid - r0))
     gf = g_fr[:, idx_r0]
 
@@ -1193,28 +1207,29 @@ def run_full_diag(sig_param, env_param, src_rcv_param):
         noverlap=noverlap,
     )
 
-    # Plot TL(f, r)
-    idx_f_tl = np.logical_and(freq > 50, freq < 60)
-    f_tl = freq[idx_f_tl]
-    g_fr_ftl = g_fr[idx_f_tl, ...]
-    plot_tl_fr(
-        g_fr_ftl,
-        r_grid,
-        f_tl,
-        tl_vmin_percentile=1,
-        tl_vmax_percentile=95,
-    )
+    if r_grid.size > 1:
+        # Plot TL(f, r)
+        idx_f_tl = np.logical_and(freq > 50, freq < 60)
+        f_tl = freq[idx_f_tl]
+        g_fr_ftl = g_fr[idx_f_tl, ...]
+        plot_tl_fr(
+            g_fr_ftl,
+            r_grid,
+            f_tl,
+            tl_vmin_percentile=1,
+            tl_vmax_percentile=95,
+        )
 
-    # Plot TL(f=f0, r)
-    f0 = 80
-    idx_f0 = np.argmin(np.abs(freq - f0))
-    g_r_ftl = g_fr[idx_f0, ...]
-    plot_tl_r(
-        g_r_ftl,
-        r_grid,
-        spherical_loss=True,
-        cylindrical_loss=True,
-    )
+        # Plot TL(f=f0, r)
+        f0 = 80
+        idx_f0 = np.argmin(np.abs(freq - f0))
+        g_r_ftl = g_fr[idx_f0, ...]
+        plot_tl_r(
+            g_r_ftl,
+            r_grid,
+            spherical_loss=True,
+            cylindrical_loss=True,
+        )
 
     plt.show()
 
@@ -1374,8 +1389,62 @@ def test_pekeris_short_ir():
     # run_full_diag(freq, c1, c2, rho1, rho2, d, fs, fmax)
 
 
-def kraken_validation():
-    pass
+######
+# Validation avec kraken
+####
+
+
+# def compare_cp_cg_f(f, cpm, cgm, cpm_kraken, cgm_kraken, n_modes=None):
+
+#     if n_modes is None:
+#         n_modes = cpm.shape[1]
+
+#     # Mode number m
+#     modes = np.arange(1, np.max(n_modes) + 1, 1)
+
+#     fig, ax = plt.subplots(figsize=(16, 12), nrows=1, ncols=1)
+#     i_ax = 0
+
+#     # Iterate over modes
+#     for i_m, m in enumerate(modes):
+#         # i_ax = i_m // row_size
+#         # ax = axs[i_ax]
+#         ax.plot(
+#             f,
+#             cpm[:, i_m],
+#             label=rf"$c_{{\phi}}$ (m = {{{m}}})",
+#             linestyle="--",
+#             color=color(i_m),
+#         )
+#         ax.plot(
+#             f,
+#             cgm[:, i_m],
+#             label=rf"$c_g$ (m = {{{m}}})",
+#             linestyle="-",
+#             color=color(i_m),
+#         )
+
+#         # ax.plot(
+#         #     f,
+#         #     cpm[:, i_m],
+#         #     label=rf"$c_{{\phi}}$ (m = {{{m}}})",
+#         #     linestyle="--",
+#         #     color=color(i_m),
+#         # )
+#         # ax.plot(
+#         #     f,
+#         #     cgm[:, i_m],
+#         #     label=rf"$c_g$ (m = {{{m}}})",
+#         #     linestyle="-",
+#         #     color=color(i_m),
+#         # )
+
+#         ax.legend(fontsize=14, ncols=2)
+
+#     fig.supxlabel("Fréquence [Hz]")
+#     fig.supylabel(r"$c_g, c_{\phi}$ [m s$^{-1}$]")
+
+#     return fig, ax
 
 
 if __name__ == "__main__":

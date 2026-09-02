@@ -48,9 +48,8 @@ from propa.kraken_toolbox import plot_utils as pu
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ENV_FILENAME = "case_01_pekeris_ri_single_freq"
-# RUN_KRAKEN = os.environ.get("KRAKEN_EXAMPLES_RUN_KRAKEN", "0") == "1"
+RUN_KRAKEN = os.environ.get("KRAKEN_EXAMPLES_RUN_KRAKEN", "0") == "1"
 RUN_KRAKEN = True
-
 # ----------------------------------------------------------------------
 # 1. Environment: Pekeris waveguide
 # ----------------------------------------------------------------------
@@ -145,10 +144,17 @@ if __name__ == "__main__":
         plt.close(fig1)
 
         fig2 = pu.plotshd(shd_fpath, freq=FREQ, units="km")
-        # fig2.savefig(os.path.join(HERE, "transmission_loss.png"))
-        # plt.close(fig2)
+        fig2.savefig(os.path.join(HERE, "transmission_loss.png"))
+        plt.close(fig2)
 
-        fig3 = pu.plot_tl_profile(shd_fpath, freq=FREQ, rcv_depth=SRC_DEPTH, units="km")
+        fig3 = pu.plot_tl_profile(
+            shd_fpath,
+            freq=FREQ,
+            rcv_depth=SRC_DEPTH,
+            units="km",
+            spherical_loss=True,
+            cylindrical_loss=True,
+        )
         fig3.savefig(os.path.join(HERE, "tl_profile_at_source_depth.png"))
         plt.close(fig3)
 

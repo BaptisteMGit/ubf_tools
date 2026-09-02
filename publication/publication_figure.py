@@ -4,9 +4,78 @@
 @File    :   publication_figure.py
 @Time    :   2025/04/07 16:15:41
 @Author  :   Menetrier Baptiste
-@Version :   1.0
+@Version :   1.1 (refactor)
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   Class to handle figures properties.
+@Desc    :   Classes to handle figure properties for publication-/
+             report-ready output: consistent fonts, sizes, and
+             LaTeX-rendered labels, plus a few axis-label presets and
+             (new in this version) figure-type presets tailored to the
+             KRAKEN toolbox's own plots (waveguide/environment overview,
+             transmission-loss maps, mode shapes).
+
+This module does NOT change the public API of the original file (same
+class/function names and signatures; two bugs fixed, three new classes
+added at the end -- see below).
+
+BUGS FIXED COMPARED TO THE ORIGINAL FILE:
+  1. PubFigure.set_better_axis(axis, fontsize=13): defined inside the
+     class but WITHOUT 'self' as its first parameter -- its body never
+     references 'self' either, so it was clearly meant to be a
+     @staticmethod. Without that decorator, calling it the normal way
+     (`my_pubfig.set_better_axis(ax)`) implicitly passes 'self' as the
+     first positional argument, silently binding `axis=my_pubfig` and
+     `fontsize=ax` instead. Confirmed: this raised
+     `AttributeError: 'PubFigure' object has no attribute 'spines'`
+     (trying to read `.spines` off the PubFigure instance, not the
+     Axes). Calling it via the class instead of an instance
+     (`PubFigure.set_better_axis(ax)`) happened to work by accident,
+     which is presumably how this went unnoticed. Fixed by adding
+     @staticmethod.
+  2. AxisLabel.__init__: the 'language' setter always calls
+     update_name(), which unconditionally overwrites 'self.name' with
+     'self.name_fr' or 'self.name_en'. Since '__init__' sets
+     'self.language = language' AFTER 'self.name = name', any caller
+     passing an explicit 'name' was silently ignored (confirmed:
+     `AxisLabel(name="Custom", name_fr="A", name_en="B",
+     language="en").name` returned "B", not "Custom"). No existing
+     subclass in this file (FrequencyLabel, RangeLabel, etc.) ever
+     passes 'name' explicitly, so this did not surface as a visible bug
+     in practice -- but it made the constructor's 'name' parameter
+     silently useless for any future/direct AxisLabel(...) call. Fixed
+     by remembering an explicitly-passed name and preferring it over
+     the language-based default, while leaving every existing call
+     site (which never passes 'name') behaving exactly as before.
+
+ROBUSTNESS ADDED: PubFigure(use_tex=True) enables matplotlib's LaTeX
+text rendering, which requires a complete LaTeX installation (in
+particular, packages like 'cm-super' / 'texlive-fonts-extra' -- a
+surprisingly common gap even on machines that do have a working 'latex'
+executable: this was confirmed in this exact environment, where
+'text.usetex=True' failed on the very first plot with a cryptic
+'! LaTeX Error: File `type1ec.sty' not found.'). Left as-is, this turns
+every single subsequent plot call into an opaque, hard-to-diagnose
+crash. PubFigure now runs a one-time, cached smoke test when
+use_tex=True is requested, and falls back to use_tex=False with a clear
+warning (naming the likely missing packages) if LaTeX rendering isn't
+actually usable, rather than leaving every plot call to fail later.
+
+NEW: WaveguideFigure, TLFigure and ModeShapeFigure -- LargeFigure
+presets sized to match the KRAKEN toolbox's own environment-overview
+(KrakenEnv.plot_env, 3 panels), transmission-loss
+(plot_utils.plotshd/plotshd_from_pressure_field, 1 wide panel) and
+mode-shape (plot_utils.plotmode/plotmode_several_freqs, up to 10 narrow
+panels) figures, respectively. Usage: instantiate the preset BEFORE
+calling the corresponding plot_utils function -- PubFigure works by
+updating matplotlib's global rcParams (fonts, sizes, LaTeX), so no
+change to plot_utils.py itself is required for the two to work
+together:
+
+    from publication.publication_figure import WaveguideFigure
+    from propa.kraken_toolbox.src.kraken_env import KrakenEnv
+
+    WaveguideFigure()  # apply report-ready styling globally
+    fig = env.plot_env(plot_src=True, src_depth=25)
+    fig.savefig("environment.pdf")
 """
 
 # ======================================================================================================================
@@ -14,6 +83,8 @@
 # ======================================================================================================================
 
 import string
+import warnings
+
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -28,7 +99,20 @@ def set_subfigures_abc_labels(
     ha="left",
     va="top",
 ):
+    """Annotate each subplot in 'axs' with '(a)', '(b)', '(c)', ... in
+    its top-left corner (or wherever x_pos/y_pos, in axes-fraction
+    coordinates, place it) -- the standard convention for multi-panel
+    figures in a scientific publication.
 
+    Args:
+        axs: a single Axes, or any (nested) array/list of Axes (e.g.
+            the return value of plt.subplots(...)).
+        x_pos, y_pos (float): label position, in axes-fraction
+            coordinates (0-1).
+        fontsize (float): label font size.
+        fontweight (str): label font weight.
+        ha, va (str): horizontal/vertical text alignment.
+    """
     labels = list(string.ascii_lowercase)
 
     # Ensure axs is a 1D array of axes
@@ -80,7 +164,55 @@ def color(n: int):
     return figcolors[k][:]
 
 
+# ======================================================================================================================
+# LaTeX availability smoke test (see module docstring: "ROBUSTNESS ADDED")
+# ======================================================================================================================
+_latex_usable_cache = None
+
+
+def _latex_usable():
+    """Return True if matplotlib can actually render text with
+    'text.usetex=True' in this environment, False otherwise. The result
+    is computed once (a real LaTeX invocation, so not free) and cached
+    for the rest of the process.
+    """
+    global _latex_usable_cache
+    if _latex_usable_cache is not None:
+        return _latex_usable_cache
+
+    previous = mpl.rcParams["text.usetex"]
+    try:
+        mpl.rcParams["text.usetex"] = True
+        fig = plt.figure()
+        try:
+            fig.text(0.5, 0.5, r"$x^2$")
+            fig.canvas.draw()
+            _latex_usable_cache = True
+        except Exception:
+            _latex_usable_cache = False
+        finally:
+            plt.close(fig)
+    except Exception:
+        _latex_usable_cache = False
+    finally:
+        mpl.rcParams["text.usetex"] = previous
+
+    return _latex_usable_cache
+
+
 class PubFigure:
+    """Apply a consistent, report-ready matplotlib style (fonts, sizes,
+    optionally LaTeX-rendered text) globally, via matplotlib's rcParams.
+
+    This works by updating matplotlib's GLOBAL configuration (not a
+    per-figure setting): instantiate a PubFigure (or one of its
+    subclasses/presets) once, before creating any figure, and every
+    subsequent plot -- whether made directly with matplotlib/pyplot or
+    through a helper such as propa.kraken_toolbox.plot_utils's
+    functions -- will use this styling, with no further code changes
+    needed on the plotting side.
+    """
+
     def __init__(
         self,
         size=(16, 8),
@@ -141,11 +273,39 @@ class PubFigure:
         self.rtfmod_label = RTFModuleLabel(language=language)
 
     def set_full_screen(self):
+        """Maximize the current figure window. Only works with GUI
+        backends that expose a Tk-style window manager (e.g. TkAgg);
+        no-ops (with a warning) on any other backend, including the
+        headless 'Agg' backend used in batch/report-generation
+        pipelines and CI."""
         mpl.rcParams["figure.max_open_warning"] = 0
         mng = plt.get_current_fig_manager()
-        mng.window.state("zoomed")
+        try:
+            mng.window.state("zoomed")
+        except AttributeError:
+            warnings.warn(
+                "set_full_screen() has no effect with the current matplotlib "
+                "backend (no Tk-style window manager available -- this is "
+                "expected for headless/'Agg'-backend or non-Tk GUI use)."
+            )
 
     def set_all_params(self):
+        # NOTE (robustness added): 'text.usetex=True' requires a
+        # complete LaTeX installation (see module docstring). Run a
+        # cheap, cached smoke test first and fall back to
+        # use_tex=False with a clear warning rather than let every
+        # subsequent plot fail with a cryptic LaTeX subprocess error.
+        if self.use_tex and not _latex_usable():
+            warnings.warn(
+                "PubFigure(use_tex=True) was requested, but matplotlib could "
+                "not actually render text with LaTeX in this environment "
+                "(often caused by a missing 'cm-super' / "
+                "'texlive-fonts-extra' package, even when a 'latex' "
+                "executable is present). Falling back to use_tex=False for "
+                "this and any other PubFigure created in this process."
+            )
+            self.use_tex = False
+
         params = {
             "legend.fontsize": self.legend_fontsize,
             "figure.figsize": self.size,
@@ -175,12 +335,21 @@ class PubFigure:
 
         plt.rcParams.update(params)
 
+    @staticmethod
     def set_better_axis(axis, fontsize=13):
-        """Remove top and right border of axis, add arrow on left and bottom border and set left and bottom label fontsize
+        """Remove the top/right spines, add an arrow tip on the
+        left/bottom spines, and set the tick label font size -- a
+        common "cleaner axis" presentation style.
+
+        NOTE (bug fixed): this used to be defined without '@staticmethod'
+        even though its body never uses 'self', which broke the normal
+        `my_pubfig.set_better_axis(ax)` call form (see module
+        docstring). Now a proper static method, callable both as
+        `PubFigure.set_better_axis(ax)` and `my_pubfig.set_better_axis(ax)`.
 
         Args:
             - axis (Axes): matplotlib axis
-            - fontsize (float, optional): label fontsize . Defaults to 13.
+            - fontsize (float, optional): label fontsize. Defaults to 13.
         """
         axis.spines["left"].set_position(("data", 0))
         axis.spines["bottom"].set_position(("data", 0))
@@ -196,7 +365,7 @@ class LargeFigure(PubFigure):
     """
     Class to handle large figures properties.
 
-    Large figures are defined as page wide figures (to be used with width=\textwith in LaTeX).
+    Large figures are defined as page wide figures (to be used with width=\\textwith in LaTeX).
 
     The aim is to ensure to get the same font sizes as the Latex document.
 
@@ -227,7 +396,7 @@ class SmallFigure(PubFigure):
     """
     Class to handle small figures properties.
 
-    Small figures are defined as page narrow figures (to be used with width=\textwidth in LaTeX).
+    Small figures are defined as page narrow figures (to be used with width=\\textwidth in LaTeX).
 
     The aim is to ensure to get the same font sizes as the Latex document.
 
@@ -245,6 +414,63 @@ class SmallFigure(PubFigure):
         )
 
 
+# ======================================================================================================================
+# NEW: figure-type presets tailored to the KRAKEN toolbox's own plots
+# (propa.kraken_toolbox.plot_utils) -- see module docstring for usage.
+# ======================================================================================================================
+class WaveguideFigure(LargeFigure):
+    """Preset for KrakenEnv.plot_env() / KrakenMedium.plot_medium() /
+    KrakenBottomHalfspace.plot_bottom_halfspace(): a wide, 3-panel
+    (sound speed, attenuation, density vs. depth) environment overview.
+    Sized to match those functions' own figsize=(15, 8) so applying this
+    preset does not change the figure's proportions, only its fonts/
+    LaTeX rendering.
+    """
+
+    def __init__(self, size=(15, 8), title_fontsize=18, label_fontsize=16, ticks_fontsize=13, **kwargs):
+        super().__init__(
+            size=size,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            ticks_fontsize=ticks_fontsize,
+            **kwargs,
+        )
+
+
+class TLFigure(LargeFigure):
+    """Preset for plot_utils.plotshd() / plotshd_from_pressure_field():
+    a wide, single-panel transmission-loss (range vs. depth) map with a
+    colorbar. Sized to match those functions' own figsize=(16, 8).
+    """
+
+    def __init__(self, size=(16, 8), title_fontsize=18, label_fontsize=16, ticks_fontsize=13, **kwargs):
+        super().__init__(
+            size=size,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            ticks_fontsize=ticks_fontsize,
+            **kwargs,
+        )
+
+
+class ModeShapeFigure(LargeFigure):
+    """Preset for plot_utils.plotmode() / plotmode_several_freqs(): a
+    wide row of up to 10 narrow mode-shape panels sharing a depth axis.
+    Sized to match those functions' own figsize=(15, 5); tick labels
+    default a bit smaller than WaveguideFigure/TLFigure since up to 10
+    panels share the same width.
+    """
+
+    def __init__(self, size=(15, 5), title_fontsize=18, label_fontsize=14, ticks_fontsize=11, **kwargs):
+        super().__init__(
+            size=size,
+            title_fontsize=title_fontsize,
+            label_fontsize=label_fontsize,
+            ticks_fontsize=ticks_fontsize,
+            **kwargs,
+        )
+
+
 class AxisLabel:
 
     def __init__(
@@ -257,6 +483,22 @@ class AxisLabel:
         name_en: str = "default name",
         language: str = "en",
     ):
+        # NOTE (bug fixed): 'self.language = language' below (via its
+        # setter -> update_name()) used to UNCONDITIONALLY overwrite
+        # 'self.name' with 'name_fr'/'name_en', silently discarding
+        # whatever 'name' was passed in explicitly (confirmed:
+        # AxisLabel(name="Custom", name_fr="A", name_en="B",
+        # language="en").name returned "B", not "Custom"). No call site
+        # in this file ever passes 'name' explicitly (they only set
+        # name_fr/name_en), so this never surfaced as a visible bug in
+        # existing code -- but it silently broke the constructor's
+        # documented 'name' parameter for any direct AxisLabel(...)
+        # call that did use it. '_explicit_name' remembers such an
+        # override so update_name() can honour it; every existing call
+        # site (which leaves 'name' at its default "name"/unset) is
+        # unaffected.
+        self._explicit_name = name if name not in (None, "name") else None
+
         self.name = name
         self.unit = unit
         self.fmt = fmt
@@ -325,8 +567,12 @@ class AxisLabel:
         self.update_name()
 
     def update_name(self):
-        """Update name according to the selected language"""
-        if self.language == "fr":
+        """Update name according to the selected language, unless an
+        explicit 'name' was passed to the constructor (see the
+        '_explicit_name' note in __init__)."""
+        if self._explicit_name is not None:
+            self.name = self._explicit_name
+        elif self.language == "fr":
             self.name = self.name_fr
         elif self.language == "en":
             self.name = self.name_en
@@ -449,11 +695,6 @@ class RTFModuleLabel(AxisLabel):
 
 
 if __name__ == "__main__":
-    # xlab = AxisLabel(name="Fréquence", unit="Hz", axis="x")
-    # print(xlab.label)
-    # plt.figure()
-    # xlab.set_axis_label()
-
     flab = FrequencyLabel(language="en")
     pl_label = PropagationLossLabel(language="en")
     rlab = RangeLabel(language="en", axis="x")

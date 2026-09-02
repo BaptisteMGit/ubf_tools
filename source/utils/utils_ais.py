@@ -13,7 +13,42 @@
 # Import
 # ======================================================================================================================
 import csv
+import numpy as np
+import pandas as pd
 from datetime import datetime, timezone
+
+from misc import progression_bar
+from source.utils.utils_gps import interpolate_gps
+
+
+def interpolate_ais(ais, time_step="10s", subset_idx=None, mmsi_to_include=None):
+    mmsi = ais.mmsi.unique()
+    if subset_idx is not None:
+        mmsi = mmsi[subset_idx]
+        # Ensure mmsi_jules is in mmsi in case we preprocess a subset of all the mmsis
+        if mmsi_to_include not in mmsi:
+            mmsi = np.append(mmsi, mmsi_to_include)
+
+    ais_interp = pd.DataFrame()
+
+    # Test progress bar
+    index0 = 0
+    indexf = mmsi.size - 1
+    prev_progress = 0
+
+    for i, mmsi_i in enumerate(mmsi):
+        prev_progress = progression_bar(i, index0, indexf, prev_progress)
+
+        ais_mmsi = ais.loc[ais["mmsi"] == mmsi_i]
+        ais_mmsi_interp = interpolate_gps(df_gps=ais_mmsi, time_step=time_step)
+
+        # Add mmsi column
+        ais_mmsi_interp["mmsi"] = mmsi_i
+
+        # Concatenate to ais_interp
+        ais_interp = pd.concat([ais_interp, ais_mmsi_interp], ignore_index=True)
+
+    return ais_interp, mmsi
 
 
 # -------------------------------------------------------------

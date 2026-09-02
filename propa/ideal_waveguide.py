@@ -60,7 +60,7 @@ def nb_propagating_modes(f, c, depth, bottom_bc="pressure_release"):
         n = np.floor(limit).astype(int)  # Pressure release bottom
 
     # Ensure that the strict condition is met
-    if (np.round(limit, 12)).is_integer():
+    if (np.round(limit, 20)).is_integer():
         n -= 1
     # print(f"Number of propagating modes: {n}")
 
@@ -481,12 +481,12 @@ def field(f, z_src, r, z, depth, bottom_bc="pressure_release", n=None):
     for i, fi in enumerate(f):
         n_max = nb_propagating_modes(fi, c0, depth, bottom_bc)
         if n_null:
-            n = n_max
+            n_ = n_max
         else:
-            n = np.min([n_max, n])
+            n_ = np.min([n_max, n])
 
         # n = nb_propagating_modes(fi, c0, depth, bottom_bc)
-        m = np.arange(1, n + 1)
+        m = np.arange(1, n_ + 1)
 
         # 3D meshgrid for r, z and m
         rr, zz, mm = np.meshgrid(r, z, m)

@@ -31,7 +31,7 @@ import scipy.signal as sp
 import matplotlib.pyplot as plt
 
 from get_data.ais.ais_tools import *
-from get_data.wav.signal_processing_utils import *
+from real_data_analysis.signal_processing_utils import *
 from publication.publication_figure import PubFigure
 from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 

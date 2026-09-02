@@ -31,7 +31,7 @@ def process_batch(
             duration_s=duration_seconds,
             ch=ch,
             freq_properties=freq_properties,
-            save=save,
+            save=False,
             root_wav=root_wav,
         )
 
@@ -46,14 +46,15 @@ if __name__ == "__main__":
     save = True
     ch = ["BDH"]
     station_id = "RR46"
-    yyyy_mm = "2013-04"
-    duration_seconds = 2 * 60 * 60
+    yyyy_mm = "2013-02"
+    duration_seconds = 12 * 60 * 60
 
     # Def frequency properties
-    nperseg = 2**12
-    noverlap = int(nperseg * 3 / 4)
+    nperseg = 2**13
+    # noverlap = int(nperseg * 3 / 4)
+    noverlap = int(nperseg * 0.5)
 
-    fmin = 4
+    fmin = 0.5
     fmax = 46
     filter_type = "bandpass"
     filter_corners = 4
@@ -67,18 +68,20 @@ if __name__ == "__main__":
         "nperseg": nperseg,
     }
 
-    # for i_d in range(1, 32):
-    #     for i_h in range(0, 12):
-    #         date = f"{yyyy_mm}-{i_d:02d} {(i_h*2):02d}:00:00"
-    #         dates.append(date)
+    for i_d in range(1, 32):
+        for i_h in range(0, 2):
+            date = f"{yyyy_mm}-{i_d:02d} {(i_h*12):02d}:00:00"
+            dates.append(date)
+    print(dates)
+    # dates = [
+    #     "2013-05-05 18:00:00",
+    #     "2013-05-15 14:00:00",
+    #     "2013-05-15 22:00:00",
+    #     "2013-05-16 20:00:00",
+    # ]
 
-    dates = [
-        "2013-05-05 18:00:00",
-        "2013-05-15 14:00:00",
-        "2013-05-15 22:00:00",
-        "2013-05-16 20:00:00",
-    ]
-    root_wav = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM\extract_abdel_05022025"
+    # root_wav = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM\extract_abdel_05022025"
+    root_wav = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\wav\RHUMRUM\extract_JDD_EDSML"
 
     if not os.path.exists(root_wav):
         os.makedirs(root_wav)

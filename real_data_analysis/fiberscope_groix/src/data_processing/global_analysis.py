@@ -308,9 +308,8 @@ def compute_spectrogram(
 
 
 if __name__ == "__main__":
-    merge_wav_files(output_format="nc", channels=["H"], verbose=True)
-    merge_wav_files(output_format="nc", channels=["Z"], verbose=True)
-    merge_wav_files(output_format="nc", channels=["X", "Y"], verbose=True)
+    merge_wav_files(output_format="nc", channels=["H", "X"], verbose=True)
+    # merge_wav_files(output_format="nc", channels=["Z", "Y"], verbose=True)
 
     # channel = "Z"
     # nc_fpath = os.path.join(data_folder, f"channel_{channel}_wav.nc")

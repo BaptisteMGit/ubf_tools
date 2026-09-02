@@ -88,8 +88,8 @@ def munk_profile(z, c1=1500.0, eps=0.00737, zaxis=1300.0, B=1300.0):
 # ----------------------------------------------------------------------
 MAX_WATER_DEPTH = 5000.0  # m, deepest point of the bathymetry
 FREQS = np.array([50.0, 100.0, 200.0])  # Hz
-SRC_DEPTH = 1300.0  # m, in the SOFAR
-MAX_RANGE_KM = 50.0
+SRC_DEPTH = 1000.0  # m, in the SOFAR
+MAX_RANGE_KM = 100.0
 
 SSP_Z = np.linspace(0.0, MAX_WATER_DEPTH, 51)
 SSP_CP = munk_profile(SSP_Z)

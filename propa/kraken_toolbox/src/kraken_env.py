@@ -580,7 +580,9 @@ class KrakenBottomHalfspace:
             self.sedim_layer_depth = 0
         self.z_in_bottom = np.array([0, self.sedim_layer_depth])
         self.sedim_layer_max_z = 10000  # Max allowed depth for this layer (m)
-        self.sedim_layer_max_depth = None  # Computed later by derive_sedim_layer_max_depth
+        self.sedim_layer_max_depth = (
+            None  # Computed later by derive_sedim_layer_max_depth
+        )
 
         self.write_sedim_layer_bloc = False
         self.use_halfspace_properties = False
@@ -701,7 +703,9 @@ class KrakenBottomHalfspace:
 
         sedim_layer_z = z_max + self.sedim_layer_depth
         self.sedim_layer_max_depth = np.ceil(min(sedim_layer_z, self.sedim_layer_max_z))
-        self.sedim_layer_max_depth = np.round(self.sedim_layer_max_depth * 1e-2, 0) * 1e2
+        self.sedim_layer_max_depth = (
+            np.round(self.sedim_layer_max_depth * 1e-2, 0) * 1e2
+        )
 
     def write_lines(self, use_bathymetry=False, halfspace_depth=None):
         """Build self.lines: the '.env' line(s) describing the bottom
@@ -730,7 +734,11 @@ class KrakenBottomHalfspace:
         self.lines = [bottom_halfspace_info]
 
         if self.use_halfspace_properties:
-            depth = halfspace_depth if halfspace_depth is not None else self.sedim_layer_max_depth
+            depth = (
+                halfspace_depth
+                if halfspace_depth is not None
+                else self.sedim_layer_max_depth
+            )
             ssp_desc = (
                 "Depth (m), C-wave celerity (m/s), S-wave celerity (m/s), "
                 "Density (g/cm3), C-wave attenuation , S-wave attenuation"
@@ -763,19 +771,34 @@ class KrakenBottomHalfspace:
         """
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
         axs[0].set_ylabel("Depth (from water/sediment interface) [m]")
+        # NOTE (bug fixed): passing the scalar terminal halfspace value
+        # (e.g. self.cp_bot_halfspace) for BOTH points of z_in_bottom
+        # always drew an isovelocity (flat) bottom, even when a genuine
+        # sediment GRADIENT was configured via 'sediment_top_properties'
+        # (see this class's docstring) -- which the '.env' file itself
+        # already writes correctly. Fixed the same way as KrakenEnv's
+        # own plot_env(): use cp_sedim_top (etc.) for the top point and
+        # cp_bot_halfspace (etc.) for the bottom one, matching
+        # write_lines() exactly; this defaults back to a flat bottom
+        # whenever no gradient is configured (cp_sedim_top ==
+        # cp_bot_halfspace in that case -- see set_halfspace_properties()).
         plot_ssp(
-            cp_ssp=self.cp_bot_halfspace,
-            cs_ssp=self.cs_bot_halfspace,
+            cp_ssp=np.array([self.cp_sedim_top, self.cp_bot_halfspace]),
+            cs_ssp=np.array([self.cs_sedim_top, self.cs_bot_halfspace]),
             z=self.z_in_bottom,
             ax=axs[0],
         )
         plot_attenuation(
-            ap=self.apbot_halfspace,
-            ash=self.ashbot_halfspace,
+            ap=np.array([self.ap_sedim_top, self.apbot_halfspace]),
+            ash=np.array([self.ash_sedim_top, self.ashbot_halfspace]),
             z=self.z_in_bottom,
             ax=axs[1],
         )
-        plot_density(rho=self.rhobot_halfspace, z=self.z_in_bottom, ax=axs[2])
+        plot_density(
+            rho=np.array([self.rho_sedim_top, self.rhobot_halfspace]),
+            z=self.z_in_bottom,
+            ax=axs[2],
+        )
         plt.suptitle("Bottom properties")
         return fig
 
@@ -1085,10 +1108,20 @@ class KrakenEnv:
         # sort above) element.
         self.nominal_frequency = float(self.freq[0])
 
-        self.top_hs = kraken_top_hs if kraken_top_hs is not None else KrakenTopHalfspace()
+        self.top_hs = (
+            kraken_top_hs if kraken_top_hs is not None else KrakenTopHalfspace()
+        )
         self.medium = kraken_medium if kraken_medium is not None else KrakenMedium()
-        self.att = kraken_attenuation if kraken_attenuation is not None else KrakenAttenuation()
-        self.bottom_hs = kraken_bottom_hs if kraken_bottom_hs is not None else KrakenBottomHalfspace()
+        self.att = (
+            kraken_attenuation
+            if kraken_attenuation is not None
+            else KrakenAttenuation()
+        )
+        self.bottom_hs = (
+            kraken_bottom_hs
+            if kraken_bottom_hs is not None
+            else KrakenBottomHalfspace()
+        )
         self.field = kraken_field if kraken_field is not None else KrakenField()
         self.bathy = kraken_bathy if kraken_bathy is not None else Bathymetry()
 
@@ -1195,9 +1228,13 @@ class KrakenEnv:
         # the range-dependent case below, where it genuinely differs
         # per profile).
         halfspace_depth = (
-            self.medium.z_ssp.max() if not self.bottom_hs.add_sediment_buffer_layer else None
+            self.medium.z_ssp.max()
+            if not self.bottom_hs.add_sediment_buffer_layer
+            else None
         )
-        self.bottom_hs.write_lines(use_bathymetry=self.bathy.use_bathy, halfspace_depth=halfspace_depth)
+        self.bottom_hs.write_lines(
+            use_bathymetry=self.bathy.use_bathy, halfspace_depth=halfspace_depth
+        )
         self.field.write_lines()
 
         self._append_profile_lines(title=self.simulation_title, medium=self.medium)
@@ -1258,8 +1295,8 @@ class KrakenEnv:
                     "least as deep as every other profile along the range, or "
                     "it crashes with a cryptic Fortran runtime error "
                     "('Non-existing record number') or "
-                    "\"Fatal Error: modes must be tabulated throughout the "
-                    "ocean and sediment to compute the coupling coefs.\" -- "
+                    '"Fatal Error: modes must be tabulated throughout the '
+                    'ocean and sediment to compute the coupling coefs." -- '
                     "confirmed with a real KRAKEN/FIELD run. Fix: use "
                     "KrakenBottomHalfspace(add_sediment_buffer_layer=True, "
                     "...) instead (the default), which sizes its buffer "
@@ -1268,6 +1305,56 @@ class KrakenEnv:
                     "every profile regardless of where the deepest point "
                     "falls along the range."
                 )
+
+        # NOTE (bug fixed, behaviour changed: auto-fix instead of a hard
+        # error): confirmed with a real KRAKEN/FIELD run that, when a
+        # buffer sediment layer is used
+        # (self.bottom_hs.add_sediment_buffer_layer=True, i.e. nmedia=2,
+        # a genuine second "ocean + sediment" tabulated medium), FIELD.exe
+        # additionally requires the receiver depth grid TABULATED BY
+        # KRAKEN.EXE INTO THE '.mod' FILE (KrakenField's own
+        # 'rcv_z_max', written into the '.env' below) to reach all the
+        # way down to the BOTTOM of that sediment layer
+        # (self.bottom_hs.sedim_layer_max_depth) -- it fails with:
+        # "Fatal Error: modes must be tabulated throughout the ocean and
+        # sediment to compute the coupling coefs." followed by the
+        # mismatched depths (e.g. "depths 0.0 400.0" -- the tabulated
+        # medium's full depth -- vs "z 0.0 200.0" -- the shallower
+        # receiver grid actually tabulated). This is about COUPLED-mode
+        # range-dependent runs specifically (the error is about
+        # "coupling coefs", computed between adjacent profiles), which is
+        # exactly what this method builds. This used to raise a
+        # ValueError here, requiring the caller to manually recompute and
+        # pass a large enough 'rcv_z_max' on KrakenField. Since the
+        # correct value is already known at this point, there is no real
+        # choice to leave to the caller: the receiver depth grid (written
+        # into each profile block below) is now extended automatically
+        # instead, so the generated '.env' is correct without any extra
+        # step.
+        #
+        # IMPORTANT: this is entirely separate from KrakenFlp's own
+        # 'rcv_z_max', which controls the '.flp' file's PRESSURE-FIELD
+        # OUTPUT grid -- where FIELD.exe reports pressure to the user,
+        # not how deep it internally tabulates modes. That grid is left
+        # exactly as the caller sets it (see KrakenFlp.__init__): the
+        # user is free to request pressure at a single (r, z) point
+        # regardless of how deep the sediment buffer extends. Confirmed
+        # against a real KRAKEN/FIELD run that extending only THIS side
+        # (KrakenField / the '.env') is what actually resolves the
+        # error above; an earlier version of this fix also extended
+        # KrakenFlp's grid, which was an unnecessary overreach now
+        # reverted.
+        if self.bottom_hs.write_sedim_layer_bloc:
+            if self.field.rcv_depth_max < self.bottom_hs.sedim_layer_max_depth:
+                print(
+                    f"Note: extending KrakenField's receiver depth range from "
+                    f"{self.field.rcv_depth_max:.1f} m to "
+                    f"{self.bottom_hs.sedim_layer_max_depth:.1f} m (the bottom "
+                    "of the buffer sediment layer) -- FIELD.exe requires "
+                    "receivers to reach that depth to compute the coupled-mode "
+                    "coupling coefficients."
+                )
+                self.field.rcv_depth_max = self.bottom_hs.sedim_layer_max_depth
 
         self.top_hs.write_lines(
             kraken_medium=self.medium,
@@ -1294,8 +1381,12 @@ class KrakenEnv:
             # is deliberate: the buffer is sized to reach past the
             # deepest point of the whole bathymetry, regardless of how
             # shallow any individual profile's local depth is.
-            halfspace_depth = local_depth if not self.bottom_hs.add_sediment_buffer_layer else None
-            self.bottom_hs.write_lines(use_bathymetry=self.bathy.use_bathy, halfspace_depth=halfspace_depth)
+            halfspace_depth = (
+                local_depth if not self.bottom_hs.add_sediment_buffer_layer else None
+            )
+            self.bottom_hs.write_lines(
+                use_bathymetry=self.bathy.use_bathy, halfspace_depth=halfspace_depth
+            )
 
             title = f"{self.simulation_title} - r = {r_km:.2f} km"
             self._append_profile_lines(title=title, medium=medium_at_range)
@@ -1316,7 +1407,11 @@ class KrakenEnv:
 
         idx_in_range = medium_copy.z_ssp <= depth
         z_ssp = medium_copy.z_ssp[idx_in_range]
-        cp = medium_copy.cp_ssp[idx_in_range] if medium_copy.cp_ssp.size == medium_copy.z_ssp.size else medium_copy.cp_ssp
+        cp = (
+            medium_copy.cp_ssp[idx_in_range]
+            if medium_copy.cp_ssp.size == medium_copy.z_ssp.size
+            else medium_copy.cp_ssp
+        )
 
         if depth > z_ssp[-1]:
             # The local bottom is deeper than the last point of the
@@ -1364,7 +1459,9 @@ class KrakenEnv:
         self.env_lines.append(
             align_var_description(f"{self.nominal_frequency}", "Nominal frequency (Hz)")
         )
-        self.env_lines.append(align_var_description(f"{self.nmedia}", "Number of media"))
+        self.env_lines.append(
+            align_var_description(f"{self.nmedia}", "Number of media")
+        )
 
         self.env_lines += self.top_hs.lines
         self.env_lines += medium.lines
@@ -1421,7 +1518,7 @@ class KrakenEnv:
             matplotlib.figure.Figure
         """
         pfig = PubFigure(titlepad=50, labelpad=25)
-        fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
+        fig, axs = plt.subplots(1, 3, figsize=(16, 8), sharey=True)
         axs[0].set_ylabel("Depth [m]")
 
         n_med = self.medium.z_ssp.size
@@ -1442,32 +1539,50 @@ class KrakenEnv:
         z_in_bottom = self.bottom_hs.z_in_bottom
         if z_in_bottom.max() <= 0:
             z_in_bottom = np.array([0.0, 0.2 * z_bottom])
-        n_bot = z_in_bottom.size
+        assert z_in_bottom.size == 2, "z_in_bottom is always [top, bottom]"
         z_env = np.append(self.medium.z_ssp, z_in_bottom + z_bottom)
+
+        # NOTE (bug fixed): the sediment/bottom half of cp_env/cs_env/
+        # ap_env/ash_env/rho_env used to broadcast the SAME terminal
+        # halfspace value (e.g. self.bottom_hs.cp_bot_halfspace) to BOTH
+        # points of z_in_bottom, i.e. always drawing an isovelocity
+        # (flat) bottom -- even when a genuine sediment GRADIENT was
+        # configured via KrakenBottomHalfspace's 'sediment_top_properties'
+        # (see its docstring), which is written correctly into the
+        # '.env' file itself (a real two-point gradient) but was never
+        # reflected in this plot. Fixed by using the TOP-of-sediment
+        # value (self.bottom_hs.cp_sedim_top, etc.) for the first point
+        # and the terminal/basement value for the second, matching
+        # exactly what write_lines() puts in the '.env'. This is safe
+        # for every other configuration too: cp_sedim_top (etc.)
+        # already defaults to cp_bot_halfspace (etc.) whenever no
+        # gradient is configured (see KrakenBottomHalfspace's
+        # set_halfspace_properties()), so a flat bottom is still drawn
+        # flat -- only a genuine gradient changes what gets plotted.
 
         cp_env = np.append(
             _broadcast_to_size(self.medium.cp_ssp, n_med),
-            _broadcast_to_size(self.bottom_hs.cp_bot_halfspace, n_bot),
+            np.array([self.bottom_hs.cp_sedim_top, self.bottom_hs.cp_bot_halfspace]),
         )
         cs_env = np.append(
             _broadcast_to_size(self.medium.cs_ssp, n_med),
-            _broadcast_to_size(self.bottom_hs.cs_bot_halfspace, n_bot),
+            np.array([self.bottom_hs.cs_sedim_top, self.bottom_hs.cs_bot_halfspace]),
         )
         plot_ssp(cp_ssp=cp_env, cs_ssp=cs_env, z=z_env, z_bottom=z_bottom, ax=axs[0])
 
         ap_env = np.append(
             _broadcast_to_size(self.medium.ap, n_med),
-            _broadcast_to_size(self.bottom_hs.apbot_halfspace, n_bot),
+            np.array([self.bottom_hs.ap_sedim_top, self.bottom_hs.apbot_halfspace]),
         )
         ash_env = np.append(
             _broadcast_to_size(self.medium.ash, n_med),
-            _broadcast_to_size(self.bottom_hs.ashbot_halfspace, n_bot),
+            np.array([self.bottom_hs.ash_sedim_top, self.bottom_hs.ashbot_halfspace]),
         )
         plot_attenuation(ap=ap_env, ash=ash_env, z=z_env, z_bottom=z_bottom, ax=axs[1])
 
         rho_env = np.append(
             _broadcast_to_size(self.medium.rho, n_med),
-            _broadcast_to_size(self.bottom_hs.rhobot_halfspace, n_bot),
+            np.array([self.bottom_hs.rho_sedim_top, self.bottom_hs.rhobot_halfspace]),
         )
         plot_density(rho=rho_env, z=z_env, z_bottom=z_bottom, ax=axs[2])
 
@@ -1477,7 +1592,12 @@ class KrakenEnv:
                 axs[i].scatter(xmin, src_depth, s=30, color="k")
                 for s in [200, 500]:
                     axs[i].scatter(
-                        xmin, src_depth, s=s, facecolors="None", edgecolors="k", linewidths=0.5
+                        xmin,
+                        src_depth,
+                        s=s,
+                        facecolors="None",
+                        edgecolors="k",
+                        linewidths=0.5,
                     )
 
         plt.suptitle("Waveguide properties")
@@ -1550,6 +1670,23 @@ class KrakenFlp:
         self.rcv_z_min = rcv_z_min
         self.rcv_z_max = rcv_z_max
 
+        # NOTE: unlike KrakenEnv's own receiver depth grid (see
+        # KrakenEnv.write_range_dependent_lines), rcv_z_max here is
+        # intentionally left untouched, whatever the caller passes. This
+        # grid is the '.flp' file's own PRESSURE-FIELD OUTPUT grid --
+        # where FIELD.exe reports pressure to the user -- which is
+        # entirely independent from the mode-tabulation depth FIELD.exe
+        # needs internally to compute coupled-mode coupling coefficients
+        # (that requirement is about the '.env' file's own receiver
+        # depth grid, controlling how deep kraken.exe tabulates mode
+        # shapes into the '.mod' file -- see KrakenEnv's fix). The user
+        # is free to request pressure at a single (r, z) point, or any
+        # other grid, regardless of how deep the sediment buffer layer
+        # extends; confirmed against a real KRAKEN/FIELD run that
+        # extending only the '.env' side (not this one) resolves the
+        # "modes must be tabulated throughout the ocean and sediment to
+        # compute the coupling coefs." error.
+
         self.n_rcv_r = int(n_rcv_r)
         self.rcv_r_min = int(np.floor(rcv_r_min))
         self.rcv_r_max = int(np.ceil(rcv_r_max))
@@ -1611,7 +1748,9 @@ class KrakenFlp:
             align_var_description(
                 f"{self.n_rcv_z}", "Number of receiver range-displacements"
             ),
-            align_var_description(f"{self.rcv_dist_offset} /", "Receiver displacements (m)"),
+            align_var_description(
+                f"{self.rcv_dist_offset} /", "Receiver displacements (m)"
+            ),
         ]
 
     def write_flp(self):

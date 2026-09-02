@@ -87,6 +87,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
+from publication.publication_figure import PubFigure
 from propa.kraken_toolbox.read_modes import readmodes
 from propa.kraken_toolbox.read_shd import readshd
 from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
@@ -373,10 +374,13 @@ def _render_mode_grid(
     # (a "portrait" aspect ratio suits a depth profile better than the
     # previous, wider-than-tall layout).
     nrows, ncols = _grid_shape(n_panels, ncols=ncols)
+
+    pfig = PubFigure(titlepad=25, labelpad=25)
     fig, axs = plt.subplots(
         nrows,
         ncols,
-        figsize=(16, 10),
+        # figsize=(3.2 * ncols, 4.2 * nrows),
+        figsize=(16, 12),
         sharey=True,
         squeeze=False,
         constrained_layout=True,
@@ -828,7 +832,65 @@ def _read_tl_grid(filename, freq, units="km"):
     return r, Pos["r"]["z"], TL
 
 
-def plot_tl_profile(filename, freq, rcv_depth, units="km", ax=None, label=None):
+def _add_spreading_loss_references(
+    ax, r, units, show_spherical_loss, show_cylindrical_loss
+):
+    """Overlay canonical spreading-loss reference curves on a TL-vs-range
+    axis: TL = 20*log10(r) (spherical spreading) and/or TL = 10*log10(r)
+    (cylindrical spreading), r in meters, referenced to r=1 m (TL=0 dB
+    there) -- the standard textbook definitions, useful to visually
+    compare a real TL profile's decay rate against these two idealized
+    reference models. No-op if both flags are False.
+
+    Args:
+        ax (matplotlib.axes.Axes): axis to draw into.
+        r (array-like): range values already in 'units' (as plotted on
+            the x-axis) -- converted internally to meters for the
+            log10(r) formulas.
+        units (str): 'm' or 'km', matching what 'r' is expressed in.
+        show_spherical_loss (bool): overlay 20*log10(r).
+        show_cylindrical_loss (bool): overlay 10*log10(r).
+    """
+    if not (show_spherical_loss or show_cylindrical_loss):
+        return
+
+    r = np.asarray(r, dtype=float)
+    r_m = r * 1000.0 if units == "km" else r
+    with np.errstate(divide="ignore"):
+        if show_spherical_loss:
+            TL_spherical = 20.0 * np.log10(r_m)
+            TL_spherical[~np.isfinite(TL_spherical)] = (
+                np.nan
+            )  # r=0 -> log10(0) -> gap, not a crash
+            ax.plot(
+                r,
+                TL_spherical,
+                color="k",
+                linestyle=":",
+                label=r"Spherical ($20\log_{10}(r)$)",
+            )
+        if show_cylindrical_loss:
+            TL_cylindrical = 10.0 * np.log10(r_m)
+            TL_cylindrical[~np.isfinite(TL_cylindrical)] = np.nan
+            ax.plot(
+                r,
+                TL_cylindrical,
+                color="gray",
+                linestyle="-.",
+                label=r"Cylindrical ($10\log_{10}(r)$)",
+            )
+
+
+def plot_tl_profile(
+    filename,
+    freq,
+    rcv_depth,
+    units="km",
+    ax=None,
+    label=None,
+    show_spherical_loss=False,
+    show_cylindrical_loss=False,
+):
     """Plot transmission loss vs. range at the receiver depth closest
     to 'rcv_depth', for a single frequency.
 
@@ -843,7 +905,12 @@ def plot_tl_profile(filename, freq, rcv_depth, units="km", ax=None, label=None):
             creating a new figure.
         label (str|None): legend label for this line (useful when
             overlaying this call's result with others on the same
-            axis). No legend is drawn if None.
+            axis). No legend is drawn if None and both spreading-loss
+            flags below are also False.
+        show_spherical_loss (bool): overlay the 20*log10(r) spherical
+            spreading reference curve (see _add_spreading_loss_references).
+        show_cylindrical_loss (bool): overlay the 10*log10(r) cylindrical
+            spreading reference curve.
 
     Returns:
         matplotlib.figure.Figure: the figure the profile was drawn
@@ -854,25 +921,37 @@ def plot_tl_profile(filename, freq, rcv_depth, units="km", ax=None, label=None):
     actual_depth = z_m[iz]
 
     if ax is None:
+        pfig = PubFigure(titlepad=50, labelpad=25)
         fig, ax = plt.subplots(figsize=(16, 8))
     else:
         fig = ax.figure
 
     ax.plot(r, TL[iz, :], label=label)
+    _add_spreading_loss_references(
+        ax, r, units, show_spherical_loss, show_cylindrical_loss
+    )
     ax.invert_yaxis()
     ax.set_xlabel(f"Range [{units}]")
     ax.set_ylabel("TL [dB]")
     ax.set_title(
         f"Transmission loss profile at {actual_depth:.1f} m depth, {freq:g} Hz"
     )
-    ax.grid(True)
-    if label is not None:
+    # ax.grid(True)
+    if label is not None or show_spherical_loss or show_cylindrical_loss:
         ax.legend()
     plt.tight_layout()
     return fig
 
 
-def plot_tl_profile_multi_freq(filename, freqs, rcv_depth, units="km", ax=None):
+def plot_tl_profile_multi_freq(
+    filename,
+    freqs,
+    rcv_depth,
+    units="km",
+    ax=None,
+    show_spherical_loss=False,
+    show_cylindrical_loss=False,
+):
     """Overlay transmission-loss-vs-range profiles at a fixed receiver
     depth, one line per frequency -- useful to compare how propagation
     loss depends on frequency in a broadband run.
@@ -884,34 +963,50 @@ def plot_tl_profile_multi_freq(filename, freqs, rcv_depth, units="km", ax=None):
         units (str): 'm' or 'km' for the range axis.
         ax (matplotlib.axes.Axes|None): plot into this axis instead of
             creating a new figure.
+        show_spherical_loss (bool): overlay the 20*log10(r) spherical
+            spreading reference curve (see _add_spreading_loss_references).
+        show_cylindrical_loss (bool): overlay the 10*log10(r) cylindrical
+            spreading reference curve.
 
     Returns:
         matplotlib.figure.Figure
     """
     if ax is None:
+        pfig = PubFigure(titlepad=50, labelpad=25)
         fig, ax = plt.subplots(figsize=(16, 8))
     else:
         fig = ax.figure
 
     actual_depth = None
+    r = None
     for freq in freqs:
         r, z_m, TL = _read_tl_grid(filename, freq, units=units)
         iz = int(np.argmin(np.abs(z_m - rcv_depth)))
         actual_depth = z_m[iz]
         ax.plot(r, TL[iz, :], label=f"{freq:g} Hz")
 
+    _add_spreading_loss_references(
+        ax, r, units, show_spherical_loss, show_cylindrical_loss
+    )
     ax.invert_yaxis()
     ax.set_xlabel(f"Range [{units}]")
     ax.set_ylabel("TL [dB]")
     ax.set_title(f"Transmission loss profiles at {actual_depth:.1f} m depth")
     ax.legend()
-    ax.grid(True)
+    # ax.grid(True)
     plt.tight_layout()
     return fig
 
 
 def plot_tl_profile_multi_freq_from_data(
-    pressure_field, freqs, field_pos, rcv_depth, units="km", ax=None
+    pressure_field,
+    freqs,
+    field_pos,
+    rcv_depth,
+    units="km",
+    ax=None,
+    show_spherical_loss=False,
+    show_cylindrical_loss=False,
 ):
     """Like plot_tl_profile_multi_freq(), but reading an already-computed
     broadband pressure field (e.g. from KrakenManager.runkraken(),
@@ -943,6 +1038,10 @@ def plot_tl_profile_multi_freq_from_data(
         units (str): 'm' or 'km' for the range axis.
         ax (matplotlib.axes.Axes|None): plot into this axis instead of
             creating a new figure.
+        show_spherical_loss (bool): overlay the 20*log10(r) spherical
+            spreading reference curve (see _add_spreading_loss_references).
+        show_cylindrical_loss (bool): overlay the 10*log10(r) cylindrical
+            spreading reference curve.
 
     Returns:
         matplotlib.figure.Figure
@@ -956,6 +1055,7 @@ def plot_tl_profile_multi_freq_from_data(
     actual_depth = z_m[iz]
 
     if ax is None:
+        pfig = PubFigure(titlepad=50, labelpad=25)
         fig, ax = plt.subplots(figsize=(16, 8))
     else:
         fig = ax.figure
@@ -966,12 +1066,15 @@ def plot_tl_profile_multi_freq_from_data(
             TL = -20 * np.log10(np.abs(pressure_2d) + 1e-30)
         ax.plot(r, TL[iz, :], label=f"{f:g} Hz")
 
+    _add_spreading_loss_references(
+        ax, r, units, show_spherical_loss, show_cylindrical_loss
+    )
     ax.invert_yaxis()
     ax.set_xlabel(f"Range [{units}]")
     ax.set_ylabel("TL [dB]")
     ax.set_title(f"Transmission loss profiles at {actual_depth:.1f} m depth")
     ax.legend()
-    ax.grid(True)
+    # ax.grid(True)
     plt.tight_layout()
     return fig
 
@@ -1161,7 +1264,8 @@ def plot_bathymetry(bathy, ax=None):
         matplotlib.figure.Figure
     """
     if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 5))
+        pfig = PubFigure(titlepad=50, labelpad=25)
+        fig, ax = plt.subplots(figsize=(16, 8))
     else:
         fig = ax.figure
 

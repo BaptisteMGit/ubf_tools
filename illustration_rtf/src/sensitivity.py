@@ -33,11 +33,20 @@ from propa.kraken_toolbox.src.kraken_env import (
 )
 from propa.kraken_toolbox.src.kraken_manager import KrakenManager
 
+# Usefull paths
 TITLE = "RTF sensitivity study"
-SENSITIVITY_DIRECTORY = (
-    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\sensitivity"
-)
 ENV_FILENAME = "rtf_sensitivity_study"
+
+if os.name == "nt":  # Windows
+    project_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd"
+    SENSITIVITY_DIRECTORY = os.path.join(project_root, "illustration_rtf", "data", "sensitivity")
+
+else:  # Linux
+    project_root = "/home/program/ubf_tools"
+    data_root = "/home/data"
+    SENSITIVITY_DIRECTORY = os.path.join(data_root, "sensitivity")
+
+
 SENSITIVITY_KRAKEN_DIR = os.path.join(SENSITIVITY_DIRECTORY, "io_files")
 os.makedirs(SENSITIVITY_KRAKEN_DIR, exist_ok=True)
 
@@ -517,6 +526,9 @@ def build_dataset_current_config_kraken(
 def build_sensitivity_dataset(
     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
 ):
+    
+    print(f"Processing {test_arg_name}...")
+    
     # We will build the args to pass to the test function at each iteration
     all_args = all_arg_dict.copy()
 
@@ -616,20 +628,20 @@ if __name__ == "__main__":
 
     size_per_test_Ko = 110000
     nb_param = 4
-    npt = 10
+    npt = 2
     total_size = size_per_test_Ko * nb_param * npt
     print(f"Total memory size = {total_size*1e-6} Go")
 
-    # # Depth
-    # test_arg_name = "depth"
-    # d_min = 30
-    # d_max = 5000
-    # d_test = np.linspace(d_min, d_max, npt)
-    # test_arg_values = d_test
+    # Depth
+    test_arg_name = "depth"
+    d_min = 30
+    d_max = 5000
+    d_test = np.linspace(d_min, d_max, npt)
+    test_arg_values = d_test
 
-    # build_sensitivity_dataset(
-    #     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    # )
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )
 
     # Water celerity
     test_arg_name = "c1"
@@ -642,35 +654,35 @@ if __name__ == "__main__":
         test_arg_name, test_arg_values, all_arg_dict, model="kraken"
     )
 
-    # # Bottom celerity
-    # test_arg_name = "c2"
-    # c2_min = 1550.0
-    # c2_max = 1900.0
-    # c2_test = np.linspace(c2_min, c2_max, npt)
-    # test_arg_values = c2_test
+    # Bottom celerity
+    test_arg_name = "c2"
+    c2_min = 1550.0
+    c2_max = 1900.0
+    c2_test = np.linspace(c2_min, c2_max, npt)
+    test_arg_values = c2_test
 
-    # build_sensitivity_dataset(
-    #     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    # )
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )
 
-    # # Bottom density
-    # test_arg_name = "rho2"
-    # rho2_min = 1.0 * 1e3
-    # rho2_max = 2.5 * 1e3
-    # rho2_test = np.linspace(rho2_min, rho2_max, npt)
-    # test_arg_values = rho2_test
+    # Bottom density
+    test_arg_name = "rho2"
+    rho2_min = 1.0 * 1e3
+    rho2_max = 2.5 * 1e3
+    rho2_test = np.linspace(rho2_min, rho2_max, npt)
+    test_arg_values = rho2_test
 
-    # build_sensitivity_dataset(
-    #     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    # )
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )
 
-    # # Bottom attenuation
-    # test_arg_name = "attn2"
-    # attn2_min = 0.0
-    # attn2_max = 1.0
-    # attn2_test = np.linspace(attn2_min, attn2_max, npt)
-    # test_arg_values = attn2_test
+    # Bottom attenuation
+    test_arg_name = "attn2"
+    attn2_min = 0.0
+    attn2_max = 1.0
+    attn2_test = np.linspace(attn2_min, attn2_max, npt)
+    test_arg_values = attn2_test
 
-    # build_sensitivity_dataset(
-    #     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    # )
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )

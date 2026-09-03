@@ -82,7 +82,7 @@ def baseline_env():
 
     rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
     # c2 = 1600  # sound celerity in fluid sediment (m/s)
-    c2 = 1550 # Close to Hamilton(rho2) = 1542 m.s-1
+    c2 = 1550  # Close to Hamilton(rho2) = 1542 m.s-1
     attn2 = 0.2  # compressional wave attenuation in fluid sediment in dB / wavelength
     d = 100  # waveguide depth (m)
 
@@ -113,7 +113,7 @@ def baseline_sig():
 def baseline_src_rcv():
     # Source / receiver properties
     z_s = 5
-    z_rcv = 99.5  # D-0.5
+    z_rcv = 99  # D-1
     dr = 5
     r0 = 50 * 1e3
     r_rcv = np.arange(5 * 1e3, 100 * 1e3 + dr, dr)
@@ -564,7 +564,7 @@ def build_kraken(freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid):
         src_type="point_source",
         mode_theory="adiabatic",  # irrelevant for a range-independent run, kept simple
         mode_addition="coherent",
-        nb_modes=nb_modes,
+        nb_modes=1000,
         src_depth=z_s,
         n_rcv_z=1,
         rcv_z_min=z,
@@ -701,6 +701,11 @@ def build_sensitivity_dataset(
             all_args["c2"] = c2
 
             # print(f"Couple rho2, c2 = ({test_val, c2})")
+
+        if test_arg_name == "depth":
+            # Update receiver depth
+            # print()
+            all_args["z_rcv"] = test_val - 1
 
         # Build dataset for JUST this one value.
         call_kwargs = _extract_kwargs(build_dataset_current_config_kraken, all_args)

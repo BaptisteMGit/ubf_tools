@@ -79,8 +79,10 @@ def baseline_env():
     # Waveguide parameters
     rho1 = 1.0 * 1e3  # density in water (kg/m^3)
     c1 = 1500  # sound celerity in water (m/s)
+
     rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
-    c2 = 1600  # sound celerity in fluid sediment (m/s)
+    # c2 = 1600  # sound celerity in fluid sediment (m/s)
+    c2 = 1550 # Close to Hamilton(rho2) = 1542 m.s-1
     attn2 = 0.2  # compressional wave attenuation in fluid sediment in dB / wavelength
     d = 100  # waveguide depth (m)
 
@@ -914,7 +916,7 @@ def build_tests():
 
 
 if __name__ == "__main__":
+    build_baseline()
     build_tests()
-    # build_baseline()
     process_sensitivity()
     plt.show()

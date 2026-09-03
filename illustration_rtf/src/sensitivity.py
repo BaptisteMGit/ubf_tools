@@ -890,22 +890,22 @@ def build_tests():
         drop_keys=("fs", "fmax", "r0", "d12"), d12_max=5000
     )
 
-    npt = 3
+    npt = 200
     nb_param = 4
     size_per_test_Ko = 110000
     total_size = size_per_test_Ko * nb_param * npt
     print(
         f"Total memory size (if it were all held at once) = {total_size * 1e-6:.2f} Go "
-        f"-- no longer applicable: build_sensitivity_dataset() now writes each "
-        f"value's result as soon as it's computed (see its own docstring)."
+        # f"-- no longer applicable: build_sensitivity_dataset() now writes each "
+        # f"value's result as soon as it's computed (see its own docstring)."
     )
 
     sweeps = {
-        "depth": np.linspace(30, 500, npt),
-        "c1": np.linspace(1450, 1550, npt),
+        "depth": np.linspace(30, 5000, 200),
+        "c1": np.linspace(1450, 1550, 100),
         # "c2": np.linspace(1550.0, 1900.0, npt),
-        "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, npt),
-        "attn2": np.linspace(0.0, 1.0, npt),
+        "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 250),
+        "attn2": np.linspace(0.0, 1.0, 100),
     }
     for test_arg_name, test_arg_values in sweeps.items():
         build_sensitivity_dataset(
@@ -915,6 +915,6 @@ def build_tests():
 
 if __name__ == "__main__":
     build_tests()
-    build_baseline()
+    # build_baseline()
     process_sensitivity()
     plt.show()

@@ -15,6 +15,8 @@
 import os
 import numpy as np
 import xarray as xr
+import matplotlib.pyplot as plt
+
 
 from misc import progression_bar
 from source.normal_modes import (
@@ -33,16 +35,21 @@ from propa.kraken_toolbox.src.kraken_env import (
 )
 from propa.kraken_toolbox.src.kraken_manager import KrakenManager
 
+from source.global_constants import project_root
+
 TITLE = "RTF sensitivity study"
-SENSITIVITY_DIRECTORY = (
-    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\sensitivity"
+SENSITIVITY_DIRECTORY = os.path.join(
+    project_root, "illustration_rtf", "data", "sensitivity"
 )
+os.makedirs(SENSITIVITY_DIRECTORY, exist_ok=True)
+
 ENV_FILENAME = "rtf_sensitivity_study"
 SENSITIVITY_KRAKEN_DIR = os.path.join(SENSITIVITY_DIRECTORY, "io_files")
 os.makedirs(SENSITIVITY_KRAKEN_DIR, exist_ok=True)
 
 RESULT_DIR = os.path.join(SENSITIVITY_DIRECTORY, "result")
 os.makedirs(RESULT_DIR, exist_ok=True)
+
 
 # ======================================================================================================================
 # Sensitivity study properties
@@ -547,7 +554,7 @@ def build_sensitivity_dataset(
         # Build dataset
         kraken_freq, kraken_r, g_fr = build_dataset_current_config_kraken(
             **all_args
-        )  # gamma is (nf, nr)
+        )  # g_fr is (nf, nr)
 
         # Pad with nan to get full size
         n_missing_freq = all_args["freq"].size - kraken_freq.size
@@ -584,7 +591,7 @@ def build_sensitivity_dataset(
     ds_sensi.to_netcdf(fpath)
 
 
-if __name__ == "__main__":
+def build_tests():
     # Environment
     env_param = baseline_env()
     print("Baseline environement properties:")
@@ -616,20 +623,20 @@ if __name__ == "__main__":
 
     size_per_test_Ko = 110000
     nb_param = 4
-    npt = 10
+    npt = 20
     total_size = size_per_test_Ko * nb_param * npt
     print(f"Total memory size = {total_size*1e-6} Go")
 
-    # # Depth
-    # test_arg_name = "depth"
-    # d_min = 30
-    # d_max = 5000
-    # d_test = np.linspace(d_min, d_max, npt)
-    # test_arg_values = d_test
+    # Depth
+    test_arg_name = "depth"
+    d_min = 30
+    d_max = 500
+    d_test = np.linspace(d_min, d_max, npt)
+    test_arg_values = d_test
 
-    # build_sensitivity_dataset(
-    #     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    # )
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )
 
     # Water celerity
     test_arg_name = "c1"
@@ -642,35 +649,195 @@ if __name__ == "__main__":
         test_arg_name, test_arg_values, all_arg_dict, model="kraken"
     )
 
-    # # Bottom celerity
-    # test_arg_name = "c2"
-    # c2_min = 1550.0
-    # c2_max = 1900.0
-    # c2_test = np.linspace(c2_min, c2_max, npt)
-    # test_arg_values = c2_test
+    # Bottom celerity
+    test_arg_name = "c2"
+    c2_min = 1550.0
+    c2_max = 1900.0
+    c2_test = np.linspace(c2_min, c2_max, npt)
+    test_arg_values = c2_test
 
-    # build_sensitivity_dataset(
-    #     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    # )
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )
 
-    # # Bottom density
-    # test_arg_name = "rho2"
-    # rho2_min = 1.0 * 1e3
-    # rho2_max = 2.5 * 1e3
-    # rho2_test = np.linspace(rho2_min, rho2_max, npt)
-    # test_arg_values = rho2_test
+    # Bottom density
+    test_arg_name = "rho2"
+    rho2_min = 1.0 * 1e3
+    rho2_max = 2.5 * 1e3
+    rho2_test = np.linspace(rho2_min, rho2_max, npt)
+    test_arg_values = rho2_test
 
-    # build_sensitivity_dataset(
-    #     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    # )
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )
 
-    # # Bottom attenuation
-    # test_arg_name = "attn2"
-    # attn2_min = 0.0
-    # attn2_max = 1.0
-    # attn2_test = np.linspace(attn2_min, attn2_max, npt)
-    # test_arg_values = attn2_test
+    # Bottom attenuation
+    test_arg_name = "attn2"
+    attn2_min = 0.0
+    attn2_max = 1.0
+    attn2_test = np.linspace(attn2_min, attn2_max, npt)
+    test_arg_values = attn2_test
 
-    # build_sensitivity_dataset(
-    #     test_arg_name, test_arg_values, all_arg_dict, model="kraken"
-    # )
+    build_sensitivity_dataset(
+        test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    )
+
+
+def build_baseline():
+
+    # Environment
+    env_param = baseline_env()
+    # Signal
+    sig_param = baseline_sig()
+    # Source receiver config
+    src_rcv_param = baseline_src_rcv()
+
+    all_arg_dict = env_param.copy()
+    all_arg_dict.update(sig_param)
+    all_arg_dict.update(src_rcv_param)
+
+    all_arg_dict["d12_max"] = 5000
+
+    # Remove fmax and fs that are not usefull
+    all_args = all_arg_dict.copy()
+    all_args.pop("fs")
+    all_args.pop("fmax")
+    all_args.pop("r0")
+    all_args.pop("d12")
+
+    # Build dataset
+    kraken_freq, kraken_r, g_fr = build_dataset_current_config_kraken(
+        **all_args
+    )  # g_fr is (nf, nr)
+
+    # Pad with nan to get full size
+    n_missing_freq = all_args["freq"].size - kraken_freq.size
+    pad_width = ((n_missing_freq, 0), (0, 0))
+    g_fr_full = np.pad(
+        g_fr, pad_width=pad_width, mode="constant", constant_values=np.nan
+    )
+
+    # Build xarray dataset and save
+    ds = xr.Dataset(
+        data_vars=dict(gf=(["f", "r"], np.abs(np.array(g_fr_full)))),
+        coords={
+            "f": all_args["freq"],
+            "r": kraken_r,
+        },
+    )
+    ds.attrs = all_arg_dict
+
+    # Derive gamma from gf
+    gamma = derive_gamma(ds, ds.d12)
+
+    # Add to dataset
+    ds["gamma"] = gamma
+
+    fpath = os.path.join(RESULT_DIR, f"gf_dataset_baseline.nc")
+    ds.to_netcdf(fpath)
+
+
+def dist_from_baseline(ds_baseline, ds_test, d12):
+
+    # Baseline gamma (at r0)
+    gamma_baseline = ds_baseline.gamma.sel(r=ds_baseline.r0)
+    gamma_a = gamma_baseline.values.T[:, np.newaxis]
+
+    # Derive gamma from gf test
+    gamma_test = derive_gamma(ds_test, d12)
+    gamma_test_r0 = gamma_test.sel(r=ds_baseline.r0)
+    gamma_b = gamma_test_r0.values.T
+
+    # Compute distance
+    dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
+    dist_L2 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2")
+    dist_theta = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta")
+
+    return dist_L1, dist_L2, dist_theta
+
+
+def derive_gamma(ds, d12):
+    # Build RTF
+    r = ds.r.values
+    dr = r[1] - r[0]
+    nr_shift = int(d12 / dr)
+
+    # Green function at receiver 1
+    g_fr_1 = ds.gf.isel(r=slice(0, -nr_shift))
+    # Green function at receiver 2
+    g_fr_2 = ds.gf.isel(r=slice(nr_shift, ds.sizes["r"]))
+
+    # Build RTF
+    pi_21_fr = g_fr_2.values / g_fr_1.values
+    # r_grid = g_fr_1.r.values
+    # Derive gamma
+    gamma = 20 * np.log10(np.abs(pi_21_fr))  # (nf, nr)
+    gamma = xr.ones_like(g_fr_1) * gamma
+
+    return gamma
+
+
+def process_sensitivity():
+
+    # Load baseline
+    # Environment
+    env_param = baseline_env()
+    # Signal
+    sig_param = baseline_sig()
+    # Source receiver config
+    src_rcv_param = baseline_src_rcv()
+
+    all_arg_dict = env_param.copy()
+    all_arg_dict.update(sig_param)
+    all_arg_dict.update(src_rcv_param)
+
+    d12 = src_rcv_param["d12"]
+    r0 = src_rcv_param["r0"]
+    # Iterate over files in result folder
+    res_files = os.listdir(RESULT_DIR)
+    res_files = [file for file in res_files if "baseline" not in file]
+    print(res_files)
+
+    # Load baseline
+    fpath_baseline = os.path.join(RESULT_DIR, f"gf_dataset_baseline.nc")
+    ds_baseline = xr.open_dataset(fpath_baseline)
+
+    n_tests = len(res_files)
+    fig, axs = plt.subplots(1, n_tests)
+
+    for i, file in enumerate(res_files):
+        fpath = os.path.join(RESULT_DIR, file)
+        ds_test = xr.open_dataset(fpath)
+
+        # DISTANCE FROM BASELINE
+        dist_L1, dist_L2, dist_theta = dist_from_baseline(ds_baseline, ds_test, d12)
+
+        param_name = [
+            coord for coord in list(ds_test.coords) if coord not in ["f", "r"]
+        ]
+        # Plot
+        axs[i].plot(ds_test[param_name], dist_L1)
+        axs[i].plot(ds_test[param_name], dist_L2)
+        axs[i].plot(ds_test[param_name], dist_theta)
+
+        # plt.figure()
+        # plt.plot(ds[param_name].values, dist_L2)
+
+        # plt.xlabel(param_name)
+        # plt.show()
+
+        # # OTHER STUDY -> VARIATION AROUND R0
+        # # 2) Derive distance around r0
+        # dist_L1, dist_L2, dist_theta = single_sensitivity_test_calc_dist(
+        #     gamma=gamma, r_grid=r_grid, r0=r0
+        # )
+        # # 3) Derive characteristic metric
+        # width_L1, width_L2, width_theta = single_sensitivity_test_calc_dist_width(
+        #     dist_L1, dist_L2, dist_theta, r_grid=r_grid, r0=r0
+        # )
+
+
+if __name__ == "__main__":
+    # build_tests()
+    # build_baseline()
+    process_sensitivity()

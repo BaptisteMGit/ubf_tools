@@ -63,6 +63,10 @@ os.makedirs(RESULT_DIR, exist_ok=True)
 # Sensitivity study properties
 # ======================================================================================================================
 def celerity_density_Hamilton_Bachman_1982(rho):
+    """
+    rho in g.cm-3
+    cp in m.s-1
+    """
     # Appendix of Hamilton and Bachman 1982
 
     # Continental terrace (T)
@@ -686,6 +690,16 @@ def build_sensitivity_dataset(
 
         # Update args
         all_args[test_arg_name] = test_val
+
+        if test_arg_name == "rho2":
+            # Determine c2 according to Hamilton's model
+            rho2_gcm3 = test_val * 1e-3
+            c2 = celerity_density_Hamilton_Bachman_1982(rho2_gcm3)
+            # Update
+            all_args["c2"] = c2
+
+            # print(f"Couple rho2, c2 = ({test_val, c2})")
+
         # Build dataset for JUST this one value.
         call_kwargs = _extract_kwargs(build_dataset_current_config_kraken, all_args)
         kraken_freq, kraken_r, g_fr = build_dataset_current_config_kraken(
@@ -881,7 +895,7 @@ def build_tests():
     size_per_test_Ko = 110000
     total_size = size_per_test_Ko * nb_param * npt
     print(
-        f"Total memory size (if it were all held at once) = {total_size * 1e-6} Go "
+        f"Total memory size (if it were all held at once) = {total_size * 1e-6:.2f} Go "
         f"-- no longer applicable: build_sensitivity_dataset() now writes each "
         f"value's result as soon as it's computed (see its own docstring)."
     )
@@ -889,7 +903,7 @@ def build_tests():
     sweeps = {
         "depth": np.linspace(30, 500, npt),
         "c1": np.linspace(1450, 1550, npt),
-        "c2": np.linspace(1550.0, 1900.0, npt),
+        # "c2": np.linspace(1550.0, 1900.0, npt),
         "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, npt),
         "attn2": np.linspace(0.0, 1.0, npt),
     }
@@ -900,7 +914,7 @@ def build_tests():
 
 
 if __name__ == "__main__":
-    # build_tests()
-    # build_baseline()
+    build_tests()
+    build_baseline()
     process_sensitivity()
     plt.show()

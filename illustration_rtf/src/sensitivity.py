@@ -704,7 +704,6 @@ def build_sensitivity_dataset(
 
         if test_arg_name == "depth":
             # Update receiver depth
-            # print()
             all_args["z_rcv"] = test_val - 1
 
         # Build dataset for JUST this one value.
@@ -856,7 +855,12 @@ def process_sensitivity(test_arg_names=None):
     fpath_baseline = os.path.join(RESULT_DIR, "gf_dataset_baseline.nc")
 
     n_tests = len(test_arg_names)
-    fig, axs = plt.subplots(1, max(n_tests, 1), squeeze=False)
+    fig, axs = plt.subplots(1, max(n_tests, 1), squeeze=False, sharey=True)
+    _dict_var_labels = {
+        "attn2": r"$\rho2$ [kg m$^3$]", 
+        "c2": r"$c_2$ [m s$^{-1}$]",
+        "depth": "Depth [m]"
+    }
     axs = axs[0]
 
     # NOTE: the baseline is small (a single configuration, not a
@@ -908,11 +912,11 @@ def build_tests():
     )
 
     sweeps = {
-        "depth": np.linspace(30, 5000, 200),
-        "c1": np.linspace(1450, 1550, 100),
+        "c1": np.linspace(1450, 1545, 200),
         # "c2": np.linspace(1550.0, 1900.0, npt),
-        "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 250),
-        "attn2": np.linspace(0.0, 1.0, 100),
+        "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 500),
+        "attn2": np.linspace(0.0, 1.0, 200),
+        "depth": np.linspace(30, 5000, 500),
     }
     for test_arg_name, test_arg_values in sweeps.items():
         build_sensitivity_dataset(
@@ -921,7 +925,7 @@ def build_tests():
 
 
 if __name__ == "__main__":
-    build_baseline()
-    build_tests()
+    # build_baseline()
+    # build_tests()
     process_sensitivity()
     plt.show()

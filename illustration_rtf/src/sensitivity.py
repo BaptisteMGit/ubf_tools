@@ -516,6 +516,7 @@ def build_kraken(freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid):
     clim_max = c2
     clim_min = 1400
 
+    # attn2 = 0  # TODO remove
     # ----------------------------------------------------------------------
     # 1. Environment: Pekeris waveguide
     # ----------------------------------------------------------------------
@@ -789,7 +790,59 @@ def build_baseline():
 #     return dist_L1, dist_L2, dist_theta
 
 
+def dist_from_baseline(ds_baseline, ds_test, d12, r0):
+    """Compute the RTF distance (L1/L2/theta) between the baseline's
+    gamma at r0 and each swept value's gamma at r0.
+
+    NOTE (performance/memory fixed): this used to call
+    derive_gamma(ds_test, d12), which computes gamma OVER THE FULL r
+    GRID (a division + log10 over a (n_values, n_freq, n_r) array, with
+    n_r possibly in the thousands) before this function immediately
+    discarded everything except the single r=r0 slice it actually
+    needed. Confirmed to be the dominant cost behind
+    process_sensitivity() taking several minutes and a lot of RAM: the
+    '.values' call inside derive_gamma() forces dask to actually read
+    every swept value's FULL range grid from disk and compute the
+    ratio over all of it, for a result that is >99% thrown away right
+    afterwards. 'ds_test' is now ALREADY reduced to just r=[r0, r0+d12]
+    by the time it reaches this function -- see
+    process_sensitivity()'s '_select_r0_pair' preprocessing callback --
+    so the division/log10 below only ever operates on that tiny slice.
+    """
+    # Baseline gamma (at r0) -- already precomputed for every r at
+    # build_baseline() time (a ONE-TIME run, not a per-value sweep --
+    # computing it over the full r grid there is fine, see
+    # derive_gamma()'s own docstring).
+    gamma_baseline = ds_baseline.gamma.sel(r=r0, method="nearest")
+    gamma_a = gamma_baseline.values.T[:, np.newaxis]
+
+    # 'ds_test.gf' only has r=[r0, r0+d12] left (2 points) -- see the
+    # NOTE above -- so this is a tiny computation, not a
+    # (n_values, n_freq, n_r) one.
+    g_fr_1 = ds_test.gf.sel(r=r0, method="nearest")
+    g_fr_2 = ds_test.gf.sel(r=r0 + d12, method="nearest")
+    gamma_test_r0 = 20 * np.log10(np.abs(g_fr_2.values / g_fr_1.values))
+    gamma_b = gamma_test_r0.T
+
+    # Compute distance
+    dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
+    dist_L2 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2")
+    dist_theta = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta")
+
+    return dist_L1, dist_L2, dist_theta
+
+
 def derive_gamma(ds, d12):
+    """Compute gamma(freq, r) over the FULL r grid.
+
+    NOTE: this remains a genuinely full-grid computation -- correct and
+    fine for build_baseline()'s use (a single, ONE-TIME configuration,
+    not a per-value sweep). Do NOT use this on a multi-value swept
+    dataset (e.g. inside process_sensitivity()'s per-parameter loop):
+    see dist_from_baseline()'s docstring for the performance/memory
+    issue that caused, and _select_r0_pair()/dist_from_baseline() for
+    the fix (select the 1-2 needed r-values first, compute after).
+    """
     # Build RTF
     r = ds.r.values
     dr = r[1] - r[0]
@@ -857,9 +910,9 @@ def process_sensitivity(test_arg_names=None):
     n_tests = len(test_arg_names)
     fig, axs = plt.subplots(1, max(n_tests, 1), squeeze=False, sharey=True)
     _dict_var_labels = {
-        "attn2": r"$\rho2$ [kg m$^3$]", 
+        "attn2": r"$\rho2$ [kg m$^3$]",
         "c2": r"$c_2$ [m s$^{-1}$]",
-        "depth": "Depth [m]"
+        "depth": "Depth [m]",
     }
     axs = axs[0]
 
@@ -911,13 +964,25 @@ def build_tests():
         # f"value's result as soon as it's computed (see its own docstring)."
     )
 
+    # REAL RUN
+    # sweeps = {
+    #     "c1": np.linspace(1450, 1545, 200),
+    #     # "c2": np.linspace(1550.0, 1900.0, npt),
+    #     "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 500),
+    #     "attn2": np.linspace(0.0, 1.0, 200),
+    #     "depth": np.linspace(30, 5000, 500),
+    # }
+
+    # DEMO RUN
     sweeps = {
-        "c1": np.linspace(1450, 1545, 200),
+        "c1": np.linspace(1450, 1540, 2),
         # "c2": np.linspace(1550.0, 1900.0, npt),
-        "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 500),
-        "attn2": np.linspace(0.0, 1.0, 200),
-        "depth": np.linspace(30, 5000, 500),
+        # "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 15),
+        # "attn2": np.linspace(0.0, 1.0, 10),
+        # "depth": np.linspace(30, 200, 17),
     }
+    print(sweeps["c1"])
+
     for test_arg_name, test_arg_values in sweeps.items():
         build_sensitivity_dataset(
             test_arg_name, test_arg_values, all_arg_dict, model="kraken"
@@ -926,6 +991,6 @@ def build_tests():
 
 if __name__ == "__main__":
     # build_baseline()
-    # build_tests()
-    process_sensitivity()
+    build_tests()
+    # process_sensitivity()
     plt.show()

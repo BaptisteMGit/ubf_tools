@@ -772,22 +772,22 @@ def build_baseline():
     return fpath
 
 
-def dist_from_baseline(ds_baseline, ds_test, d12, r0):
-    # Baseline gamma (at r0)
-    gamma_baseline = ds_baseline.gamma.sel(r=r0, method="nearest")
-    gamma_a = gamma_baseline.values.T[:, np.newaxis]
+# def dist_from_baseline(ds_baseline, ds_test, d12, r0):
+#     # Baseline gamma (at r0)
+#     gamma_baseline = ds_baseline.gamma.sel(r=r0, method="nearest")
+#     gamma_a = gamma_baseline.values.T[:, np.newaxis]
 
-    # Derive gamma from gf test
-    gamma_test = derive_gamma(ds_test, d12)
-    gamma_test_r0 = gamma_test.sel(r=r0, method="nearest")
-    gamma_b = gamma_test_r0.values.T
+#     # Derive gamma from gf test
+#     gamma_test = derive_gamma(ds_test, d12)
+#     gamma_test_r0 = gamma_test.sel(r=r0, method="nearest")
+#     gamma_b = gamma_test_r0.values.T
 
-    # Compute distance
-    dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
-    dist_L2 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2")
-    dist_theta = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta")
+#     # Compute distance
+#     dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
+#     dist_L2 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2")
+#     dist_theta = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta")
 
-    return dist_L1, dist_L2, dist_theta
+#     return dist_L1, dist_L2, dist_theta
 
 
 def derive_gamma(ds, d12):

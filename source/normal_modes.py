@@ -16,6 +16,7 @@ import time
 import numpy as np
 import scipy.signal as sp
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 from propa.kraken_toolbox.src.kraken_env import (
     KrakenEnv,
@@ -423,7 +424,7 @@ def plot_pekeris_cp_cg_f(f, cpm, cgm, n_modes=None):
     # Mode number m
     modes = np.arange(1, np.max(n_modes) + 1, 1)
 
-    fig, ax = plt.subplots(figsize=(16, 12), nrows=1, ncols=1)
+    fig, ax = plt.subplots(figsize=(16, 8), nrows=1, ncols=1)
     i_ax = 0
 
     # Iterate over modes
@@ -433,21 +434,35 @@ def plot_pekeris_cp_cg_f(f, cpm, cgm, n_modes=None):
         ax.plot(
             f,
             cpm[:, i_m],
-            label=rf"$c_{{\phi}}$ (m = {{{m}}})",
+            # label=rf"$c_{{\phi}}$ (m = {{{m}}})",
             linestyle="--",
             color=color(i_m),
         )
         ax.plot(
             f,
             cgm[:, i_m],
-            label=rf"$c_g$ (m = {{{m}}})",
+            # label=rf"$c_g$ (m = {{{m}}})",
             linestyle="-",
             color=color(i_m),
         )
-        ax.legend(fontsize=14, ncols=2)
+        # ax.legend(fontsize=14, ncols=2)
+
+    legend_handles = []
+    for i_m, m in enumerate(modes):
+        legend_handles.append(
+            Line2D([0], [0], color=color(i_m), linestyle="-", label=f"Mode {m}")
+        )
+
+    legend_handles.append(Line2D([0], [0], color="k", linestyle="-", label="$c_g$"))
+    legend_handles.append(
+        Line2D([0], [0], color="k", linestyle="--", label="$c_{{\phi}}$")
+    )
+
+    fig.legend(handles=legend_handles, loc="outside center right")
 
     fig.supxlabel("Fréquence [Hz]")
-    fig.supylabel(r"$c_g, c_{\phi}$ [m s$^{-1}$]")
+    # fig.supylabel(r"$c_g, c_{\phi}$ [m s$^{-1}$]")
+    fig.supylabel(r"Célérité [m s$^{-1}$]")
 
     return fig, ax
 
@@ -707,7 +722,7 @@ def plot_modal_function_multi_freq(modal_fcts, z, f, depth=None, n_modes=None):
                 # label=f"Real",
                 linestyle="-",
                 color=color(j),
-                label=f"{f[j]} Hz",
+                # label=f"{f[j]} Hz",
             )
             axs[i].plot(
                 np.imag(modal_fcts[j, i, :]),
@@ -721,11 +736,24 @@ def plot_modal_function_multi_freq(modal_fcts, z, f, depth=None, n_modes=None):
         axs[i].set_title(f"Mode {m}")
         axs[i].set_xlim([-1.1 * max_amp, 1.1 * max_amp])
         axs[i].grid()
-        axs[i].legend(loc="upper left")
+        # axs[i].legend(loc="upper left")
 
         # Add depth line
         if depth is not None:
             axs[i].axhline(depth, linestyle="--", color="k")
+
+    legend_handles = []
+    for j in range(nfreq):
+        legend_handles.append(
+            Line2D([0], [0], color=color(j), linestyle="-", label=f"{f[j]:.0f} Hz")
+        )
+
+    # legend_handles.append(Line2D([0], [0], color="k", linestyle="-", label="$c_g$"))
+    # legend_handles.append(
+    #     Line2D([0], [0], color="k", linestyle="--", label="$c_{{\phi}}$")
+    # )
+
+    fig.legend(handles=legend_handles, loc="outside center right")
 
     return fig, axs
 
@@ -749,11 +777,11 @@ def plot_modal_function(modal_fcts, z, f=None, depth=None, n_modes=None):
 
 def plot_green_fct(f, gf, z_s, z_r, r):
 
-    fig, axs = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+    fig, axs = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
 
     # Amplitude
     axs[0].plot(f, np.abs(gf), color="k")
-    axs[0].set_ylabel(r"$\lvert H(f) \rvert$")
+    axs[0].set_ylabel(r"$\lvert H(f) \rvert$ [Pa]")
 
     # Phase
     axs[1].plot(f, np.angle(gf), color="k")
@@ -767,7 +795,7 @@ def plot_green_fct(f, gf, z_s, z_r, r):
 
 def plot_impulse_response(t, gt, z_s, z_r, r):
 
-    plt.figure()
+    plt.figure(figsize=(16, 8))
     plt.plot(t, gt, color="k")
     # plt.xlabel("Temps [s]")
     plt.xlabel(r"Temps réduit $t - r / c_{max}$ [s]")
@@ -815,7 +843,7 @@ def plot_impulse_response_and_stft(
     stft_vmax_percentile=99.99,
 ):
 
-    fig, axs = plt.subplots(2, 1, figsize=(12, 8))
+    fig, axs = plt.subplots(2, 1, figsize=(16, 10))
 
     # Signal
     axs[0].plot(t, gt, color="k")

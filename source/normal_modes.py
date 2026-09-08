@@ -48,12 +48,7 @@ def image_sources_arrivals(z_src, z_rcv, r, depth, n, c0=1500):
     zm3 = 2 * depth * m + z_src + z_rcv
     zm4 = 2 * depth * (m + 1) + z_src - z_rcv
 
-    # # Correction 27/08/2025
-    # zm1 = 2 * depth * m + z_src - z_rcv
-    # zm2 = 2 * depth * (m + 1) - z_src - z_rcv
-    # zm3 = 2 * depth * m + z_src + z_rcv
-    # zm4 = 2 * depth * (m + 1) + z_src - z_rcv
-
+    # Propagation distance
     Rm1 = np.sqrt(r**2 + zm1.astype(np.float64) ** 2)
     Rm2 = np.sqrt(r**2 + zm2.astype(np.float64) ** 2)
     Rm3 = np.sqrt(r**2 + zm3.astype(np.float64) ** 2)

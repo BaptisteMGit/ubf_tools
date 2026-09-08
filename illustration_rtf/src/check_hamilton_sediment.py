@@ -22,6 +22,12 @@ from source.global_constants import sediments_EMODnet, sediments_TG
 sediments = sediments_EMODnet.copy()
 sediments.update(sediments_TG)
 
+for sediment in sediments.values():
+    # Display sediment properties
+    print(
+        f"{sediment['label']}: rho = {sediment['rho']} g.cm-3, c_p = {sediment['c_p']} m.s-1",
+    )
+
 rho2 = np.linspace(1.0, 2.5, 1000)
 
 c2 = celerity_density_Hamilton_Bachman_1982(rho2)

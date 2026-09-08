@@ -98,9 +98,18 @@ from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 # ======================================================================================================================
 def _grid_shape(n_panels, ncols=None, panel_w=3.2, panel_h=4.2, target_fig_aspect=1.6):
     """Compute a (nrows, ncols) grid for 'n_panels' subplots, chosen so
-    the OVERALL figure comes out landscape (wider than tall), given
-    that each individual panel is itself taller than wide
-    (panel_w x panel_h, per user request).
+    the panels are arranged in a layout that WOULD come out landscape
+    (wider than tall) at panel_w x panel_h each, given that each
+    individual panel is itself taller than wide (panel_w x panel_h,
+    per user request).
+
+    NOTE: plotmode() itself now renders into a fixed figsize=(16, 12)
+    (a deliberate choice, kept consistent across reports, regardless
+    of n_panels -- see its own NOTE) rather than nrows*panel_h x
+    ncols*panel_w -- so the 'target_fig_aspect' search below picks a
+    sensible ROW/COLUMN arrangement for panels within that fixed
+    canvas, but does not itself determine the actual saved figure's
+    aspect ratio the way it did previously.
 
     A grid that is "roughly square" in terms of CELL COUNT (e.g. 2x3
     for 6 panels) is not the same as a landscape FIGURE once each cell
@@ -117,9 +126,10 @@ def _grid_shape(n_panels, ncols=None, panel_w=3.2, panel_h=4.2, target_fig_aspec
         n_panels (int): number of subplots needed.
         ncols (int|None): force this many columns instead of searching
             for a landscape-optimal layout.
-        panel_w, panel_h (float): the size (inches) of a single panel,
-            matching plotmode's own figsize-per-panel -- must be kept
-            in sync with the figsize passed to plt.subplots() there.
+        panel_w, panel_h (float): the NOTIONAL size (inches) of a
+            single panel, used only to score candidate (nrows, ncols)
+            layouts here -- no longer the actual per-panel figsize
+            plotmode() renders at (see its own NOTE).
         target_fig_aspect (float): the ideal overall width/height ratio
             to aim for among the landscape-qualifying layouts (1.6 is a
             fairly standard "wide" report-figure ratio; the search does
@@ -379,7 +389,15 @@ def _render_mode_grid(
     fig, axs = plt.subplots(
         nrows,
         ncols,
-        # figsize=(3.2 * ncols, 4.2 * nrows),
+        # NOTE: intentionally a fixed figsize (per user preference),
+        # not the dynamic 3.2*ncols x 4.2*nrows per-panel sizing
+        # _grid_shape() above would otherwise suggest -- every mode-
+        # shape figure this produces should keep the same overall
+        # format across reports, regardless of how many panels/modes
+        # it happens to show. This does mean a single-panel plot comes
+        # out landscape (16x12) rather than the "portrait for 1 panel"
+        # shape _grid_shape()'s own docstring describes -- that is
+        # expected here, not a bug.
         figsize=(16, 12),
         sharey=True,
         squeeze=False,
@@ -481,6 +499,198 @@ def _render_mode_grid(
     fig.supylabel("Depth [m]")
     freqs_str = ", ".join(f"{f:g}" for f in freqs)
     fig.suptitle(f'{all_modes[0]["title"]}\nFreq = {freqs_str} Hz')
+    return fig
+
+
+# ======================================================================================================================
+# Group speed (vg) / phase speed (vphi)
+# =====================================================================================================================
+def _read_krm(filename, freqs, requested_modes):
+    """Read modal wavenumbers kr(freq, mode) across several
+    frequencies, padded with NaN so every frequency's row has the same
+    number of columns (matching whichever frequency actually has the
+    most modes) -- shared by plot_group_speed()/plot_phase_speed()/
+    plot_phase_and_group_speed() (factored out to avoid re-reading the
+    same '.mod' file three times with three near-identical copies of
+    this loop).
+
+    Args:
+        filename (str): path to the '.mod' file (extension optional).
+        freqs (np.ndarray): frequencies (Hz) to read, in order.
+        requested_modes (np.ndarray): 1-based mode indices to request
+            at each frequency.
+
+    Returns:
+        np.ndarray: complex, shape (n_freq, n_modes_max).
+
+    Raises:
+        Exception: if a frequency has no modes at all (see readmodes()).
+    """
+    all_modes = []
+    for f in freqs:
+        Modes = readmodes(filename, f, requested_modes)
+        if Modes["M"] == 0:
+            raise Exception(f"No modes in mode file at {f} Hz")
+        all_modes.append(Modes)
+
+    n_max_modes = np.max([modes["k"].size for modes in all_modes])
+
+    krm = []
+    for modes_f in all_modes:
+        n_missing_modes = n_max_modes - modes_f["k"].size
+        krm_f = np.pad(
+            modes_f["k"], (0, n_missing_modes), mode="constant", constant_values=np.nan
+        )
+        krm.append(krm_f)
+    return np.array(krm)
+
+
+def plot_group_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot group speed vg = domega/dkr (numerically differentiated
+    across the given frequencies) for each mode, as a function of
+    frequency.
+
+    Args:
+        filename (str): path to the '.mod' file (extension optional).
+        freq (float|array-like): frequency/frequencies (Hz) to read and
+            plot -- needs at least 2 distinct values for the derivative
+            to mean anything; pass a reasonably dense array for a
+            smooth-looking curve.
+        n_modes (int): number of modes to plot, starting from mode 1,
+            when 'modes' is not given. Capped automatically by however
+            many modes are actually available (at whichever frequency
+            has the most).
+        modes (array-like|None): explicit 1-based mode indices to plot
+            instead of 1..n_modes (e.g. [1, 5, 10, 20] to inspect a
+            sparse selection rather than the lowest-order modes). Give
+            them in ascending order.
+        ax (matplotlib.axes.Axes|None): plot into this axis instead of
+            creating a new figure -- lets plot_phase_and_group_speed()
+            (and any other caller wanting to overlay this on an
+            existing axis) reuse this function directly.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+
+    # Derive vgm = domega/dkrm (real part of kr -- the imaginary part
+    # represents modal attenuation).
+    omega = 2 * np.pi * freqs
+    vgm = np.full(krm.shape, np.nan)
+    for im in range(krm.shape[1]):
+        kr = np.real(krm[:, im])
+        vgm[:, im] = np.gradient(omega, kr)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    for im, m in enumerate(requested_modes):
+        ax.plot(freqs, vgm[:, im], label=f"Mode {m}")
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Group speed [m.s$^{-1}$]")
+    ax.legend()
+
+    return fig
+
+
+def plot_phase_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot phase speed vphi = omega/kr for each mode, as a function of
+    frequency.
+
+    Args, Returns: see plot_group_speed() (same signature/convention --
+    the only difference is the quantity plotted).
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+
+    # vphim = omega / krm (real part of kr -- see plot_group_speed()'s
+    # own NOTE on why).
+    omega = 2 * np.pi * freqs
+    with np.errstate(divide="ignore", invalid="ignore"):
+        vphim = omega[:, np.newaxis] / np.real(krm)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    for im, m in enumerate(requested_modes):
+        ax.plot(freqs, vphim[:, im], label=f"Mode {m}")
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Phase speed [m.s$^{-1}$]")
+    ax.legend()
+
+    return fig
+
+
+def plot_phase_and_group_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot BOTH phase speed (vphi = omega/kr) and group speed
+    (vg = domega/dkr) for the same modes, overlaid on ONE axis: solid
+    lines for phase speed, dashed lines for group speed, matching
+    colors per mode (each mode's group-speed curve reuses the color
+    matplotlib auto-assigned to that mode's phase-speed curve, so the
+    two are visually paired without needing an explicit color list).
+    The legend distinguishes modes (by color, one entry each) from the
+    phase/group distinction (by linestyle, 2 extra entries) rather than
+    listing "Mode 1 (phase)"/"Mode 1 (group)"/... separately.
+
+    Args, Returns: see plot_group_speed() (same signature/convention).
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+    omega = 2 * np.pi * freqs
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        vphim = omega[:, np.newaxis] / np.real(krm)
+
+    vgm = np.full(krm.shape, np.nan)
+    for im in range(krm.shape[1]):
+        kr = np.real(krm[:, im])
+        vgm[:, im] = np.gradient(omega, kr)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    mode_handles = []
+    for im, m in enumerate(requested_modes):
+        (line_phase,) = ax.plot(freqs, vphim[:, im], linestyle="-")
+        ax.plot(freqs, vgm[:, im], color=line_phase.get_color(), linestyle="--")
+        mode_handles.append(
+            Line2D([0], [0], color=line_phase.get_color(), label=f"Mode {m}")
+        )
+
+    style_handles = [
+        Line2D([0], [0], color="k", linestyle="-", label="Phase speed"),
+        Line2D([0], [0], color="k", linestyle="--", label="Group speed"),
+    ]
+    ax.legend(handles=mode_handles + style_handles)
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Speed [m.s$^{-1}$]")
+
     return fig
 
 
@@ -919,6 +1129,11 @@ def plot_tl_profile(
     r, z_m, TL = _read_tl_grid(filename, freq, units=units)
     iz = int(np.argmin(np.abs(z_m - rcv_depth)))
     actual_depth = z_m[iz]
+
+    if r.size == 1:
+        TL = TL[:, np.newaxis]
+    if z_m.size == 1:
+        TL = TL[np.newaxis, :]
 
     if ax is None:
         pfig = PubFigure(titlepad=50, labelpad=25)

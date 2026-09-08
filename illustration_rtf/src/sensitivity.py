@@ -16,6 +16,7 @@ import os
 import glob
 
 import numpy as np
+import xarray as xr
 import matplotlib.pyplot as plt
 
 from misc import progression_bar
@@ -35,6 +36,7 @@ from propa.kraken_toolbox.src.kraken_env import (
     KrakenFlp,
 )
 from propa.kraken_toolbox.src.kraken_manager import KrakenManager
+from publication.publication_figure import PubFigure, color
 
 # Usefull paths
 TITLE = "RTF sensitivity study"
@@ -45,11 +47,13 @@ if os.name == "nt":  # Windows
     SENSITIVITY_DIRECTORY = os.path.join(
         project_root, "illustration_rtf", "data", "sensitivity"
     )
+    IMG_DIR = os.path.join(project_root, "illustration_rtf", "img")
 
 else:  # Linux
     project_root = "/home/program/ubf_tools"
     data_root = "/home/data"
     SENSITIVITY_DIRECTORY = os.path.join(data_root, "sensitivity")
+    IMG_DIR = os.path.join(data_root, "img")
 
 
 SENSITIVITY_KRAKEN_DIR = os.path.join(SENSITIVITY_DIRECTORY, "io_files")
@@ -57,6 +61,40 @@ os.makedirs(SENSITIVITY_KRAKEN_DIR, exist_ok=True)
 
 RESULT_DIR = os.path.join(SENSITIVITY_DIRECTORY, "result")
 os.makedirs(RESULT_DIR, exist_ok=True)
+
+# NOTE (new, per user request): "resilience" tests are a DIFFERENT kind
+# of study from the parameter sensitivity ones above (see
+# build_resilience_tests()'s own docstring for the distinction) and get
+# their own, separate directory tree entirely -- both result files
+# (raw per-value '.nc's, saved gamma-at-r0 sensitivity CSVs, and the
+# baseline '.nc' each resilience test compares against) and figures.
+# Each individual resilience test (e.g. "depth" for tidal elevation
+# now, a sound-speed-profile one later) gets its own subfolder under
+# RESILIENCE_RESULT_DIR/RESILIENCE_IMG_DIR automatically, the same way
+# build_sensitivity_dataset() already does for the main study (one
+# '<result_dir>/<test_arg_name>/' folder per swept parameter) -- no
+# separate constant is needed per resilience test, just pass a
+# distinct 'test_arg_name'.
+RESILIENCE_DIRECTORY = os.path.join(
+    os.path.dirname(SENSITIVITY_DIRECTORY), "resilience"
+)
+RESILIENCE_RESULT_DIR = os.path.join(RESILIENCE_DIRECTORY, "result")
+os.makedirs(RESILIENCE_RESULT_DIR, exist_ok=True)
+RESILIENCE_IMG_DIR = os.path.join(IMG_DIR, "resilience")
+os.makedirs(RESILIENCE_IMG_DIR, exist_ok=True)
+
+# NOTE (factored out): these two dicts used to be redefined identically
+# inside plot_sensitivity_curves() and plot_extremal_width_configs()
+# (now a third place would need its own copy too) -- one shared,
+# module-level version instead.
+ARG_LABEL = {
+    "attn2": r"$\alpha_2$ [dB $\lambda^{-1}$]",
+    "rho2": r"$\rho_2$ [kg m$^{-3}$]",
+    "c1": r"$c_1$ [m s$^{-1}$]",
+    "c2": r"$c_2$ [m s$^{-1}$]",
+    "depth": "D [m]",
+}
+METRIC_LABEL = {"L1": "$L_1$", "L2": "$L_2$", "theta": r"$\theta$"}
 
 
 # ======================================================================================================================
@@ -81,7 +119,7 @@ def baseline_env():
     c1 = 1500  # sound celerity in water (m/s)
 
     rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
-    # c2 = 1600  # sound celerity in fluid sediment (m/s)
+    # c2 = 3000  # sound celerity in fluid sediment (m/s)
     c2 = 1550  # Close to Hamilton(rho2) = 1542 m.s-1
     attn2 = 0.2  # compressional wave attenuation in fluid sediment in dB / wavelength
     d = 100  # waveguide depth (m)
@@ -115,9 +153,16 @@ def baseline_src_rcv():
     z_s = 5
     z_rcv = 99  # D-1
     dr = 5
-    r0 = 50 * 1e3
-    r_rcv = np.arange(5 * 1e3, 100 * 1e3 + dr, dr)
-    d12 = 5000
+    # After 07/09/2026
+    r0 = 15 * 1e3
+    # r_rcv = np.arange(1 * 1e3, 30 * 1e3 + dr, dr)       # Full
+    r_rcv = np.arange(10 * 1e3, 20 * 1e3 + dr, dr)  # Restricted
+
+    # Before 07/09/2026
+    # r0 = 50 * 1e3
+    # r_rcv = np.arange(45 * 1e3, 55 * 1e3 + dr, dr)
+
+    d12 = 1000
 
     src_rcv_param = {"z_s": z_s, "z_rcv": z_rcv, "r_rcv": r_rcv, "r0": r0, "d12": d12}
     return src_rcv_param
@@ -175,6 +220,69 @@ def _extract_kwargs(func, arg_dict):
 
     sig = inspect.signature(func)
     return {name: arg_dict[name] for name in sig.parameters if name in arg_dict}
+
+
+def _sensitivity_figure_filename(
+    kind, test_arg_names, file_prefix=None, mode=None, metric=None
+):
+    """Build a consistent, collision-free filename for a saved
+    sensitivity-study figure.
+
+    NOTE (bug fixed): plot_sensitivity_curves()'s own save used to
+    build its filename as f"{file_prefix}_{test_arg_name}.png" -- but
+    'file_prefix' (e.g. "dist_"/"mainlobe_width_") ALREADY ends with
+    "_", producing double-underscore names like "dist__depth.png".
+    Worse, 'test_arg_name' there was the LOOP VARIABLE left over from
+    the (already finished) per-parameter plotting loop just above it,
+    i.e. whichever parameter happened to be LAST in 'test_arg_names' --
+    so a figure showing several parameters' subplots was saved under a
+    name mentioning only one of them, and calling the function again
+    for a DIFFERENT parameter set (or a different 'distance'/'metric'
+    selection) could silently overwrite an unrelated previous figure.
+    plot_extremal_width_configs()'s own save had a related issue: its
+    filenames ("dist_<name>.png" / "gamma_<name>.png") don't encode
+    'mode' or 'metric' at all, so calling it twice with different
+    'mode'/'metric' values (e.g. "baseline" vs "intrinsic", or "L1" vs
+    "theta") for the SAME parameter silently overwrites the first
+    figure with the second. This one shared helper (used by both) now
+    encodes every distinguishing piece of information actually
+    available -- what kind of figure, which underlying result kind,
+    which mode/metric, and which parameter(s) -- into the filename.
+
+    Args:
+        kind (str): what the figure shows, e.g. "curves", "dist", "gamma".
+        test_arg_names (str|list[str]): the parameter(s) shown.
+        file_prefix (str|None): e.g. "dist_"/"mainlobe_width_"/
+            "intrinsic_mainlobe_width_" -- which underlying result kind
+            was plotted (see save_sensitivity_distance_results()). Any
+            trailing "_" is stripped (it's a directory-listing prefix
+            there, not meant to appear literally in a filename).
+        mode (str|None): "baseline"/"intrinsic" (see
+            plot_extremal_width_configs()).
+        metric (str|None): "L1"/"L2"/"theta".
+
+    Returns:
+        str: filename (no directory), e.g.
+        "curves_mainlobe_width_depth.png" or
+        "dist_intrinsic_mainlobe_width_theta_depth.png". When more than
+        3 parameters are named, only the first is spelled out (plus a
+        count of the rest) to keep the filename reasonably short.
+    """
+    names = (
+        [test_arg_names] if isinstance(test_arg_names, str) else list(test_arg_names)
+    )
+    parts = [kind]
+    if file_prefix:
+        parts.append(file_prefix.rstrip("_"))
+    if mode:
+        parts.append(mode)
+    if metric:
+        parts.append(metric)
+    if len(names) <= 3:
+        parts.append("_".join(names))
+    else:
+        parts.append(f"{names[0]}_and_{len(names) - 1}_more")
+    return "_".join(parts) + ".png"
 
 
 def _extend_range_grid(r_grid, extra_distance):
@@ -243,10 +351,16 @@ def calc_monotonicity_domain(dist_r_r0, r, r0):
     dd_dr_pos = np.gradient(d_pos, r_pos)
     # Find zero crossings of the derivative
     zero_crossings_pos = np.where(np.diff(np.sign(dd_dr_pos)))[0]
-    if len(zero_crossings_pos) > 0:
-        # Take the first zero crossing
-        first_zero_crossing_pos = zero_crossings_pos[0]
-        r_validity_zero_crossing_pos = r_pos[first_zero_crossing_pos]
+    if not len(zero_crossings_pos) > 0:
+        raise ValueError(
+            f"calc_monotonicity_domain: the distance curve's derivative "
+            f"never changes sign on the r > r0 side (r0={r0}) -- cannot "
+            f"locate a first maximum (monotonicity boundary) there."
+        )
+
+    # Take the first zero crossing
+    first_zero_crossing_pos = zero_crossings_pos[0]
+    r_validity_zero_crossing_pos = r_pos[first_zero_crossing_pos]
 
     # Negative r - r0
     d_neg = dist_r_r0[r_reduced < 0]
@@ -256,9 +370,15 @@ def calc_monotonicity_domain(dist_r_r0, r, r0):
     # Find zero crossings of the derivative
     zero_crossings_neg = np.where(np.diff(np.sign(dd_dr_neg)))[0]
 
-    if len(zero_crossings_neg) > 0:
-        first_zero_crossing_neg = zero_crossings_neg[-1]
-        r_validity_zero_crossing_neg = r_neg[first_zero_crossing_neg]
+    if not len(zero_crossings_neg) > 0:
+        raise ValueError(
+            f"calc_monotonicity_domain: the distance curve's derivative "
+            f"never changes sign on the r < r0 side (r0={r0}) -- cannot "
+            f"locate a first maximum (monotonicity boundary) there."
+        )
+
+    first_zero_crossing_neg = zero_crossings_neg[-1]
+    r_validity_zero_crossing_neg = r_neg[first_zero_crossing_neg]
 
     r_validity_zero_crossing = (
         r_validity_zero_crossing_pos - r_validity_zero_crossing_neg
@@ -324,12 +444,6 @@ def single_sensitivity_test_generate_dataset(
     freq, c1, c2, rho1, rho2, attn2, depth, z_s, z_rcv, r_rcv, d12, model="kraken"
 ):
     if model == "kraken":
-        # NOTE (bug fixed): this call used to omit 'd12' entirely
-        # (calling with 10 positional args into a function requiring
-        # 11), even though 'd12' is right here, received from THIS
-        # function's own caller -- confirmed to raise
-        # `TypeError: single_sensitivity_test_generate_dataset_kraken()
-        # missing 1 required positional argument: 'd12'`.
         freq, r_grid, gamma = single_sensitivity_test_generate_dataset_kraken(
             freq, c1, c2, rho1, rho2, attn2, depth, z_s, z_rcv, r_rcv, d12
         )
@@ -348,13 +462,6 @@ def single_sensitivity_test_generate_dataset_kraken(
     r_grid_ = _extend_range_grid(r_grid, d12) * 1e-3
 
     # Derive green's function at all pos
-    # NOTE (bug fixed): build_kraken() no longer takes 'd12' as a
-    # parameter (it only ever needed the already-extended range grid,
-    # built by the caller -- see build_dataset_current_config_kraken(),
-    # which already calls it correctly). This call site still passed
-    # the now-stale extra 'd12' argument, confirmed to raise
-    # `TypeError: build_kraken() takes 10 positional arguments but 11
-    # were given`.
     freq, g_fr, field_pos = build_kraken(
         freq, c1, c2, rho1, rho2, attn2, d, z_s, z, r_grid_
     )
@@ -418,18 +525,76 @@ def single_sensitivity_test_calc_dist(gamma, r_grid, r0):
 
 
 def single_sensitivity_test_calc_dist_width(dist_L1, dist_L2, dist_theta, r_grid, r0):
-    # Width at -3dB
-    width_L1, r_ml_width_L1_inf, r_ml_width_L1_sup = calc_mainlobe_width_3dB(
-        dist_r_r0=dist_L1, r=r_grid, r0=r0
-    )
-    width_L2, r_ml_width_L2_inf, r_ml_width_L2_sup = calc_mainlobe_width_3dB(
-        dist_r_r0=dist_L2, r=r_grid, r0=r0
-    )
-    width_theta, r_ml_width_theta_inf, r_ml_width_theta_sup = calc_mainlobe_width_3dB(
-        dist_r_r0=dist_theta, r=r_grid, r0=r0
-    )
+    """Derive the -3dB mainlobe width (see calc_mainlobe_width_3dB())
+    from one or several distance-vs-range curves.
 
-    return width_L1, width_L2, width_theta
+    NOTE (fixed to support process_sensitivity_mainlobe_width()): this
+    used to only handle a SINGLE distance curve per metric (1D, shape
+    (n_r,) -- run_single_sensitivity_test()'s own usage), returning 3
+    scalars. dist_from_baseline_around_r0() instead produces one
+    distance curve PER SWEPT VALUE, stacked as a 2D array (shape
+    (n_r, n_values), one COLUMN per value) -- calling
+    calc_mainlobe_width_3dB() directly on that 2D array would boolean-
+    index a 1D r_pos/r_neg array with a 2D mask, raising a shape
+    mismatch error. This now branches on the input's dimensionality
+    instead: 1D input still returns 3 scalars (unchanged behaviour);
+    2D input (one column per value) returns 3 arrays of length
+    n_values, one width per column, computed independently. A column
+    whose curve never reaches -3dB on one side (see
+    calc_mainlobe_width_3dB()'s own ValueError) does not abort the rest
+    of the batch: that one value is left as NaN, with a printed
+    warning naming which value (by index) and metric failed.
+
+    Args:
+        dist_L1, dist_L2, dist_theta (array-like): either all 1D
+            (shape (n_r,), a single distance curve) or all 2D (shape
+            (n_r, n_values), one curve per column).
+        r_grid (array-like): the (shared) range grid the distance
+            curves are evaluated on, shape (n_r,).
+        r0 (float): reference range (m) the mainlobe is centered on.
+
+    Returns:
+        tuple(float, float, float) if the input was 1D, or
+        tuple(np.ndarray, np.ndarray, np.ndarray) (each length
+        n_values) if 2D.
+    """
+    dist_L1 = np.asarray(dist_L1)
+    dist_L2 = np.asarray(dist_L2)
+    dist_theta = np.asarray(dist_theta)
+
+    if dist_L1.ndim == 1:
+        # Original behaviour: a single distance curve -> 3 scalars.
+        width_L1, r_ml_width_L1_inf, r_ml_width_L1_sup = calc_mainlobe_width_3dB(
+            dist_r_r0=dist_L1, r=r_grid, r0=r0
+        )
+        width_L2, r_ml_width_L2_inf, r_ml_width_L2_sup = calc_mainlobe_width_3dB(
+            dist_r_r0=dist_L2, r=r_grid, r0=r0
+        )
+        width_theta, r_ml_width_theta_inf, r_ml_width_theta_sup = (
+            calc_mainlobe_width_3dB(dist_r_r0=dist_theta, r=r_grid, r0=r0)
+        )
+        return width_L1, width_L2, width_theta
+
+    # 2D case: one column per swept value.
+    n_values = dist_L1.shape[1]
+    dists = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}
+    widths = {name: np.full(n_values, np.nan) for name in dists}
+    for i in range(n_values):
+        for name, dist in dists.items():
+            try:
+                widths[name][i], _, _ = calc_mainlobe_width_3dB(
+                    dist_r_r0=dist[:, i], r=r_grid, r0=r0
+                )
+                # widths[name][i], _, _ = calc_monotonicity_domain(
+                #     dist_r_r0=dist[:, i], r=r_grid, r0=r0
+                # )
+            except ValueError as exc:
+                print(
+                    f"Warning: could not compute the {name} mainlobe width for "
+                    f"swept value index {i}: {exc}"
+                )
+
+    return widths["L1"], widths["L2"], widths["theta"]
 
 
 def run_single_sensitivity_test(
@@ -502,18 +667,23 @@ def run_sensitivity_study(test_arg_name, test_arg_values, all_arg_dict, model="k
 # ======================================================================================================================
 # Build datasets
 # ======================================================================================================================
-def build_kraken(freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid):
+def build_kraken(
+    freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid, plot_diag=False
+):
 
     # Keeps only frequencies above mode 1 cut-off
     fmin = pekeris_cutoff_frequency(m=1, c1=c1, c2=c2, d=depth)
-    fmin = (
-        np.floor((fmin) / 5) * 5 + 10
-    )  # Round to upper closest multiple of five to avoid being to close to cuttoff
+    # fmin = (
+    #     np.floor((fmin) / 5) * 5 + 10
+    # )  # Round to upper closest multiple of five to avoid being to close to cuttoff
     kraken_freq = freq[freq > fmin]
 
     # Use only propative modes
     nb_modes = pekeris_n_modes(f=freq.max(), c1=c1, c2=c2, d=depth)
-    clim_max = c2
+    # clim_max = c2
+    clim_max = (
+        np.ceil((c2) / 1000) * 1000
+    )  # Round to upper closest multiple of five to avoid being to close to cuttoff
     clim_min = 1400
 
     # attn2 = 0  # TODO remove
@@ -524,7 +694,7 @@ def build_kraken(freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid):
         ssp_interpolation_method="C_linear",
         z_ssp=[0.0, depth],
         c_p=[c1, c1],  # isovelocity water column
-        rho=rho1,
+        rho=rho1 * 1e-3,
     )
 
     bottom_hs = KrakenBottomHalfspace(
@@ -532,7 +702,7 @@ def build_kraken(freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid):
             "z": depth,
             "c_p": c2,
             "c_s": 0.0,  # fluid sediment: no shear waves
-            "rho": rho2,
+            "rho": rho2 * 1e-3,  # g.cm-3
             "a_p": attn2,  # dB/wavelength
             "a_s": 0.0,  # fluid sediment: no shear waves
         },
@@ -586,6 +756,42 @@ def build_kraken(freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid):
         env=env, flp=flp, frequencies=env.freq
     )
 
+    # Plot
+    if plot_diag:
+        fig_env = env.plot_env(plot_src=True, src_depth=z_s)
+        fig_env.savefig(os.path.join(IMG_DIR, "environment.png"))
+        plt.close(fig_env)
+
+        mod_fpath = env.env_fpath.replace(".env", ".mod")
+        shd_fpath = env.shd_fpath
+
+        from propa.kraken_toolbox import plot_utils as pu
+
+        fig0 = pu.plot_group_speed(
+            mod_fpath,
+            n_modes=5,
+            freq=kraken_freq,
+            modes=None,
+        )
+        fig0.savefig(os.path.join(IMG_DIR, "group_speed.png"))
+        plt.close(fig0)
+
+        fig1 = pu.plotmode(mod_fpath, freq=freq.max())
+        fig1.savefig(os.path.join(IMG_DIR, "mode_shapes.png"))
+        plt.close(fig1)
+
+        fig3 = pu.plot_tl_profile(
+            shd_fpath,
+            freq=freq.max(),
+            rcv_depth=z,
+            # rcv_depth=2500,
+            units="km",
+            show_spherical_loss=True,
+            show_cylindrical_loss=True,
+        )
+        fig3.savefig(os.path.join(IMG_DIR, "tl_profile_at_rcv_depth.png"))
+        plt.close(fig3)
+
     # Squeeze
     pressure_field = pressure_field.squeeze()
 
@@ -599,14 +805,14 @@ def build_kraken(freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid):
 
 
 def build_dataset_current_config_kraken(
-    freq, c1, c2, rho1, rho2, attn2, depth, z_s, z_rcv, r_rcv, d12_max
+    freq, c1, c2, rho1, rho2, attn2, depth, z_s, z_rcv, r_rcv, d12_max, plot_diag=False
 ):
     # Extend r_grid to d12_max, convert to km for kraken
     r_grid_ = _extend_range_grid(r_rcv, d12_max) * 1e-3
 
     # Derive green's function at all pos
     freq, g_fr, field_pos = build_kraken(
-        freq, c1, c2, rho1, rho2, attn2, depth, z_s, z_rcv, r_grid_
+        freq, c1, c2, rho1, rho2, attn2, depth, z_s, z_rcv, r_grid_, plot_diag=plot_diag
     )
 
     return freq, field_pos["r"]["r"], g_fr
@@ -637,8 +843,41 @@ def _pad_to_full_frequency_grid(g_fr, kraken_freq, full_freq):
     return np.pad(g_fr, pad_width=pad_width, mode="constant", constant_values=np.nan)
 
 
+def _to_float32(arr):
+    """Downcast a numpy array to float32.
+
+    NOTE (memory usage improved, per user feedback): build_sensitivity_dataset()/
+    build_baseline() used to save 'gf'/'gamma'/coordinates at their
+    default float64 precision, and a later, separate fix downcast the
+    re-opened dataset to a smaller dtype at READ time instead (inside
+    process_sensitivity_mainlobe_width()/
+    process_sensitivity_intrinsic_mainlobe_width()) -- but reading
+    still has to load the full float64 data first before that
+    downcast can happen, so it saves memory only AFTER the expensive
+    part is already done, and does nothing at all for the disk space
+    the '.nc' files themselves take up. Downcasting at WRITE time
+    instead (both the data variables AND the coordinates, e.g. 'f'/'r'
+    /the swept parameter's own values, which can be sizeable arrays
+    too) means every later read of these files is smaller and faster
+    from the start, with no read-side workaround needed at all -- see
+    the two call sites below, and process_sensitivity_mainlobe_width()/
+    process_sensitivity_intrinsic_mainlobe_width(), which no longer
+    do anything special on read.
+
+    Args:
+        arr (array-like): real-valued (gf/gamma are magnitudes -- see
+            build_dataset_current_config_kraken()'s own np.abs() --
+            not complex; do not use this on a genuinely complex array,
+            which float32 would silently truncate to its real part).
+
+    Returns:
+        np.ndarray: dtype float32.
+    """
+    return np.asarray(arr, dtype=np.float32)
+
+
 def build_sensitivity_dataset(
-    test_arg_name, test_arg_values, all_arg_dict, model="kraken"
+    test_arg_name, test_arg_values, all_arg_dict, model="kraken", result_dir=RESULT_DIR
 ):
     """Sweep ONE named parameter across 'test_arg_values' (everything
     else held at its value in 'all_arg_dict'), saving the Green's
@@ -658,19 +897,28 @@ def build_sensitivity_dataset(
     now roughly ONE value's g_fr, regardless of how many values you
     sweep. See process_sensitivity() for the matching lazy read-back.
 
-    File layout: '<RESULT_DIR>/<test_arg_name>/<test_arg_name>_<i>.nc',
+    File layout: '<result_dir>/<test_arg_name>/<test_arg_name>_<i>.nc',
     one small file per swept value, holding that single value's g_fr
     plus 'test_arg_name' as a length-1 coordinate (so the files can
     later be combined along that dimension with xr.open_mfdataset,
     without ever holding more than one at a time in memory -- see
     process_sensitivity()).
 
+    Args:
+        test_arg_name, test_arg_values, all_arg_dict, model: see the
+            module's other sensitivity-study functions.
+        result_dir (str): directory the per-value files are written
+            under (as '<result_dir>/<test_arg_name>/...'). Defaults to
+            RESULT_DIR (the main sensitivity study); pass e.g.
+            RESILIENCE_RESULT_DIR to keep a resilience study's own
+            result files in their own, separate location -- see
+            build_resilience_tests().
+
     Returns:
         str: the directory the per-value files were written into.
     """
-    import xarray as xr  # only this function needs it
 
-    out_dir = os.path.join(RESULT_DIR, test_arg_name)
+    out_dir = os.path.join(result_dir, test_arg_name)
     os.makedirs(out_dir, exist_ok=True)
 
     # We will build the args to pass to the test function at each iteration
@@ -717,14 +965,20 @@ def build_sensitivity_dataset(
 
         # Write THIS value's dataset immediately, then let g_fr/g_fr_full
         # go out of scope (freed before the next iteration's KRAKEN run).
+        # NOTE: variables AND coordinates saved as float32 -- see
+        # _to_float32()'s own docstring for why this is done here,
+        # at write time, rather than downcasting after reading it back.
         ds_value = xr.Dataset(
             data_vars=dict(
-                gf=([test_arg_name, "f", "r"], np.abs(g_fr_full)[np.newaxis, ...])
+                gf=(
+                    [test_arg_name, "f", "r"],
+                    _to_float32(np.abs(g_fr_full))[np.newaxis, ...],
+                )
             ),
             coords={
-                test_arg_name: [test_val],
-                "f": all_args["freq"],
-                "r": kraken_r,
+                test_arg_name: _to_float32([test_val]),
+                "f": _to_float32(all_args["freq"]),
+                "r": _to_float32(kraken_r),
             },
         )
         fpath = os.path.join(out_dir, f"{test_arg_name}_{i_test:04d}.nc")
@@ -734,24 +988,48 @@ def build_sensitivity_dataset(
     return out_dir
 
 
-def build_baseline():
+def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR):
+    """Build and save the baseline (nominal, unperturbed) configuration's
+    Green's function / gamma(f, r) -- the fixed reference every
+    sensibility/resilience study's "distance from baseline" family of
+    functions (dist_from_baseline(), dist_from_baseline_around_r0())
+    compares each swept value against.
+
+    Args:
+        result_dir (str): directory 'gf_dataset_baseline.nc' is written
+            into. Defaults to RESULT_DIR (the main sensitivity study);
+            pass a study-specific directory (e.g.
+            RESILIENCE_RESULT_DIR) to keep that study fully self-
+            contained, independent of whether the main sensitivity
+            study's own baseline has been built.
+        img_dir (str): directory the 2 diagnostic figures
+            ("gamma_baseline.png"/"gamma_baseline_r0.png") are saved
+            into. Defaults to IMG_DIR.
+
+    Returns:
+        str: path to the written '.nc' file.
+    """
+    os.makedirs(result_dir, exist_ok=True)
+    os.makedirs(img_dir, exist_ok=True)
 
     all_arg_dict = load_all_arg_dict(
-        drop_keys=("fs", "fmax", "r0", "d12"), d12_max=5000
+        drop_keys=("fs", "fmax", "r0", "d12"),
+        d12_max=5000,
     )
 
     # Build dataset
     call_kwargs = _extract_kwargs(build_dataset_current_config_kraken, all_arg_dict)
+    call_kwargs["plot_diag"] = True
     kraken_freq, kraken_r, g_fr = build_dataset_current_config_kraken(**call_kwargs)
 
     g_fr_full = _pad_to_full_frequency_grid(g_fr, kraken_freq, all_arg_dict["freq"])
 
-    import xarray as xr  # only this function needs it
-
     # Build xarray dataset and save
+    # NOTE: see _to_float32()'s own docstring -- same write-time
+    # downcast as build_sensitivity_dataset(), for the same reason.
     ds = xr.Dataset(
-        data_vars=dict(gf=(["f", "r"], np.abs(g_fr_full))),
-        coords={"f": all_arg_dict["freq"], "r": kraken_r},
+        data_vars=dict(gf=(["f", "r"], _to_float32(np.abs(g_fr_full)))),
+        coords={"f": _to_float32(all_arg_dict["freq"]), "r": _to_float32(kraken_r)},
     )
     # Keep the FULL baseline config as attrs (including "r0"/"d12", not
     # part of 'all_arg_dict' used for the KRAKEN call above) -- needed
@@ -766,28 +1044,32 @@ def build_baseline():
     gamma = derive_gamma(ds, ds.attrs["d12"])
     ds["gamma"] = gamma
 
-    fpath = os.path.join(RESULT_DIR, "gf_dataset_baseline.nc")
+    # Plot
+    plt.figure()
+    gamma.plot(
+        cmap="magma",
+        cbar_kwargs={"label": r"$\gamma$ [dB]"},
+        vmin=np.nanpercentile(gamma, 1),
+        vmax=np.nanpercentile(gamma, 99),
+    )
+    plt.ylabel("Fréquence [Hz]")
+    plt.xlabel("r [m]")
+    plt.ylim(np.min(kraken_freq), np.max(kraken_freq))
+    plt.savefig(os.path.join(img_dir, "gamma_baseline.png"))
+
+    plt.figure()
+    gamma.sel(r=ds.r0, method="nearest").plot()
+    plt.xlabel("Fréquence [Hz]")
+    plt.ylabel(r"$\gamma$ [dB]")
+    # plt.ylim(np.min(kraken_freq), np.max(kraken_freq))
+    plt.savefig(os.path.join(img_dir, "gamma_baseline_r0.png"))
+
+    plt.close("all")
+
+    fpath = os.path.join(result_dir, "gf_dataset_baseline.nc")
     ds.to_netcdf(fpath)
     ds.close()
     return fpath
-
-
-# def dist_from_baseline(ds_baseline, ds_test, d12, r0):
-#     # Baseline gamma (at r0)
-#     gamma_baseline = ds_baseline.gamma.sel(r=r0, method="nearest")
-#     gamma_a = gamma_baseline.values.T[:, np.newaxis]
-
-#     # Derive gamma from gf test
-#     gamma_test = derive_gamma(ds_test, d12)
-#     gamma_test_r0 = gamma_test.sel(r=r0, method="nearest")
-#     gamma_b = gamma_test_r0.values.T
-
-#     # Compute distance
-#     dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
-#     dist_L2 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2")
-#     dist_theta = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta")
-
-#     return dist_L1, dist_L2, dist_theta
 
 
 def dist_from_baseline(ds_baseline, ds_test, d12, r0):
@@ -832,16 +1114,116 @@ def dist_from_baseline(ds_baseline, ds_test, d12, r0):
     return dist_L1, dist_L2, dist_theta
 
 
+def dist_from_baseline_around_r0(ds_baseline, ds_test, d12, r0):
+    """Compute the RTF distance (L1/L2/theta) between the BASELINE's
+    gamma AT r0 (a single, fixed reference) and EACH swept value's
+    gamma AS A FUNCTION OF r, over the whole r window 'ds_test' covers
+    -- unlike dist_from_baseline() (which only ever evaluates this at
+    r=r0 itself, discarding the rest), this keeps the full r-dependence
+    needed to derive a -3dB mainlobe width for every swept value (see
+    calc_mainlobe_width_3dB() / single_sensitivity_test_calc_dist_width()
+    and process_sensitivity_mainlobe_width(), which is what this
+    function is for).
+
+    Each swept value's distance curve is normalized by its OWN maximum
+    over r (not a single global maximum shared across values) -- this
+    matches single_sensitivity_test_calc_dist()'s established
+    convention (see its own docstring) and is what
+    calc_mainlobe_width_3dB()'s ">1/2" (-3dB) threshold assumes.
+
+    Args:
+        ds_baseline (xr.Dataset): the baseline dataset (see
+            build_baseline()), with a precomputed 'gamma(f, r)'.
+        ds_test (xr.Dataset): the swept dataset (see
+            build_sensitivity_dataset()/
+            process_sensitivity_mainlobe_width()), with
+            'gf(test_arg_name, f, r)' -- the raw Green's function, not
+            yet turned into an RTF.
+        d12 (float): receiver separation (m).
+        r0 (float): reference range (m).
+
+    Returns:
+        tuple(np.ndarray, np.ndarray, np.ndarray, np.ndarray): r (the
+        range grid the distance curves are evaluated on, meters --
+        receiver-1 positions, matching r0's own convention), dist_L1,
+        dist_L2, dist_theta -- each shape (n_r, n_test_values), one
+        column per swept value.
+
+    Raises:
+        ValueError: if 'ds_test''s r window is too narrow for 'd12'
+            (receiver-1 and receiver-2's grids end up different sizes).
+    """
+    # Baseline gamma at r0 -- a single reference vector across
+    # frequency, independent of the swept parameter (already
+    # precomputed for every r at build_baseline() time -- a ONE-TIME
+    # run, not a per-value sweep, so computing it over the full r grid
+    # there is fine, see derive_gamma()'s own docstring).
+    gamma_baseline = ds_baseline.gamma.sel(r=r0, method="nearest")
+    gamma_a = gamma_baseline.values.T[:, np.newaxis, np.newaxis]  # (nf, 1, 1)
+
+    # Test gamma as a function of r (the whole window 'ds_test' covers,
+    # for every swept value at once): receiver 1 at r, receiver 2 at
+    # r+d12 (matching derive_gamma()'s own index-shift convention, just
+    # done here via an explicit range selection instead of an index
+    # count, since 'ds_test' may not start at r=0).
+    g_fr_1 = ds_test.gf.sel(r=slice(ds_test.r.min(), ds_test.r.max() - d12))
+    g_fr_2 = ds_test.gf.sel(r=slice(ds_test.r.min() + d12, ds_test.r.max()))
+    if (
+        g_fr_1.sizes["r"] == 0
+        or g_fr_2.sizes["r"] == 0
+        or g_fr_1.sizes["r"] != g_fr_2.sizes["r"]
+    ):
+        raise ValueError(
+            f"dist_from_baseline_around_r0: receiver-1 and receiver-2 grids "
+            f"came out empty or differently sized ({g_fr_1.sizes['r']} vs "
+            f"{g_fr_2.sizes['r']}) -- 'ds_test' likely doesn't extend far "
+            f"enough beyond its own range window for d12={d12} (see "
+            f"build_dataset_current_config_kraken()'s 'd12_max')."
+        )
+
+    gamma_test_r0 = 20 * np.log10(
+        np.abs(g_fr_2.values / g_fr_1.values)
+    )  # (ntest, nf, nr)
+    gamma_b = np.moveaxis(
+        gamma_test_r0, source=[0, 1, 2], destination=[-1, 0, 1]
+    )  # (nf, nr, ntest)
+    r_dist = g_fr_1.r.values
+
+    # Compute distance
+    dist_L1 = calc_gamma_dist(
+        gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1"
+    )  # (nr, ntest)
+    dist_L2 = calc_gamma_dist(
+        gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2"
+    )  # (nr, ntest)
+    dist_theta = calc_gamma_dist(
+        gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta"
+    )  # (nr, ntest)
+
+    # Normalize each swept value's OWN curve by its OWN max over r (see
+    # docstring) -- axis=0 is 'r' here (shape (nr, ntest)).
+    dist_L1 = dist_L1 / np.max(dist_L1, axis=0)
+    dist_L2 = dist_L2 / np.max(dist_L2, axis=0)
+    dist_theta = dist_theta / np.max(dist_theta, axis=0)
+
+    return r_dist, dist_L1, dist_L2, dist_theta
+
+
 def derive_gamma(ds, d12):
     """Compute gamma(freq, r) over the FULL r grid.
 
-    NOTE: this remains a genuinely full-grid computation -- correct and
-    fine for build_baseline()'s use (a single, ONE-TIME configuration,
-    not a per-value sweep). Do NOT use this on a multi-value swept
-    dataset (e.g. inside process_sensitivity()'s per-parameter loop):
-    see dist_from_baseline()'s docstring for the performance/memory
-    issue that caused, and _select_r0_pair()/dist_from_baseline() for
-    the fix (select the 1-2 needed r-values first, compute after).
+    NOTE: originally written for -- and still fine for --
+    build_baseline()'s use (a single, ONE-TIME configuration). Using
+    this on a full, WIDE receiver-range grid (spanning many thousands
+    of points) for every value of a multi-value swept dataset used to
+    be a real memory/performance problem (see dist_from_baseline()'s
+    docstring) -- but is fine, and now used, on a multi-value dataset
+    whose r window is narrow by construction (see
+    dist_from_baseline_around_r0()'s and
+    dist_within_test_around_r0()'s own NOTEs: baseline_src_rcv()'s
+    r_rcv only spans a region around r0, not the whole receiver
+    range). If you widen that window back up, reconsider whether this
+    is still an appropriate thing to call per swept value.
     """
     # Build RTF
     r = ds.r.values
@@ -864,11 +1246,192 @@ def derive_gamma(ds, d12):
     return gamma
 
 
-def process_sensitivity(test_arg_names=None):
+def dist_within_test_around_r0(ds_test, d12, r0):
+    """Compute the RTF distance (L1/L2/theta) between EACH swept
+    value's OWN gamma at r0 and that SAME value's gamma as a function
+    of r -- entirely self-referential, no baseline involved at all
+    (unlike dist_from_baseline_around_r0(), which compares against a
+    FIXED, external baseline reference instead).
+
+    This measures how sharply resolved/peaked each configuration's own
+    RTF mainlobe is around r0 on its own terms -- i.e. for THIS
+    parameter value, if you were trying to localize a source using
+    this exact RTF, how much would the range estimate degrade as you
+    move away from r0? -- independent of any mismatch against a
+    baseline/"true" configuration (that mismatch is what
+    dist_from_baseline_around_r0() measures instead). This generalizes
+    this project's original, single-run
+    single_sensitivity_test_calc_dist() (see its own docstring) to
+    operate on every swept value in 'ds_test' at once, matching
+    dist_from_baseline_around_r0()'s output shape/normalization
+    convention so both can feed
+    single_sensitivity_test_calc_dist_width() unchanged.
+
+    Args:
+        ds_test (xr.Dataset): the swept dataset (see
+            build_sensitivity_dataset()), with 'gf(test_arg_name, f, r)'
+            -- the raw Green's function, not yet turned into an RTF.
+        d12 (float): receiver separation (m).
+        r0 (float): reference range (m).
+
+    Returns:
+        tuple(np.ndarray, np.ndarray, np.ndarray, np.ndarray): r (the
+        range grid the distance curves are evaluated on, meters),
+        dist_L1, dist_L2, dist_theta -- each shape (n_r,
+        n_test_values), one column per swept value, normalized by its
+        own max over r (same convention as
+        dist_from_baseline_around_r0() -- see its own docstring for
+        why, and calc_mainlobe_width_3dB()'s ">1/2" threshold, which
+        assumes it).
+    """
+    # gamma(f, r) for every swept value at once -- feasible here
+    # because 'ds_test''s r window is narrow by construction (see
+    # derive_gamma()'s own updated NOTE).
+    gamma_test = derive_gamma(ds_test, d12)  # dims (test_arg_name, f, r)
+    r = gamma_test.r.values
+
+    # Each value's OWN gamma at r0 -- the reference THIS function
+    # compares against is different for every swept value, unlike
+    # dist_from_baseline_around_r0()'s single, shared baseline
+    # reference.
+    gamma_test_r0 = gamma_test.sel(r=r0, method="nearest")  # dims (test_arg_name, f)
+    gamma_a = np.moveaxis(gamma_test_r0.values, [0, 1], [-1, 0])[
+        :, np.newaxis, :
+    ]  # (nf, 1, ntest)
+    gamma_b = np.moveaxis(gamma_test.values, [0, 1, 2], [-1, 0, 1])  # (nf, nr, ntest)
+
+    # Compute distance
+    dist_L1 = calc_gamma_dist(
+        gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1"
+    )  # (nr, ntest)
+    dist_L2 = calc_gamma_dist(
+        gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2"
+    )  # (nr, ntest)
+    dist_theta = calc_gamma_dist(
+        gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta"
+    )  # (nr, ntest)
+
+    # Normalize each swept value's OWN curve by its OWN max over r
+    # (axis=0 is 'r' here, shape (nr, ntest)) -- see docstring.
+    dist_L1 = dist_L1 / np.max(dist_L1, axis=0)
+    dist_L2 = dist_L2 / np.max(dist_L2, axis=0)
+    dist_theta = dist_theta / np.max(dist_theta, axis=0)
+
+    return r, dist_L1, dist_L2, dist_theta
+
+
+def _select_r0_pair(ds, r0, d12):
+    """xr.open_mfdataset's 'preprocess' callback (see
+    process_sensitivity()): reduce a single per-value file's 'gf'
+    variable down to just the 2 r-values the RTF at r0 actually needs
+    (r0 and r0+d12), IMMEDIATELY as that one file is opened, before any
+    multi-file concatenation.
+
+    This is what actually fixes process_sensitivity()'s slowness/memory
+    usage (see dist_from_baseline()'s docstring for the full
+    explanation): 'preprocess' runs on each file while it is still
+    small and separate, so the (f, r) array with r spanning the whole,
+    possibly huge receiver-range grid -- built by
+    build_sensitivity_dataset(), one such file per swept value -- gets
+    cut down to (f, 2) before dask ever needs to combine it with any
+    other file's data. Selecting r0/r0+d12 AFTER concatenation instead
+    (as a plain '.sel()' on the combined dataset) would still require
+    reading every file's FULL r range from disk first, since
+    xr.open_mfdataset's own lazy dask arrays are chunked per-file --
+    'preprocess' avoids that entirely by never letting the full arrays
+    become part of the combined dataset's dask graph in the first place.
+    """
+    return ds.sel(r=[r0, r0 + d12], method="nearest")
+
+
+def save_sensitivity_distance_results(
+    test_arg_name,
+    test_values,
+    dist_L1,
+    dist_L2,
+    dist_theta,
+    result_dir=RESULT_DIR,
+    file_prefix="dist_",
+):
+    """Save the RTF distance-from-baseline results (L1/L2/theta) for
+    ONE swept parameter to a small, dedicated CSV file -- small enough
+    (a handful of floats per swept value) that a plain text format is
+    the simplest, most portable choice; no need for NetCDF/xarray here,
+    unlike the much larger raw Green's function datasets this is
+    derived from (see build_sensitivity_dataset()).
+
+    Args:
+        test_arg_name (str): the swept parameter's name.
+        test_values, dist_L1, dist_L2, dist_theta (array-like): equal-
+            length 1D arrays, as returned by dist_from_baseline() (plus
+            the parameter values themselves) -- or, for
+            process_sensitivity_mainlobe_width(), the mainlobe WIDTHS
+            (see single_sensitivity_test_calc_dist_width()) rather than
+            raw distances; either way, 3 scalars-per-value metrics.
+        result_dir (str): directory to write into, as
+            '<result_dir>/<file_prefix><test_arg_name>.csv'.
+        file_prefix (str): distinguishes what these 3 metrics actually
+            are when several kinds of results are saved side by side
+            in the same 'result_dir' -- e.g. "dist_" for the raw RTF
+            distance at r0 (process_sensitivity()) vs
+            "mainlobe_width_" for the -3dB mainlobe width
+            (process_sensitivity_mainlobe_width()). Using the same
+            prefix for two DIFFERENT quantities would silently
+            overwrite one with the other.
+
+    Returns:
+        str: path to the written file.
+    """
+    os.makedirs(result_dir, exist_ok=True)
+    path = os.path.join(result_dir, f"{file_prefix}{test_arg_name}.csv")
+    data = np.column_stack([test_values, dist_L1, dist_L2, dist_theta])
+    np.savetxt(
+        path, data, delimiter=",", header=f"{test_arg_name},L1,L2,theta", comments=""
+    )
+    return path
+
+
+def load_sensitivity_distance_results(
+    test_arg_name, result_dir=RESULT_DIR, file_prefix="dist_"
+):
+    """Reload a results file written by save_sensitivity_distance_results().
+
+    Args:
+        test_arg_name (str): the swept parameter's name.
+        result_dir (str): same directory passed to
+            save_sensitivity_distance_results().
+        file_prefix (str): same prefix passed to
+            save_sensitivity_distance_results() (e.g. "dist_" or
+            "mainlobe_width_" -- see its own docstring).
+
+    Returns:
+        tuple(np.ndarray, np.ndarray, np.ndarray, np.ndarray):
+        test_values, dist_L1, dist_L2, dist_theta (or the mainlobe
+        width equivalents, depending on 'file_prefix').
+    """
+    path = os.path.join(result_dir, f"{file_prefix}{test_arg_name}.csv")
+    data = np.loadtxt(path, delimiter=",", skiprows=1)
+    data = np.atleast_2d(data)
+    return data[:, 0], data[:, 1], data[:, 2], data[:, 3]
+
+
+def process_sensitivity(test_arg_names=None, result_dir=RESULT_DIR, save_dir=None):
     """Read back every parameter's per-value result files (see
     build_sensitivity_dataset()), compute each value's RTF distance
-    from the baseline (see build_baseline()), and plot the resulting
-    distance-vs-parameter-value curves -- one subplot per parameter.
+    from the baseline (see build_baseline()), and save the resulting
+    L1/L2/theta distance-vs-parameter-value arrays to a dedicated file
+    per parameter (see save_sensitivity_distance_results()), then plot
+    them (see plot_sensitivity_curves()).
+
+    NOTE (new, per user request): this function used to plot directly,
+    inline, right after computing each parameter's distances, without
+    saving them anywhere -- meaning the (expensive: see the NOTE below)
+    computation had to be repeated from scratch just to see the plot
+    again, e.g. after tweaking its styling. Every parameter's L1/L2/
+    theta arrays are now saved to their own small file as soon as
+    they're computed; plot_sensitivity_curves() is a separate function
+    that only ever needs to read those small files back, not
+    reprocess anything.
 
     NOTE (memory usage improved): the original opened each parameter's
     single, already-combined multi-value NetCDF file with a plain
@@ -877,53 +1440,57 @@ def process_sensitivity(test_arg_names=None):
     at once (nothing closed any of them either). Given
     build_sensitivity_dataset() now writes one small file per value
     instead (see its own docstring), this function reads them back
-    with `xr.open_mfdataset(..., chunks={})` -- a dask-BACKED, LAZY
-    dataset: opening it does not load the actual array data, only its
-    metadata/coordinates, and dask only pulls into memory the specific
-    (r=r0) slice .sel() below actually needs. Each parameter's dataset
-    is also opened in its own 'with' block, so it (and whatever dask
-    briefly materialized for that one .sel() call) is released before
-    moving on to the next parameter, rather than accumulating every
-    parameter's dataset handle for the rest of the run.
+    with `xr.open_mfdataset(..., preprocess=_select_r0_pair)`: the
+    'preprocess' callback (see its own docstring) cuts each file down
+    to just the 2 r-values (r0, r0+d12) the RTF distance actually needs
+    BEFORE combining files, so the full, possibly-huge receiver-range
+    grid each file holds is never read in its entirety at all -- this
+    is what actually fixes process_sensitivity() taking several minutes
+    and a lot of RAM (see dist_from_baseline()'s docstring for exactly
+    where the old code forced the full computation). Each parameter's
+    dataset is also opened in its own 'with' block, so it is released
+    before moving on to the next parameter, rather than accumulating
+    every parameter's dataset handle for the rest of the run.
 
     Args:
         test_arg_names (list[str]|None): which parameters to process
-            (each must have a '<RESULT_DIR>/<name>/' folder from
+            (each must have a '<result_dir>/<name>/' folder from
             build_sensitivity_dataset()). None discovers every such
-            folder under RESULT_DIR automatically.
+            folder under 'result_dir' automatically.
+        result_dir (str): where to read the per-value/baseline files
+            from, and where to save the distance results.
+        save_dir (str|None): forwarded to plot_sensitivity_curves() --
+            if given, also save the returned figure there (e.g.
+            RESILIENCE_IMG_DIR for a resilience study). None (the
+            default): the figure is only returned, not saved.
+
+    Returns:
+        matplotlib.figure.Figure (see plot_sensitivity_curves()).
     """
-    import xarray as xr  # only this function needs it
+    import functools
 
     baseline_src_rcv_param = baseline_src_rcv()
     d12 = baseline_src_rcv_param["d12"]
     r0 = baseline_src_rcv_param["r0"]
+    preprocess = functools.partial(_select_r0_pair, r0=r0, d12=d12)
 
     if test_arg_names is None:
         test_arg_names = sorted(
             name
-            for name in os.listdir(RESULT_DIR)
-            if os.path.isdir(os.path.join(RESULT_DIR, name))
+            for name in os.listdir(result_dir)
+            if os.path.isdir(os.path.join(result_dir, name))
         )
 
-    fpath_baseline = os.path.join(RESULT_DIR, "gf_dataset_baseline.nc")
-
-    n_tests = len(test_arg_names)
-    fig, axs = plt.subplots(1, max(n_tests, 1), squeeze=False, sharey=True)
-    _dict_var_labels = {
-        "attn2": r"$\rho2$ [kg m$^3$]",
-        "c2": r"$c_2$ [m s$^{-1}$]",
-        "depth": "Depth [m]",
-    }
-    axs = axs[0]
+    fpath_baseline = os.path.join(result_dir, "gf_dataset_baseline.nc")
 
     # NOTE: the baseline is small (a single configuration, not a
     # sweep) -- safe to keep open for the whole loop, unlike the
     # per-parameter sweep datasets below.
     with xr.open_dataset(fpath_baseline) as ds_baseline:
-        for i, test_arg_name in enumerate(test_arg_names):
+        for test_arg_name in test_arg_names:
             value_files = sorted(
                 glob.glob(
-                    os.path.join(RESULT_DIR, test_arg_name, f"{test_arg_name}_*.nc")
+                    os.path.join(result_dir, test_arg_name, f"{test_arg_name}_*.nc")
                 )
             )
             if not value_files:
@@ -933,20 +1500,265 @@ def process_sensitivity(test_arg_names=None):
                 value_files,
                 combine="nested",
                 concat_dim=test_arg_name,
-                chunks={},
+                preprocess=preprocess,
             ) as ds_test:
                 dist_L1, dist_L2, dist_theta = dist_from_baseline(
                     ds_baseline, ds_test, d12, r0
                 )
                 test_values = ds_test[test_arg_name].values
 
-            # axs[i].plot(test_values, dist_L1, label="L1")
-            # axs[i].plot(test_values, dist_L2, label="L2")
-            axs[i].plot(test_values, dist_theta, label="theta")
-            axs[i].set_xlabel(test_arg_name)
-            axs[i].legend()
+            save_sensitivity_distance_results(
+                test_arg_name,
+                test_values,
+                dist_L1,
+                dist_L2,
+                dist_theta,
+                result_dir=result_dir,
+            )
+
+    return plot_sensitivity_curves(
+        test_arg_names, result_dir=result_dir, save_dir=save_dir
+    )
+
+
+def plot_sensitivity_curves(
+    test_arg_names=None,
+    result_dir=RESULT_DIR,
+    distance="theta",
+    file_prefix="dist_",
+    ylabel=None,
+    save_dir=None,
+):
+    """Plot the RTF distance/mainlobe-width-vs-parameter-value curves
+    (L1/L2/theta), reading them back from the small per-parameter files
+    saved by process_sensitivity()/process_sensitivity_mainlobe_width()
+    (see save_sensitivity_distance_results()) -- does NOT open or
+    process any '.nc' file, so this is fast and cheap to call
+    repeatedly (e.g. while tweaking the plot itself), unlike those
+    functions (which need a full pass over the raw Green's function
+    files to (re)compute these curves in the first place).
+
+    Args:
+        test_arg_names (list[str]|None): which parameters to plot
+            (each must have a '<result_dir>/<file_prefix><name>.csv'
+            file). None discovers every such file under 'result_dir'
+            automatically.
+        result_dir (str): where to read the saved results from.
+        distance (str|list[str]): distance metric(s) to plot -- any of
+            "L1", "L2", "theta".
+        file_prefix (str): which saved results to read -- "dist_" (the
+            default, matching process_sensitivity()'s raw RTF distance
+            at r0) or "mainlobe_width_" (matching
+            process_sensitivity_mainlobe_width()'s -3dB mainlobe
+            width) -- see save_sensitivity_distance_results()'s own
+            docstring.
+        ylabel (str|None): y-axis label override, used when
+            'distance' has more than one entry (otherwise the metric's
+            own label, e.g. r"$L_1$", is used directly). Defaults to
+            "Distance", appropriate for 'file_prefix="dist_"'; pass
+            e.g. "Mainlobe width [m]" for 'file_prefix="mainlobe_width_"'.
+        save_dir (str|None): if given, save the figure to
+            '<save_dir>/<filename>.png' (see
+            _sensitivity_figure_filename()) -- directory created if it
+            doesn't exist yet. None (the default): the figure is only
+            returned, not saved to disk. Pass IMG_DIR for this
+            project's own conventional image folder.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+
+    from matplotlib.lines import Line2D
+
+    if test_arg_names is None:
+        suffix = ".csv"
+        test_arg_names = sorted(
+            name[len(file_prefix) : -len(suffix)]
+            for name in os.listdir(result_dir)
+            if name.startswith(file_prefix) and name.endswith(suffix)
+        )
+
+    n_tests = len(test_arg_names)
+    fig, axs = plt.subplots(
+        1, max(n_tests, 1), figsize=(16, 8), squeeze=False, sharey=True
+    )
+    axs = axs[0]
+
+    arg_label = ARG_LABEL
+    dist_label = METRIC_LABEL
+    # NOTE (bug fixed): np.array(distance) leaves a 0-dimensional array
+    # for the default single-string usage (distance="theta"), and
+    # `distance[0]` a few lines below raises `IndexError: too many
+    # indices for array: array is 0-dimensional` on that -- confirmed
+    # reachable via the function's own default argument.
+    # np.atleast_1d() always gives an indexable 1D array instead
+    # (size 1 for a single string, same as before for the `.size > 1`
+    # check just below).
+    distance = np.atleast_1d(distance)
+
+    if distance.size > 1:
+        d_L1, d_L2, d_theta = [], [], []
+        for i, test_arg_name in enumerate(test_arg_names):
+            test_values, dist_L1, dist_L2, dist_theta = (
+                load_sensitivity_distance_results(
+                    test_arg_name, result_dir=result_dir, file_prefix=file_prefix
+                )
+            )
+            d_L1.append(np.max(dist_L1))
+            d_L2.append(np.max(dist_L2))
+            d_theta.append(np.max(dist_theta))
+
+        norm_factor_L1 = np.max(d_L1)
+        norm_factor_L2 = np.max(d_L2)
+        norm_factor_theta = np.max(d_theta)
+    else:
+        norm_factor_L1 = 1
+        norm_factor_L2 = 1
+        norm_factor_theta = 1
+
+    for i, test_arg_name in enumerate(test_arg_names):
+        test_values, dist_L1, dist_L2, dist_theta = load_sensitivity_distance_results(
+            test_arg_name, result_dir=result_dir, file_prefix=file_prefix
+        )
+        icol = 0
+
+        # if test_arg_name == "depth":
+        #     axs[i].set_xscale("log")
+
+        if "L1" in distance:
+            axs[i].plot(test_values, dist_L1 / norm_factor_L1, color=color(icol))
+            icol += 1
+        if "L2" in distance:
+            axs[i].plot(test_values, dist_L2 / norm_factor_L2, color=color(icol))
+            icol += 1
+        if "theta" in distance:
+            axs[i].plot(test_values, dist_theta / norm_factor_theta, color=color(icol))
+            icol += 1
+
+        axs[i].set_xlabel(arg_label.get(test_arg_name, test_arg_name))
+        # axs[i].legend()
+
+    if distance.size > 1:
+        fig.supylabel(ylabel or "Distance")
+        legend_handles = [
+            Line2D([0], [0], color=color(i), linestyle="-", label=dist_label[dist])
+            for i, dist in enumerate(distance)
+        ]
+
+        fig.legend(
+            handles=legend_handles, loc="outside upper center", ncols=distance.size
+        )
+    else:
+        fig.supylabel(ylabel or dist_label[distance[0]])
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        fname = _sensitivity_figure_filename(
+            "curves", test_arg_names, file_prefix=file_prefix
+        )
+        fig.savefig(os.path.join(save_dir, fname))
 
     return fig
+
+
+def consolidate_sensitivity_dataset(
+    test_arg_name, r_window, result_dir=RESULT_DIR, delete_originals=False
+):
+    """Combine every per-value '.nc' file for 'test_arg_name' (written
+    by build_sensitivity_dataset(), one per swept value -- see its own
+    docstring for why there are many small files rather than one big
+    one) into a SINGLE combined file, keeping only a WINDOW of the
+    range grid centered on the baseline's r0 (from r0-r_window to
+    r0+r_window) rather than each file's full, much wider extended
+    range grid -- to limit the disk space the combined file uses.
+
+    Uses the same 'preprocess' trick as process_sensitivity() (see
+    _select_r0_pair()'s docstring): the window is selected on EACH file
+    individually, before they are combined, so the parts of the range
+    grid outside the window are never read in full for any file either.
+
+    Args:
+        test_arg_name (str): the swept parameter whose per-value files
+            (under '<result_dir>/<test_arg_name>/') should be combined.
+        r_window (float): half-width (m) of the r-window to keep,
+            centered on the baseline's r0 (i.e. the kept range is
+            [r0 - r_window, r0 + r_window]).
+        result_dir (str): where the per-value folder lives, and where
+            the combined file is written
+            ('<result_dir>/<test_arg_name>_combined.nc').
+        delete_originals (bool): if True, delete the per-value '.nc'
+            files (and their now-empty directory) once the combined
+            file has been written successfully -- this is the only way
+            this function actually FREES disk space rather than merely
+            adding a smaller extra file; left as an explicit, off-by-
+            default opt-in since it's destructive.
+
+    Returns:
+        str: path to the written combined file.
+
+    Raises:
+        FileNotFoundError: if no per-value files exist for 'test_arg_name'.
+    """
+
+    r0 = baseline_src_rcv()["r0"]
+    value_dir = os.path.join(result_dir, test_arg_name)
+    value_files = sorted(glob.glob(os.path.join(value_dir, f"{test_arg_name}_*.nc")))
+    if not value_files:
+        raise FileNotFoundError(
+            f"No per-value files found for '{test_arg_name}' under {value_dir} "
+            f"-- run build_sensitivity_dataset('{test_arg_name}', ...) first."
+        )
+
+    def _select_r_window(ds):
+        return ds.sel(r=slice(r0 - r_window, r0 + r_window))
+
+    with xr.open_mfdataset(
+        value_files,
+        combine="nested",
+        concat_dim=test_arg_name,
+        preprocess=_select_r_window,
+    ) as ds_combined:
+        fpath = os.path.join(result_dir, f"{test_arg_name}_combined.nc")
+        ds_combined.to_netcdf(fpath)
+
+    if delete_originals:
+        for f in value_files:
+            os.remove(f)
+        try:
+            os.rmdir(value_dir)  # only removes it if now empty
+        except OSError:
+            pass
+
+    return fpath
+
+
+def consolidate_all_sensitivity_datasets(
+    r_window, test_arg_names=None, result_dir=RESULT_DIR, delete_originals=False
+):
+    """Apply consolidate_sensitivity_dataset() to every swept parameter
+    found under 'result_dir' (or just 'test_arg_names', if given).
+
+    Args: see consolidate_sensitivity_dataset().
+
+    Returns:
+        dict[str, str]: test_arg_name -> path to its combined file.
+    """
+    if test_arg_names is None:
+        test_arg_names = sorted(
+            name
+            for name in os.listdir(result_dir)
+            if os.path.isdir(os.path.join(result_dir, name))
+        )
+
+    fpaths = {}
+    for test_arg_name in test_arg_names:
+        fpaths[test_arg_name] = consolidate_sensitivity_dataset(
+            test_arg_name,
+            r_window,
+            result_dir=result_dir,
+            delete_originals=delete_originals,
+        )
+    return fpaths
 
 
 def build_tests():
@@ -954,34 +1766,31 @@ def build_tests():
         drop_keys=("fs", "fmax", "r0", "d12"), d12_max=5000
     )
 
-    npt = 200
+    npt = 20
     nb_param = 4
     size_per_test_Ko = 110000
     total_size = size_per_test_Ko * nb_param * npt
     print(
-        f"Total memory size (if it were all held at once) = {total_size * 1e-6:.2f} Go "
-        # f"-- no longer applicable: build_sensitivity_dataset() now writes each "
-        # f"value's result as soon as it's computed (see its own docstring)."
+        f"Total memory size (if it were all held at once) = {total_size * 1e-6} Go "
+        f"-- no longer applicable: build_sensitivity_dataset() now writes each "
+        f"value's result as soon as it's computed (see its own docstring)."
     )
 
-    # REAL RUN
-    # sweeps = {
-    #     "c1": np.linspace(1450, 1545, 200),
-    #     # "c2": np.linspace(1550.0, 1900.0, npt),
-    #     "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 500),
-    #     "attn2": np.linspace(0.0, 1.0, 200),
-    #     "depth": np.linspace(30, 5000, 500),
-    # }
-
-    # DEMO RUN
     sweeps = {
-        "c1": np.linspace(1450, 1540, 2),
+        "depth": np.linspace(30, 5000, 300),
+        "c1": np.linspace(1460, 1540, 160),
         # "c2": np.linspace(1550.0, 1900.0, npt),
-        # "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 15),
-        # "attn2": np.linspace(0.0, 1.0, 10),
-        # "depth": np.linspace(30, 200, 17),
+        "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 250),
+        "attn2": np.linspace(0.0, 1.0, 100),
     }
-    print(sweeps["c1"])
+
+    # sweeps = {
+    #     "depth": np.linspace(30, 500, 5),
+    #     # "c1": np.linspace(1460, 1540, 10),
+    #     # "c2": np.linspace(1550.0, 1900.0, 2),
+    #     # "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 10),
+    #     # "attn2": np.linspace(0.0, 1.0, 10),
+    # }
 
     for test_arg_name, test_arg_values in sweeps.items():
         build_sensitivity_dataset(
@@ -989,8 +1798,783 @@ def build_tests():
         )
 
 
+# ======================================================================================================================
+# Library resilience tests
+# ======================================================================================================================
+def build_resilience_tests():
+    """Build the "resilience" study's datasets.
+
+    Unlike the main sensitivity study (build_tests(), which asks "how
+    much does the RTF's -3dB LOCALIZATION AMBIGUITY around r0 change as
+    a waveguide parameter varies over a wide, largely unrealistic
+    range" -- see process_sensitivity_mainlobe_width()), this asks a
+    narrower, more practical question: "how much does GAMMA AT r0
+    ITSELF change under REALISTIC, expected environmental variability"
+    -- here, water depth fluctuating with the tide (the Bay of Fundy's
+    ~20 m range is used as a realistic worst case). See
+    process_resilience_tests() (dist_from_baseline(), evaluated
+    directly AT r0 -- not a mainlobe width) for the matching analysis.
+
+    Both the baseline (the nominal, unperturbed configuration -- see
+    build_baseline()) and the swept dataset (see
+    build_sensitivity_dataset()) are written under
+    RESILIENCE_RESULT_DIR (NOT RESULT_DIR, the main sensitivity study's
+    own directory), each swept parameter in its own
+    '<RESILIENCE_RESULT_DIR>/<test_arg_name>/' subfolder -- entirely
+    separate from the main sensitivity study's own files, and self-
+    contained (the baseline is rebuilt here too, rather than assuming
+    the main study's own baseline already exists).
+
+    NOTE: a second resilience test (sensitivity to the sound-speed
+    profile shape) is planned to follow the exact same pattern -- its
+    own 'test_arg_name' folder under this SAME RESILIENCE_RESULT_DIR/
+    RESILIENCE_IMG_DIR, reusing this same baseline (left as a TODO for
+    now, per user request).
+    """
+    all_arg_dict = load_all_arg_dict(
+        drop_keys=("fs", "fmax", "r0", "d12"), d12_max=5000
+    )
+
+    # Self-contained: this study's own baseline, in its own directory
+    # (see build_baseline()'s own 'result_dir'/'img_dir' docstring) --
+    # does not depend on the main sensitivity study's baseline existing.
+    build_baseline(result_dir=RESILIENCE_RESULT_DIR, img_dir=RESILIENCE_IMG_DIR)
+
+    # Test sensibility to free surface elevation of the order of tide variations
+    test_arg_name = "depth"
+    depth_var_tide = 10  # Tidal range can reach 20 m (+10m, -10m) in the Bay of Fundy (Canada) for instance
+    test_arg_values = np.linspace(
+        all_arg_dict["depth"] - depth_var_tide,
+        all_arg_dict["depth"] + depth_var_tide,
+        100,
+    )
+    build_sensitivity_dataset(
+        test_arg_name,
+        test_arg_values,
+        all_arg_dict,
+        model="kraken",
+        result_dir=RESILIENCE_RESULT_DIR,
+    )
+
+    # TODO: a second resilience test, sensitivity to the sound-speed
+    # profile shape, following the same pattern (its own test_arg_name,
+    # same RESILIENCE_RESULT_DIR/RESILIENCE_IMG_DIR, same baseline
+    # above) -- left for later, per user request.
+
+
+def process_resilience_tests(test_arg_names=None):
+    """Read back build_resilience_tests()'s own result files, compute
+    the RTF distance BETWEEN THE BASELINE'S GAMMA AND EACH SWEPT
+    VALUE'S GAMMA, BOTH EVALUATED AT r0 (see dist_from_baseline()) --
+    i.e. gamma's OWN sensitivity AT the reference position itself, as
+    the swept parameter (water depth, for the tide test) varies -- and
+    save/plot the result, entirely under the resilience study's own
+    RESILIENCE_RESULT_DIR/RESILIENCE_IMG_DIR (see
+    build_resilience_tests()'s own docstring, and this module's NOTE on
+    RESILIENCE_DIRECTORY, for the full rationale).
+
+    This reuses process_sensitivity()'s own analysis
+    (dist_from_baseline(): a single L1/L2/theta value per swept value,
+    evaluated directly AT r0) -- NOT the -3dB mainlobe-width family
+    (process_sensitivity_mainlobe_width()/
+    process_sensitivity_intrinsic_mainlobe_width()), which asks a
+    different question about localization ambiguity AROUND r0, not
+    gamma's own value AT r0 -- just pointed at the resilience study's
+    own directories instead of the main sensitivity study's.
+
+    Args:
+        test_arg_names (list[str]|None): which resilience tests to
+            process (each must have a
+            '<RESILIENCE_RESULT_DIR>/<name>/' folder from
+            build_resilience_tests()). None discovers every such folder
+            automatically (currently just "depth" -- see
+            build_resilience_tests()'s own NOTE about the sound-speed-
+            profile test planned to follow it, in the same directory).
+
+    Returns:
+        matplotlib.figure.Figure (see plot_sensitivity_curves()).
+    """
+    return process_sensitivity(
+        test_arg_names=test_arg_names,
+        result_dir=RESILIENCE_RESULT_DIR,
+        save_dir=RESILIENCE_IMG_DIR,
+    )
+
+
+def process_sensitivity_mainlobe_width(test_arg_names=None, result_dir=RESULT_DIR):
+    """Read back every parameter's per-value result files (see
+    build_sensitivity_dataset()), compute each value's RTF distance
+    from the baseline AS A FUNCTION OF r around r0 (see
+    dist_from_baseline_around_r0()), derive the -3dB mainlobe width of
+    that distance curve for every value (see
+    single_sensitivity_test_calc_dist_width()), save the resulting
+    width-vs-parameter-value arrays to a dedicated file per parameter
+    (see save_sensitivity_distance_results()), then plot them (see
+    plot_sensitivity_curves()) -- this is what lets you see how the
+    waveguide's parameters affect the RTF's range-resolution (how
+    narrow/wide the -3dB mainlobe around the true range r0 is).
+
+    NOTE (renamed from 'process_sensitivity_v2', finished): this used
+    to save 'dist_L1'/'dist_L2'/'dist_theta' directly -- but those are
+    now 2D (n_r, n_values) arrays (one full distance-vs-r curve per
+    swept value, from dist_from_baseline_around_r0()), not the 1D,
+    one-value-per-parameter arrays save_sensitivity_distance_results()
+    expects (np.column_stack([test_values, dist_L1, ...]) would raise
+    a shape-mismatch error, or silently misalign columns, confirmed by
+    inspection). The mainlobe WIDTHS computed right above (already 1D,
+    one value per swept parameter value) are what actually needs
+    saving here. Saved under the "mainlobe_width_" prefix (see
+    save_sensitivity_distance_results()'s own docstring) so this
+    doesn't collide with process_sensitivity()'s own "dist_" files,
+    which hold a different quantity (the raw RTF distance at r0 alone,
+    not a mainlobe width).
+
+    Args:
+        test_arg_names (list[str]|None): which parameters to process
+            (each must have a '<result_dir>/<name>/' folder from
+            build_sensitivity_dataset()). None discovers every such
+            folder under 'result_dir' automatically.
+        result_dir (str): where to read the per-value/baseline files
+            from, and where to save the mainlobe-width results.
+
+    Returns:
+        matplotlib.figure.Figure (see plot_sensitivity_curves()).
+    """
+    baseline_src_rcv_param = baseline_src_rcv()
+    d12 = baseline_src_rcv_param["d12"]
+    r0 = baseline_src_rcv_param["r0"]
+
+    if test_arg_names is None:
+        test_arg_names = sorted(
+            name
+            for name in os.listdir(result_dir)
+            if os.path.isdir(os.path.join(result_dir, name))
+        )
+
+    fpath_baseline = os.path.join(result_dir, "gf_dataset_baseline.nc")
+
+    # NOTE: no 'preprocess' here (unlike process_sensitivity()'s own
+    # '_select_r0_pair') -- this function needs the FULL r window each
+    # per-value file holds (to derive a mainlobe width), not just the
+    # single r0 point. This is feasible because that window is now
+    # narrow by construction (baseline_src_rcv()'s own r_rcv already
+    # only spans a region around r0, not the whole receiver range),
+    # unlike the much wider grids process_sensitivity()'s optimization
+    # was written for.
+    with xr.open_dataset(fpath_baseline) as ds_baseline:
+        for test_arg_name in test_arg_names:
+            value_files = sorted(
+                glob.glob(
+                    os.path.join(result_dir, test_arg_name, f"{test_arg_name}_*.nc")
+                )
+            )
+            if not value_files:
+                continue
+
+            with xr.open_mfdataset(
+                value_files,
+                combine="nested",
+                concat_dim=test_arg_name,
+            ) as ds_test:
+                # NOTE: no downcast needed here anymore -- 'gf' (real-
+                # valued, a magnitude -- see build_sensitivity_dataset()'s
+                # own np.abs()) is already saved as float32 on disk (see
+                # _to_float32()'s docstring for why this now happens at
+                # write time instead of here).
+                # Distance from the baseline, as a function of r around r0.
+                r_dist, dist_L1, dist_L2, dist_theta = dist_from_baseline_around_r0(
+                    ds_baseline, ds_test, d12, r0
+                )
+                # -3dB mainlobe width of that distance curve, PER swept
+                # value (dist_L1/L2/theta are 2D here -- see
+                # single_sensitivity_test_calc_dist_width()'s own NOTE).
+                width_L1, width_L2, width_theta = (
+                    single_sensitivity_test_calc_dist_width(
+                        dist_L1, dist_L2, dist_theta, r_grid=r_dist, r0=r0
+                    )
+                )
+
+                test_values = ds_test[test_arg_name].values
+
+            save_sensitivity_distance_results(
+                test_arg_name,
+                test_values,
+                width_L1,
+                width_L2,
+                width_theta,
+                result_dir=result_dir,
+                file_prefix="mainlobe_width_",
+            )
+
+    return plot_sensitivity_curves(
+        test_arg_names,
+        result_dir=result_dir,
+        distance=["L1", "L2", "theta"],
+        file_prefix="mainlobe_width_",
+        ylabel="Mainlobe width [m]",
+    )
+
+
+def process_sensitivity_intrinsic_mainlobe_width(
+    test_arg_names=None, result_dir=RESULT_DIR
+):
+    """Read back every parameter's per-value result files (see
+    build_sensitivity_dataset()), compute each value's RTF distance
+    between its OWN gamma at r0 and its OWN gamma as a function of r
+    around r0 (see dist_within_test_around_r0() -- no baseline
+    involved at all, unlike process_sensitivity_mainlobe_width()),
+    derive the -3dB mainlobe width of that distance curve for every
+    value (see single_sensitivity_test_calc_dist_width()), save the
+    resulting width-vs-parameter-value arrays to a dedicated file per
+    parameter (see save_sensitivity_distance_results()), then plot them
+    (see plot_sensitivity_curves()).
+
+    This is the INTRINSIC counterpart to
+    process_sensitivity_mainlobe_width(): that one measures how a
+    parameter MISMATCH against a baseline widens the RTF's mainlobe;
+    this one measures how narrow/wide each configuration's mainlobe
+    already is on its own terms, with no baseline comparison at all
+    (see dist_within_test_around_r0()'s own docstring for the full
+    rationale).
+
+    Args:
+        test_arg_names (list[str]|None): which parameters to process
+            (each must have a '<result_dir>/<name>/' folder from
+            build_sensitivity_dataset()). None discovers every such
+            folder under 'result_dir' automatically.
+        result_dir (str): where to read the per-value files from, and
+            where to save the mainlobe-width results.
+
+    Returns:
+        matplotlib.figure.Figure (see plot_sensitivity_curves()).
+    """
+    baseline_src_rcv_param = baseline_src_rcv()
+    d12 = baseline_src_rcv_param["d12"]
+    r0 = baseline_src_rcv_param["r0"]
+
+    if test_arg_names is None:
+        test_arg_names = sorted(
+            name
+            for name in os.listdir(result_dir)
+            if os.path.isdir(os.path.join(result_dir, name))
+        )
+
+    # NOTE: no baseline file needed here at all (unlike
+    # process_sensitivity_mainlobe_width()) -- see
+    # dist_within_test_around_r0()'s docstring: this is entirely
+    # self-referential, comparing each swept value against its own
+    # gamma at r0, not against an external baseline configuration.
+    for test_arg_name in test_arg_names:
+        value_files = sorted(
+            glob.glob(os.path.join(result_dir, test_arg_name, f"{test_arg_name}_*.nc"))
+        )
+        if not value_files:
+            continue
+
+        with xr.open_mfdataset(
+            value_files,
+            combine="nested",
+            concat_dim=test_arg_name,
+        ) as ds_test:
+            # NOTE: no downcast needed here anymore -- see the matching
+            # NOTE in process_sensitivity_mainlobe_width() /
+            # _to_float32()'s docstring.
+            r_dist, dist_L1, dist_L2, dist_theta = dist_within_test_around_r0(
+                ds_test, d12, r0
+            )
+            width_L1, width_L2, width_theta = single_sensitivity_test_calc_dist_width(
+                dist_L1, dist_L2, dist_theta, r_grid=r_dist, r0=r0
+            )
+
+            test_values = ds_test[test_arg_name].values
+
+        save_sensitivity_distance_results(
+            test_arg_name,
+            test_values,
+            width_L1,
+            width_L2,
+            width_theta,
+            result_dir=result_dir,
+            file_prefix="intrinsic_mainlobe_width_",
+        )
+
+    return plot_sensitivity_curves(
+        test_arg_names,
+        result_dir=result_dir,
+        distance=["L1", "L2", "theta"],
+        file_prefix="intrinsic_mainlobe_width_",
+        ylabel="Intrinsic mainlobe width [m]",
+    )
+
+
+def plot_extremal_width_configs(
+    test_arg_names=None,
+    result_dir=RESULT_DIR,
+    metric="L1",
+    mode="baseline",
+    save_dir=None,
+):
+    """For each swept parameter, plot:
+      - the RTF distance vs. (r - r0) curve for the TWO configurations
+        (swept values) with the SMALLEST and the LARGEST -3dB mainlobe
+        width, in its OWN figure (one figure per parameter -- NOT
+        subplots sharing one combined figure);
+      - gamma(f, r - r0) itself, as a 2D image, for those SAME two
+        configurations, side by side in a second figure per parameter.
+
+    This lets you actually look at what the narrowest- and widest-
+    mainlobe configurations look like -- both the distance curve the
+    width was derived from, and the underlying RTF itself -- rather
+    than just their scalar width.
+
+    This reads back the width results already saved by
+    process_sensitivity_mainlobe_width()/
+    process_sensitivity_intrinsic_mainlobe_width() (see 'mode' below)
+    to find WHICH swept values are the min/max ones, then re-opens just
+    those 2 values' per-value files (not the whole sweep) and
+    recomputes their distance curve and their gamma(f, r) -- the width
+    results only ever stored the scalar width itself (see
+    single_sensitivity_test_calc_dist_width()), not the full curve or
+    gamma behind it, so this is the cheapest way to get them back for
+    exactly the 2 configurations that matter here, without re-deriving
+    anything for every swept value again.
+
+    Args:
+        test_arg_names (list[str]|None): which parameters to plot.
+            None discovers every parameter with a saved width result
+            for the given 'mode' under 'result_dir'.
+        result_dir (str): where the per-value files, the baseline file
+            (for 'mode="baseline"'), and the saved width results live.
+        metric (str): "L1", "L2", or "theta" -- which width metric
+            decides which configurations count as "smallest"/"largest"
+            (a value that is the narrowest by one metric need not be
+            by another). The SAME metric's distance curve is what gets
+            plotted (the gamma(f, r) image does not depend on 'metric'
+            at all -- it is the raw RTF, not a distance).
+        mode (str): "baseline" (process_sensitivity_mainlobe_width()'s
+            distance from an external baseline reference -- needs
+            'gf_dataset_baseline.nc', see dist_from_baseline_around_r0())
+            or "intrinsic" (process_sensitivity_intrinsic_mainlobe_width()'s
+            purely self-referential distance, no baseline needed --
+            see dist_within_test_around_r0()).
+        save_dir (str|None): if given, save every figure to
+            '<save_dir>/<kind>_<test_arg_name>.png' ('kind' is "dist"
+            or "gamma") -- directory created if it doesn't exist yet.
+            None (the default): figures are only returned, not saved
+            to disk. Pass IMG_DIR for this project's own conventional
+            image folder.
+
+    Returns:
+        dict[str, dict[str, matplotlib.figure.Figure]]:
+        {test_arg_name: {"distance": <fig>, "gamma": <fig>}}.
+
+    Raises:
+        ValueError: if 'mode' is neither "baseline" nor "intrinsic".
+    """
+    if mode == "baseline":
+        file_prefix = "mainlobe_width_"
+    elif mode == "intrinsic":
+        file_prefix = "intrinsic_mainlobe_width_"
+    else:
+        raise ValueError(f"mode must be 'baseline' or 'intrinsic', got {mode!r}")
+
+    baseline_src_rcv_param = baseline_src_rcv()
+    d12 = baseline_src_rcv_param["d12"]
+    r0 = baseline_src_rcv_param["r0"]
+
+    if test_arg_names is None:
+        suffix = ".csv"
+        test_arg_names = sorted(
+            name[len(file_prefix) : -len(suffix)]
+            for name in os.listdir(result_dir)
+            if name.startswith(file_prefix) and name.endswith(suffix)
+        )
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+
+    figures = {}
+
+    # Only opened for 'mode="baseline"' -- see dist_from_baseline_around_r0()'s
+    # own docstring for why "intrinsic" needs no baseline at all.
+    ds_baseline = (
+        xr.open_dataset(os.path.join(result_dir, "gf_dataset_baseline.nc"))
+        if mode == "baseline"
+        else None
+    )
+    try:
+        for test_arg_name in test_arg_names:
+            test_values, width_L1, width_L2, width_theta = (
+                load_sensitivity_distance_results(
+                    test_arg_name, result_dir=result_dir, file_prefix=file_prefix
+                )
+            )
+            width = {"L1": width_L1, "L2": width_L2, "theta": width_theta}[metric]
+
+            idx_min = int(np.nanargmin(width))
+            idx_max = int(np.nanargmax(width))
+            value_min = test_values[idx_min]
+            value_max = test_values[idx_max]
+
+            param_label = ARG_LABEL.get(test_arg_name, test_arg_name)
+            # NOTE (per user request): explicitly names the parameter
+            # AND its value (not just a bare number) -- e.g.
+            # "D [m] = 30 (min width)" instead of the previous, more
+            # ambiguous "min width (30)".
+            label_min = f"{param_label} = {value_min:g} (min width)"
+            label_max = f"{param_label} = {value_max:g} (max width)"
+
+            value_files = sorted(
+                glob.glob(
+                    os.path.join(result_dir, test_arg_name, f"{test_arg_name}_*.nc")
+                )
+            )
+            with xr.open_mfdataset(
+                value_files,
+                combine="nested",
+                concat_dim=test_arg_name,
+            ) as ds_test_full:
+                # Reduce to JUST the 2 configurations that matter here
+                # (order preserved: [value_min, value_max]) BEFORE
+                # deriving anything, so nothing is recomputed for the
+                # values we don't care about here.
+                ds_test_sel = ds_test_full.sel(
+                    **{test_arg_name: [value_min, value_max]}, method="nearest"
+                )
+
+                if mode == "baseline":
+                    r_dist, dist_L1, dist_L2, dist_theta = dist_from_baseline_around_r0(
+                        ds_baseline, ds_test_sel, d12, r0
+                    )
+                else:
+                    r_dist, dist_L1, dist_L2, dist_theta = dist_within_test_around_r0(
+                        ds_test_sel, d12, r0
+                    )
+
+                # gamma(f, r) itself for these 2 configs (mode-
+                # independent: it's the raw RTF, not a distance from
+                # anything) -- see derive_gamma()'s own docstring.
+                gamma_sel = derive_gamma(ds_test_sel, d12)  # dims (test_arg_name, f, r)
+                gamma_vals = gamma_sel.values  # (2, nf, nr)
+                r_gamma = gamma_sel.r.values
+                freq = gamma_sel.f.values
+
+            dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[
+                metric
+            ]  # (n_r, 2)
+
+            # --- Figure 1: distance vs. (r - r0), one figure per parameter ---
+            fig_dist, ax_dist = plt.subplots(figsize=(16, 8))
+            ax_dist.plot(r_dist - r0, dist[:, 0], label=label_min)
+            ax_dist.plot(r_dist - r0, dist[:, 1], label=label_max)
+            ax_dist.set_xlabel(r"$r - r_0$ [m]")
+            ax_dist.set_ylabel(f"Distance ({METRIC_LABEL[metric]})")
+            ax_dist.set_title(param_label)
+            ax_dist.legend()
+
+            # --- Figure 2: gamma(f, r - r0), one figure per parameter,
+            # min/max side by side ---
+            fig_gamma, axs_gamma = plt.subplots(
+                1, 2, figsize=(16, 8), sharex=True, sharey=True
+            )
+            for j, lbl in enumerate((label_min, label_max)):
+                # vmin = np.percentile(gamma_vals[j], q=5)
+                # vmax = np.percentile(gamma_vals[j], q=95)
+                im = axs_gamma[j].pcolormesh(
+                    r_gamma - r0,
+                    freq,
+                    gamma_vals[j],
+                    shading="auto",
+                    cmap="magma",
+                    # vmin=vmin,
+                    # vmax=vmax,
+                )
+                axs_gamma[j].set_xlabel(r"$r - r_0$ [m]")
+                axs_gamma[j].set_title(lbl)
+            axs_gamma[0].set_ylabel("f [Hz]")
+            fig_gamma.colorbar(im, ax=axs_gamma, label=r"$\gamma$ [dB]")
+
+            figures[test_arg_name] = {"distance": fig_dist, "gamma": fig_gamma}
+
+            if save_dir is not None:
+                fig_dist.savefig(
+                    os.path.join(
+                        save_dir,
+                        _sensitivity_figure_filename(
+                            "dist",
+                            test_arg_name,
+                            file_prefix=file_prefix,
+                            mode=mode,
+                            metric=metric,
+                        ),
+                    )
+                )
+                fig_gamma.savefig(
+                    os.path.join(
+                        save_dir,
+                        _sensitivity_figure_filename(
+                            "gamma",
+                            test_arg_name,
+                            file_prefix=file_prefix,
+                            mode=mode,
+                            metric=metric,
+                        ),
+                    )
+                )
+    finally:
+        if ds_baseline is not None:
+            ds_baseline.close()
+
+    return figures
+
+
+def plot_extremal_resilience_dist_configs(
+    test_arg_names=None,
+    result_dir=RESILIENCE_RESULT_DIR,
+    metric="theta",
+    save_dir=RESILIENCE_IMG_DIR,
+):
+    """For each resilience-tested parameter, plot gamma(f) AT r0 for
+    the baseline and for the TWO configurations (swept values) with
+    the SMALLEST and the LARGEST RTF distance from that baseline (see
+    dist_from_baseline() / process_resilience_tests()) -- letting you
+    actually see what gamma looks like for the best- and worst-case
+    configurations (e.g. the tide state closest to, and furthest from,
+    the baseline), rather than just their scalar distance.
+
+    This mirrors plot_extremal_width_configs()'s own approach (reload
+    the saved distance results to find which swept values are the
+    min/max ones, then re-open just those 2 values' per-value files),
+    adapted to the resilience study's "dist_" results and directory
+    layout (see build_resilience_tests()/process_resilience_tests()).
+
+    Args:
+        test_arg_names (list[str]|None): which resilience tests to
+            plot (each must have a '<result_dir>/dist_<name>.csv' file
+            from process_resilience_tests()). None discovers every
+            such file under 'result_dir' automatically.
+        result_dir (str): where the per-value files, the baseline file,
+            and the saved distance results live. Defaults to
+            RESILIENCE_RESULT_DIR.
+        metric (str): "L1", "L2", or "theta" -- which distance metric
+            decides which configurations count as "smallest"/
+            "largest" (gamma(f) itself does not depend on 'metric' --
+            only which 2 configurations get plotted does).
+        save_dir (str|None): if given, save each figure to
+            '<save_dir>/<filename>.png' (see
+            _sensitivity_figure_filename()) -- directory created if it
+            doesn't exist yet. None: figures are only returned, not
+            saved. Defaults to RESILIENCE_IMG_DIR.
+
+    Returns:
+        dict[str, matplotlib.figure.Figure]: {test_arg_name: figure}.
+    """
+    d12 = baseline_src_rcv()["d12"]
+    r0 = baseline_src_rcv()["r0"]
+
+    if test_arg_names is None:
+        prefix, suffix = "dist_", ".csv"
+        test_arg_names = sorted(
+            name[len(prefix) : -len(suffix)]
+            for name in os.listdir(result_dir)
+            if name.startswith(prefix) and name.endswith(suffix)
+        )
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+
+    figures = {}
+
+    with xr.open_dataset(
+        os.path.join(result_dir, "gf_dataset_baseline.nc")
+    ) as ds_baseline:
+        # The baseline doesn't depend on which parameter is being swept
+        # -- computed once, reused for every test_arg_name below.
+        baseline_gamma_r0 = ds_baseline.gamma.sel(r=r0, method="nearest")
+
+        for test_arg_name in test_arg_names:
+            test_values, dist_L1, dist_L2, dist_theta = (
+                load_sensitivity_distance_results(
+                    test_arg_name, result_dir=result_dir, file_prefix="dist_"
+                )
+            )
+            dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[metric]
+
+            idx_min = int(np.nanargmin(dist))
+            idx_max = int(np.nanargmax(dist))
+            value_min = test_values[idx_min]
+            value_max = test_values[idx_max]
+
+            param_label = ARG_LABEL.get(test_arg_name, test_arg_name)
+            label_min = f"{param_label} = {value_min:g} (min dist)"
+            label_max = f"{param_label} = {value_max:g} (max dist)"
+
+            value_files = sorted(
+                glob.glob(
+                    os.path.join(result_dir, test_arg_name, f"{test_arg_name}_*.nc")
+                )
+            )
+            with xr.open_mfdataset(
+                value_files,
+                combine="nested",
+                concat_dim=test_arg_name,
+            ) as ds_test_full:
+                # Reduce to JUST the 2 configurations that matter here
+                # (order preserved: [value_min, value_max]) before
+                # deriving gamma, so nothing is recomputed for the
+                # values we don't care about here.
+                ds_test_sel = ds_test_full.sel(
+                    **{test_arg_name: [value_min, value_max]}, method="nearest"
+                )
+                gamma_sel = derive_gamma(ds_test_sel, d12)  # dims (test_arg_name, f, r)
+
+                fig, ax = plt.subplots(figsize=(16, 8))
+                baseline_gamma_r0.plot(ax=ax, label="Baseline")
+                gamma_sel.isel(**{test_arg_name: 0}).sel(r=r0, method="nearest").plot(
+                    ax=ax, label=label_min
+                )
+                gamma_sel.isel(**{test_arg_name: 1}).sel(r=r0, method="nearest").plot(
+                    ax=ax, label=label_max
+                )
+
+            ax.set_xlabel("Fréquence [Hz]")
+            ax.set_ylabel(r"$\gamma$ [dB]")
+            ax.set_title(param_label)
+            ax.legend()
+
+            figures[test_arg_name] = fig
+
+            if save_dir is not None:
+                fname = _sensitivity_figure_filename(
+                    "gamma_at_r0", test_arg_name, file_prefix="dist_", metric=metric
+                )
+                fig.savefig(os.path.join(save_dir, fname))
+
+    return figures
+
+
+def generate_all_diag(distance=["theta"], process_sensi=True):
+    # Step 0 : re-build baseline to plot baseline diags
+    build_baseline()
+
+    # Step 1 : Distance from baseline configuration evaluate at r0
+    # 1.1) read all files and compute distance from baseline
+    if process_sensi:
+        process_sensitivity()
+    # 1.2) plot distance from baseline for all parameters
+    plot_sensitivity_curves(
+        distance=distance,
+        ylabel="Distance from baseline at r=r0",
+        save_dir=IMG_DIR,
+    )
+    plt.close("all")
+
+    # 1.3) plot distance from baseline for each parameter
+    for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
+        plot_sensitivity_curves(
+            test_arg_names=[test_arg_name],
+            distance=distance,
+            ylabel="Distance from baseline at r=r0",
+            save_dir=IMG_DIR,
+        )
+        plt.close("all")
+
+    # Step 2 : Mainlobe width of distance around r0 for each configuration
+    # 2.1) read all files and compute mainlobe width of distance around r0
+    if process_sensi:
+        process_sensitivity_mainlobe_width()
+    # 2.2) plot mainlobe width of distance around r0 for all parameters
+    plot_sensitivity_curves(
+        distance=distance,
+        file_prefix="intrinsic_mainlobe_width_",
+        ylabel="Intrinsic mainlobe width [m]",
+        save_dir=IMG_DIR,
+    )
+    plt.close("all")
+
+    # 2.3) plot mainlobe width of distance around r0 for each parameter
+    for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
+        plot_sensitivity_curves(
+            test_arg_names=[test_arg_name],
+            distance=distance,
+            file_prefix="intrinsic_mainlobe_width_",
+            ylabel="Intrinsic mainlobe width [m]",
+            save_dir=IMG_DIR,
+        )
+        # Plot the two configurations with the smallest and largest mainlobe width
+        plot_extremal_width_configs(
+            test_arg_names=[test_arg_name],
+            metric=distance[0],
+            mode="intrinsic",
+            save_dir=IMG_DIR,
+        )
+        plt.close("all")
+
+    # Step 3 : Resilience tests
+    # 3.1) read all files and compute distance from baseline for resilience tests
+    if process_sensi:
+        process_resilience_tests()
+    # 3.2) plot distance from baseline for resilience tests
+    # 3.2.1) depth
+    plot_sensitivity_curves(
+        ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
+    )
+    plot_extremal_resilience_dist_configs(
+        ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
+    )
+    plt.close("all")
+
+
 if __name__ == "__main__":
+    # build_tests()
     # build_baseline()
-    build_tests()
     # process_sensitivity()
-    plt.show()
+
+    # distance = ["L1", "L2", "theta"]
+    # distance = ["theta"]
+
+    # # # Distance from baseline
+    # plot_sensitivity_curves(
+    #     test_arg_names=["depth"],
+    #     distance=distance,
+    #     ylabel="Distance from baseline at r=r0",
+    #     save_dir=IMG_DIR,
+    # )
+
+    # process_sensitivity_mainlobe_width()
+    # plot_sensitivity_curves(
+    #     test_arg_names=["depth"],
+    #     distance=["theta"],
+    #     file_prefix="mainlobe_width_",
+    #     ylabel="Mainlobe width [m]",
+    # )
+
+    # process_sensitivity_intrinsic_mainlobe_width()
+    # # # Distance around r0 depending on env params
+    # plot_sensitivity_curves(
+    #     distance=["L1"],
+    #     file_prefix="intrinsic_mainlobe_width_",
+    #     ylabel="Intrinsic mainlobe width [m]",
+    #     save_dir=IMG_DIR,
+    # )
+    # plot_extremal_width_configs(
+    #     metric="theta",
+    #     mode="intrinsic",
+    #     save_dir=IMG_DIR,
+    # )
+
+    # r_window = 5 * 1e3
+    # consolidate_all_sensitivity_datasets(r_window)
+
+    # # build_resilience_tests()
+    # process_resilience_tests()
+    # plot_sensitivity_curves(
+    #     ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
+    # )
+    # plot_extremal_resilience_dist_configs(
+    #     ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
+    # )
+
+    # plt.show()
+
+    generate_all_diag(distance=["theta"], process_sensi=False)

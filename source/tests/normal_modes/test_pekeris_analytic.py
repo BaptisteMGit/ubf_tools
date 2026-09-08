@@ -94,7 +94,7 @@ def compute_kraken_solution(sig_param, env_param, src_rcv_param):
     )
 
     field = KrakenField(
-        phase_speed_limits=[0, c2 + 0.1],
+        phase_speed_limits=[0, c2 + 100],
         src_depth=z_s,
         n_rcv_z=201,
         rcv_z_min=0.0,
@@ -600,7 +600,7 @@ def test_kraken_validation():
     c1 = 1500  # sound celerity in water (m/s)
     rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
     c2 = 1600  # sound celerity in fluid sediment (m/s)
-    attn2 = 0.0  # compressional wave attenuation in fluid sediment in dB / wavelength
+    attn2 = 0.5  # compressional wave attenuation in fluid sediment in dB / wavelength
     d = 100  # waveguide depth (m)
 
     # Signal properties

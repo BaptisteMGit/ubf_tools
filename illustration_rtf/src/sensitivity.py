@@ -68,13 +68,20 @@ os.makedirs(RESULT_DIR, exist_ok=True)
 # their own, separate directory tree entirely -- both result files
 # (raw per-value '.nc's, saved gamma-at-r0 sensitivity CSVs, and the
 # baseline '.nc' each resilience test compares against) and figures.
-# Each individual resilience test (e.g. "depth" for tidal elevation
-# now, a sound-speed-profile one later) gets its own subfolder under
-# RESILIENCE_RESULT_DIR/RESILIENCE_IMG_DIR automatically, the same way
-# build_sensitivity_dataset() already does for the main study (one
-# '<result_dir>/<test_arg_name>/' folder per swept parameter) -- no
-# separate constant is needed per resilience test, just pass a
-# distinct 'test_arg_name'.
+# Each individual resilience test (e.g. "depth" for tidal elevation)
+# gets its own subfolder under RESILIENCE_RESULT_DIR/RESILIENCE_IMG_DIR
+# automatically, the same way build_sensitivity_dataset() already does
+# for the main study (one '<result_dir>/<test_arg_name>/' folder per
+# swept parameter) -- no separate constant is needed per resilience
+# test, just pass a distinct 'test_arg_name'.
+#
+# NOTE: sensitivity to the sound-speed PROFILE SHAPE (as opposed to a
+# single scalar water sound speed, "c1") turned out to need its own
+# per-ENVIRONMENT-TYPE baseline (shallow- vs deep-water use different
+# waveguide depths and different real profiles entirely -- see
+# CELERITY_ENV_TYPES/build_celerity_baseline()), so it got its own
+# CELERITY_* directory tree below instead of reusing this one, despite
+# an earlier plan to fold it in here.
 RESILIENCE_DIRECTORY = os.path.join(
     os.path.dirname(SENSITIVITY_DIRECTORY), "resilience"
 )
@@ -82,6 +89,51 @@ RESILIENCE_RESULT_DIR = os.path.join(RESILIENCE_DIRECTORY, "result")
 os.makedirs(RESILIENCE_RESULT_DIR, exist_ok=True)
 RESILIENCE_IMG_DIR = os.path.join(IMG_DIR, "resilience")
 os.makedirs(RESILIENCE_IMG_DIR, exist_ok=True)
+
+# NOTE (new, per user request): sensitivity to the sound-speed profile
+# SHAPE, using realistic profiles derived from real CMEMS data (see
+# illustration_rtf/ssp/load_ssp_data.py and ssp_process_eof.py) instead
+# of the classic study's own isovelocity 2-point profile. Two
+# ENVIRONMENT TYPES are considered -- "sw" (shallow water, matching the
+# classic study's own 100 m depth) and "dw" (deep water, 2000 m) --
+# each with its OWN baseline (the environment matching that type's
+# MEAN, over-time, real profile -- see build_celerity_baseline()), so
+# results/figures are further split by environment type, one
+# '<CELERITY_RESULT_DIR>/<env_type>/' (and '<CELERITY_IMG_DIR>/
+# <env_type>/') subfolder each.
+if os.name == "nt":  # Windows
+    SSP_DATA_DIR = os.path.join(project_root, "illustration_rtf", "data", "ssp")
+else:  # Linux
+    SSP_DATA_DIR = os.path.join(data_root, "ssp")
+
+CELERITY_DIRECTORY = os.path.join(os.path.dirname(SENSITIVITY_DIRECTORY), "celerity")
+CELERITY_RESULT_DIR = os.path.join(CELERITY_DIRECTORY, "result")
+os.makedirs(CELERITY_RESULT_DIR, exist_ok=True)
+CELERITY_IMG_DIR = os.path.join(IMG_DIR, "celerity")
+os.makedirs(CELERITY_IMG_DIR, exist_ok=True)
+
+# NOTE: "sw"'s depth (100 m) intentionally matches the classic
+# sensitivity study's own baseline depth (see baseline_env()) --
+# that's what lets its real profile (which load_ssp_data.py's own
+# CMEMS extraction only reaches to ~50 m for) be directly compared on
+# the same footing, once linearly extended (see
+# load_mean_celerity_profile()). "dw"'s depth (2000 m) is new: its own
+# real profile reaches to ~2500 m and is truncated down to it instead.
+CELERITY_ENV_TYPES = {
+    "sw": {"ssp_filename": "ssp_profiles_sw.nc", "depth": 100.0},
+    "dw": {"ssp_filename": "ssp_profiles_dw.nc", "depth": 2000.0},
+}
+
+# NOTE: matches illustration_rtf/ssp/ssp_process_eof.py's own
+# '__main__' defaults -- "n_new_samples" (how many synthetic profiles
+# get_ssp_eof()-based sampling generated per file) and the 5 "filenames"
+# entries per environment type (1 fit on the WHOLE, multi-decade
+# dataset -- "all" here -- + 4 fit on one season only each). See
+# _synthetic_ssp_filename(), which reconstructs
+# process_ssp_profiles()'s own f"synthetic_{filename_ssp}_
+# {n_new_samples}.nc" naming from an (env_type, situation) pair.
+CELERITY_N_SYNTHETIC_SAMPLES = 1000
+CELERITY_SITUATIONS = ("all", "winter", "spring", "summer", "automn")
 
 # NOTE (factored out): these two dicts used to be redefined identically
 # inside plot_sensitivity_curves() and plot_extremal_width_configs()
@@ -115,13 +167,33 @@ def celerity_density_Hamilton_Bachman_1982(rho):
 
 def baseline_env():
     # Waveguide parameters
+
+    # Water column
     rho1 = 1.0 * 1e3  # density in water (kg/m^3)
     c1 = 1500  # sound celerity in water (m/s)
 
-    rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
-    # c2 = 3000  # sound celerity in fluid sediment (m/s)
-    c2 = 1550  # Close to Hamilton(rho2) = 1542 m.s-1
-    attn2 = 0.2  # compressional wave attenuation in fluid sediment in dB / wavelength
+    # Fluid sediment
+    # New (after 09/09/2026): use the sediment properties from TGalan classification (sables fins)
+    # This sediment lies on the continental shelf.
+    # Two advantages :
+    # First : it almost perfectly fits the Hamilton and Bachman 1982 model (see celerity_density_Hamilton_Bachman_1982()) and thus
+    # will produce a distance close to zero for the density sensitivity test
+    # Second : here c2 = 1700 and the impedance constrast is higher, this leads to a lower cut off frequency and thus avoids
+    # the risk of having a cut off frequency higher than the maximum frequency of the signal (150 Hz) for the celerity sensitivity test.
+    from source.global_constants import sables_fins_TG
+
+    rho2 = sables_fins_TG["rho"] * 1e3  # density in fluid sediment (kg/m^3)
+    c2 = sables_fins_TG["c_p"]  # sound celerity in fluid sediment (m/s)
+    attn2 = sables_fins_TG[
+        "a_p"
+    ]  # compressional wave attenuation in fluid sediment in dB / wavelength
+
+    # # Before 09/09/2026
+    # rho2 = 1.5 * 1e3  # density in fluid sediment (kg/m^3)
+    # # c2 = 3000  # sound celerity in fluid sediment (m/s)
+    # c2 = 1550  # Close to Hamilton(rho2) = 1542 m.s-1
+    # attn2 = 0.2  # compressional wave attenuation in fluid sediment in dB / wavelength
+
     d = 100  # waveguide depth (m)
 
     env_param = {
@@ -668,18 +740,71 @@ def run_sensitivity_study(test_arg_name, test_arg_values, all_arg_dict, model="k
 # Build datasets
 # ======================================================================================================================
 def build_kraken(
-    freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid, plot_diag=False
+    freq,
+    c1,
+    c2,
+    rho1,
+    rho2,
+    attn2,
+    depth,
+    z_s,
+    z,
+    r_grid,
+    plot_diag=False,
+    z_ssp=None,
+    c_p_ssp=None,
+    img_dir=IMG_DIR,
 ):
+    """Build a Pekeris-like waveguide (water column over a fluid
+    half-space), run KRAKEN/FIELD, and return the resulting Green's
+    function.
+
+    Args:
+        freq, c1, c2, rho1, rho2, attn2, depth, z_s, z, r_grid,
+            plot_diag: see the module's other functions -- 'c1' is the
+            water sound speed (m/s) for the classic, ISOVELOCITY water
+            column (used when 'z_ssp'/'c_p_ssp' below are not given).
+        z_ssp, c_p_ssp (array-like|None): if BOTH given, build a
+            REALISTIC, depth-varying water column from this profile
+            instead of the isovelocity [c1, c1] one (see
+            load_mean_celerity_profile(), which prepares one such
+            profile per environment type for the celerity-sensitivity
+            study). 'z_ssp' must start at 0 and reach exactly 'depth'.
+            'c1' is still required either way: the Pekeris cutoff-
+            frequency/mode-count formulas below assume an isovelocity
+            column (they are a NECESSARY approximation for a realistic
+            profile), and use 'z_ssp'/'c_p_ssp''s own SURFACE value in
+            that case rather than 'c1' itself.
+        img_dir (str): where the 'plot_diag=True' diagnostic figures
+            ("environment.png", "group_speed.png", "mode_shapes.png",
+            "tl_profile_at_source_depth.png") are saved. Defaults to
+            IMG_DIR; build_baseline() forwards its OWN 'img_dir'
+            argument here instead (see its own docstring), so e.g. a
+            resilience or celerity study's diagnostics land in that
+            study's own image folder rather than always IMG_DIR.
+
+    Returns:
+        tuple(np.ndarray, np.ndarray, dict): kraken_freq (the requested
+        'freq', trimmed to those above the mode-1 cutoff), g_fr (the
+        Green's function, shape (kraken_freq.size, r_grid.size)),
+        field_pos (see read_shd.readshd's own 'Pos' return value).
+    """
+    # NOTE: the Pekeris cutoff-frequency/mode-count formulas below are
+    # only valid for an isovelocity water column -- for a realistic
+    # profile, its own SURFACE sound speed is used as the closest
+    # single-value stand-in (a necessary approximation; there is no
+    # single "c1" for a depth-varying profile).
+    c1_for_estimate = c_p_ssp[0] if (z_ssp is not None and c_p_ssp is not None) else c1
 
     # Keeps only frequencies above mode 1 cut-off
-    fmin = pekeris_cutoff_frequency(m=1, c1=c1, c2=c2, d=depth)
+    fmin = pekeris_cutoff_frequency(m=1, c1=c1_for_estimate, c2=c2, d=depth)
     # fmin = (
     #     np.floor((fmin) / 5) * 5 + 10
     # )  # Round to upper closest multiple of five to avoid being to close to cuttoff
     kraken_freq = freq[freq > fmin]
 
     # Use only propative modes
-    nb_modes = pekeris_n_modes(f=freq.max(), c1=c1, c2=c2, d=depth)
+    nb_modes = pekeris_n_modes(f=freq.max(), c1=c1_for_estimate, c2=c2, d=depth)
     # clim_max = c2
     clim_max = (
         np.ceil((c2) / 1000) * 1000
@@ -690,12 +815,20 @@ def build_kraken(
     # ----------------------------------------------------------------------
     # 1. Environment: Pekeris waveguide
     # ----------------------------------------------------------------------
-    medium = KrakenMedium(
-        ssp_interpolation_method="C_linear",
-        z_ssp=[0.0, depth],
-        c_p=[c1, c1],  # isovelocity water column
-        rho=rho1 * 1e-3,
-    )
+    if z_ssp is not None and c_p_ssp is not None:
+        medium = KrakenMedium(
+            ssp_interpolation_method="C_linear",
+            z_ssp=z_ssp,
+            c_p=c_p_ssp,  # realistic, depth-varying water column
+            rho=rho1 * 1e-3,
+        )
+    else:
+        medium = KrakenMedium(
+            ssp_interpolation_method="C_linear",
+            z_ssp=[0.0, depth],
+            c_p=[c1, c1],  # isovelocity water column
+            rho=rho1 * 1e-3,
+        )
 
     bottom_hs = KrakenBottomHalfspace(
         halfspace_properties={
@@ -759,7 +892,7 @@ def build_kraken(
     # Plot
     if plot_diag:
         fig_env = env.plot_env(plot_src=True, src_depth=z_s)
-        fig_env.savefig(os.path.join(IMG_DIR, "environment.png"))
+        fig_env.savefig(os.path.join(img_dir, "environment.png"))
         plt.close(fig_env)
 
         mod_fpath = env.env_fpath.replace(".env", ".mod")
@@ -773,23 +906,23 @@ def build_kraken(
             freq=kraken_freq,
             modes=None,
         )
-        fig0.savefig(os.path.join(IMG_DIR, "group_speed.png"))
+        fig0.savefig(os.path.join(img_dir, "group_speed.png"))
         plt.close(fig0)
 
         fig1 = pu.plotmode(mod_fpath, freq=freq.max())
-        fig1.savefig(os.path.join(IMG_DIR, "mode_shapes.png"))
+        fig1.savefig(os.path.join(img_dir, "mode_shapes.png"))
         plt.close(fig1)
 
         fig3 = pu.plot_tl_profile(
             shd_fpath,
             freq=freq.max(),
-            rcv_depth=z,
+            rcv_depth=z_s,
             # rcv_depth=2500,
             units="km",
             show_spherical_loss=True,
             show_cylindrical_loss=True,
         )
-        fig3.savefig(os.path.join(IMG_DIR, "tl_profile_at_rcv_depth.png"))
+        fig3.savefig(os.path.join(img_dir, "tl_profile_at_source_depth.png"))
         plt.close(fig3)
 
     # Squeeze
@@ -805,14 +938,54 @@ def build_kraken(
 
 
 def build_dataset_current_config_kraken(
-    freq, c1, c2, rho1, rho2, attn2, depth, z_s, z_rcv, r_rcv, d12_max, plot_diag=False
+    freq,
+    c1,
+    c2,
+    rho1,
+    rho2,
+    attn2,
+    depth,
+    z_s,
+    z_rcv,
+    r_rcv,
+    d12_max,
+    plot_diag=False,
+    z_ssp=None,
+    c_p_ssp=None,
+    img_dir=IMG_DIR,
 ):
+    """Thin wrapper around build_kraken(): extends the receiver range
+    grid by 'd12_max' first (see _extend_range_grid()), so the saved
+    Green's function covers every d12 you might later want to derive
+    an RTF for, without needing to re-run KRAKEN.
+
+    Args: see build_kraken() -- 'z_ssp'/'c_p_ssp'/'img_dir' are
+        forwarded as-is (see its own docstring for the realistic-
+        profile use case and where diagnostics get saved).
+
+    Returns:
+        tuple(np.ndarray, np.ndarray, np.ndarray): kraken_freq, r
+        (meters, the actual receiver range grid KRAKEN used), g_fr.
+    """
     # Extend r_grid to d12_max, convert to km for kraken
     r_grid_ = _extend_range_grid(r_rcv, d12_max) * 1e-3
 
     # Derive green's function at all pos
     freq, g_fr, field_pos = build_kraken(
-        freq, c1, c2, rho1, rho2, attn2, depth, z_s, z_rcv, r_grid_, plot_diag=plot_diag
+        freq,
+        c1,
+        c2,
+        rho1,
+        rho2,
+        attn2,
+        depth,
+        z_s,
+        z_rcv,
+        r_grid_,
+        plot_diag=plot_diag,
+        z_ssp=z_ssp,
+        c_p_ssp=c_p_ssp,
+        img_dir=img_dir,
     )
 
     return freq, field_pos["r"]["r"], g_fr
@@ -988,7 +1161,7 @@ def build_sensitivity_dataset(
     return out_dir
 
 
-def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR):
+def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR, env_overrides=None):
     """Build and save the baseline (nominal, unperturbed) configuration's
     Green's function / gamma(f, r) -- the fixed reference every
     sensibility/resilience study's "distance from baseline" family of
@@ -1005,6 +1178,13 @@ def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR):
         img_dir (str): directory the 2 diagnostic figures
             ("gamma_baseline.png"/"gamma_baseline_r0.png") are saved
             into. Defaults to IMG_DIR.
+        env_overrides (dict|None): override/extend
+            load_all_arg_dict()'s own baseline values before building
+            the environment -- e.g. {"depth": 2000.0, "z_ssp": ...,
+            "c_p_ssp": ...} for a realistic-profile, deep-water
+            baseline (see build_celerity_baseline(), which uses this).
+            None (the default): the plain, isovelocity baseline,
+            unchanged from before this parameter existed.
 
     Returns:
         str: path to the written '.nc' file.
@@ -1016,10 +1196,22 @@ def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR):
         drop_keys=("fs", "fmax", "r0", "d12"),
         d12_max=5000,
     )
+    if env_overrides:
+        all_arg_dict.update(env_overrides)
 
     # Build dataset
     call_kwargs = _extract_kwargs(build_dataset_current_config_kraken, all_arg_dict)
     call_kwargs["plot_diag"] = True
+    # NOTE (bug fixed): build_kraken()'s diagnostic figures
+    # ("environment.png", "mode_shapes.png", ...) used to always save
+    # to the hardcoded, module-level IMG_DIR, regardless of which
+    # 'img_dir' THIS build_baseline() call was actually given --
+    # confirmed to make e.g. build_celerity_baseline()'s "sw"/"dw"
+    # diagnostics both silently overwrite IMG_DIR's own files instead
+    # of landing in their own '<CELERITY_IMG_DIR>/<env_type>/' folder.
+    # Forwarded explicitly here since it's not part of 'all_arg_dict'
+    # (load_all_arg_dict() has no notion of it at all).
+    call_kwargs["img_dir"] = img_dir
     kraken_freq, kraken_r, g_fr = build_dataset_current_config_kraken(**call_kwargs)
 
     g_fr_full = _pad_to_full_frequency_grid(g_fr, kraken_freq, all_arg_dict["freq"])
@@ -1033,9 +1225,14 @@ def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR):
     )
     # Keep the FULL baseline config as attrs (including "r0"/"d12", not
     # part of 'all_arg_dict' used for the KRAKEN call above) -- needed
-    # later by process_sensitivity()/dist_from_baseline().
+    # later by process_sensitivity()/dist_from_baseline(). 'z_ssp'/
+    # 'c_p_ssp' (a realistic profile's own arrays, when 'env_overrides'
+    # provides them) are excluded here -- they'd otherwise bloat the
+    # saved file's global attrs with a full depth profile; nothing
+    # downstream needs them back out of 'ds.attrs' (build_kraken() is
+    # never re-run from a saved dataset's own attrs).
     ds.attrs = {
-        **all_arg_dict,
+        **{k: v for k, v in all_arg_dict.items() if k not in ("z_ssp", "c_p_ssp")},
         "r0": baseline_src_rcv()["r0"],
         "d12": baseline_src_rcv()["d12"],
     }
@@ -1622,6 +1819,7 @@ def plot_sensitivity_curves(
         )
         icol = 0
 
+        # NOTE : not relevant
         # if test_arg_name == "depth":
         #     axs[i].set_xscale("log")
 
@@ -1649,6 +1847,10 @@ def plot_sensitivity_curves(
             handles=legend_handles, loc="outside upper center", ncols=distance.size
         )
     else:
+        # theta is bounded between 0 and 2, so it is a good idea to set the y limit to [0, 2] for better visualization
+        if "theta" in distance:
+            axs[0].set_ylim([0, 2])
+
         fig.supylabel(ylabel or dist_label[distance[0]])
 
     if save_dir is not None:
@@ -1846,7 +2048,7 @@ def build_resilience_tests():
     test_arg_values = np.linspace(
         all_arg_dict["depth"] - depth_var_tide,
         all_arg_dict["depth"] + depth_var_tide,
-        100,
+        200,
     )
     build_sensitivity_dataset(
         test_arg_name,
@@ -1899,6 +2101,522 @@ def process_resilience_tests(test_arg_names=None):
         result_dir=RESILIENCE_RESULT_DIR,
         save_dir=RESILIENCE_IMG_DIR,
     )
+
+
+# ======================================================================================================================
+# Library celerity (sound-speed profile) sensitivity tests
+# ======================================================================================================================
+def _get_ssp_variable(ds, fpath):
+    """Return 'ds''s sound-speed profile variable, robust to an older,
+    known-buggy naming issue.
+
+    NOTE (bug fixed, defensive fallback): illustration_rtf/ssp/
+    ssp_process_eof.py's own convert_synthetic_to_xarray() used to
+    build the synthetic-profile DataArray without a 'name=' argument;
+    saving an UNNAMED DataArray to NetCDF silently stores it under the
+    generic variable name "__xarray_dataarray_variable__" instead of
+    "ssp" -- confirmed by a real run (`ds.ssp` raised
+    `AttributeError: 'Dataset' object has no attribute 'ssp'`). Fixed
+    at the SOURCE (that function now names it "ssp" explicitly, like
+    load_ssp_data.py's own real profiles already were) -- re-running
+    process_ssp_profiles() regenerates correctly-named files. This
+    fallback additionally lets ALREADY-generated (mis-named) files
+    keep working without needing to regenerate them first: if "ssp"
+    isn't found but there is EXACTLY ONE data variable in the file,
+    that one is used instead (with a printed note), since a SSP file
+    only ever holds the one profile variable to begin with.
+
+    Args:
+        ds (xr.Dataset): as opened from 'fpath'.
+        fpath (str): only used to name the file in the printed note/
+            error message.
+
+    Returns:
+        xr.DataArray
+
+    Raises:
+        ValueError: if "ssp" is not the variable's name AND the file
+            has zero or more than one data variable (nothing safe to
+            fall back to).
+    """
+    if "ssp" in ds.data_vars:
+        return ds.ssp
+
+    if len(ds.data_vars) == 1:
+        (only_name,) = ds.data_vars
+        print(
+            f"Note: '{fpath}' has no 'ssp' variable (found '{only_name}' "
+            f"instead) -- using it anyway, since it's the only data "
+            f"variable in the file. Re-run "
+            f"illustration_rtf/ssp/ssp_process_eof.py to regenerate this "
+            f"file with the correct variable name."
+        )
+        return ds[only_name]
+
+    raise ValueError(
+        f"'{fpath}' has no 'ssp' variable, and {len(ds.data_vars)} data "
+        f"variables in total -- cannot tell which one holds the sound-"
+        f"speed profile."
+    )
+
+
+def _drop_depths_with_any_nan(z, c_p):
+    """Drop every depth that is NaN for AT LEAST one profile, keeping
+    every remaining profile fully NaN-free -- shared by
+    load_mean_celerity_profile()/load_synthetic_celerity_profiles()
+    (see get_ssp_eof()'s own NOTE on why checking every sample, not
+    just one, matters). Also sorts by depth ascending.
+
+    Args:
+        z (np.ndarray): shape (n_depth,).
+        c_p (np.ndarray): shape (n_depth,) for a single profile, or
+            (n_profiles, n_depth) for a batch of them.
+
+    Returns:
+        tuple(np.ndarray, np.ndarray): z, c_p filtered/sorted the same
+        way, same number of dimensions as given.
+    """
+    not_nan = ~np.isnan(c_p).any(axis=tuple(range(c_p.ndim - 1)))
+    z = z[not_nan]
+    c_p = c_p[..., not_nan]
+    order = np.argsort(z)
+    return z[order], c_p[..., order]
+
+
+def _ensure_profile_starts_at_surface(z, c_p):
+    """Extend a profile (or a batch of them, see
+    _drop_depths_with_any_nan()'s own shape convention) flat down from
+    the sea surface (z=0) if its shallowest point isn't already there
+    -- see load_mean_celerity_profile()'s own NOTE for the rationale.
+    """
+    if z[0] > 0:
+        z = np.concatenate([[0.0], z])
+        c_p = np.concatenate([c_p[..., :1], c_p], axis=-1)
+    return z, c_p
+
+
+def _adapt_profile_to_depth(z, c_p, target_depth):
+    """Adapt a profile (or a BATCH of profiles, c_p shape
+    (n_profiles, n_depth), depth as the LAST axis) to reach EXACTLY
+    'target_depth': linearly extended (using each profile's OWN last-2-
+    points slope) if shallower, or truncated with an exact interpolated
+    value AT 'target_depth' if deeper -- see
+    load_mean_celerity_profile()'s own docstring for the full
+    rationale (per-profile, since different profiles -- e.g. different
+    synthetic samples -- can have different shapes/slopes near the
+    boundary, even though they share the same 'z').
+
+    Args:
+        z (np.ndarray): shape (n_depth,), ascending, NaN-free, starting
+            at 0 (see _drop_depths_with_any_nan()/
+            _ensure_profile_starts_at_surface()).
+        c_p (np.ndarray): shape (n_depth,) or (n_profiles, n_depth).
+        target_depth (float)
+
+    Returns:
+        tuple(np.ndarray, np.ndarray): z, c_p adapted the same way,
+        same number of dimensions as given.
+    """
+    if target_depth > z[-1]:
+        slope = (c_p[..., -1] - c_p[..., -2]) / (z[-1] - z[-2])
+        c_p_target = c_p[..., -1] + slope * (target_depth - z[-1])
+        z = np.append(z, target_depth)
+        c_p = np.concatenate([c_p, c_p_target[..., np.newaxis]], axis=-1)
+    elif target_depth < z[-1]:
+        keep = z < target_depth
+        if c_p.ndim == 1:
+            c_p_target = np.interp(target_depth, z, c_p)
+        else:
+            c_p_target = np.array([np.interp(target_depth, z, row) for row in c_p])
+        z = np.append(z[keep], target_depth)
+        c_p = np.concatenate([c_p[..., keep], c_p_target[..., np.newaxis]], axis=-1)
+    # else: target_depth == z[-1] already, nothing to adjust.
+    return z, c_p
+
+
+def load_mean_celerity_profile(ssp_filename, target_depth, ssp_data_dir=SSP_DATA_DIR):
+    """Load a saved SSP dataset (see illustration_rtf/ssp/
+    load_ssp_data.py and ssp_process_eof.py), average it over time to
+    get a single representative profile, and adapt it to
+    'target_depth': linearly extended (using the slope of the last 2
+    valid points) if the profile is shallower, or truncated
+    (interpolating an exact value right at 'target_depth', rather than
+    just dropping to whichever real data point happens to sit just
+    above it) if deeper.
+
+    Args:
+        ssp_filename (str): the '.nc' file's name, e.g.
+            "ssp_profiles_sw.nc" (see load_ssp_data.py's own output
+            filenames -- CELERITY_ENV_TYPES names the ones this module
+            actually uses).
+        target_depth (float): the waveguide depth this profile must
+            reach exactly (m) -- e.g. CELERITY_ENV_TYPES[env_type]["depth"].
+        ssp_data_dir (str): directory 'ssp_filename' lives in.
+
+    Returns:
+        tuple(np.ndarray, np.ndarray): z (m, ascending, NaN-free,
+        z[0] == 0 and z[-1] == target_depth exactly), c_p (m/s,
+        same length as z) -- ready to pass as build_kraken()'s own
+        'z_ssp'/'c_p_ssp'.
+
+    Raises:
+        ValueError: if fewer than 2 valid (non-NaN, after averaging)
+            depths remain to build a profile from.
+    """
+    fpath = os.path.join(ssp_data_dir, ssp_filename)
+    with xr.open_dataset(fpath) as ds:
+        c_p = _get_ssp_variable(ds, fpath).mean(dim="time").values
+        z = ds.depth.values
+
+    # Drop NaN depths (below this profile's own real-data coverage --
+    # see get_ssp_eof()'s own NOTE on why NaN can appear here) and sort
+    # by depth ascending (real datasets normally already are, but this
+    # makes no assumption about it).
+    z, c_p = _drop_depths_with_any_nan(z, c_p)
+
+    if z.size < 2:
+        raise ValueError(
+            f"load_mean_celerity_profile: '{ssp_filename}' has fewer than 2 "
+            f"valid (non-NaN) depths after averaging over time -- cannot "
+            f"build a profile from it."
+        )
+
+    # KRAKEN expects the water column's SSP to start right at the sea
+    # surface (z=0); real CMEMS-style depth grids typically start at
+    # (or extremely close to) 0 already, but if the shallowest
+    # remaining point is not EXACTLY 0, extend flat down from the
+    # surface using that shallowest point's own value (a negligible
+    # approximation for the small gap this would ever realistically be).
+    z, c_p = _ensure_profile_starts_at_surface(z, c_p)
+
+    # NOTE: linear extension uses the LAST 2 points' own slope (per
+    # user request: "prolongées linéairement jusqu'à la profondeur
+    # nominale") -- e.g. the shallow-water profile, which the real
+    # CMEMS extraction only reaches to ~50 m for, extended to the
+    # classic study's own 100 m baseline depth. Truncation (per user
+    # request: "sera donc limité à z < D") interpolates an exact value
+    # AT the target depth -- e.g. the deep-water profile, which reaches
+    # to ~2500 m, cut down to the 2000 m waveguide depth actually used.
+    z, c_p = _adapt_profile_to_depth(z, c_p, target_depth)
+
+    return z, c_p
+
+
+def load_synthetic_celerity_profiles(
+    ssp_filename, target_depth, ssp_data_dir=SSP_DATA_DIR
+):
+    """Load EVERY synthetic profile from a '.nc' file (see
+    illustration_rtf/ssp/ssp_process_eof.py's own
+    process_ssp_profiles(), which produces these via PCA/EOF sampling),
+    and adapt EACH ONE to 'target_depth' the same way
+    load_mean_celerity_profile() adapts the single mean profile (see
+    its own docstring for the full rationale) -- applied independently
+    to each profile here, since different synthetic samples can have
+    different shapes/slopes near the boundary even though they all
+    share the same underlying depth grid.
+
+    Args:
+        ssp_filename (str): e.g. "synthetic_ssp_profiles_sw_1000.nc"
+            (see _synthetic_ssp_filename(), which builds this name for
+            a given (env_type, situation) pair).
+        target_depth (float): see load_mean_celerity_profile().
+        ssp_data_dir (str): directory 'ssp_filename' lives in.
+
+    Returns:
+        tuple(np.ndarray, np.ndarray): z (m, shape (n_depth,), shared
+        by every profile -- ascending, NaN-free, z[0] == 0, z[-1] ==
+        target_depth exactly), c_p (m/s, shape (n_profiles, n_depth)).
+
+    Raises:
+        ValueError: if fewer than 2 valid (non-NaN for every profile)
+            depths remain to build the profiles from.
+    """
+    fpath = os.path.join(ssp_data_dir, ssp_filename)
+    with xr.open_dataset(fpath) as ds:
+        c_p_all = _get_ssp_variable(ds, fpath).values  # (n_profiles, n_depth)
+        z = ds.depth.values
+
+    z, c_p_all = _drop_depths_with_any_nan(z, c_p_all)
+
+    if z.size < 2:
+        raise ValueError(
+            f"load_synthetic_celerity_profiles: '{ssp_filename}' has fewer "
+            f"than 2 depths that are valid (non-NaN) for EVERY profile -- "
+            f"cannot build profiles from it."
+        )
+
+    z, c_p_all = _ensure_profile_starts_at_surface(z, c_p_all)
+    z, c_p_all = _adapt_profile_to_depth(z, c_p_all, target_depth)
+
+    return z, c_p_all
+
+
+def build_celerity_baseline(
+    env_type, result_dir=None, img_dir=None, ssp_data_dir=SSP_DATA_DIR
+):
+    """Build the celerity-profile-sensitivity study's baseline for ONE
+    environment type (see CELERITY_ENV_TYPES): the Green's function /
+    gamma(f, r) for a waveguide using the MEAN (over time) REAL sound-
+    speed profile for that environment type (see
+    load_mean_celerity_profile()), adapted to the waveguide's own
+    depth -- everything else (bottom halfspace, source/receiver
+    geometry, frequencies...) stays at the classic sensitivity study's
+    own baseline values (see load_all_arg_dict()/build_baseline()).
+
+    NOTE: 'z_rcv'/'z_s' are NOT adjusted per environment type here --
+    they stay at the classic baseline's own values (z_s=5 m,
+    z_rcv=99.5 m), which remain valid depths for BOTH "sw" (100 m) and
+    "dw" (2000 m), but are not necessarily where you'd want them
+    physically for "dw" specifically (99.5 m is shallow relative to a
+    2000 m column, not "near the bottom" the way it is for "sw"'s own
+    100 m). Left as-is since this wasn't asked for; override via
+    load_all_arg_dict()/build_baseline()'s own 'env_overrides' if you
+    want different source/receiver depths for "dw".
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        result_dir (str|None): directory 'gf_dataset_baseline.nc' is
+            written into. None (the default):
+            '<CELERITY_RESULT_DIR>/<env_type>/'.
+        img_dir (str|None): directory the 2 diagnostic figures are
+            saved into. None (the default):
+            '<CELERITY_IMG_DIR>/<env_type>/'.
+        ssp_data_dir (str): forwarded to load_mean_celerity_profile().
+
+    Returns:
+        str: path to the written '.nc' file.
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+    env_config = CELERITY_ENV_TYPES[env_type]
+
+    if result_dir is None:
+        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
+    if img_dir is None:
+        img_dir = os.path.join(CELERITY_IMG_DIR, env_type)
+
+    z_ssp, c_p_ssp = load_mean_celerity_profile(
+        env_config["ssp_filename"],
+        target_depth=env_config["depth"],
+        ssp_data_dir=ssp_data_dir,
+    )
+
+    return build_baseline(
+        result_dir=result_dir,
+        img_dir=img_dir,
+        env_overrides={
+            "depth": env_config["depth"],
+            "z_ssp": z_ssp,
+            "c_p_ssp": c_p_ssp,
+        },
+    )
+
+
+def build_celerity_baselines(env_types=None, ssp_data_dir=SSP_DATA_DIR):
+    """Call build_celerity_baseline() for every environment type (see
+    CELERITY_ENV_TYPES).
+
+    Args:
+        env_types (list[str]|None): which environment types to build.
+            None (the default): every key of CELERITY_ENV_TYPES
+            ("sw" and "dw").
+        ssp_data_dir (str): forwarded to build_celerity_baseline().
+
+    Returns:
+        dict[str, str]: env_type -> path to its written '.nc' file.
+    """
+    if env_types is None:
+        env_types = list(CELERITY_ENV_TYPES.keys())
+
+    return {
+        env_type: build_celerity_baseline(env_type, ssp_data_dir=ssp_data_dir)
+        for env_type in env_types
+    }
+
+
+def _synthetic_ssp_filename(
+    env_type, situation, n_samples=CELERITY_N_SYNTHETIC_SAMPLES
+):
+    """Build the filename of the synthetic-profile '.nc' file
+    illustration_rtf/ssp/ssp_process_eof.py's own
+    process_ssp_profiles() produces for one (env_type, situation)
+    combination -- see its own
+    f"synthetic_{filename_ssp}_{n_new_samples}.nc" naming.
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        situation (str): "all" (EOFs fit on the whole, multi-decade
+            dataset) or one of "winter"/"spring"/"summer"/"automn"
+            (EOFs fit on that season only) -- see CELERITY_SITUATIONS.
+        n_samples (int): how many synthetic profiles were generated
+            (ssp_process_eof.py's own 'n_new_samples').
+
+    Returns:
+        str
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+    base = CELERITY_ENV_TYPES[env_type]["ssp_filename"]
+    if base.endswith(".nc"):
+        base = base[: -len(".nc")]
+    suffix = "" if situation == "all" else f"_{situation}"
+    return f"synthetic_{base}{suffix}_{n_samples}.nc"
+
+
+def build_celerity_sensitivity_dataset(
+    env_type,
+    situation,
+    result_dir=None,
+    ssp_data_dir=SSP_DATA_DIR,
+    n_samples=CELERITY_N_SYNTHETIC_SAMPLES,
+):
+    """Sweep over EVERY synthetic celerity profile generated for ONE
+    (env_type, situation) combination (see illustration_rtf/ssp/
+    ssp_process_eof.py, which produces them via PCA/EOF sampling),
+    running KRAKEN once per profile and saving its Green's function.
+
+    This is the celerity-sensitivity study's own equivalent of
+    build_sensitivity_dataset() (which instead sweeps a single SCALAR
+    parameter over a range of values, e.g. "depth" from 90 to 110 m):
+    here, each swept "value" is an entire depth-varying profile, not a
+    scalar -- see build_kraken()'s own 'z_ssp'/'c_p_ssp'. Follows the
+    exact same memory-conscious pattern (see
+    build_sensitivity_dataset()'s own NOTE): one small file written PER
+    PROFILE, immediately after it's computed, rather than accumulating
+    every profile's Green's function in memory before writing a single
+    combined file.
+
+    File layout: '<result_dir>/<situation>/<situation>_<i>.nc', one
+    file per profile (0-based index 'i'), holding that one profile's
+    Green's function magnitude ('gf', dims (profile, f, r)) AND the
+    profile itself ('c_p_ssp', dims (profile, z)) for traceability --
+    the shared depth grid 'z' is saved as a coordinate once per file
+    (small; every profile in one (env_type, situation) sweep shares
+    the exact same 'z', see load_synthetic_celerity_profiles()).
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        situation (str): "all"/"winter"/"spring"/"summer"/"automn" --
+            see CELERITY_SITUATIONS/_synthetic_ssp_filename().
+        result_dir (str|None): parent directory for the per-profile
+            files (written under '<result_dir>/<situation>/'). None
+            (the default): '<CELERITY_RESULT_DIR>/<env_type>/'
+            (matching build_celerity_baseline()'s own default).
+        ssp_data_dir (str): directory the synthetic '.nc' file lives in.
+        n_samples (int): forwarded to _synthetic_ssp_filename().
+
+    Returns:
+        str: the directory the per-profile files were written into.
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+    env_config = CELERITY_ENV_TYPES[env_type]
+    depth = env_config["depth"]
+
+    if result_dir is None:
+        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
+    out_dir = os.path.join(result_dir, situation)
+    os.makedirs(out_dir, exist_ok=True)
+
+    ssp_filename = _synthetic_ssp_filename(env_type, situation, n_samples=n_samples)
+    z_ssp, c_p_ssp_all = load_synthetic_celerity_profiles(
+        ssp_filename,
+        target_depth=depth,
+        ssp_data_dir=ssp_data_dir,
+    )
+    n_profiles = c_p_ssp_all.shape[0]
+
+    all_arg_dict = load_all_arg_dict(
+        drop_keys=("fs", "fmax", "r0", "d12"), d12_max=5000
+    )
+    all_arg_dict["depth"] = depth
+
+    prev_progress = 0
+    for i_profile in range(n_profiles):
+        prev_progress = progression_bar(
+            index=i_profile + 1,
+            index0=0,
+            indexf=n_profiles,
+            prev_progress=prev_progress,
+        )
+
+        args = dict(all_arg_dict)
+        args["z_ssp"] = z_ssp
+        args["c_p_ssp"] = c_p_ssp_all[i_profile]
+
+        call_kwargs = _extract_kwargs(build_dataset_current_config_kraken, args)
+        kraken_freq, kraken_r, g_fr = build_dataset_current_config_kraken(**call_kwargs)
+
+        g_fr_full = _pad_to_full_frequency_grid(g_fr, kraken_freq, all_arg_dict["freq"])
+
+        # Write THIS profile's dataset immediately, then let g_fr/
+        # g_fr_full go out of scope (freed before the next profile's
+        # KRAKEN run) -- see build_sensitivity_dataset()'s own NOTE.
+        ds_value = xr.Dataset(
+            data_vars=dict(
+                gf=(
+                    ["profile", "f", "r"],
+                    _to_float32(np.abs(g_fr_full))[np.newaxis, ...],
+                ),
+                c_p_ssp=(
+                    ["profile", "z"],
+                    _to_float32(c_p_ssp_all[i_profile])[np.newaxis, :],
+                ),
+            ),
+            coords={
+                "profile": [i_profile],
+                "f": _to_float32(all_arg_dict["freq"]),
+                "r": _to_float32(kraken_r),
+                "z": _to_float32(z_ssp),
+            },
+        )
+        fpath = os.path.join(out_dir, f"{situation}_{i_profile:04d}.nc")
+        ds_value.to_netcdf(fpath)
+
+    return out_dir
+
+
+def build_celerity_tests(
+    env_types=None, situations=None, n_samples=CELERITY_N_SYNTHETIC_SAMPLES
+):
+    """Run build_celerity_sensitivity_dataset() for every
+    (env_type, situation) combination requested -- the celerity-
+    sensitivity study's own equivalent of build_tests() (which instead
+    sweeps the classic study's 5 scalar parameters one at a time).
+
+    Args:
+        env_types (list[str]|None): which environment types to build.
+            None (the default): every key of CELERITY_ENV_TYPES ("sw"
+            and "dw").
+        situations (list[str]|None): which situations to build. None
+            (the default): every entry of CELERITY_SITUATIONS (5 of
+            them) -- e.g. pass ["all"] to build just the whole-dataset-
+            EOF situation first, as a quick, single-combination check
+            before committing to the full sweep.
+        n_samples (int): forwarded to build_celerity_sensitivity_dataset().
+
+    Returns:
+        dict[tuple(str, str), str]: (env_type, situation) -> the
+        directory its per-profile files were written into.
+    """
+    if env_types is None:
+        env_types = list(CELERITY_ENV_TYPES.keys())
+    if situations is None:
+        situations = list(CELERITY_SITUATIONS)
+
+    results = {}
+    for env_type in env_types:
+        for situation in situations:
+            print(f"Processing env_type={env_type}, situation={situation}...")
+            results[(env_type, situation)] = build_celerity_sensitivity_dataset(
+                env_type,
+                situation,
+                n_samples=n_samples,
+            )
+    return results
 
 
 def process_sensitivity_mainlobe_width(test_arg_names=None, result_dir=RESULT_DIR):
@@ -2530,51 +3248,21 @@ if __name__ == "__main__":
     # build_baseline()
     # process_sensitivity()
 
-    # distance = ["L1", "L2", "theta"]
-    # distance = ["theta"]
+    # Celerity resilience tests
+    # build_celerity_baselines()
+    # build_celerity_tests(env_types=["sw"], situations=["all"])
+    # result_dir = os.path.join(CELERITY_RESULT_DIR, "sw")
+    # process_sensitivity(test_arg_names=["all"], result_dir=result_dir, save_dir=None)
 
-    # # # Distance from baseline
-    # plot_sensitivity_curves(
-    #     test_arg_names=["depth"],
-    #     distance=distance,
-    #     ylabel="Distance from baseline at r=r0",
-    #     save_dir=IMG_DIR,
-    # )
-
-    # process_sensitivity_mainlobe_width()
-    # plot_sensitivity_curves(
-    #     test_arg_names=["depth"],
-    #     distance=["theta"],
-    #     file_prefix="mainlobe_width_",
-    #     ylabel="Mainlobe width [m]",
-    # )
-
-    # process_sensitivity_intrinsic_mainlobe_width()
-    # # # Distance around r0 depending on env params
-    # plot_sensitivity_curves(
-    #     distance=["L1"],
-    #     file_prefix="intrinsic_mainlobe_width_",
-    #     ylabel="Intrinsic mainlobe width [m]",
-    #     save_dir=IMG_DIR,
-    # )
-    # plot_extremal_width_configs(
-    #     metric="theta",
-    #     mode="intrinsic",
-    #     save_dir=IMG_DIR,
-    # )
-
-    # r_window = 5 * 1e3
-    # consolidate_all_sensitivity_datasets(r_window)
-
-    # # build_resilience_tests()
+    # Depth resilience tests
+    # build_resilience_tests()
     # process_resilience_tests()
-    # plot_sensitivity_curves(
-    #     ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
-    # )
-    # plot_extremal_resilience_dist_configs(
-    #     ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
-    # )
+    plot_sensitivity_curves(
+        ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
+    )
+    plot_extremal_resilience_dist_configs(
+        ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
+    )
+    plt.close("all")
 
-    # plt.show()
-
-    generate_all_diag(distance=["theta"], process_sensi=False)
+    # generate_all_diag(distance=["theta"], process_sensi=False)

@@ -17,6 +17,18 @@
              (read -> fit -> sample -> save -> plot), and the
              '__main__' block below runs it for every seasonal/
              all-data file load_ssp_data.py produces.
+
+REVIEW NOTES (this version): two bugs were found and fixed here (see
+the NOTEs at each site for the full reasoning) -- get_ssp_eof()'s
+NaN-depth mask used to be computed from a single time step only, which
+can leave residual NaNs in the data PCA is fit on whenever the NaN
+pattern is not IDENTICAL across every time step (confirmed to make
+sklearn's PCA raise `ValueError: Input X contains NaN`); and calling
+get_ssp_eof() with neither 'cumulative_variance_threshold' nor
+'n_components' (i.e. with no extra arguments at all, matching the
+function's own defaults) raised a "...but not both" message that
+describes the OPPOSITE situation (confirmed reproducible). Docstrings
+were also added throughout -- none of these functions had any before.
 """
 
 # ======================================================================================================================
@@ -78,11 +90,30 @@ def get_ssp_eof(
     """
     X_original = ssp
 
-    # A depth is only kept if it is NaN-free at EVERY time step.
+    # NOTE (bug fixed): this used to check for NaN depths at a SINGLE
+    # time step (time=0) only, implicitly assuming every other time
+    # step has the exact same NaN pattern. That holds if NaN only ever
+    # comes from depths below this fixed location's own seafloor (the
+    # bathymetry does not change over time, so that part of the
+    # pattern IS stable) -- but real reanalysis products can also have
+    # NaN from data gaps/QC at essentially any (time, depth)
+    # combination, unrelated to bathymetry. Confirmed with a
+    # reproduction: a single extra NaN at one (time, depth) pair
+    # outside the time=0 mask survives the old filtering and makes
+    # sklearn's PCA raise `ValueError: Input X contains NaN.` downstream.
+    # A depth is now only kept if it is NaN-free at EVERY time step.
     not_nan_depth_mask = ~X_original.isnull().any(dim="time").values
     not_nan_depth_idx = np.nonzero(not_nan_depth_mask)[0]
     X_original = X_original.isel(depth=not_nan_depth_idx)
 
+    # NOTE (bug fixed): the original 3-way if/elif/else conflated two
+    # different invalid cases -- giving BOTH arguments, and giving
+    # NEITHER (e.g. calling get_ssp_eof(ssp) with no extra arguments at
+    # all, matching this function's own defaults) -- into the same
+    # `else` branch, with a message ("...but not both") that only
+    # describes the first case. Confirmed reproducible: the plain
+    # default call raises that exact, misleading message. Split into 2
+    # explicit checks with their own accurate message instead.
     if cumulative_variance_threshold is not None and n_components is not None:
         raise ValueError(
             "Provide either cumulative_variance_threshold or n_components, not both."
@@ -236,6 +267,7 @@ def generate_new_ssp_profiles(pca, scaler, n_new_samples=100):
         un-filtered one).
     """
     # Calculate standard deviation of each component
+    # pca_stds = np.std(X_pca, axis=0)
     pca_stds = np.sqrt(pca.explained_variance_)
 
     # Sample new random coords from a normal distribution
@@ -274,7 +306,13 @@ def convert_synthetic_to_xarray(X_ssp_synthetic, ssp_original, n_components):
         0-based sample index (these are SYNTHETIC profiles, not tied
         to any real date), 'depth' matches 'ssp_original''s own.
     """
-
+    # NOTE (bug fixed): 'attrs' was built here (copied from
+    # ssp_original, then updated) but never actually attached to the
+    # returned DataArray -- xr.DataArray(...) was constructed without
+    # an 'attrs=' argument, and nothing else set '.attrs' afterwards
+    # either, so all of this metadata (units, description, history,
+    # pca_components count) was silently discarded every time,
+    # confirmed by inspection. Now assigned before returning.
     attrs = ssp_original.attrs.copy()
     for key in ("source", "cell_methods"):
         attrs.pop(key, None)
@@ -282,6 +320,17 @@ def convert_synthetic_to_xarray(X_ssp_synthetic, ssp_original, n_components):
     attrs["history"] = "Generated using PCA on original profiles"
     attrs["pca_components"] = n_components
 
+    # NOTE (bug fixed): this DataArray was constructed without a
+    # 'name=' argument, leaving it unnamed. Calling .to_netcdf() on an
+    # UNNAMED DataArray makes xarray silently save it under the
+    # generic variable name "__xarray_dataarray_variable__" instead of
+    # "ssp" -- confirmed by a real run: reading such a file back and
+    # accessing '.ssp' (matching load_ssp_data.py's own real-profile
+    # naming convention, and what sensitivity.py's
+    # load_mean_celerity_profile()/load_synthetic_celerity_profiles()
+    # expect) raised `AttributeError: 'Dataset' object has no
+    # attribute 'ssp'`. Explicitly named "ssp" now, matching
+    # prep_dataset()'s own `ssp.rename("ssp")` for the real profiles.
     ssp_synthetic = xr.DataArray(
         X_ssp_synthetic,
         dims=["time", "depth"],
@@ -290,6 +339,7 @@ def convert_synthetic_to_xarray(X_ssp_synthetic, ssp_original, n_components):
             "time": np.arange(X_ssp_synthetic.shape[0]),
         },
         attrs=attrs,
+        name="ssp",
     )
 
     return ssp_synthetic

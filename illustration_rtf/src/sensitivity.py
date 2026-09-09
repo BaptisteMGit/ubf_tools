@@ -2619,6 +2619,160 @@ def build_celerity_tests(
     return results
 
 
+def process_celerity_sensitivity(
+    env_type, situations=None, result_dir=None, save_dir=None
+):
+    """Read back ONE environment type's per-profile result files (see
+    build_celerity_sensitivity_dataset()), compute each profile's RTF
+    distance from that environment type's own baseline (see
+    build_celerity_baseline()) EVALUATED AT r0 (see
+    dist_from_baseline()), save the resulting L1/L2/theta distance-vs-
+    profile-index arrays to a dedicated file per situation (see
+    save_sensitivity_distance_results()), then plot them (see
+    plot_sensitivity_curves()).
+
+    This is process_sensitivity()'s own analysis
+    (dist_from_baseline()/_select_r0_pair()'s memory-conscious
+    preprocessing -- see their own docstrings), pointed at the
+    celerity-sensitivity study's directories/file layout instead of
+    the classic study's: "situation" (see CELERITY_SITUATIONS) plays
+    the role 'test_arg_name' plays there, except each swept "value" is
+    an entire profile rather than a scalar (see
+    build_celerity_sensitivity_dataset()'s own docstring) -- so the
+    saved/plotted "value" for each profile is its 0-based INDEX within
+    that situation's sweep, not a physical quantity (the actual
+    profile shape each index corresponds to is saved alongside 'gf' in
+    its own per-profile file, as 'c_p_ssp', for traceability).
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES. Each
+            environment type has its OWN baseline (a different
+            waveguide depth and real profile entirely -- see
+            build_celerity_baseline()), so this only ever processes
+            ONE at a time (unlike 'situations' below); see
+            process_celerity_tests() to process every environment type.
+        situations (list[str]|None): which situations to process (each
+            must have a '<result_dir>/<situation>/' folder from
+            build_celerity_sensitivity_dataset()). None (the default):
+            every such folder under 'result_dir' automatically.
+        result_dir (str|None): where to read the per-profile/baseline
+            files from, and where to save the distance results. None
+            (the default): '<CELERITY_RESULT_DIR>/<env_type>/'
+            (matching build_celerity_baseline()'s own default).
+        save_dir (str|None): forwarded to plot_sensitivity_curves() --
+            if given, also save the returned figure there (e.g.
+            os.path.join(CELERITY_IMG_DIR, env_type)). None (the
+            default, matching process_sensitivity()'s own convention):
+            the figure is only returned, not saved.
+
+    Returns:
+        matplotlib.figure.Figure (see plot_sensitivity_curves()).
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+    # NOTE: env_type must be a valid key -- fail fast with a clear
+    # KeyError (matching build_celerity_baseline()'s own behaviour)
+    # rather than a confusing FileNotFoundError further down.
+    CELERITY_ENV_TYPES[env_type]
+
+    if result_dir is None:
+        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
+
+    import functools
+
+    baseline_src_rcv_param = baseline_src_rcv()
+    d12 = baseline_src_rcv_param["d12"]
+    r0 = baseline_src_rcv_param["r0"]
+    preprocess = functools.partial(_select_r0_pair, r0=r0, d12=d12)
+
+    if situations is None:
+        situations = sorted(
+            name
+            for name in os.listdir(result_dir)
+            if os.path.isdir(os.path.join(result_dir, name))
+        )
+
+    fpath_baseline = os.path.join(result_dir, "gf_dataset_baseline.nc")
+
+    # NOTE: the baseline is small (a single configuration, not a
+    # sweep) -- safe to keep open for the whole loop, unlike the
+    # per-situation sweep datasets below (see process_sensitivity()'s
+    # own matching NOTE).
+    with xr.open_dataset(fpath_baseline) as ds_baseline:
+        for situation in situations:
+            value_files = sorted(
+                glob.glob(os.path.join(result_dir, situation, f"{situation}_*.nc"))
+            )
+            if not value_files:
+                continue
+
+            # NOTE: concat_dim="profile" -- matches
+            # build_celerity_sensitivity_dataset()'s own saved
+            # dimension name (every swept "value" here is a profile,
+            # not a scalar named after 'situation' the way
+            # build_sensitivity_dataset()'s own 'test_arg_name' is).
+            with xr.open_mfdataset(
+                value_files,
+                combine="nested",
+                concat_dim="profile",
+                preprocess=preprocess,
+            ) as ds_test:
+                dist_L1, dist_L2, dist_theta = dist_from_baseline(
+                    ds_baseline, ds_test, d12, r0
+                )
+                profile_idx = ds_test["profile"].values
+
+            save_sensitivity_distance_results(
+                situation,
+                profile_idx,
+                dist_L1,
+                dist_L2,
+                dist_theta,
+                result_dir=result_dir,
+            )
+
+    return plot_sensitivity_curves(situations, result_dir=result_dir, save_dir=save_dir)
+
+
+def process_celerity_tests(env_types=None, situations=None, save=True):
+    """Run process_celerity_sensitivity() for every environment type
+    requested -- the celerity-sensitivity study's own equivalent of
+    process_sensitivity() applied across BOTH environment types at
+    once (each with its own baseline -- see
+    process_celerity_sensitivity()'s own docstring for why it only
+    ever processes one at a time on its own).
+
+    Args:
+        env_types (list[str]|None): which environment types to
+            process. None (the default): every key of
+            CELERITY_ENV_TYPES ("sw" and "dw").
+        situations (list[str]|None): forwarded to
+            process_celerity_sensitivity() -- None discovers every
+            situation with saved sweep data, for each environment type
+            independently.
+        save (bool): if True (the default), each environment type's
+            figure is saved to its own '<CELERITY_IMG_DIR>/<env_type>/'
+            folder (see process_celerity_sensitivity()'s own
+            'save_dir'). False: figures are only returned, matching
+            process_celerity_sensitivity()'s own 'save_dir=None'.
+
+    Returns:
+        dict[str, matplotlib.figure.Figure]: env_type -> figure.
+    """
+    if env_types is None:
+        env_types = list(CELERITY_ENV_TYPES.keys())
+
+    return {
+        env_type: process_celerity_sensitivity(
+            env_type,
+            situations=situations,
+            save_dir=os.path.join(CELERITY_IMG_DIR, env_type) if save else None,
+        )
+        for env_type in env_types
+    }
+
+
 def process_sensitivity_mainlobe_width(test_arg_names=None, result_dir=RESULT_DIR):
     """Read back every parameter's per-value result files (see
     build_sensitivity_dataset()), compute each value's RTF distance
@@ -3251,18 +3405,18 @@ if __name__ == "__main__":
     # Celerity resilience tests
     # build_celerity_baselines()
     # build_celerity_tests(env_types=["sw"], situations=["all"])
-    # result_dir = os.path.join(CELERITY_RESULT_DIR, "sw")
-    # process_sensitivity(test_arg_names=["all"], result_dir=result_dir, save_dir=None)
+    process_celerity_tests(env_types=["sw"], situations=["all"], save=True)
+
 
     # Depth resilience tests
     # build_resilience_tests()
     # process_resilience_tests()
-    plot_sensitivity_curves(
-        ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
-    )
-    plot_extremal_resilience_dist_configs(
-        ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
-    )
-    plt.close("all")
+    # plot_sensitivity_curves(
+    #     ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
+    # )
+    # plot_extremal_resilience_dist_configs(
+    #     ["depth"], result_dir=RESILIENCE_RESULT_DIR, save_dir=RESILIENCE_IMG_DIR
+    # )
+    # plt.close("all")
 
     # generate_all_diag(distance=["theta"], process_sensi=False)

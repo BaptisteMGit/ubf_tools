@@ -93,9 +93,15 @@ ds_bathy.lon.attrs["long_name"] = "Longitude"
 ds_bathy.lat.attrs["long_name"] = "Latitude"
 
 # Define profile coordinates
+# sw_profile = {
+#     "lon": 3.592,
+#     "lat": 43.177,
+# }
+
+# Position with deeper profiles to reach approx 100 m
 sw_profile = {
     "lon": 3.592,
-    "lat": 43.177,
+    "lat": 43.0,
 }
 dw_profile = {
     "lon": 7.542,

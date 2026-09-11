@@ -916,6 +916,8 @@ def process_sensitivity(test_arg_names=None):
     }
     axs = axs[0]
 
+    from time import time 
+    t0 = time()
     # NOTE: the baseline is small (a single configuration, not a
     # sweep) -- safe to keep open for the whole loop, unlike the
     # per-parameter sweep datasets below.
@@ -939,6 +941,7 @@ def process_sensitivity(test_arg_names=None):
                     ds_baseline, ds_test, d12, r0
                 )
                 test_values = ds_test[test_arg_name].values
+                print(f"Ellapsed time for var {test_arg_name} = {time()-t0:.1f}")
 
             # axs[i].plot(test_values, dist_L1, label="L1")
             # axs[i].plot(test_values, dist_L2, label="L2")
@@ -965,23 +968,23 @@ def build_tests():
     )
 
     # REAL RUN
-    # sweeps = {
-    #     "c1": np.linspace(1450, 1545, 200),
-    #     # "c2": np.linspace(1550.0, 1900.0, npt),
-    #     "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 500),
-    #     "attn2": np.linspace(0.0, 1.0, 200),
-    #     "depth": np.linspace(30, 5000, 500),
-    # }
-
-    # DEMO RUN
     sweeps = {
-        "c1": np.linspace(1450, 1540, 2),
+        "c1": np.linspace(1450, 1545, 200),
         # "c2": np.linspace(1550.0, 1900.0, npt),
-        # "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 15),
-        # "attn2": np.linspace(0.0, 1.0, 10),
-        # "depth": np.linspace(30, 200, 17),
+        "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 500),
+        "attn2": np.linspace(0.0, 1.0, 200),
+        "depth": np.linspace(30, 5000, 500),
     }
-    print(sweeps["c1"])
+
+    # # DEMO RUN
+    # sweeps = {
+    #     "c1": np.linspace(1450, 1540, 2),
+    #     # "c2": np.linspace(1550.0, 1900.0, npt),
+    #     "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 15),
+    #     "attn2": np.linspace(0.0, 1.0, 10),
+    #     "depth": np.linspace(30, 200, 17),
+    # }
+    # print(sweeps["c1"])
 
     for test_arg_name, test_arg_values in sweeps.items():
         build_sensitivity_dataset(
@@ -991,6 +994,6 @@ def build_tests():
 
 if __name__ == "__main__":
     # build_baseline()
-    build_tests()
-    # process_sensitivity()
+    # build_tests()
+    process_sensitivity()
     plt.show()

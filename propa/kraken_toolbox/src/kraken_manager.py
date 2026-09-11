@@ -10,10 +10,6 @@
              writing input files, launching (sequential or parallel),
              reading results.
 
-This module does NOT change the public API of the original file (same
-class/method/parameter names). It has been reorganized, documented, and
-a large block of dead/duplicated code has been removed (see below).
-
 ------------------------------------------------------------------------
 What runkraken() does, one sentence per case
 ------------------------------------------------------------------------
@@ -30,30 +26,6 @@ limitation by re-running KRAKEN/FIELD once per frequency (optionally in
 parallel, one process per frequency batch) and then merging the
 resulting pressure fields into a single broadband array.
 
-------------------------------------------------------------------------
-IMPORTANT - code duplication found in the original file
-------------------------------------------------------------------------
-The original `readshd` and `readshd_bin` class methods reimplemented,
-line for line (more than 150 lines), the content of the module already
-imported at the top of the file:
-
-    from propa.kraken_toolbox.read_shd import readshd
-
-This 'read_shd.py' module is already used elsewhere in runkraken() /
-runkraken_broadband_range_dependent(). Having two copies of the same
-binary-parsing code is a maintenance risk (a bug fixed in one copy is
-not necessarily fixed in the other). In this version, the class methods
-have been kept (in case existing code calls them via
-`KrakenManager.readshd(...)`) but turned into thin delegations to
-'read_shd.py': the binary-parsing code now lives in a single place.
-
-Similarly, this file duplicates a large part of the logic found in
-`propa/kraken_toolbox/run_kraken.py` (procedural functions `runkraken`,
-`assign_frequency_intervalls`, `run_exec`, etc., nearly identical to the
-ones below). This has not been touched here (this file was not provided
-as a target for the refactor) but deserves your attention: eventually,
-only one of the two should probably remain.
-------------------------------------------------------------------------
 """
 
 # ======================================================================================================================
@@ -141,19 +113,6 @@ class KrakenManager:
         if self.verbose:
             print(f"Running Kraken  (parallel = {self.parallel})...")
 
-        # NOTE (bug fixed): os.chdir(env.root) below used to never be
-        # undone, silently leaking a global process-wide side effect
-        # (the current working directory) past the end of this call.
-        # Confirmed to break OTHER, unrelated code afterwards: a test
-        # elsewhere that creates a temp directory, calls this method
-        # (or runkraken_broadband_range_dependent() directly, which has
-        # the same issue -- see there), and cleans up its temp
-        # directory in tearDown() left the process's cwd pointing at a
-        # now-deleted directory, causing a `FileNotFoundError` in
-        # completely unrelated code (e.g. numpy.savetxt with a relative
-        # path) run afterwards in the same process. Wrapped in
-        # try/finally so the caller's own cwd is always restored,
-        # success or exception.
         original_cwd = os.getcwd()
         try:
             os.chdir(env.root)
@@ -171,12 +130,14 @@ class KrakenManager:
         KRAKEN (see module docstring) -> re-run once per frequency and
         merge the results."""
         if self.parallel:
-            pressure_field, field_pos, all_modes = self._run_broadband_range_dependent_parallel(
-                env, flp, frequencies
+            pressure_field, field_pos, all_modes = (
+                self._run_broadband_range_dependent_parallel(env, flp, frequencies)
             )
         else:
-            pressure_field, field_pos, all_modes = self.runkraken_broadband_range_dependent(
-                env=env, flp=flp, frequencies=frequencies
+            pressure_field, field_pos, all_modes = (
+                self.runkraken_broadband_range_dependent(
+                    env=env, flp=flp, frequencies=frequencies
+                )
             )
         # NOTE: see the module/README note on why this can't just be a
         # third return value of runkraken() itself -- runkraken()'s
@@ -285,7 +246,9 @@ class KrakenManager:
                     mode="equally_distributed",
                 )
             else:
-                assigned_frequency_ranges = cls._split_optimal(frequencies, n_workers, nf)
+                assigned_frequency_ranges = cls._split_optimal(
+                    frequencies, n_workers, nf
+                )
         else:
             raise ValueError(f"Mode {mode} not implemented.")
 
@@ -342,8 +305,11 @@ class KrakenManager:
                 on Windows).
         """
         cls.run_exec(
-            exec="field", filename=filename, parallel=parallel,
-            worker_pid=worker_pid, silent=silent,
+            exec="field",
+            filename=filename,
+            parallel=parallel,
+            worker_pid=worker_pid,
+            silent=silent,
         )
 
     @classmethod
@@ -351,8 +317,11 @@ class KrakenManager:
         """Run the KRAKEN executable on '<filename>.env'. Same
         parameters as run_field_exec."""
         cls.run_exec(
-            exec="kraken", filename=filename, parallel=parallel,
-            worker_pid=worker_pid, silent=silent,
+            exec="kraken",
+            filename=filename,
+            parallel=parallel,
+            worker_pid=worker_pid,
+            silent=silent,
         )
 
     @staticmethod
@@ -376,7 +345,9 @@ class KrakenManager:
 
         if parallel and (os.name == "nt"):
             if worker_pid is None:
-                raise ValueError("worker_pid must be specified with parallel set to True.")
+                raise ValueError(
+                    "worker_pid must be specified with parallel set to True."
+                )
             subprocess_working_dir = os.path.join(os.getcwd(), "bin")
             cmd = os.path.join(subprocess_working_dir, exec)
         else:
@@ -499,16 +470,7 @@ class KrakenManager:
         function (mirroring plotshd_from_pressure_field()).
         """
         worker_pid = os.getpid()
-        # NOTE (bug fixed): os.chdir(env.root) below (called once per
-        # frequency) used to never be restored once this function
-        # returned, leaking a global process-wide side effect past the
-        # end of this call -- confirmed to break unrelated code run
-        # afterwards in the same process (e.g. a test that deletes its
-        # own temp directory in tearDown() after this function chdir'd
-        # into it, leaving the process's cwd pointing at a now-deleted
-        # directory). Wrapped in try/finally so the caller's own cwd is
-        # always restored, success or exception -- matches the same fix
-        # in KrakenManager.runkraken().
+
         original_cwd = os.getcwd()
         try:
             env_root = env.root
@@ -556,14 +518,7 @@ class KrakenManager:
                     # '.mod' file with the next one's.
                     Modes = readmodes(env.filename + ".mod", freq=freq)
                 except Exception as exc:
-                    # NOTE: the original code used a bare `except:` (which
-                    # also catches KeyboardInterrupt/SystemExit) and just
-                    # printed a message. We narrow this to Exception and
-                    # include the error message, but keep the "do not
-                    # interrupt the loop" behaviour so as not to change
-                    # existing behaviour: you may want to decide whether a
-                    # failing frequency should instead abort the whole
-                    # simulation.
+
                     print(f"Error running field executable for frequency {freq}: {exc}")
                     continue
 
@@ -581,11 +536,6 @@ class KrakenManager:
     # ------------------------------------------------------------------
     # Reading results ('.shd')
     # ------------------------------------------------------------------
-    # NOTE (duplication removed): these two methods now only delegate to
-    # 'propa.kraken_toolbox.read_shd', which holds the single
-    # implementation of the '.shd' binary parsing logic (see the module
-    # docstring above). Signature and behaviour unchanged for any
-    # existing code calling KrakenManager.readshd(...).
     @classmethod
     def readshd(cls, filename, xs=None, ys=None, freq=None):
         """Read a '.shd' file produced by FIELD.exe.

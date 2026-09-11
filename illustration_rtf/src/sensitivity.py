@@ -25,6 +25,7 @@ from source.normal_modes import (
     pekeris_cutoff_frequency,
     pekeris_n_modes,
 )
+from source.global_constants import project_root
 from propa.kraken_toolbox.utils import default_nb_rcv_z
 
 from propa.kraken_toolbox.src.kraken_env import (
@@ -61,26 +62,20 @@ os.makedirs(SENSITIVITY_KRAKEN_DIR, exist_ok=True)
 RESULT_DIR = os.path.join(SENSITIVITY_DIRECTORY, "result")
 os.makedirs(RESULT_DIR, exist_ok=True)
 
-# NOTE (new, per user request): "resilience" tests are a DIFFERENT kind
-# of study from the parameter sensitivity ones above (see
-# build_resilience_tests()'s own docstring for the distinction) and get
-# their own, separate directory tree entirely -- both result files
-# (raw per-value '.nc's, saved gamma-at-r0 sensitivity CSVs, and the
-# baseline '.nc' each resilience test compares against) and figures.
-# Each individual resilience test (e.g. "depth" for tidal elevation)
-# gets its own subfolder under RESILIENCE_RESULT_DIR/RESILIENCE_IMG_DIR
-# automatically, the same way build_sensitivity_dataset() already does
-# for the main study (one '<result_dir>/<test_arg_name>/' folder per
-# swept parameter) -- no separate constant is needed per resilience
-# test, just pass a distinct 'test_arg_name'.
-#
-# NOTE: sensitivity to the sound-speed PROFILE SHAPE (as opposed to a
-# single scalar water sound speed, "c1") turned out to need its own
-# per-ENVIRONMENT-TYPE baseline (shallow- vs deep-water use different
-# waveguide depths and different real profiles entirely -- see
-# CELERITY_ENV_TYPES/build_celerity_baseline()), so it got its own
-# CELERITY_* directory tree below instead of reusing this one, despite
-# an earlier plan to fold it in here.
+# NOTE (harmonized, per user request): "resilience" -- testing
+# robustness to REALISTIC environmental variability, as opposed to the
+# main sensitivity study above's wide, largely unrealistic parameter
+# sweeps -- covers TWO sub-studies that are conceptually the same kind
+# of test: "depth" (tidal water-depth elevation -- see
+# build_resilience_tests()) and "celerity" (seasonal/EOF-derived sound-
+# speed profile shape -- see build_celerity_baseline()). Both are
+# further split by ENVIRONMENT TYPE (see CELERITY_ENV_TYPES -- "sw"
+# shallow water/100 m, "dw" deep water/2000 m), each with its OWN
+# baseline. The two sub-studies used to live under entirely separate
+# top-level directory trees (RESILIENCE_* vs a since-removed
+# CELERITY_*) -- now unified as
+# '<RESILIENCE_RESULT_DIR|RESILIENCE_IMG_DIR>/<env_type>/<kind>/', kind
+# being "depth" or "celerity" (see _resilience_study_dirs()).
 RESILIENCE_DIRECTORY = os.path.join(
     os.path.dirname(SENSITIVITY_DIRECTORY), "resilience"
 )
@@ -89,27 +84,34 @@ os.makedirs(RESILIENCE_RESULT_DIR, exist_ok=True)
 RESILIENCE_IMG_DIR = os.path.join(IMG_DIR, "resilience")
 os.makedirs(RESILIENCE_IMG_DIR, exist_ok=True)
 
-# NOTE (new, per user request): sensitivity to the sound-speed profile
-# SHAPE, using realistic profiles derived from real CMEMS data (see
-# illustration_rtf/ssp/load_ssp_data.py and ssp_process_eof.py) instead
-# of the classic study's own isovelocity 2-point profile. Two
-# ENVIRONMENT TYPES are considered -- "sw" (shallow water, matching the
-# classic study's own 100 m depth) and "dw" (deep water, 2000 m) --
-# each with its OWN baseline (the environment matching that type's
-# MEAN, over-time, real profile -- see build_celerity_baseline()), so
-# results/figures are further split by environment type, one
-# '<CELERITY_RESULT_DIR>/<env_type>/' (and '<CELERITY_IMG_DIR>/
-# <env_type>/') subfolder each.
+
+def _resilience_study_dirs(env_type, kind):
+    """Return (result_dir, img_dir) for ONE environment type's
+    resilience sub-study -- both nested under
+    '<RESILIENCE_RESULT_DIR|RESILIENCE_IMG_DIR>/<env_type>/<kind>/'
+    (see this module's own NOTE on RESILIENCE_RESULT_DIR for the
+    rationale). Used as the shared default for both sub-studies'
+    "build"/"process"/"plot" functions, so the directory layout only
+    needs to be decided in ONE place.
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        kind (str): "depth" (see build_resilience_tests()) or
+            "celerity" (see build_celerity_baseline()).
+
+    Returns:
+        tuple(str, str): result_dir, img_dir.
+    """
+    return (
+        os.path.join(RESILIENCE_RESULT_DIR, env_type, kind),
+        os.path.join(RESILIENCE_IMG_DIR, env_type, kind),
+    )
+
+
 if os.name == "nt":  # Windows
     SSP_DATA_DIR = os.path.join(project_root, "illustration_rtf", "data", "ssp")
 else:  # Linux
     SSP_DATA_DIR = os.path.join(data_root, "ssp")
-
-CELERITY_DIRECTORY = os.path.join(os.path.dirname(SENSITIVITY_DIRECTORY), "celerity")
-CELERITY_RESULT_DIR = os.path.join(CELERITY_DIRECTORY, "result")
-os.makedirs(CELERITY_RESULT_DIR, exist_ok=True)
-CELERITY_IMG_DIR = os.path.join(IMG_DIR, "celerity")
-os.makedirs(CELERITY_IMG_DIR, exist_ok=True)
 
 # NOTE: "sw"'s depth (100 m) intentionally matches the classic
 # sensitivity study's own baseline depth (see baseline_env()) --
@@ -1094,7 +1096,15 @@ def build_sensitivity_dataset(
 
     Args:
         test_arg_name, test_arg_values, all_arg_dict, model: see the
-            module's other sensitivity-study functions.
+            module's other sensitivity-study functions. If
+            'all_arg_dict' contains 'z_ssp'/'c_p_ssp' (a realistic
+            profile -- see build_kraken()'s own docstring) AND
+            'test_arg_name' is "depth", that profile is automatically
+            re-adapted (extended/truncated -- see
+            _adapt_profile_to_depth()) to reach EACH swept depth value
+            exactly, rather than kept fixed at its original shape (see
+            build_resilience_tests()'s own NOTE, which is what needs
+            this).
         result_dir (str): directory the per-value files are written
             under (as '<result_dir>/<test_arg_name>/...'). Defaults to
             RESULT_DIR (the main sensitivity study); pass e.g.
@@ -1142,6 +1152,28 @@ def build_sensitivity_dataset(
         if test_arg_name == "depth":
             # Update receiver depth
             all_args["z_rcv"] = test_val - 1
+
+            if (
+                all_arg_dict.get("z_ssp") is not None
+                and all_arg_dict.get("c_p_ssp") is not None
+            ):
+                # NOTE (added per user request -- see
+                # build_resilience_tests()'s own NOTE): when sweeping
+                # "depth" with a REALISTIC celerity profile (not the
+                # classic isovelocity one), the profile itself must be
+                # re-adapted (extended/truncated -- see
+                # _adapt_profile_to_depth()) to reach EACH new swept
+                # depth exactly, not just held fixed at its original
+                # nominal-depth shape. Re-derived from
+                # 'all_arg_dict''s OWN, never-mutated 'z_ssp'/'c_p_ssp'
+                # every iteration (NOT from 'all_args', which carries
+                # over whatever the PREVIOUS iteration left it at) --
+                # otherwise repeated extend/truncate/extend... across
+                # iterations would compound approximation error instead
+                # of freshly adapting the same real profile each time.
+                all_args["z_ssp"], all_args["c_p_ssp"] = _adapt_profile_to_depth(
+                    all_arg_dict["z_ssp"], all_arg_dict["c_p_ssp"], test_val
+                )
 
         # Build dataset for JUST this one value.
         call_kwargs = _extract_kwargs(build_dataset_current_config_kraken, all_args)
@@ -1223,7 +1255,7 @@ def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR, env_overrides=None):
     # 'img_dir' THIS build_baseline() call was actually given --
     # confirmed to make e.g. build_celerity_baseline()'s "sw"/"dw"
     # diagnostics both silently overwrite IMG_DIR's own files instead
-    # of landing in their own '<CELERITY_IMG_DIR>/<env_type>/' folder.
+    # of landing in their own study-specific image folder.
     # Forwarded explicitly here since it's not part of 'all_arg_dict'
     # (load_all_arg_dict() has no notion of it at all).
     call_kwargs["img_dir"] = img_dir
@@ -1708,10 +1740,30 @@ def process_sensitivity(test_arg_names=None, result_dir=RESULT_DIR, save_dir=Non
             if not value_files:
                 continue
 
+            # NOTE: 'join="override"' silences a real xarray
+            # FutureWarning (confirmed by the user) -- open_mfdataset()
+            # needs to align every NON-concat coordinate shared across
+            # the files being combined (here "f"/"r", and "z" for the
+            # celerity study's own per-profile files -- see
+            # process_celerity_sensitivity()); its default is changing
+            # from 'outer' (pad mismatches with NaN) to 'exact' (raise
+            # ValueError on any mismatch) in a future xarray version.
+            # "override" is the right choice specifically here (rather
+            # than silencing the warning by switching to "exact"):
+            # every one of these coordinates is written IDENTICALLY
+            # into each per-value/per-profile file by
+            # build_sensitivity_dataset()/
+            # build_celerity_sensitivity_dataset() (same source array,
+            # just repeated per file) -- "override" skips the
+            # (redundant, since they're already known to match) index-
+            # equality check entirely and just uses the first file's
+            # own coordinate values, which is also the cheapest option
+            # when combining many files.
             with xr.open_mfdataset(
                 value_files,
                 combine="nested",
                 concat_dim=test_arg_name,
+                join="override",
                 preprocess=preprocess,
             ) as ds_test:
                 dist_L1, dist_L2, dist_theta = dist_from_baseline(
@@ -1875,6 +1927,8 @@ def plot_sensitivity_curves(
         )
         fig.savefig(os.path.join(save_dir, fname))
 
+        # plt.close(fig)
+
     return fig
 
 
@@ -1933,6 +1987,7 @@ def consolidate_sensitivity_dataset(
         value_files,
         combine="nested",
         concat_dim=test_arg_name,
+        join="override",
         preprocess=_select_r_window,
     ) as ds_combined:
         fpath = os.path.join(result_dir, f"{test_arg_name}_combined.nc")
@@ -1983,22 +2038,22 @@ def build_tests(use_debug_config=False):
         drop_keys=("fs", "fmax", "r0", "d12"), d12_max=5000
     )
 
-    # npt = 20
-    # nb_param = 4
-    # size_per_test_Ko = 110000
-    # total_size = size_per_test_Ko * nb_param * npt
-    # print(
-    #     f"Total memory size (if it were all held at once) = {total_size * 1e-6} Go "
-    #     f"-- no longer applicable: build_sensitivity_dataset() now writes each "
-    #     f"value's result as soon as it's computed (see its own docstring)."
-    # )
+    npt = 20
+    nb_param = 4
+    size_per_test_Ko = 110000
+    total_size = size_per_test_Ko * nb_param * npt
+    print(
+        f"Total memory size (if it were all held at once) = {total_size * 1e-6} Go "
+        f"-- no longer applicable: build_sensitivity_dataset() now writes each "
+        f"value's result as soon as it's computed (see its own docstring)."
+    )
 
     if use_debug_config:
         sweeps = {
-            "depth": np.linspace(70, 130, 10),
-            "c1": np.linspace(1460, 1540, 10),
-            "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 10),
-            "attn2": np.linspace(0.0, 1.0, 10),
+            "depth": np.linspace(70, 130, 4),
+            "c1": np.linspace(1460, 1540, 4),
+            "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 4),
+            "attn2": np.linspace(0.0, 1.0, 4),
         }
 
     else:
@@ -2019,7 +2074,9 @@ def build_tests(use_debug_config=False):
 # ======================================================================================================================
 # Library resilience tests
 # ======================================================================================================================
-def build_resilience_tests(env_types=None, depth_var_tide=10, npt=200):
+def build_resilience_tests(
+    env_types=None, depth_var_tide=10, npt=200, ssp_data_dir=SSP_DATA_DIR
+):
     """Build the depth-tide resilience test for one or several
     environment types.
 
@@ -2033,9 +2090,13 @@ def build_resilience_tests(env_types=None, depth_var_tide=10, npt=200):
     each now gets its own '<RESILIENCE_RESULT_DIR>/<env_type>/depth/'
     subfolder (and its own baseline) instead of a single, implicit
     'RESILIENCE_RESULT_DIR/depth/' -- see process_resilience_tests()'s
-    own matching update. This CHANGES the on-disk layout from before
-    (results used to live directly under 'RESILIENCE_RESULT_DIR/depth/');
-    re-run this to regenerate under the new, per-environment-type one.
+    own matching update, and _resilience_study_dirs() (shared with the
+    celerity sub-study's own '.../celerity/' folder -- see this
+    module's own NOTE on RESILIENCE_RESULT_DIR for why the two are
+    harmonized this way). This CHANGES the on-disk layout from before
+    (results used to live directly under 'RESILIENCE_RESULT_DIR/depth/',
+    then under 'RESILIENCE_RESULT_DIR/<env_type>/'); re-run this to
+    regenerate under the new, harmonized one.
 
     Also fixed while at it: the baseline's own receiver depth is now
     set to 'nominal_depth - 1' for each environment type (matching
@@ -2051,6 +2112,18 @@ def build_resilience_tests(env_types=None, depth_var_tide=10, npt=200):
     "distance from baseline" signal (see dist_from_baseline()) anyway
     if left unaddressed.
 
+    NOTE (realistic celerity profile, per user request): the water
+    column now uses each environment type's own MEAN ("all" situation
+    -- see CELERITY_SITUATIONS/_ssp_filename()) real celerity profile
+    (see load_mean_celerity_profile()) instead of the classic study's
+    isovelocity one -- the same profile the celerity sub-study's own
+    "all" baseline uses (see build_celerity_baseline()). Since the
+    water depth itself is what's being swept here, that profile is
+    automatically RE-ADAPTED (extended/truncated) to reach each swept
+    depth value exactly -- see build_sensitivity_dataset()'s own
+    "depth" special-case, which does this whenever 'z_ssp'/'c_p_ssp'
+    are present in 'all_arg_dict' (as they now are here).
+
     Unlike the main sensitivity study (build_tests(), which asks "how
     much does the RTF's -3dB LOCALIZATION AMBIGUITY around r0 change as
     a waveguide parameter varies over a wide, largely unrealistic
@@ -2064,11 +2137,12 @@ def build_resilience_tests(env_types=None, depth_var_tide=10, npt=200):
 
     Both each environment type's baseline (the nominal, unperturbed
     configuration -- see build_baseline()) and its swept dataset (see
-    build_sensitivity_dataset()) are written under RESILIENCE_RESULT_DIR
-    (NOT RESULT_DIR, the main sensitivity study's own directory) --
-    entirely separate from the main sensitivity study's own files, and
-    self-contained (each environment type's baseline is (re)built here
-    too, rather than assuming it already exists).
+    build_sensitivity_dataset()) are written under
+    '<RESILIENCE_RESULT_DIR>/<env_type>/depth/' (NOT RESULT_DIR, the
+    main sensitivity study's own directory) -- entirely separate from
+    the main sensitivity study's own files, and self-contained (each
+    environment type's baseline is (re)built here too, rather than
+    assuming it already exists).
 
     Args:
         env_types (list[str]|None): which environment types to build
@@ -2079,6 +2153,7 @@ def build_resilience_tests(env_types=None, depth_var_tide=10, npt=200):
             depth.
         npt (int): number of depth values to sweep per environment
             type.
+        ssp_data_dir (str): forwarded to load_mean_celerity_profile().
 
     Raises:
         KeyError: if any entry of 'env_types' is not one of
@@ -2089,13 +2164,26 @@ def build_resilience_tests(env_types=None, depth_var_tide=10, npt=200):
 
     for env_type in env_types:
         nominal_depth = CELERITY_ENV_TYPES[env_type]["depth"]
-        result_dir = os.path.join(RESILIENCE_RESULT_DIR, env_type)
-        img_dir = os.path.join(RESILIENCE_IMG_DIR, env_type)
+        result_dir, img_dir = _resilience_study_dirs(env_type, "depth")
+
+        # NOTE: the "all" (whole-dataset mean) profile -- SAME one the
+        # celerity sub-study's own "all" baseline uses (see
+        # build_celerity_baseline()) -- adapted to this environment
+        # type's nominal depth. Re-adapted per SWEPT depth value inside
+        # build_sensitivity_dataset() itself (see its own "depth"
+        # special-case), so this is only the STARTING point.
+        z_ssp, c_p_ssp = load_mean_celerity_profile(
+            _ssp_filename(env_type, "all"),
+            target_depth=nominal_depth,
+            ssp_data_dir=ssp_data_dir,
+        )
 
         all_arg_dict = load_all_arg_dict(
             drop_keys=("fs", "fmax", "r0", "d12"), d12_max=5000
         )
         all_arg_dict["depth"] = nominal_depth
+        all_arg_dict["z_ssp"] = z_ssp
+        all_arg_dict["c_p_ssp"] = c_p_ssp
 
         # Self-contained: this environment type's own baseline, in its
         # own directory (see build_baseline()'s own 'result_dir'/
@@ -2104,7 +2192,12 @@ def build_resilience_tests(env_types=None, depth_var_tide=10, npt=200):
         build_baseline(
             result_dir=result_dir,
             img_dir=img_dir,
-            env_overrides={"depth": nominal_depth, "z_rcv": nominal_depth - 1},
+            env_overrides={
+                "depth": nominal_depth,
+                "z_rcv": nominal_depth - 1,
+                "z_ssp": z_ssp,
+                "c_p_ssp": c_p_ssp,
+            },
         )
 
         # Test sensibility to free surface elevation of the order of tide variations
@@ -2132,8 +2225,9 @@ def process_resilience_tests(
     dist_from_baseline()) -- i.e. gamma's OWN sensitivity AT the
     reference position itself, as the swept parameter (water depth,
     for the tide test) varies -- and save/plot the result, entirely
-    under the resilience study's own RESILIENCE_RESULT_DIR/
-    RESILIENCE_IMG_DIR (see build_resilience_tests()'s own docstring).
+    under the resilience study's own directories (see
+    build_resilience_tests()'s own docstring and this module's NOTE on
+    RESILIENCE_RESULT_DIR).
 
     This reuses process_sensitivity()'s own analysis
     (dist_from_baseline(): a single L1/L2/theta value per swept value,
@@ -2153,14 +2247,15 @@ def process_resilience_tests(
             environment type at once.
         test_arg_names (list[str]|None): which resilience tests to
             process (each must have a
-            '<RESILIENCE_RESULT_DIR>/<env_type>/<name>/' folder from
-            build_resilience_tests()). None discovers every such
+            '<RESILIENCE_RESULT_DIR>/<env_type>/depth/<name>/' folder
+            from build_resilience_tests()). None discovers every such
             folder automatically (currently just "depth").
         result_dir (str|None): where to read the per-value/baseline
             files from, and where to save the distance results. None
-            (the default): '<RESILIENCE_RESULT_DIR>/<env_type>/'.
+            (the default): '<RESILIENCE_RESULT_DIR>/<env_type>/depth/'
+            (see _resilience_study_dirs()).
         save_dir (str|None): forwarded to plot_sensitivity_curves().
-            None (the default): '<RESILIENCE_IMG_DIR>/<env_type>/'.
+            None (the default): '<RESILIENCE_IMG_DIR>/<env_type>/depth/'.
 
     Returns:
         matplotlib.figure.Figure (see plot_sensitivity_curves()).
@@ -2173,10 +2268,11 @@ def process_resilience_tests(
     # rather than a confusing FileNotFoundError further down.
     CELERITY_ENV_TYPES[env_type]
 
+    default_result_dir, default_img_dir = _resilience_study_dirs(env_type, "depth")
     if result_dir is None:
-        result_dir = os.path.join(RESILIENCE_RESULT_DIR, env_type)
+        result_dir = default_result_dir
     if save_dir is None:
-        save_dir = os.path.join(RESILIENCE_IMG_DIR, env_type)
+        save_dir = default_img_dir
 
     return process_sensitivity(
         test_arg_names=test_arg_names,
@@ -2555,17 +2651,58 @@ def _load_celerity_rmse_results(situation, result_dir):
     return data[:, 0], data[:, 1]
 
 
+def _ssp_filename(env_type, situation):
+    """Build the filename of the REAL (non-synthetic) SSP '.nc' file
+    illustration_rtf/ssp/load_ssp_data.py produces for one
+    (env_type, situation) combination -- the file
+    load_mean_celerity_profile() averages over time to build a
+    baseline profile from (see build_celerity_baseline()).
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        situation (str): "all" (the whole, multi-decade dataset) or one
+            of "winter"/"spring"/"summer"/"automn" (that season only)
+            -- see CELERITY_SITUATIONS.
+
+    Returns:
+        str
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+    base = CELERITY_ENV_TYPES[env_type]["ssp_filename"]
+    if base.endswith(".nc"):
+        base = base[: -len(".nc")]
+    suffix = "" if situation == "all" else f"_{situation}"
+    return f"{base}{suffix}.nc"
+
+
 def build_celerity_baseline(
-    env_type, result_dir=None, img_dir=None, ssp_data_dir=SSP_DATA_DIR
+    env_type, situation="all", result_dir=None, img_dir=None, ssp_data_dir=SSP_DATA_DIR
 ):
     """Build the celerity-profile-sensitivity study's baseline for ONE
-    environment type (see CELERITY_ENV_TYPES): the Green's function /
+    (environment type, situation) combination: the Green's function /
     gamma(f, r) for a waveguide using the MEAN (over time) REAL sound-
-    speed profile for that environment type (see
+    speed profile for that combination (see
     load_mean_celerity_profile()), adapted to the waveguide's own
     depth -- everything else (bottom halfspace, source/receiver
     geometry, frequencies...) stays at the classic sensitivity study's
     own baseline values (see load_all_arg_dict()/build_baseline()).
+
+    NOTE (bug fixed, per user request): every situation used to be
+    compared against the SAME "all" baseline (built from the whole,
+    multi-decade dataset's own mean profile), even the seasonal ones
+    -- confirmed not what was intended: a "winter" sweep's synthetic
+    profiles are themselves EOF-sampled from a PCA fit on winter data
+    only (see ssp_process_eof.py's own process_ssp_profiles()), so
+    comparing them against the whole-dataset mean profile conflates
+    "how much does this winter profile deviate from a typical winter
+    profile" with "how much does winter typically differ from the
+    year-round average" -- two different questions. Each situation now
+    gets its OWN baseline, built from THAT SAME situation's own mean
+    profile (e.g. "winter"'s baseline uses ssp_profiles_sw_winter.nc's
+    own mean, not ssp_profiles_sw.nc's) -- see 'situation' below, and
+    process_celerity_sensitivity()'s own matching update.
 
     NOTE: 'z_rcv'/'z_s' are NOT adjusted per environment type here --
     they stay at the classic baseline's own values (z_s=5 m,
@@ -2579,12 +2716,21 @@ def build_celerity_baseline(
 
     Args:
         env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        situation (str): "all" (the default -- baseline built from the
+            WHOLE dataset's own mean profile) or one of "winter"/
+            "spring"/"summer"/"automn" -- see CELERITY_SITUATIONS. Each
+            situation's own synthetic sweep (see
+            build_celerity_sensitivity_dataset()) should be compared
+            against THIS SAME situation's baseline, not "all"'s.
         result_dir (str|None): directory 'gf_dataset_baseline.nc' is
             written into. None (the default):
-            '<CELERITY_RESULT_DIR>/<env_type>/'.
+            '<RESILIENCE_RESULT_DIR>/<env_type>/celerity/<situation>/'
+            (see _resilience_study_dirs()) -- the SAME folder
+            build_celerity_sensitivity_dataset() writes that
+            situation's own swept profiles into.
         img_dir (str|None): directory the 2 diagnostic figures are
             saved into. None (the default):
-            '<CELERITY_IMG_DIR>/<env_type>/'.
+            '<RESILIENCE_IMG_DIR>/<env_type>/celerity/<situation>/'.
         ssp_data_dir (str): forwarded to load_mean_celerity_profile().
 
     Returns:
@@ -2594,14 +2740,15 @@ def build_celerity_baseline(
         KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
     """
     env_config = CELERITY_ENV_TYPES[env_type]
+    base_result_dir, base_img_dir = _resilience_study_dirs(env_type, "celerity")
 
     if result_dir is None:
-        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
+        result_dir = os.path.join(base_result_dir, situation)
     if img_dir is None:
-        img_dir = os.path.join(CELERITY_IMG_DIR, env_type)
+        img_dir = os.path.join(base_img_dir, situation)
 
     z_ssp, c_p_ssp = load_mean_celerity_profile(
-        env_config["ssp_filename"],
+        _ssp_filename(env_type, situation),
         target_depth=env_config["depth"],
         ssp_data_dir=ssp_data_dir,
     )
@@ -2617,25 +2764,37 @@ def build_celerity_baseline(
     )
 
 
-def build_celerity_baselines(env_types=None, ssp_data_dir=SSP_DATA_DIR):
-    """Call build_celerity_baseline() for every environment type (see
-    CELERITY_ENV_TYPES).
+def build_celerity_baselines(
+    env_types=None, situations=None, ssp_data_dir=SSP_DATA_DIR
+):
+    """Call build_celerity_baseline() for every (environment type,
+    situation) combination (see CELERITY_ENV_TYPES/CELERITY_SITUATIONS)
+    -- each situation needs its OWN, situation-specific baseline (see
+    build_celerity_baseline()'s own NOTE for why).
 
     Args:
         env_types (list[str]|None): which environment types to build.
             None (the default): every key of CELERITY_ENV_TYPES
             ("sw" and "dw").
+        situations (list[str]|None): which situations to build. None
+            (the default): every entry of CELERITY_SITUATIONS.
         ssp_data_dir (str): forwarded to build_celerity_baseline().
 
     Returns:
-        dict[str, str]: env_type -> path to its written '.nc' file.
+        dict[tuple(str, str), str]: (env_type, situation) -> path to
+        its written '.nc' file.
     """
     if env_types is None:
         env_types = list(CELERITY_ENV_TYPES.keys())
+    if situations is None:
+        situations = list(CELERITY_SITUATIONS)
 
     return {
-        env_type: build_celerity_baseline(env_type, ssp_data_dir=ssp_data_dir)
+        (env_type, situation): build_celerity_baseline(
+            env_type, situation, ssp_data_dir=ssp_data_dir
+        )
         for env_type in env_types
+        for situation in situations
     }
 
 
@@ -2707,7 +2866,7 @@ def build_celerity_sensitivity_dataset(
             see CELERITY_SITUATIONS/_synthetic_ssp_filename().
         result_dir (str|None): parent directory for the per-profile
             files (written under '<result_dir>/<situation>/'). None
-            (the default): '<CELERITY_RESULT_DIR>/<env_type>/'
+            (the default): '<RESILIENCE_RESULT_DIR>/<env_type>/celerity/'
             (matching build_celerity_baseline()'s own default).
         ssp_data_dir (str): directory the synthetic '.nc' file lives in.
         n_samples (int): forwarded to _synthetic_ssp_filename().
@@ -2729,7 +2888,7 @@ def build_celerity_sensitivity_dataset(
     depth = env_config["depth"]
 
     if result_dir is None:
-        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
+        result_dir, _ = _resilience_study_dirs(env_type, "celerity")
     out_dir = os.path.join(result_dir, situation)
     os.makedirs(out_dir, exist_ok=True)
 
@@ -2831,7 +2990,7 @@ def build_celerity_tests(
     results = {}
     for env_type in env_types:
         for situation in situations:
-            print(f"\nProcessing env_type={env_type}, situation={situation}...\n")
+            print(f"Processing env_type={env_type}, situation={situation}...")
             results[(env_type, situation)] = build_celerity_sensitivity_dataset(
                 env_type,
                 situation,
@@ -2846,17 +3005,24 @@ def process_celerity_sensitivity(
 ):
     """Read back ONE environment type's per-profile result files (see
     build_celerity_sensitivity_dataset()), compute each profile's RTF
-    distance from that environment type's own baseline (see
-    build_celerity_baseline()) EVALUATED AT r0 (see
+    distance from that (environment type, situation) combination's OWN
+    baseline (see build_celerity_baseline()) EVALUATED AT r0 (see
     dist_from_baseline()), save the resulting L1/L2/theta distance-vs-
     profile-index arrays to a dedicated file per situation (see
     save_sensitivity_distance_results()), then plot them (see
     plot_sensitivity_curves()).
 
-    ALSO computes and saves each profile's RMSE (m/s) from the
-    baseline's own (mean) celerity profile (see
+    NOTE (bug fixed, per user request): every situation used to be
+    compared against the SAME "all" baseline -- see
+    build_celerity_baseline()'s own NOTE for why that's wrong for the
+    seasonal situations. Each situation's own baseline (built by
+    build_celerity_baseline(env_type, situation)) is now opened
+    separately, per situation.
+
+    ALSO computes and saves each profile's RMSE (m/s) from ITS OWN
+    situation's baseline (mean) celerity profile (see
     _celerity_profile_rmse()), to
-    '<result_dir>/rmse_<situation>.csv' (see
+    '<result_dir>/<situation>/rmse_<situation>.csv' (see
     _save_celerity_rmse_results()) -- the profile index alone carries
     no information about how different a profile actually IS from the
     reference one; this RMSE is what
@@ -2882,22 +3048,24 @@ def process_celerity_sensitivity(
 
     Args:
         env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES. Each
-            environment type has its OWN baseline (a different
+            environment type has its OWN baselines (a different
             waveguide depth and real profile entirely -- see
             build_celerity_baseline()), so this only ever processes
             ONE at a time (unlike 'situations' below); see
             process_celerity_tests() to process every environment type.
         situations (list[str]|None): which situations to process (each
             must have a '<result_dir>/<situation>/' folder from
-            build_celerity_sensitivity_dataset()). None (the default):
-            every such folder under 'result_dir' automatically.
+            build_celerity_sensitivity_dataset(), holding both that
+            situation's own baseline and its swept profiles). None
+            (the default): every such folder under 'result_dir'
+            automatically.
         result_dir (str|None): where to read the per-profile/baseline
             files from, and where to save the distance results. None
-            (the default): '<CELERITY_RESULT_DIR>/<env_type>/'
-            (matching build_celerity_baseline()'s own default).
+            (the default): '<RESILIENCE_RESULT_DIR>/<env_type>/celerity/'
+            (matching build_celerity_baseline()'s own default parent).
         save_dir (str|None): forwarded to plot_sensitivity_curves() --
             if given, also save the returned figure there (e.g.
-            os.path.join(CELERITY_IMG_DIR, env_type)). None (the
+            '<RESILIENCE_IMG_DIR>/<env_type>/celerity/'). None (the
             default, matching process_sensitivity()'s own convention):
             the figure is only returned, not saved.
 
@@ -2911,9 +3079,10 @@ def process_celerity_sensitivity(
     # KeyError (matching build_celerity_baseline()'s own behaviour)
     # rather than a confusing FileNotFoundError further down.
     CELERITY_ENV_TYPES[env_type]
+    env_config = CELERITY_ENV_TYPES[env_type]
 
     if result_dir is None:
-        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
+        result_dir, _ = _resilience_study_dirs(env_type, "celerity")
 
     import functools
 
@@ -2929,25 +3098,23 @@ def process_celerity_sensitivity(
             if os.path.isdir(os.path.join(result_dir, name))
         )
 
-    fpath_baseline = os.path.join(result_dir, "gf_dataset_baseline.nc")
+    for situation in situations:
+        situation_dir = os.path.join(result_dir, situation)
+        value_files = sorted(
+            glob.glob(os.path.join(situation_dir, f"{situation}_*.nc"))
+        )
+        if not value_files:
+            continue
 
-    env_config = CELERITY_ENV_TYPES[env_type]
-    z_baseline, c_p_baseline = load_mean_celerity_profile(
-        env_config["ssp_filename"], target_depth=env_config["depth"]
-    )
+        # NOTE: THIS situation's own baseline (see
+        # build_celerity_baseline()'s own NOTE for why -- "winter" is
+        # compared against winter's own mean profile, not "all"'s).
+        fpath_baseline = os.path.join(situation_dir, "gf_dataset_baseline.nc")
+        z_baseline, c_p_baseline = load_mean_celerity_profile(
+            _ssp_filename(env_type, situation), target_depth=env_config["depth"]
+        )
 
-    # NOTE: the baseline is small (a single configuration, not a
-    # sweep) -- safe to keep open for the whole loop, unlike the
-    # per-situation sweep datasets below (see process_sensitivity()'s
-    # own matching NOTE).
-    with xr.open_dataset(fpath_baseline) as ds_baseline:
-        for situation in situations:
-            value_files = sorted(
-                glob.glob(os.path.join(result_dir, situation, f"{situation}_*.nc"))
-            )
-            if not value_files:
-                continue
-
+        with xr.open_dataset(fpath_baseline) as ds_baseline:
             # NOTE: concat_dim="profile" -- matches
             # build_celerity_sensitivity_dataset()'s own saved
             # dimension name (every swept "value" here is a profile,
@@ -2957,6 +3124,7 @@ def process_celerity_sensitivity(
                 value_files,
                 combine="nested",
                 concat_dim="profile",
+                join="override",
                 preprocess=preprocess,
             ) as ds_test:
                 dist_L1, dist_L2, dist_theta = dist_from_baseline(
@@ -2978,15 +3146,15 @@ def process_celerity_sensitivity(
                     ds_test["c_p_ssp"].values,
                 )
 
-            save_sensitivity_distance_results(
-                situation,
-                profile_idx,
-                dist_L1,
-                dist_L2,
-                dist_theta,
-                result_dir=result_dir,
-            )
-            _save_celerity_rmse_results(situation, profile_idx, rmse, result_dir)
+        save_sensitivity_distance_results(
+            situation,
+            profile_idx,
+            dist_L1,
+            dist_L2,
+            dist_theta,
+            result_dir=result_dir,
+        )
+        _save_celerity_rmse_results(situation, profile_idx, rmse, result_dir)
 
     return plot_sensitivity_curves(situations, result_dir=result_dir, save_dir=save_dir)
 
@@ -3008,9 +3176,10 @@ def process_celerity_tests(env_types=None, situations=None, save=True):
             situation with saved sweep data, for each environment type
             independently.
         save (bool): if True (the default), each environment type's
-            figure is saved to its own '<CELERITY_IMG_DIR>/<env_type>/'
-            folder (see process_celerity_sensitivity()'s own
-            'save_dir'). False: figures are only returned, matching
+            figure is saved to its own
+            '<RESILIENCE_IMG_DIR>/<env_type>/celerity/' folder (see
+            process_celerity_sensitivity()'s own 'save_dir'). False:
+            figures are only returned, matching
             process_celerity_sensitivity()'s own 'save_dir=None'.
 
     Returns:
@@ -3023,7 +3192,7 @@ def process_celerity_tests(env_types=None, situations=None, save=True):
         env_type: process_celerity_sensitivity(
             env_type,
             situations=situations,
-            save_dir=os.path.join(CELERITY_IMG_DIR, env_type) if save else None,
+            save_dir=_resilience_study_dirs(env_type, "celerity")[1] if save else None,
         )
         for env_type in env_types
     }
@@ -3055,7 +3224,7 @@ def plot_celerity_distance_vs_rmse(
             to plot on the y-axis.
         result_dir (str|None): where to read the saved distance/RMSE
             results from. None (the default):
-            '<CELERITY_RESULT_DIR>/<env_type>/'.
+            '<RESILIENCE_RESULT_DIR>/<env_type>/celerity/'.
         save_dir (str|None): if given, save the figure to
             '<save_dir>/<filename>.png' (see
             _sensitivity_figure_filename()). None (the default): the
@@ -3070,7 +3239,7 @@ def plot_celerity_distance_vs_rmse(
     CELERITY_ENV_TYPES[env_type]
 
     if result_dir is None:
-        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
+        result_dir, _ = _resilience_study_dirs(env_type, "celerity")
 
     if situations is None:
         prefix, suffix = "rmse_", ".csv"
@@ -3118,6 +3287,8 @@ def plot_celerity_distance_vs_rmse(
         )
         fig.savefig(os.path.join(save_dir, fname))
 
+        # plt.close(fig)
+
     return fig
 
 
@@ -3154,7 +3325,7 @@ def plot_extremal_celerity_configs(
             'metric' -- only which 2 profiles get plotted does).
         result_dir (str|None): where the per-profile files, the
             baseline file, and the saved distance results live. None
-            (the default): '<CELERITY_RESULT_DIR>/<env_type>/'.
+            (the default): '<RESILIENCE_RESULT_DIR>/<env_type>/celerity/'.
         save_dir (str|None): if given, save every figure to
             '<save_dir>/<filename>.png'. None (the default): figures
             are only returned, not saved.
@@ -3169,7 +3340,7 @@ def plot_extremal_celerity_configs(
     env_config = CELERITY_ENV_TYPES[env_type]
 
     if result_dir is None:
-        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
+        result_dir, _ = _resilience_study_dirs(env_type, "celerity")
 
     baseline_src_rcv_param = baseline_src_rcv()
     d12 = baseline_src_rcv_param["d12"]
@@ -3186,40 +3357,44 @@ def plot_extremal_celerity_configs(
     if save_dir is not None:
         os.makedirs(save_dir, exist_ok=True)
 
-    z_baseline, c_p_baseline = load_mean_celerity_profile(
-        env_config["ssp_filename"], target_depth=env_config["depth"]
-    )
-
     figures = {}
 
-    with xr.open_dataset(
-        os.path.join(result_dir, "gf_dataset_baseline.nc")
-    ) as ds_baseline:
-        baseline_gamma_r0 = ds_baseline.gamma.sel(r=r0, method="nearest")
+    for situation in situations:
+        # NOTE (per user request): THIS situation's own baseline (see
+        # build_celerity_baseline()'s own NOTE) -- "winter" is compared
+        # against, and plotted alongside, winter's own mean profile,
+        # not "all"'s.
+        z_baseline, c_p_baseline = load_mean_celerity_profile(
+            _ssp_filename(env_type, situation), target_depth=env_config["depth"]
+        )
 
-        for situation in situations:
-            profile_idx, dist_L1, dist_L2, dist_theta = (
-                load_sensitivity_distance_results(
-                    situation, result_dir=result_dir, file_prefix="dist_"
-                )
-            )
-            dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[metric]
+        profile_idx, dist_L1, dist_L2, dist_theta = load_sensitivity_distance_results(
+            situation, result_dir=result_dir, file_prefix="dist_"
+        )
+        dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[metric]
 
-            idx_min = int(np.nanargmin(dist))
-            idx_max = int(np.nanargmax(dist))
-            profile_min = profile_idx[idx_min]
-            profile_max = profile_idx[idx_max]
+        idx_min = int(np.nanargmin(dist))
+        idx_max = int(np.nanargmax(dist))
+        profile_min = profile_idx[idx_min]
+        profile_max = profile_idx[idx_max]
 
-            label_min = f"profile {profile_min:g} (min dist)"
-            label_max = f"profile {profile_max:g} (max dist)"
+        label_min = f"profile {profile_min:g} (min dist)"
+        label_max = f"profile {profile_max:g} (max dist)"
 
-            value_files = sorted(
-                glob.glob(os.path.join(result_dir, situation, f"{situation}_*.nc"))
-            )
+        situation_dir = os.path.join(result_dir, situation)
+        value_files = sorted(
+            glob.glob(os.path.join(situation_dir, f"{situation}_*.nc"))
+        )
+        with xr.open_dataset(
+            os.path.join(situation_dir, "gf_dataset_baseline.nc")
+        ) as ds_baseline:
+            baseline_gamma_r0 = ds_baseline.gamma.sel(r=r0, method="nearest")
+
             with xr.open_mfdataset(
                 value_files,
                 combine="nested",
                 concat_dim="profile",
+                join="override",
             ) as ds_test_full:
                 ds_test_sel = ds_test_full.sel(
                     profile=[profile_min, profile_max], method="nearest"
@@ -3237,43 +3412,46 @@ def plot_extremal_celerity_configs(
                     ax=ax_gamma, label=label_max
                 )
 
-            ax_gamma.set_xlabel("Fréquence [Hz]")
-            ax_gamma.set_ylabel(r"$\gamma$ [dB]")
-            ax_gamma.set_title(situation)
-            ax_gamma.legend()
+        ax_gamma.set_xlabel("Fréquence [Hz]")
+        ax_gamma.set_ylabel(r"$\gamma$ [dB]")
+        ax_gamma.set_title(situation)
+        ax_gamma.legend()
 
-            fig_profile, ax_profile = plt.subplots(figsize=(8, 10))
-            ax_profile.plot(c_p_baseline, z_baseline, color="k", lw=2, label="Baseline")
-            ax_profile.plot(c_p_sel[0], z_sel, label=label_min)
-            ax_profile.plot(c_p_sel[1], z_sel, label=label_max)
-            ax_profile.invert_yaxis()
-            ax_profile.set_xlabel(r"Sound speed [m s$^{-1}$]")
-            ax_profile.set_ylabel("Depth [m]")
-            ax_profile.set_title(situation)
-            ax_profile.legend()
+        fig_profile, ax_profile = plt.subplots(figsize=(8, 10))
+        ax_profile.plot(c_p_baseline, z_baseline, color="k", lw=2, label="Baseline")
+        ax_profile.plot(c_p_sel[0], z_sel, label=label_min)
+        ax_profile.plot(c_p_sel[1], z_sel, label=label_max)
+        ax_profile.invert_yaxis()
+        ax_profile.set_xlabel(r"Sound speed [m s$^{-1}$]")
+        ax_profile.set_ylabel("Depth [m]")
+        ax_profile.set_title(situation)
+        ax_profile.legend()
 
-            figures[situation] = {"gamma": fig_gamma, "profile": fig_profile}
+        figures[situation] = {"gamma": fig_gamma, "profile": fig_profile}
 
-            if save_dir is not None:
-                fig_gamma.savefig(
-                    os.path.join(
-                        save_dir,
-                        _sensitivity_figure_filename(
-                            "gamma_at_r0", situation, file_prefix="dist_", metric=metric
-                        ),
-                    )
+        if save_dir is not None:
+            fig_gamma.savefig(
+                os.path.join(
+                    save_dir,
+                    _sensitivity_figure_filename(
+                        "gamma_at_r0", situation, file_prefix="dist_", metric=metric
+                    ),
                 )
-                fig_profile.savefig(
-                    os.path.join(
-                        save_dir,
-                        _sensitivity_figure_filename(
-                            "extremal_profiles",
-                            situation,
-                            file_prefix="dist_",
-                            metric=metric,
-                        ),
-                    )
+            )
+            fig_profile.savefig(
+                os.path.join(
+                    save_dir,
+                    _sensitivity_figure_filename(
+                        "extremal_profiles",
+                        situation,
+                        file_prefix="dist_",
+                        metric=metric,
+                    ),
                 )
+            )
+
+            # plt.close(fig_gamma)
+            # plt.close(fig_profile)
 
     return figures
 
@@ -3352,6 +3530,7 @@ def process_sensitivity_mainlobe_width(test_arg_names=None, result_dir=RESULT_DI
                 value_files,
                 combine="nested",
                 concat_dim=test_arg_name,
+                join="override",
             ) as ds_test:
                 # NOTE: no downcast needed here anymore -- 'gf' (real-
                 # valued, a magnitude -- see build_sensitivity_dataset()'s
@@ -3452,6 +3631,7 @@ def process_sensitivity_intrinsic_mainlobe_width(
             value_files,
             combine="nested",
             concat_dim=test_arg_name,
+            join="override",
         ) as ds_test:
             # NOTE: no downcast needed here anymore -- see the matching
             # NOTE in process_sensitivity_mainlobe_width() /
@@ -3610,6 +3790,7 @@ def plot_extremal_width_configs(
                 value_files,
                 combine="nested",
                 concat_dim=test_arg_name,
+                join="override",
             ) as ds_test_full:
                 # Reduce to JUST the 2 configurations that matter here
                 # (order preserved: [value_min, value_max]) BEFORE
@@ -3698,6 +3879,8 @@ def plot_extremal_width_configs(
                         ),
                     )
                 )
+                # plt.close(fig_dist)
+                # plt.close(fig_gamma)
     finally:
         if ds_baseline is not None:
             ds_baseline.close()
@@ -3795,6 +3978,7 @@ def plot_extremal_resilience_dist_configs(
                 value_files,
                 combine="nested",
                 concat_dim=test_arg_name,
+                join="override",
             ) as ds_test_full:
                 # Reduce to JUST the 2 configurations that matter here
                 # (order preserved: [value_min, value_max]) before
@@ -3835,6 +4019,7 @@ def generate_all_diagnostics(
     process_sensi=True,
     celerity_env_types=None,
     celerity_situations=None,
+    build_baseline=False,
 ):
     """Regenerate every diagnostic figure this module produces, across
     all 4 studies (classic sensitivity, resilience, celerity), saving
@@ -3896,58 +4081,58 @@ def generate_all_diagnostics(
 
     # build_baseline()
 
-    # # Step 1 : Distance from baseline configuration evaluate at r0
-    # # 1.1) read all files and compute distance from baseline
-    # if process_sensi:
-    #     process_sensitivity()
-    # # 1.2) plot distance from baseline for all parameters
-    # plot_sensitivity_curves(
-    #     distance=distance,
-    #     ylabel="Distance from baseline at r=r0",
-    #     save_dir=IMG_DIR,
-    # )
+    # Step 1 : Distance from baseline configuration evaluate at r0
+    # 1.1) read all files and compute distance from baseline
+    if process_sensi:
+        process_sensitivity()
+    # 1.2) plot distance from baseline for all parameters
+    plot_sensitivity_curves(
+        distance=distance,
+        ylabel="Distance from baseline at r=r0",
+        save_dir=IMG_DIR,
+    )
     # plt.close("all")
 
-    # # 1.3) plot distance from baseline for each parameter
-    # for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
-    #     plot_sensitivity_curves(
-    #         test_arg_names=[test_arg_name],
-    #         distance=distance,
-    #         ylabel="Distance from baseline at r=r0",
-    #         save_dir=IMG_DIR,
-    #     )
-    #     plt.close("all")
+    # 1.3) plot distance from baseline for each parameter
+    for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
+        plot_sensitivity_curves(
+            test_arg_names=[test_arg_name],
+            distance=distance,
+            ylabel="Distance from baseline at r=r0",
+            save_dir=IMG_DIR,
+        )
+        # plt.close("all")
 
-    # # Step 2 : Mainlobe width of distance around r0 for each configuration
-    # # 2.1) read all files and compute mainlobe width of distance around r0
-    # if process_sensi:
-    #     process_sensitivity_intrinsic_mainlobe_width()
-    # # 2.2) plot mainlobe width of distance around r0 for all parameters
-    # plot_sensitivity_curves(
-    #     distance=distance,
-    #     file_prefix="intrinsic_mainlobe_width_",
-    #     ylabel="Intrinsic mainlobe width [m]",
-    #     save_dir=IMG_DIR,
-    # )
+    # Step 2 : Mainlobe width of distance around r0 for each configuration
+    # 2.1) read all files and compute mainlobe width of distance around r0
+    if process_sensi:
+        process_sensitivity_intrinsic_mainlobe_width()
+    # 2.2) plot mainlobe width of distance around r0 for all parameters
+    plot_sensitivity_curves(
+        distance=distance,
+        file_prefix="intrinsic_mainlobe_width_",
+        ylabel="Intrinsic mainlobe width [m]",
+        save_dir=IMG_DIR,
+    )
     # plt.close("all")
 
-    # # 2.3) plot mainlobe width of distance around r0 for each parameter
-    # for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
-    #     plot_sensitivity_curves(
-    #         test_arg_names=[test_arg_name],
-    #         distance=distance,
-    #         file_prefix="intrinsic_mainlobe_width_",
-    #         ylabel="Intrinsic mainlobe width [m]",
-    #         save_dir=IMG_DIR,
-    #     )
-    #     # Plot the two configurations with the smallest and largest mainlobe width
-    #     plot_extremal_width_configs(
-    #         test_arg_names=[test_arg_name],
-    #         metric=distance[0],
-    #         mode="intrinsic",
-    #         save_dir=IMG_DIR,
-    #     )
-    #     plt.close("all")
+    # 2.3) plot mainlobe width of distance around r0 for each parameter
+    for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
+        plot_sensitivity_curves(
+            test_arg_names=[test_arg_name],
+            distance=distance,
+            file_prefix="intrinsic_mainlobe_width_",
+            ylabel="Intrinsic mainlobe width [m]",
+            save_dir=IMG_DIR,
+        )
+        # Plot the two configurations with the smallest and largest mainlobe width
+        plot_extremal_width_configs(
+            test_arg_names=[test_arg_name],
+            metric=distance[0],
+            mode="intrinsic",
+            save_dir=IMG_DIR,
+        )
+        # plt.close("all")
 
     # Step 3 : Resilience tests
     # NOTE: now loops over environment types (see
@@ -3955,8 +4140,9 @@ def generate_all_diagnostics(
     # here) -- reuses 'celerity_env_types' rather than adding a THIRD
     # parameter that would always just duplicate it in practice.
     for env_type in celerity_env_types:
-        resilience_result_dir = os.path.join(RESILIENCE_RESULT_DIR, env_type)
-        resilience_img_dir = os.path.join(RESILIENCE_IMG_DIR, env_type)
+        resilience_result_dir, resilience_img_dir = _resilience_study_dirs(
+            env_type, "depth"
+        )
 
         if not os.path.isdir(resilience_result_dir):
             print(
@@ -3983,19 +4169,42 @@ def generate_all_diagnostics(
             result_dir=resilience_result_dir,
             save_dir=resilience_img_dir,
         )
-        plt.close("all")
+        # plt.close("all")
 
     # Step 4 : Celerity (sound-speed profile) tests
-    # 4.0) re-build each environment type's baseline, for its own
-    # environment/mode-shape diagnostics (see Step 0's own NOTE --
-    # this ALWAYS runs, regardless of 'process_sensi', for the same
-    # reason: it's a single, comparatively cheap KRAKEN configuration,
-    # not a re-derivation over a whole sweep).
-    build_celerity_baselines(env_types=celerity_env_types)
+    generate_celerity_diag(
+        distance=distance,
+        celerity_env_types=celerity_env_types,
+        celerity_situations=celerity_situations,
+        process_sensi=process_sensi,
+        build_baseline=build_baseline,
+    )
+
+
+def generate_celerity_diag(
+    distance=["theta"],
+    celerity_env_types=None,
+    celerity_situations=None,
+    process_sensi=True,
+    build_baseline=False,
+):
+    # 4.0) re-build each (environment type, situation)'s baseline, for
+    # its own environment/mode-shape diagnostics AND because each
+    # situation now needs its OWN baseline (see
+    # build_celerity_baseline()'s own NOTE) -- this ALWAYS runs,
+    # regardless of 'process_sensi', matching Step 0's own baseline
+    # rebuild. NOTE: no longer "cheap" the way Step 0's single baseline
+    # is -- this now runs one KRAKEN configuration PER (environment
+    # type, situation) combination (10 by default: 2 env types x 5
+    # situations), not one per environment type.
+
+    if build_baseline:
+        build_celerity_baselines(
+            env_types=celerity_env_types, situations=celerity_situations
+        )
 
     for env_type in celerity_env_types:
-        result_dir = os.path.join(CELERITY_RESULT_DIR, env_type)
-        img_dir = os.path.join(CELERITY_IMG_DIR, env_type)
+        result_dir, img_dir = _resilience_study_dirs(env_type, "celerity")
 
         # NOTE: unlike the other 3 studies, the celerity study is
         # still being built up incrementally (one environment type/
@@ -4039,52 +4248,69 @@ def generate_all_diagnostics(
             result_dir=result_dir,
             save_dir=img_dir,
         )
-        plt.close("all")
+        # plt.close("all")
 
 
-def run_all(use_debug_config=False):
+def run_debug_test():
 
     # General sensi test
-    build_baseline()
-    build_tests(use_debug_config)
+    # build_baseline()
+    # build_tests(use_debug_config=True)
 
     # Celerity resilience tests
-    build_celerity_baselines()
-    build_celerity_tests(env_types=None, situations=None, n_profiles=10)
+    # build_celerity_baselines()
+    # build_celerity_tests(env_types=None, situations=None, n_profiles=10)
 
     # Depth resilience tests
-    build_resilience_tests(env_types=None, depth_var_tide=10, npt=10)
+    # build_resilience_tests(env_types=None, depth_var_tide=10, npt=10)
 
     generate_all_diagnostics(distance=["theta"], process_sensi=True)
 
 
 if __name__ == "__main__":
-    # build_tests()
-    # build_baseline()
-    # process_sensitivity()
 
-    # Celerity resilience tests
     # build_celerity_baselines()
-    # build_celerity_tests(env_types=None, situations=None, n_profiles=10)
-    # process_celerity_tests(env_types=["sw"], situations=["all"], save=True)
+    # generate_all_diagnostics(
+    #     distance=["theta"],
+    #     process_sensi=True,
+    #     celerity_env_types=["sw"],
+    #     celerity_situations=["summer", "winter"],
+    # )
 
-    # Depth resilience tests
-    # build_resilience_tests()
-    # build_resilience_tests(env_types=None, depth_var_tide=10, npt=10)
-    # process_all_resilience_tests()
-    # for _env_type in ("sw", "dw"):
-    #     plot_sensitivity_curves(
-    #         ["depth"],
-    #         result_dir=os.path.join(RESILIENCE_RESULT_DIR, _env_type),
-    #         save_dir=os.path.join(RESILIENCE_IMG_DIR, _env_type),
-    #     )
-    #     plot_extremal_resilience_dist_configs(
-    #         ["depth"],
-    #         result_dir=os.path.join(RESILIENCE_RESULT_DIR, _env_type),
-    #         save_dir=os.path.join(RESILIENCE_IMG_DIR, _env_type),
-    #     )
-    # plt.close("all")
+    # Run all for SW env
+    build_celerity_baselines(env_types=["sw"])
+    build_celerity_tests(env_types=["sw"], situations=None, n_profiles=1000)
+    # Diag for each seasons
+    for situation in ["all", "winter", "spring", "summer", "automn"]:
+        generate_celerity_diag(
+            distance=["theta"],
+            celerity_env_types=["sw"],
+            celerity_situations=[situation],
+            process_sensi=True,
+            build_baseline=False,
+        )
 
-    # generate_all_diagnostics(distance=["theta"], process_sensi=True)
+    # Diag for variations all
+    generate_celerity_diag(
+        distance=["theta"],
+        celerity_env_types=["sw"],
+        celerity_situations=["all"],
+        process_sensi=False,
+        build_baseline=False,
+    )
+    # Winter vs summer
+    generate_celerity_diag(
+        distance=["theta"],
+        celerity_env_types=["sw"],
+        celerity_situations=["summer", "winter"],
+        process_sensi=False,
+        build_baseline=False,
+    )
 
-    run_all(use_debug_config=True)
+    # build_celerity_tests(
+    #     env_types=["sw"], situations=["all", "summer", "winter"], n_profiles=500
+    # )
+
+    # generate_celerity_diag(distance=["theta"], celerity_env_types=["sw"], celerity_situations=["summer", "winter"], process_sensi=True, build_baseline=False)
+
+    # run_debug_test()

@@ -214,3 +214,8 @@ if os.name == "nt":  # Windows
 
 else:  # Linux
     project_root = "/home/program/ubf_tools"
+
+
+if __name__ == "__main__":
+    for k, val in sediments_TG.items():
+        print(f"{k} : {val}")

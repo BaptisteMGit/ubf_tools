@@ -50,6 +50,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ENV_FILENAME = "case_01_pekeris_ri_single_freq"
 RUN_KRAKEN = os.environ.get("KRAKEN_EXAMPLES_RUN_KRAKEN", "0") == "1"
 # RUN_KRAKEN = True
+
 # ----------------------------------------------------------------------
 # 1. Environment: Pekeris waveguide
 # ----------------------------------------------------------------------

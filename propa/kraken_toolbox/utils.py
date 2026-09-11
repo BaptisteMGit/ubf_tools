@@ -10,9 +10,6 @@
              mode-shape component extraction, receiver grid indexing,
              and frequency-batch load balancing for parallel runs.
 
-This module does NOT change the public API of the original file (same
-function names/signatures). See the "NOTE (bug ...)" comments below for
-the bugs found and fixed.
 """
 
 # ======================================================================================================================
@@ -24,7 +21,6 @@ import numpy as np
 import source.global_constants as gc
 from propa.kraken_toolbox.read_shd import readshd
 from scipy.optimize import minimize
-
 
 # ======================================================================================================================
 # Mode-shape component extraction
@@ -203,6 +199,7 @@ def waveguide_cutoff_freq(waveguide_depth, c0=gc.c0):
     """Estimate the low-frequency cutoff of a waveguide of the given
     depth (below which the first propagating mode ceases to exist),
     clipped to the minimum frequency KRAKEN can reliably handle.
+    This is the cutoff frequency of the first mode in an ideal waveguide.
 
     Args:
         waveguide_depth (float): water depth (m). Must be strictly
@@ -216,7 +213,9 @@ def waveguide_cutoff_freq(waveguide_depth, c0=gc.c0):
         float: cutoff frequency (Hz), never below 0.15 Hz.
     """
     if waveguide_depth <= 0:
-        raise ValueError(f"waveguide_depth must be strictly positive, got {waveguide_depth}")
+        raise ValueError(
+            f"waveguide_depth must be strictly positive, got {waveguide_depth}"
+        )
 
     fc = c0 / (4 * waveguide_depth)
     minimum_kraken_freq = 0.15
@@ -276,16 +275,7 @@ def get_rcv_pos_idx(
             provided (they must be given together, or both left as
             None), or if both are None and shd_fpath is also None.
     """
-    # NOTE (bug fixed): the original code only triggered the
-    # "read from shd_fpath" branch when BOTH kraken_range and
-    # kraken_depth were None (`if kraken_range is None and
-    # kraken_depth is None:`). Supplying only one of the two silently
-    # fell through to the 'else' branch, which then crashed with a
-    # confusing `AttributeError: 'NoneType' object has no attribute
-    # 'size'` on whichever one was missing. Both valid usages (both
-    # given, or both omitted + shd_fpath given) are preserved exactly;
-    # the only change is that the invalid, previously-crashing
-    # in-between case now raises a clear, actionable error.
+
     if kraken_range is None and kraken_depth is None:
         if shd_fpath is None:
             raise ValueError(

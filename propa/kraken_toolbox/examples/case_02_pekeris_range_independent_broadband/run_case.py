@@ -128,6 +128,14 @@ if __name__ == "__main__":
         shd_fpath = env.shd_fpath
         ref_freq = float(FREQS[0])
 
+        fig0 = pu.plot_group_speed(
+            mod_fpath,
+            freq=FREQS,
+            modes=None,
+        )
+        fig0.savefig(os.path.join(HERE, "group_speed.png"))
+        plt.close(fig0)
+
         fig1 = pu.plotmode(mod_fpath, freq=FREQS)
         fig1.savefig(os.path.join(HERE, "mode_shapes_all_frequencies.png"))
         plt.close(fig1)

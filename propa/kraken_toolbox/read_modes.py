@@ -8,52 +8,9 @@
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Read the modes produced by KRAKEN from a '.mod' binary file.
 
-This module does NOT change the public API of the original file (same
-function names/signatures). Adapted from the original Matlab Acoustics
+Adapted from the original Matlab Acoustics
 Toolbox by Michael B. Porter, https://oalib.hlsresearch.com/AcousticsToolbox/
 
-BUGS FIXED COMPARED TO THE ORIGINAL CODE:
-  1. readmodes(): the extension-resolution logic used
-     `os.path.basename(modfil).split(".")[0]` to strip the extension,
-     which truncates the file root at the FIRST dot rather than the
-     last one -- a file named e.g. "run.v2.mod" would be turned into
-     "run" + ".mod" = "run.mod", silently losing the ".v2" part. Fixed
-     with `os.path.splitext`, which only strips the last extension.
-  2. readmodes_bin(): the file handle 'fid' was never closed (no
-     'fid.close()' anywhere in the function) -- a resource leak on
-     every call. The `if not hasattr(readmodes_bin, "fid"):` guard,
-     presumably meant to cache/reuse an already-open handle across
-     calls, never actually worked: `readmodes_bin.fid` is never
-     assigned anywhere, so `hasattr(readmodes_bin, "fid")` is always
-     False and the "first open" branch runs on every single call
-     regardless. Since the rest of the function always seeks to
-     absolute byte offsets (it does not rely on the file's current
-     position from a previous call), removing this non-functional
-     caching attempt changes nothing observable; the file is now
-     properly opened and closed via a `with` block on every call.
-  3. readmodes_bin(): `modes <= Modes["M"]` and `modes - 1` require
-     'modes' to be a numpy array; passing a plain Python list for the
-     'modes' argument crashed with a TypeError. Fixed by coercing
-     'modes' to a numpy array immediately after the "read all modes"
-     default is resolved.
-  4. readmodes(): Top halfspace wavenumber used
-     `Modes["freqVec"][0]` (always the FIRST frequency in the file)
-     while the structurally identical Bottom halfspace calculation used
-     `Modes["freqVec"][freq_index]` (the frequency actually matching
-     the user's request). This asymmetry looks like a copy-paste slip;
-     fixed to use freq_index consistently for both. NOTE: this fix
-     could not be validated against a real '.mod' file with more than
-     one stored frequency (none was available), so please double-check
-     the Top halfspace wavenumber against a known-good reference before
-     relying on it for a genuinely multi-frequency mode file.
-  5. readmodes_bin(): Top/Bottom halfspace 'rho' was stored as a
-     1-element numpy array when read from the file (acousto-elastic
-     boundary), but as a plain Python float (1.0) in readmodes()'s
-     vacuum-boundary fallback. Normalized to always be a plain float,
-     so downstream code does not need to special-case the boundary
-     condition just to read this value.
-
-These are documented inline with "NOTE (bug ...)" wherever they occur.
 """
 
 # ======================================================================================================================
@@ -86,12 +43,6 @@ def readmodes(modfil, freq=0, modes=None):
     Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter
     https://oalib.hlsresearch.com/AcousticsToolbox/
     """
-    # NOTE (bug fixed): the original extension-resolution logic used
-    # `os.path.basename(modfil).split(".")[0]`, which truncates at the
-    # FIRST dot in the filename rather than the last one -- a file named
-    # e.g. "run.v2.mod" would lose the ".v2" part. `os.path.splitext`
-    # only strips the last extension, which is what "give me a '.mod'
-    # file no matter what extension was passed" actually requires.
     file_root, _ext = os.path.splitext(modfil)
     modfil = file_root + ".mod"
 
@@ -104,12 +55,6 @@ def readmodes(modfil, freq=0, modes=None):
     # Calculate wavenumbers in halfspaces (if there are any modes)
     if Modes["M"] != 0:
         if Modes["Top"]["BC"] == "A":  # Top
-            # NOTE (bug fixed): used `Modes["freqVec"][0]` (always the
-            # first stored frequency) instead of `Modes["freqVec"][freq_index]`
-            # (the frequency actually requested/matched) -- inconsistent
-            # with the structurally identical Bottom calculation just
-            # below. Not validated against a genuinely multi-frequency
-            # '.mod' file (see module docstring).
             Modes["Top"]["k2"] = (
                 2 * np.pi * Modes["freqVec"][freq_index] / Modes["Top"]["cp"]
             ) ** 2
@@ -159,21 +104,7 @@ def readmodes_bin(filename, freq=0, modes=None):
     Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter
     https://oalib.hlsresearch.com/AcousticsToolbox/
     """
-    # NOTE (bug fixed): the original code guarded the file-opening block
-    # with `if not hasattr(readmodes_bin, "fid"):`, apparently intending
-    # to cache/reuse an already-open file handle across repeated calls.
-    # This never worked: `readmodes_bin.fid` is not assigned anywhere in
-    # the function, so the attribute never exists and the guard's
-    # condition is always True -- the "first open" branch ran on every
-    # call regardless, with no actual caching taking place. Combined
-    # with the complete absence of a matching `fid.close()`, every call
-    # leaked one open file handle. Since the rest of the function always
-    # seeks to absolute byte offsets (never relies on a handle's
-    # position left over from a previous call), removing this
-    # non-functional caching attempt changes no observable behaviour;
-    # a single `with open(...) as fid:` now guarantees the file is
-    # always closed, on every exit path (including the early
-    # `if Ntot < 0: return Modes` below).
+
     with open(filename, "rb") as fid:
         return _read_modes_from_open_file(fid, freq=freq, modes=modes)
 
@@ -252,14 +183,10 @@ def _read_modes_from_open_file(fid, freq, modes):
             rec = iRecProfile
 
     if modes is None:
-        modes = np.arange(1, Modes["M"] + 1)  # Read all modes if the user didn't specify
+        modes = np.arange(
+            1, Modes["M"] + 1
+        )  # Read all modes if the user didn't specify
     else:
-        # NOTE (bug fixed): 'modes <= Modes["M"]' and 'modes - 1' further
-        # below both require 'modes' to be a numpy array. A plain Python
-        # list (a perfectly reasonable thing to pass given the
-        # docstring says "array-like") raised a TypeError. The
-        # 'np.arange(...)' branch above already produces an array, so
-        # only the user-supplied case needed coercing.
         modes = np.atleast_1d(np.asarray(modes))
 
     # Don't try to read modes that don't exist
@@ -280,11 +207,6 @@ def _read_modes_from_open_file(fid, freq, modes):
     Modes["Top"]["cp"] = complex(cp_real, cp_imag)
     cs_real, cs_imag = np.fromfile(fid, dtype=np.float32, count=2)
     Modes["Top"]["cs"] = complex(cs_real, cs_imag)
-    # NOTE (bug fixed): 'rho'/'depth' used to be stored as 1-element
-    # numpy arrays here, while readmodes()'s vacuum-boundary fallback
-    # sets 'rho' to a plain float (1.0) -- an inconsistency that forced
-    # any downstream code to special-case the boundary condition just to
-    # read this value. Normalized to a plain float/consistent scalar.
     Modes["Top"]["rho"] = float(np.fromfile(fid, dtype=np.float32, count=1)[0])
     Modes["Top"]["depth"] = float(np.fromfile(fid, dtype=np.float32, count=1)[0])
 
@@ -306,7 +228,9 @@ def _read_modes_from_open_file(fid, freq, modes):
         Modes["phi"] = np.array([])  # No modes
         Modes["k"] = np.array([])
     else:
-        Modes["phi"] = np.zeros((NMat, len(modes)), dtype=np.complex64)  # Number of modes
+        Modes["phi"] = np.zeros(
+            (NMat, len(modes)), dtype=np.complex64
+        )  # Number of modes
 
         for ii in range(len(modes)):
             rec = iRecProfile + 1 + modes[ii]

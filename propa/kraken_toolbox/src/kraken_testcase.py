@@ -13,53 +13,6 @@
 This module does NOT change the public API of the original file (same
 class/method/parameter names).
 
-------------------------------------------------------------------------
-IMPORTANT BUG FIXED: mutable default arguments
-------------------------------------------------------------------------
-The original file defined default values such as:
-
-    class KrakenProperties:
-        def __init__(self, ..., field=KrakenField(...), ...):
-            ...
-
-    class KrakenTestCase:
-        def __init__(self, ..., kraken_properties=KrakenProperties(), ...):
-            ...
-
-In Python, a default value is evaluated ONCE, when the function is
-defined (i.e. at module load time) -- not on every call. Every call to
-`KrakenTestCase(...)` that does not explicitly supply
-`kraken_properties=` (or `domain_properties=`, `src_properties=`,
-`rcv_properties=`) then reuses THE EXACT SAME OBJECT.
-
-Now, `KrakenTestCase.set_bathy()` mutates this object in place
-(`self.domain.zmax_m = ...`, `self.kraken.field.n_rcv_z = ...`,
-`self.kraken.field.rcv_depth_max = ...`). Concrete consequence: creating
-TWO `KrakenTestCase` instances in a row without an explicit argument
-means the second one silently overwrites the domain/field properties of
-the first one (they share the same Python object). This is the kind of
-bug that stays invisible on a single, isolated test case (hence its
-presence in the original code, never triggered by the
-`if __name__ == "__main__"` block, which only creates one), but that can
-silently corrupt results as soon as several test cases are created
-within the same session (sensitivity loop, simulation batch...).
-
-Fixed here by using `None` as the default value and creating the object
-inside the function body -- the only reliable way to get a "fresh"
-object on every call (a classic pitfall documented in the Python
-FAQ/Zen: "default parameter values are evaluated once").
-
-Other clean-ups:
-  - removed unused imports ('socket', 'get_subprocess_working_dir',
-    neither of which was ever used in this file);
-  - explicit validation of the 'unit' parameter in DomainProperties /
-    ReceiverProperties (the original code raised a hard-to-understand
-    UnboundLocalError if 'unit' was neither 'm' nor 'km');
-  - factored out the logic shared by DomainProperties / ReceiverProperties
-    (in the original code, these are two strictly identical classes --
-    both names are kept to avoid breaking calling code that would
-    distinguish the two by type).
-------------------------------------------------------------------------
 """
 
 # ======================================================================================================================
@@ -129,23 +82,17 @@ class DomainProperties:
             rmin, rmax: domain range bounds, in unit 'unit'.
             unit (str): 'm' or 'km', unit of zmin/zmax/rmin/rmax on input.
         """
-        self.zmin_m, self.zmax_m, self.rmin_km, self.rmax_km = _resolve_range_depth_units(
-            zmin, zmax, rmin, rmax, unit
+        self.zmin_m, self.zmax_m, self.rmin_km, self.rmax_km = (
+            _resolve_range_depth_units(zmin, zmax, rmin, rmax, unit)
         )
 
 
 class ReceiverProperties:
-    """Depth/range bounds of the receiver grid.
-
-    NOTE: strictly identical to DomainProperties in the original code
-    (same parameters, same logic); kept as a separate class so as not to
-    change the public API, but relies on the same unit-conversion
-    function.
-    """
+    """Depth/range bounds of the receiver grid."""
 
     def __init__(self, zmin=0, zmax=1000, rmin=0, rmax=10 * 1e3, unit="m"):
-        self.zmin_m, self.zmax_m, self.rmin_km, self.rmax_km = _resolve_range_depth_units(
-            zmin, zmax, rmin, rmax, unit
+        self.zmin_m, self.zmax_m, self.rmin_km, self.rmax_km = (
+            _resolve_range_depth_units(zmin, zmax, rmin, rmax, unit)
         )
 
 
@@ -215,13 +162,6 @@ class KrakenProperties:
             field (KrakenField|None): defaults to a KrakenField
                 calibrated for a 1000 m domain and a 100 m source depth.
 
-        Note:
-            As with KrakenTestCase (see module docstring), default
-            values are resolved HERE (at call time) rather than in the
-            function signature, to avoid every KrakenProperties()
-            created without explicit arguments sharing (and mutating in
-            place) the same KrakenField / KrakenBottomHalfspace / etc.
-            objects.
         """
         self.mode_coupling = mode_coupling
         self.mode_addition = mode_addition
@@ -248,7 +188,8 @@ class KrakenProperties:
             self.field = KrakenField(
                 n_rcv_z=1000,
                 src_depth=default_src.depth,
-                rcv_z_max=default_domain.zmax_m + KrakenBottomHalfspace().sedim_layer_depth,
+                rcv_z_max=default_domain.zmax_m
+                + KrakenBottomHalfspace().sedim_layer_depth,
                 phase_speed_limits=[1000, 20000],
             )
 
@@ -307,9 +248,15 @@ class KrakenTestCase:
         # created HERE (a fresh object per test case) rather than being a
         # shared default value in the signature.
         self.src = src_properties if src_properties is not None else SourceProperties()
-        self.rcv = rcv_properties if rcv_properties is not None else ReceiverProperties()
-        self.domain = domain_properties if domain_properties is not None else DomainProperties()
-        self.kraken = kraken_properties if kraken_properties is not None else KrakenProperties()
+        self.rcv = (
+            rcv_properties if rcv_properties is not None else ReceiverProperties()
+        )
+        self.domain = (
+            domain_properties if domain_properties is not None else DomainProperties()
+        )
+        self.kraken = (
+            kraken_properties if kraken_properties is not None else KrakenProperties()
+        )
 
         self.bathy = bathy
 
@@ -372,10 +319,15 @@ class KrakenTestCase:
 
         # New receiver grid max depth: domain depth + buffer sediment
         # layer, rounded to the nearest 100 m for readability.
-        max_domain_depth = np.round(
-            (self.domain.zmax_m + self.kraken.bott_hs.sedim_layer_depth) * 1e-2, 0
-        ) * 1e2
-        n_rcv_z = default_nb_rcv_z(fmax=np.max(self.src.freq), max_depth=max_domain_depth)
+        max_domain_depth = (
+            np.round(
+                (self.domain.zmax_m + self.kraken.bott_hs.sedim_layer_depth) * 1e-2, 0
+            )
+            * 1e2
+        )
+        n_rcv_z = default_nb_rcv_z(
+            fmax=np.max(self.src.freq), max_depth=max_domain_depth
+        )
 
         self.kraken.field.n_rcv_z = n_rcv_z
         self.kraken.field.rcv_depth_max = max_domain_depth
@@ -447,10 +399,10 @@ class KrakenTestCase:
     def init_testcase_dirs(self):
         """Create the test case output directory tree:
 
-            <root_dir>/<name>/
-                io_files/          '.env', '.flp', '.shd' files, bathy.csv
-                imgs/env/          environment diagnostic figures
-                imgs/outputs/      result figures (modes, TL...)
+        <root_dir>/<name>/
+            io_files/          '.env', '.flp', '.shd' files, bathy.csv
+            imgs/env/          environment diagnostic figures
+            imgs/outputs/      result figures (modes, TL...)
         """
         self.testcase_directory = os.path.join(self.root_dir, self.name)
         self.io_files_dir = os.path.join(self.testcase_directory, "io_files")
@@ -534,14 +486,11 @@ class KrakenTestCase:
         after a KRAKEN/FIELD run (self.run())."""
         fpath = os.path.join(self.io_files_dir, self.env.filename)
 
-        # NOTE (bug fixed): the bathymetry line used to be added
-        # manually, via plt.gca(), AFTER plotmode() returned -- meaning
-        # it only ever landed on the LAST subplot plotmode() had
-        # created, not on every mode's panel. plotmode() now draws this
-        # line (and a single legend entry for it, instead of a
-        # duplicated per-call plt.legend()) on every panel itself.
         fig_modes = plotmode(
-            fpath, freq=self.src.freq, modes=modes, bathy_depth=self.bathy.bathy_depth[0]
+            fpath,
+            freq=self.src.freq,
+            modes=modes,
+            bathy_depth=self.bathy.bathy_depth[0],
         )
         fig_modes.savefig(os.path.join(self.imgs_outputs_dir, "modes.png"))
 

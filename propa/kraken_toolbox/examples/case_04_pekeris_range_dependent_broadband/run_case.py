@@ -14,9 +14,6 @@ stacking the resulting pressure fields. From the outside, calling
 KrakenManager.runkraken() with a broadband range-dependent env is
 exactly the same call as any other case; the workaround is transparent.
 
-NOTE: as in Case 3, the numeric values are a representative, simplified
-version of the classic ASA-wedge-style benchmark geometry, not a
-certified reproduction of a specific published reference case.
 
 Environment:
     - Water column: isovelocity c = 1500 m/s, depth shoaling from

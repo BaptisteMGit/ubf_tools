@@ -4267,24 +4267,35 @@ def run_debug_test():
     generate_all_diagnostics(distance=["theta"], process_sensi=True)
 
 
-if __name__ == "__main__":
-
-    # build_celerity_baselines()
-    # generate_all_diagnostics(
-    #     distance=["theta"],
-    #     process_sensi=True,
-    #     celerity_env_types=["sw"],
-    #     celerity_situations=["summer", "winter"],
-    # )
+def run_all_plateform():
+    # Baseline tests
+    build_baseline()
+    build_tests(use_debug_config=False)
 
     # Run all for SW env
-    build_celerity_baselines(env_types=["sw"])
-    build_celerity_tests(env_types=["sw"], situations=None, n_profiles=1000)
+    run_all_celerity(env_type="sw")
+    # Run all for DW env
+    run_all_celerity(env_type="dw")
+
+    # Depth resilience tests for SW
+    build_resilience_tests(env_types=["sw"], depth_var_tide=10, npt=200)
+    # Depth resilience tests for DW
+    build_resilience_tests(env_types=["dw"], depth_var_tide=10, npt=200)
+
+    generate_all_diagnostics(
+        distance=["theta"], process_sensi=True, build_baseline=False
+    )
+
+
+def run_all_celerity(env_type, n_profiles=1000):
+
+    build_celerity_baselines(env_types=[env_type])
+    build_celerity_tests(env_types=[env_type], situations=None, n_profiles=n_profiles)
     # Diag for each seasons
     for situation in ["all", "winter", "spring", "summer", "automn"]:
         generate_celerity_diag(
             distance=["theta"],
-            celerity_env_types=["sw"],
+            celerity_env_types=[env_type],
             celerity_situations=[situation],
             process_sensi=True,
             build_baseline=False,
@@ -4293,7 +4304,7 @@ if __name__ == "__main__":
     # Diag for variations all
     generate_celerity_diag(
         distance=["theta"],
-        celerity_env_types=["sw"],
+        celerity_env_types=[env_type],
         celerity_situations=["all"],
         process_sensi=False,
         build_baseline=False,
@@ -4301,11 +4312,46 @@ if __name__ == "__main__":
     # Winter vs summer
     generate_celerity_diag(
         distance=["theta"],
-        celerity_env_types=["sw"],
+        celerity_env_types=[env_type],
         celerity_situations=["summer", "winter"],
         process_sensi=False,
         build_baseline=False,
     )
+
+
+if __name__ == "__main__":
+
+    run_all_plateform()
+
+    # # Run all for SW env
+    # build_celerity_baselines(env_types=["sw"])
+    # build_celerity_tests(env_types=["sw"], situations=None, n_profiles=1000)
+    # # Diag for each seasons
+    # for situation in ["all", "winter", "spring", "summer", "automn"]:
+    #     generate_celerity_diag(
+    #         distance=["theta"],
+    #         celerity_env_types=["sw"],
+    #         celerity_situations=[situation],
+    #         process_sensi=True,
+    #         build_baseline=False,
+    #     )
+
+    # # Diag for variations all
+    # generate_celerity_diag(
+    #     distance=["theta"],
+    #     celerity_env_types=["sw"],
+    #     celerity_situations=["all"],
+    #     process_sensi=False,
+    #     build_baseline=False,
+    # )
+    # # Winter vs summer
+    # generate_celerity_diag(
+    #     distance=["theta"],
+    #     celerity_env_types=["sw"],
+    #     celerity_situations=["summer", "winter"],
+    #     process_sensi=False,
+    #     build_baseline=False,
+    # )
 
     # build_celerity_tests(
     #     env_types=["sw"], situations=["all", "summer", "winter"], n_profiles=500

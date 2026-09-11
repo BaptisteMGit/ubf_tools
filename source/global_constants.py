@@ -86,6 +86,123 @@ mud_sand_sandy_mud_properties = {
     "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
 }
 
+# All from EMODnet
+sediments_EMODnet = {
+    "sand_properties": sand_properties,
+    "boulders_bedrock_properties": boulders_bedrock_properties,
+    "coarse_sediment_properties": coarse_sediment_properties,
+    "mixed_sediment_properties": mixed_sediment_properties,
+    "muddy_sand_sand_properties": muddy_sand_sand_properties,
+    "mud_sand_sandy_mud_properties": mud_sand_sandy_mud_properties,
+}
+
+# Document Thierry Garlan, 2010
+# Paramètres géoacoustiques extraits du tableau "Types de fond"
+#
+# rho  : densité (g/cm3)
+# c_p  : célérité des ondes P (m/s)
+# a_p  : atténuation des ondes P (dB/longueur d'onde)
+# c_s  : célérité des ondes S (m/s)
+# a_s  : atténuation des ondes S (dB/longueur d'onde)
+#
+# NOTE : les densités du document sont exprimées en kg/m3 dans
+#        l'en-tête mais les valeurs correspondent à des g/cm3.
+# NOTE : la dernière colonne semble correspondre à alpha_s.
+
+
+basalte_TG = {
+    "rho": 2.7,
+    "c_p": 5250,
+    "a_p": 0.1,
+    "c_s": 2500,
+    "a_s": 0.2,
+}
+
+calcaire_TG = {
+    "rho": 2.4,
+    "c_p": 3000,
+    "a_p": 0.1,
+    "c_s": 1500,
+    "a_s": 0.2,
+}
+
+craie_TG = {
+    "rho": 2.2,
+    "c_p": 2400,
+    "a_p": 0.2,
+    "c_s": 1000,
+    "a_s": 0.2,
+}
+
+cailloutis_TG = {
+    "rho": 2.2,
+    "c_p": 2500,
+    "a_p": 0.2,
+    "c_s": 1500,
+    "a_s": 0.2,
+}
+
+graviers_TG = {
+    "rho": 2.1,
+    "c_p": 2000,
+    "a_p": 0.4,
+    "c_s": 1000,
+    "a_s": 0.5,
+}
+
+sables_TG = {
+    "rho": 2.0,
+    "c_p": 1800,
+    "a_p": 0.6,
+    "c_s": 180,
+    "a_s": 1.5,
+}
+
+sables_fins_TG = {
+    "rho": 1.9,
+    "c_p": 1700,
+    "a_p": 0.7,
+    "c_s": 110,
+    "a_s": 2.5,
+}
+
+vase_TG = {
+    "rho": 1.8,
+    "c_p": 1600,
+    "a_p": 0.8,
+    "c_s": 95,
+    "a_s": 2.0,
+}
+
+silts_argileux_TG = {
+    "rho": 1.7,
+    "c_p": 1550,
+    "a_p": 1.0,
+    "c_s": 80,
+    "a_s": 1.5,
+}
+
+argiles_TG = {
+    "rho": 1.5,
+    "c_p": 1500,
+    "a_p": 0.2,
+    "c_s": 80,
+    "a_s": 1.0,
+}
+
+# Tous les sédiments d'après Thierry Garlan 2010
+sediments_TG = {
+    "basalte_TG": basalte_TG,
+    "calcaire_TG": calcaire_TG,
+    "craie_TG": craie_TG,
+    "cailloutis_TG": cailloutis_TG,
+    "graviers_TG": graviers_TG,
+    "sables_TG": sables_TG,
+    "sables_fins_TG": sables_fins_TG,
+    "vase_TG": vase_TG,
+    "silts_argileux_TG": silts_argileux_TG,
+    "argiles_TG": argiles_TG,
+}
 
 # ======================================================================================================================
 # Set paths depending on the os
@@ -97,3 +214,8 @@ if os.name == "nt":  # Windows
 
 else:  # Linux
     project_root = "/home/program/ubf_tools"
+
+
+if __name__ == "__main__":
+    for k, val in sediments_TG.items():
+        print(f"{k} : {val}")

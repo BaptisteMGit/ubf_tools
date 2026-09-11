@@ -10,17 +10,11 @@
              '.flp' input files consumed by the KRAKEN/FIELD Fortran
              executables.
 
-This module does NOT change the public API of the original file: same
-class names, same method names, same constructor signatures, same
-attribute names. It has been reorganized and documented to be easier to
-read, maintain, and test, and several latent bugs (see the
-"NOTE (bug ...)" comments below) have been fixed.
-
 ------------------------------------------------------------------------
 Overview of KRAKEN's '.env' format (to help navigate the code)
 ------------------------------------------------------------------------
 A '.env' file is a Fortran-style text file: each line holds one or more
-values followed by a human-readable comment. It is organized into
+values optionally followed by a human-readable comment. It is organized into
 blocks, in this order (see KrakenEnv.write_lines):
 
     1. Simulation title, nominal frequency, number of media
@@ -42,37 +36,6 @@ Every "Kraken<X>" class has the same responsibility:
       ready to be written to the '.env' file.
 ------------------------------------------------------------------------
 
-BUGS FIXED COMPARED TO THE ORIGINAL CODE (worth flagging / confirming):
-  1. KrakenField: the default value of phase_speed_limits was never
-     actually applied (it was overwritten right after by
-     np.array(phase_speed_limits), which re-converted the original
-     argument, still equal to None) -> crashed as soon as
-     phase_speed_limits was not explicitly provided.
-  2. KrakenEnv.__init__: the sediment layer max depth calculation used
-     self.bathy.bathy_depth.max() without checking that self.bathy
-     actually held data (the 'if self.bathy.use_bathy:' guard was
-     present as a comment but not applied) -> AttributeError as soon as
-     no bathymetry was explicitly provided.
-  3. KrakenEnv.__init__: in-place sort (`.sort()`) of an array derived
-     from a pandas DataFrame (bathy_range). With pandas' Copy-on-Write
-     mode (default since pandas 2.x, mandatory in pandas 3.x), this
-     array is read-only -> ValueError. Replaced with `np.sort(...)`
-     (out-of-place).
-  4. KrakenEnv.__init__: `float(self.freq)` crashed with recent numpy
-     (>=1.25) when self.freq is a single-element array (single
-     frequency case). Replaced with an explicit access to the first
-     element.
-  5. write_range_dependent_lines: when adding an SSP point interpolated
-     at the bathymetry depth, the code called
-     `np.append(depth, medium_copy.z_ssp, medium_copy.cs_ssp)` (3
-     positional arguments), which does not match np.append's signature
-     (np.append(arr, values)) and would have raised an error had this
-     branch ever been reached. Fixed to append the interpolated value at
-     the right place.
-
-These fixes are documented inline with the "NOTE (bug ...)" keyword
-everywhere they occur, so they remain easy to locate / revert if you
-prefer to handle them differently.
 """
 
 # ======================================================================================================================
@@ -101,10 +64,7 @@ def _broadcast_to_size(value, size):
 
     Many physical properties (celerity, density, attenuation...) can be
     given either as a scalar (constant value over the whole column) or
-    as an array matching the depth grid size. This function factors out
-    the "if it's a scalar, repeat it, otherwise keep it as is" pattern
-    that was duplicated about a dozen times in the original code (in
-    write_lines and plot_env in particular).
+    as an array matching the depth grid size.
 
     Args:
         value: scalar or numpy array.
@@ -123,8 +83,6 @@ def _check_same_size_or_scalar(z_ssp, other, name):
     """Check that 'other' has the same size as 'z_ssp' or is a scalar
     (size 1). Raises an explicit ValueError otherwise.
 
-    Factors out the 5 near-identical checks (cp, cs, rho, ap, ash) that
-    were duplicated in KrakenMedium.write_lines.
     """
     other_arr = np.asarray(other)
     if not (z_ssp.size == other_arr.size or other_arr.size == 1):
@@ -176,8 +134,7 @@ class KrakenMedium:
             rho (array-like|float): density (g/cm3).
             a_p (array-like|float): compressional wave attenuation.
             a_s (array-like|float): shear wave attenuation.
-            nmesh (int): desired initial number of mesh points (roughly
-                10 per vertical wavelength; 0 lets KRAKEN decide).
+            nmesh (int): desired initial number of mesh points (0 lets KRAKEN decide).
             sigma (float): RMS surface roughness (m).
         """
         self.interpolation_method = ssp_interpolation_method
@@ -249,11 +206,7 @@ class KrakenMedium:
         )
 
         # All scalar (size 1) properties are broadcast to the size of
-        # z_ssp so that a full line can be written for every depth. This
-        # is the only substantive difference with the original code,
-        # which handled an "all scalar" case separately via a
-        # 'scalar_flag' flag (which could even remain undefined if no
-        # scalar branch was taken -> potential UnboundLocalError).
+        # z_ssp so that a full line can be written for every depth.
         cp = _broadcast_to_size(self.cp_ssp, self.z_ssp.size)
         cs = _broadcast_to_size(self.cs_ssp, self.z_ssp.size)
         rho = _broadcast_to_size(self.rho, self.z_ssp.size)
@@ -406,7 +359,7 @@ class KrakenTopHalfspace:
 
         self.boundary_code = self._BOUNDARY_CODES[self.boundary_condition]
 
-        if self.boundary_condition == "reflection_coefficient":
+        if self.boundary_condition == "reflection_coefficient":  # NOTE: not tested yet
             warnings.warn(
                 "reflection_coefficient' boundary condition requires top "
                 "reflection coefficient to be provided in a separeted .'TRC' file"
@@ -414,7 +367,7 @@ class KrakenTopHalfspace:
         elif self.boundary_condition in self._NEEDS_HALFSPACE_PROPERTIES:
             self.set_halfspace_properties()
         elif self.boundary_condition in self._NEEDS_TWERSKY_PROPERTIES:
-            self.set_twersky_scatter()
+            self.set_twersky_scatter()  # NOTE: not tested yet
 
     def set_halfspace_properties(self):
         """Fetch the top halfspace physical properties from
@@ -433,7 +386,9 @@ class KrakenTopHalfspace:
 
     def set_twersky_scatter(self):
         """Fetch the Twersky scattering properties ("boss"-type
-        roughness) from self.twersky_scatter_properties."""
+        roughness) from self.twersky_scatter_properties.
+        NOTE: this functionnality as not been tested yet, use with caution.
+        """
         if self.twersky_scatter_properties is None:
             raise ValueError(
                 "You need to provide Twersky scatter properties when using "
@@ -468,6 +423,7 @@ class KrakenTopHalfspace:
         desc = "SSP interpolation, Top boundary condition, Attenuation units, Volume attenuation"
         slow_rootfinder_code = "." if slow_rootfinder else " "
         if slow_rootfinder:
+            warnings.warn("Slow root finder is only avaible in KRAKENC.")
             desc += ", Slow rootfinder"
 
         broadband_code = "B" if broadband_run else ""
@@ -771,17 +727,7 @@ class KrakenBottomHalfspace:
         """
         fig, axs = plt.subplots(1, 3, figsize=(15, 8), sharey=True)
         axs[0].set_ylabel("Depth (from water/sediment interface) [m]")
-        # NOTE (bug fixed): passing the scalar terminal halfspace value
-        # (e.g. self.cp_bot_halfspace) for BOTH points of z_in_bottom
-        # always drew an isovelocity (flat) bottom, even when a genuine
-        # sediment GRADIENT was configured via 'sediment_top_properties'
-        # (see this class's docstring) -- which the '.env' file itself
-        # already writes correctly. Fixed the same way as KrakenEnv's
-        # own plot_env(): use cp_sedim_top (etc.) for the top point and
-        # cp_bot_halfspace (etc.) for the bottom one, matching
-        # write_lines() exactly; this defaults back to a flat bottom
-        # whenever no gradient is configured (cp_sedim_top ==
-        # cp_bot_halfspace in that case -- see set_halfspace_properties()).
+
         plot_ssp(
             cp_ssp=np.array([self.cp_sedim_top, self.cp_bot_halfspace]),
             cs_ssp=np.array([self.cs_sedim_top, self.cs_bot_halfspace]),
@@ -1059,15 +1005,6 @@ class KrakenEnv:
                 is raised on mismatch -- see "BUG FIXED" note below for
                 why this validation exists.
 
-        Note:
-            The kraken_* arguments default to None and are resolved to a
-            default instance inside the constructor body, rather than
-            using a mutable object directly as a parameter default
-            (classic Python pitfall: a default object is created only
-            once, at function definition time, and would then be shared
-            -- and mutated in place -- across every subsequent call that
-            does not supply that argument).
-
         NOTE (bug fixed): 'nmedia' used to be a plain user-supplied
         integer (default 1), never cross-checked against how many medium
         blocks the '.env' file actually ends up containing. Whenever
@@ -1101,11 +1038,7 @@ class KrakenEnv:
             self.broadband_run = True
         else:
             self.broadband_run = False
-        # NOTE (bug fixed): `float(self.freq)` raised a TypeError with
-        # numpy >= 1.25 when self.freq is a single-element array (single
-        # frequency case): `float()` on a non-0-D array is no longer
-        # allowed. We explicitly extract the first (and only, after the
-        # sort above) element.
+
         self.nominal_frequency = float(self.freq[0])
 
         self.top_hs = (
@@ -1154,13 +1087,6 @@ class KrakenEnv:
         self._init_modes_range(rModes, rModes_units)
 
         # --- Buffer sediment layer thickness, if not already set.
-        # NOTE (bug fixed): the original code called
-        # `self.bathy.bathy_depth.max()` without ever checking that
-        # `self.bathy` actually held bathymetry data (the matching guard
-        # was present ... but commented out). Result: AttributeError as
-        # soon as kraken_bathy was not explicitly provided (a very common
-        # use case: flat bottom). Falling back to the water column's max
-        # depth is the natural default for a flat bottom.
         if self.bottom_hs.sedim_layer_max_depth is None:
             if self.bathy.use_bathy:
                 z_max = self.bathy.bathy_depth.max()
@@ -1190,12 +1116,6 @@ class KrakenEnv:
         else:
             modes_range = np.asarray(self.bathy.bathy_range, dtype=float)
 
-        # NOTE (bug fixed): sorting was done in place with `.sort()`. An
-        # array derived from a pandas DataFrame (via `.values`) can be
-        # read-only with pandas' Copy-on-Write mode (default since
-        # pandas 2.x, mandatory in pandas 3.x), which raised
-        # `ValueError: sort array is read-only`. `np.sort` (out-of-place)
-        # works in every case.
         modes_range = np.sort(modes_range)
 
         if modes_range[0] != 0:
@@ -1277,9 +1197,7 @@ class KrakenEnv:
         # KrakenBottomHalfspace.derive_sedim_layer_max_depth), so EVERY
         # profile's terminal boundary -- including the first -- already
         # sits at least as deep as every other profile, regardless of
-        # where the true deepest point falls along the range. So: fail
-        # loudly and explain the fix, rather than let this reach
-        # FIELD.exe at all.
+        # where the true deepest point falls along the range.
         if self.bathy.use_bathy and not self.bottom_hs.add_sediment_buffer_layer:
             deepest_at_start = self.bathy.bathy_depth[0] >= self.bathy.bathy_depth.max()
             if not deepest_at_start:
@@ -1422,14 +1340,6 @@ class KrakenEnv:
             cp_new_point = np.interp(depth, medium_copy.z_ssp, medium_copy.cp_ssp)
             cp = np.append(cp, cp_new_point)
 
-            # NOTE (bug fixed): the original code called, e.g.,
-            # `np.append(depth, medium_copy.z_ssp, medium_copy.ash)`
-            # with 3 positional arguments, whereas np.append's signature
-            # is `np.append(arr, values)`. This call would have raised a
-            # TypeError as soon as a property (cs/rho/ap/ash) was
-            # provided as a full array (same size as z_ssp) rather than
-            # as a scalar, in a range-dependent case with profile
-            # extension.
             for attr_name in ("cs_ssp", "rho", "ap", "ash"):
                 attr = getattr(medium_copy, attr_name)
                 if attr.size == self.medium.z_ssp.size:
@@ -1542,23 +1452,6 @@ class KrakenEnv:
         assert z_in_bottom.size == 2, "z_in_bottom is always [top, bottom]"
         z_env = np.append(self.medium.z_ssp, z_in_bottom + z_bottom)
 
-        # NOTE (bug fixed): the sediment/bottom half of cp_env/cs_env/
-        # ap_env/ash_env/rho_env used to broadcast the SAME terminal
-        # halfspace value (e.g. self.bottom_hs.cp_bot_halfspace) to BOTH
-        # points of z_in_bottom, i.e. always drawing an isovelocity
-        # (flat) bottom -- even when a genuine sediment GRADIENT was
-        # configured via KrakenBottomHalfspace's 'sediment_top_properties'
-        # (see its docstring), which is written correctly into the
-        # '.env' file itself (a real two-point gradient) but was never
-        # reflected in this plot. Fixed by using the TOP-of-sediment
-        # value (self.bottom_hs.cp_sedim_top, etc.) for the first point
-        # and the terminal/basement value for the second, matching
-        # exactly what write_lines() puts in the '.env'. This is safe
-        # for every other configuration too: cp_sedim_top (etc.)
-        # already defaults to cp_bot_halfspace (etc.) whenever no
-        # gradient is configured (see KrakenBottomHalfspace's
-        # set_halfspace_properties()), so a flat bottom is still drawn
-        # flat -- only a genuine gradient changes what gets plotted.
 
         cp_env = np.append(
             _broadcast_to_size(self.medium.cp_ssp, n_med),

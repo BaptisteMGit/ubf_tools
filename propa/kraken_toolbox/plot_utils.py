@@ -10,71 +10,6 @@
              shapes, transmission-loss (TL) maps and range profiles,
              and environment profiles (SSP, attenuation, density).
 
-This module does NOT change the public API of the original file (same
-function names/signatures, two new functions added at the end:
-plot_tl_profile / plot_tl_profile_multi_freq, factored out of the
-duplicated code that used to live in every example case script -- see
-propa/kraken_toolbox/examples/).
-
-BUGS FIXED COMPARED TO THE ORIGINAL FILE (all reproduced and confirmed
-before fixing -- see the project's test suite):
-  1. plotmode() / plotmode_several_freqs(): `plt.subplots(1, Nplots, ...)`
-     returns a single Axes object (not an array) when Nplots == 1 --
-     `ax[0].invert_yaxis()` then raised
-     `TypeError: 'Axes' object is not subscriptable`. Confirmed with a
-     real 10 Hz mode file (a single mode at that frequency). Fixed with
-     `squeeze=False` + `.ravel()`, which always yields a flat array of
-     Axes regardless of Nplots.
-  2. plotmode_several_freqs(): the subplot grid was sized to the FIRST
-     frequency's mode count (Nplots computed inside the loop, but the
-     figure only created `if i_f == 0`). Since the number of modes
-     genuinely varies with frequency (confirmed on real data: 1, 3, 4,
-     5, 7 modes at 10/20/30/40/50 Hz for the same environment), any
-     later frequency with MORE modes than the first one raised an
-     IndexError on `ax[iplot]`. Fixed by first computing every
-     frequency's Nplots, then sizing the figure to the maximum.
-  3. plotmode() / plotmode_several_freqs(): `plt.title([...])` /
-     `fig.suptitle([...])` were passed a Python LIST instead of a
-     string, producing a literal `"['title', 'Freq = ... Hz']"` in the
-     figure (brackets and quotes included). Fixed to build a proper
-     string.
-  4. plotshd(): `filename = filename.lower()` unconditionally lowercased
-     the path before opening it. This silently breaks on any
-     case-sensitive filesystem (Linux, macOS) whenever the real file
-     name contains uppercase characters -- there is no reason to alter
-     a caller-supplied path's case. Removed.
-  5. plotshd_from_pressure_field(): the default-title branch was
-
-         title = PlotTitle.replace("_", " ")
-         +f'\\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
-
-     -- the second line was meant to be concatenated onto 'title' but
-     the `+` was never assigned back (`title = title + ...` or `+=`),
-     so it was parsed as a separate, useless statement: a unary '+' on
-     a string literal, which Python raises `TypeError: bad operand type
-     for unary +: 'str'` for. This means: calling
-     plotshd_from_pressure_field() without an explicit 'title' ALWAYS
-     crashed. Confirmed and fixed by concatenating properly, matching
-     the (correct) equivalent code already present in plotshd().
-  6. plot_ssp(): right before checking whether the S-wave celerity
-     curve should be hidden (`if np.all(cs == 0) and not
-     np.all(cp == 0):`), the code did `cs = 0`, unconditionally
-     discarding the real 'cs' array (already resolved from 'cs_ssp' a
-     few lines above) and replacing it with the literal scalar 0. Since
-     `np.all(0 == 0)` is trivially True, the S-wave curve was hidden
-     EVERY TIME cp was not all-zero -- i.e. for any normal fluid-over-
-     elastic environment, genuine non-zero shear-wave data was silently
-     never plotted. Confirmed with a synthetic elastic medium (real,
-     non-zero cs values): the 'S-wave' curve was missing from the plot
-     even though it should have been there. Fixed by removing the
-     erroneous `cs = 0` line.
-
-Two new functions were added, factored out of the near-identical
-'read_tl_grid' / 'plot_tl_profile_at_depth' / 'plot_tl_profile_multi_freq'
-helpers duplicated across every example script:
-  - plot_tl_profile(...): TL vs. range at a single fixed receiver depth.
-  - plot_tl_profile_multi_freq(...): the same, one line per frequency,
-    for broadband runs.
 """
 
 # ======================================================================================================================
@@ -98,9 +33,9 @@ from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 # ======================================================================================================================
 def _grid_shape(n_panels, ncols=None, panel_w=3.2, panel_h=4.2, target_fig_aspect=1.6):
     """Compute a (nrows, ncols) grid for 'n_panels' subplots, chosen so
-    the OVERALL figure comes out landscape (wider than tall), given
-    that each individual panel is itself taller than wide
-    (panel_w x panel_h, per user request).
+    the panels are arranged in a layout that WOULD come out landscape
+    (wider than tall) at panel_w x panel_h each, given that each
+    individual panel is itself taller than wide.
 
     A grid that is "roughly square" in terms of CELL COUNT (e.g. 2x3
     for 6 panels) is not the same as a landscape FIGURE once each cell
@@ -117,9 +52,10 @@ def _grid_shape(n_panels, ncols=None, panel_w=3.2, panel_h=4.2, target_fig_aspec
         n_panels (int): number of subplots needed.
         ncols (int|None): force this many columns instead of searching
             for a landscape-optimal layout.
-        panel_w, panel_h (float): the size (inches) of a single panel,
-            matching plotmode's own figsize-per-panel -- must be kept
-            in sync with the figsize passed to plt.subplots() there.
+        panel_w, panel_h (float): the NOTIONAL size (inches) of a
+            single panel, used only to score candidate (nrows, ncols)
+            layouts here -- no longer the actual per-panel figsize
+            plotmode() renders at (see its own NOTE).
         target_fig_aspect (float): the ideal overall width/height ratio
             to aim for among the landscape-qualifying layouts (1.6 is a
             fairly standard "wide" report-figure ratio; the search does
@@ -175,25 +111,6 @@ def plotmode(
     simply contributes no curve to the subplots beyond its own count
     (grid size is set by whichever frequency has the most).
 
-    This single function replaces the previous 'plotmode' (single
-    frequency) and 'plotmode_several_freqs' (several frequencies), and
-    fixes two presentation issues found in them along the way:
-      - the bathymetry/seafloor line ('bathy_depth') is now always
-        drawn on EVERY subplot. In the old 'plotmode_several_freqs',
-        it was only added while processing the FIRST frequency
-        (`if bathy_depth is not None and i_f == 0:`), inside a loop
-        bounded by THAT frequency's own mode count -- so subplots that
-        only existed because a LATER frequency had more modes never
-        got the line at all.
-      - the legend used to be rebuilt on every subplot (or, for
-        several frequencies, repeatedly on the first one) with a
-        per-frequency label on the "real part" curve only (the
-        imaginary part was never labelled at all). It is now built
-        ONCE, explicitly, as a single figure-level legend covering
-        every frequency (if more than one) and the real/imaginary line
-        style -- see the module docstring's third bug-fix-adjacent note
-        above for why a single, explicit legend is more robust than
-        accumulating one across repeated `ax.legend()` calls.
 
     Args:
         filename (str): path to the '.mod' file (extension optional).
@@ -370,16 +287,12 @@ def _render_mode_grid(
         raise Exception("No modes in mode file")
     mode_numbers = requested_modes[:n_panels]
 
-    # NOTE (per user request): panels are now taller than they are wide
-    # (a "portrait" aspect ratio suits a depth profile better than the
-    # previous, wider-than-tall layout).
     nrows, ncols = _grid_shape(n_panels, ncols=ncols)
 
     pfig = PubFigure(titlepad=25, labelpad=25)
     fig, axs = plt.subplots(
         nrows,
         ncols,
-        # figsize=(3.2 * ncols, 4.2 * nrows),
         figsize=(16, 12),
         sharey=True,
         squeeze=False,
@@ -411,21 +324,12 @@ def _render_mode_grid(
                 max_abs, np.max(np.abs(phi_col.real)), np.max(np.abs(phi_col.imag))
             )
 
-        # NOTE (per user request): each panel's x-axis is centered on
-        # zero (symmetric limits), rather than matplotlib's default
-        # autoscale (which need not be centered, making it harder to
-        # visually compare the positive/negative excursions of a mode).
         if max_abs > 0:
             ax.set_xlim(-1.05 * max_abs, 1.05 * max_abs)
 
-        # NOTE (bug fixed, see docstring): drawn unconditionally, on
-        # EVERY panel, regardless of which frequency's mode count
-        # determines this panel's existence.
         if bathy_depth is not None:
             ax.axhline(y=bathy_depth, color="r", linestyle="--")
 
-        # NOTE (per user request): the mode number is now the subplot
-        # TITLE, not an x-axis label.
         ax.set_title(f"Mode {mode_number}")
 
         if normalize_mode:
@@ -436,9 +340,6 @@ def _render_mode_grid(
 
     axs_flat[0].invert_yaxis()  # shared y-axis -> propagates to every panel
 
-    # NOTE (per user request): a single legend for the whole figure,
-    # built explicitly rather than accumulated from repeated
-    # per-subplot ax.legend() calls (see docstring).
     legend_handles = []
     if multi_freq:
         for i_f, f in enumerate(freqs):
@@ -462,25 +363,204 @@ def _render_mode_grid(
         legend_handles.append(
             Line2D([0], [0], color="r", linestyle="--", label="Seafloor")
         )
-    # NOTE (bug fixed): the legend used to be placed with
-    # `loc="center left", bbox_to_anchor=(1.0, 0.5)`, which positions it
-    # OUTSIDE the figure's own canvas (past its right edge). Without the
-    # caller remembering to pass `bbox_inches="tight"` to `savefig(...)`
-    # -- none of this project's example scripts did -- matplotlib's
-    # default save behaviour only captures the canvas as sized by
-    # figsize, silently CLIPPING the legend out of the saved file
-    # entirely. `loc="outside center right"`, combined with
-    # constrained_layout=True (already enabled above), tells matplotlib
-    # to reserve real space for the legend WITHIN the canvas (shrinking
-    # the subplot grid slightly to make room) instead of floating it
-    # past the canvas edge, so it is always included on save, with or
-    # without `bbox_inches="tight"`.
+
     fig.legend(handles=legend_handles, loc="outside center right")
 
     fig.supxlabel("Mode amplitude")
     fig.supylabel("Depth [m]")
     freqs_str = ", ".join(f"{f:g}" for f in freqs)
     fig.suptitle(f'{all_modes[0]["title"]}\nFreq = {freqs_str} Hz')
+    return fig
+
+
+# ======================================================================================================================
+# Group speed (vg) / phase speed (vphi)
+# =====================================================================================================================
+def _read_krm(filename, freqs, requested_modes):
+    """Read modal wavenumbers kr(freq, mode) across several
+    frequencies, padded with NaN so every frequency's row has the same
+    number of columns (matching whichever frequency actually has the
+    most modes) -- shared by plot_group_speed()/plot_phase_speed()/
+    plot_phase_and_group_speed() (factored out to avoid re-reading the
+    same '.mod' file three times with three near-identical copies of
+    this loop).
+
+    Args:
+        filename (str): path to the '.mod' file (extension optional).
+        freqs (np.ndarray): frequencies (Hz) to read, in order.
+        requested_modes (np.ndarray): 1-based mode indices to request
+            at each frequency.
+
+    Returns:
+        np.ndarray: complex, shape (n_freq, n_modes_max).
+
+    Raises:
+        Exception: if a frequency has no modes at all (see readmodes()).
+    """
+    all_modes = []
+    for f in freqs:
+        Modes = readmodes(filename, f, requested_modes)
+        if Modes["M"] == 0:
+            raise Exception(f"No modes in mode file at {f} Hz")
+        all_modes.append(Modes)
+
+    n_max_modes = np.max([modes["k"].size for modes in all_modes])
+
+    krm = []
+    for modes_f in all_modes:
+        n_missing_modes = n_max_modes - modes_f["k"].size
+        krm_f = np.pad(
+            modes_f["k"], (0, n_missing_modes), mode="constant", constant_values=np.nan
+        )
+        krm.append(krm_f)
+    return np.array(krm)
+
+
+def plot_group_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot group speed vg = domega/dkr (numerically differentiated
+    across the given frequencies) for each mode, as a function of
+    frequency.
+
+    Args:
+        filename (str): path to the '.mod' file (extension optional).
+        freq (float|array-like): frequency/frequencies (Hz) to read and
+            plot -- needs at least 2 distinct values for the derivative
+            to mean anything; pass a reasonably dense array for a
+            smooth-looking curve.
+        n_modes (int): number of modes to plot, starting from mode 1,
+            when 'modes' is not given. Capped automatically by however
+            many modes are actually available (at whichever frequency
+            has the most).
+        modes (array-like|None): explicit 1-based mode indices to plot
+            instead of 1..n_modes (e.g. [1, 5, 10, 20] to inspect a
+            sparse selection rather than the lowest-order modes). Give
+            them in ascending order.
+        ax (matplotlib.axes.Axes|None): plot into this axis instead of
+            creating a new figure -- lets plot_phase_and_group_speed()
+            (and any other caller wanting to overlay this on an
+            existing axis) reuse this function directly.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+
+    # Derive vgm = domega/dkrm (real part of kr -- the imaginary part
+    # represents modal attenuation).
+    omega = 2 * np.pi * freqs
+    vgm = np.full(krm.shape, np.nan)
+    for im in range(krm.shape[1]):
+        kr = np.real(krm[:, im])
+        vgm[:, im] = np.gradient(omega, kr)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    for im, m in enumerate(requested_modes):
+        ax.plot(freqs, vgm[:, im], label=f"Mode {m}")
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Group speed [m.s$^{-1}$]")
+    ax.legend()
+
+    return fig
+
+
+def plot_phase_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot phase speed vphi = omega/kr for each mode, as a function of
+    frequency.
+
+    Args, Returns: see plot_group_speed() (same signature/convention --
+    the only difference is the quantity plotted).
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+
+    # vphim = omega / krm (real part of krm).
+    omega = 2 * np.pi * freqs
+    with np.errstate(divide="ignore", invalid="ignore"):
+        vphim = omega[:, np.newaxis] / np.real(krm)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    for im, m in enumerate(requested_modes):
+        ax.plot(freqs, vphim[:, im], label=f"Mode {m}")
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Phase speed [m.s$^{-1}$]")
+    ax.legend()
+
+    return fig
+
+
+def plot_phase_and_group_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot BOTH phase speed (vphi = omega/kr) and group speed
+    (vg = domega/dkr) for the same modes, overlaid on ONE axis: solid
+    lines for phase speed, dashed lines for group speed, matching
+    colors per mode (each mode's group-speed curve reuses the color
+    matplotlib auto-assigned to that mode's phase-speed curve, so the
+    two are visually paired without needing an explicit color list).
+    The legend distinguishes modes (by color, one entry each) from the
+    phase/group distinction (by linestyle, 2 extra entries) rather than
+    listing "Mode 1 (phase)"/"Mode 1 (group)"/... separately.
+
+    Args, Returns: see plot_group_speed() (same signature/convention).
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+    omega = 2 * np.pi * freqs
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        vphim = omega[:, np.newaxis] / np.real(krm)
+
+    vgm = np.full(krm.shape, np.nan)
+    for im in range(krm.shape[1]):
+        kr = np.real(krm[:, im])
+        vgm[:, im] = np.gradient(omega, kr)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    mode_handles = []
+    for im, m in enumerate(requested_modes):
+        (line_phase,) = ax.plot(freqs, vphim[:, im], linestyle="-")
+        ax.plot(freqs, vgm[:, im], color=line_phase.get_color(), linestyle="--")
+        mode_handles.append(
+            Line2D([0], [0], color=line_phase.get_color(), label=f"Mode {m}")
+        )
+
+    style_handles = [
+        Line2D([0], [0], color="k", linestyle="-", label="Phase speed"),
+        Line2D([0], [0], color="k", linestyle="--", label="Group speed"),
+    ]
+    ax.legend(handles=mode_handles + style_handles)
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Speed [m.s$^{-1}$]")
+
     return fig
 
 
@@ -537,41 +617,12 @@ def plotshd(
     Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter
     https://oalib.hlsresearch.com/AcousticsToolbox/
     """
-    # NOTE (bug fixed): the original code did
-    # `filename = filename.lower()` unconditionally. This silently
-    # breaks on any case-sensitive filesystem (Linux, macOS) as soon as
-    # the real file name contains an uppercase character -- there is no
-    # legitimate reason to alter a caller-supplied path's case. Removed.
+
     PlotTitle, _, _, _, read_freq, _, Pos, pressure = readshd(
         filename=filename, freq=freq
     )
-
-    # NOTE: squeeze() (rather than the original's hard-coded
-    # `np.squeeze(pressure, axis=(0, 1))`) is more robust: it always
-    # collapses every singleton axis (theta, source depth, and -- for a
-    # single scalar 'freq', already handled by readshd -- the frequency
-    # axis too), leaving the (depth, range) 2D grid this function needs,
-    # regardless of exactly which axes happen to be singleton for a
-    # given call. 'freq' must still be a single scalar, not a list: a
-    # genuine multi-frequency array would leave an extra non-singleton
-    # axis that squeeze() cannot remove, and pcolor below would then
-    # raise a clear shape-mismatch error rather than silently plotting
-    # the wrong slice.
     pressure = np.squeeze(pressure)
 
-    # NOTE (bug fixed): this function used to only return the figure
-    # handle when (m, n, p) were all given (subplot mode), and `None`
-    # otherwise -- even though the common, no-subplot case still
-    # creates a brand new figure and draws into it. Every caller that
-    # naturally expects `plotshd(...)` to hand back the figure it just
-    # drew (e.g. to then call `fig.savefig(...)`) got an
-    # `AttributeError: 'NoneType' object has no attribute 'savefig'`
-    # in that common case -- confirmed to break every example case
-    # script in propa/kraken_toolbox/examples/ that calls plotshd()
-    # without (m, n, p). Fixed by always resolving and returning the
-    # actual Figure that owns 'axis', regardless of how it was
-    # obtained (freshly created, a new subplot, or a caller-supplied
-    # axis).
     if axis is None:
         if m is not None and n is not None and p is not None:
             # Create a subplot
@@ -787,15 +838,6 @@ def plotshd_from_pressure_field(
     axis.tick_params(axis="both", labelsize=TICKS_FONTSIZE)
 
     if title is None:
-        # NOTE (bug fixed): the original code built this exact string
-        # across two statements, `title = PlotTitle.replace(...)` then
-        # `+f'...'` on its own line -- the second line's result was
-        # never assigned back to 'title' (a plain `+` is not `+=`), and
-        # applying unary '+' to a string raises `TypeError: bad operand
-        # type for unary +: 'str'`. This meant calling this function
-        # without an explicit 'title' ALWAYS crashed. Confirmed and
-        # fixed by concatenating properly (matching the equivalent,
-        # already-correct code in plotshd()).
         title = (
             PlotTitle.replace("_", " ")
             + f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
@@ -919,6 +961,11 @@ def plot_tl_profile(
     r, z_m, TL = _read_tl_grid(filename, freq, units=units)
     iz = int(np.argmin(np.abs(z_m - rcv_depth)))
     actual_depth = z_m[iz]
+
+    if r.size == 1:
+        TL = TL[:, np.newaxis]
+    if z_m.size == 1:
+        TL = TL[np.newaxis, :]
 
     if ax is None:
         pfig = PubFigure(titlepad=50, labelpad=25)
@@ -1119,17 +1166,6 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
         max_cp = np.max(cp)
         plot_cp = True
 
-    # NOTE (bug fixed): the original code did `cs = 0` right here,
-    # UNCONDITIONALLY discarding the real 'cs' array resolved just
-    # above and replacing it with the literal scalar 0, before checking
-    # `np.all(cs == 0)`. Since `np.all(0 == 0)` is trivially True, the
-    # S-wave curve was hidden EVERY TIME cp was not all-zero -- i.e.
-    # for any normal fluid-over-elastic environment, genuine non-zero
-    # shear-wave data was silently never plotted. Confirmed with a
-    # synthetic elastic medium (real, non-zero cs values): the 'S-wave'
-    # curve was missing from the plot even though it should have been
-    # there. The erroneous reassignment is simply removed here; 'cs' is
-    # the real array resolved above.
     if np.all(cs == 0) and not np.all(cp == 0):
         min_cs = np.nan
         max_cs = np.nan

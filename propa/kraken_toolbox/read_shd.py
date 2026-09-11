@@ -8,8 +8,7 @@
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Read a shade file ('.shd') produced by FIELD.exe.
 
-This module does NOT change the public API of the original file (same
-function names/signatures). Adapted from the original Matlab Acoustics
+Adapted from the original Matlab Acoustics
 Toolbox by Michael B. Porter, https://oalib.hlsresearch.com/AcousticsToolbox/
 
 ------------------------------------------------------------------------
@@ -67,21 +66,7 @@ def readshd(filename, xs=None, ys=None, freq=None):
     Returns:
         See readshd_bin.
     """
-    # NOTE (dead branching removed): the original code had 3 separate
-    # branches (freq is None + xs is None / freq is None + xs is not
-    # None / freq is not None), each calling readshd_bin with a
-    # different subset of keyword arguments explicitly set to None. But
-    # readshd_bin already defaults xs/ys/freq to None, so passing None
-    # explicitly for an argument is strictly equivalent to omitting it.
-    # All 3 branches were therefore calling readshd_bin with the exact
-    # same effective arguments as a single unconditional call would --
-    # this is a pure simplification, not a behaviour change (verified:
-    # for every combination of xs/ys/freq, this single call produces
-    # identical results to the original 3-branch dispatch). One
-    # practical benefit: xs/ys and freq can now genuinely be supplied
-    # together (the original silently dropped xs/ys whenever freq was
-    # also given, since the `freq is not None` branch never forwarded
-    # them).
+
     return readshd_bin(filename=filename, xs=xs, ys=ys, freq=freq)
 
 
@@ -157,12 +142,6 @@ def readshd_bin(filename, xs=None, ys=None, freq=None):
             f"readshd_bin.py: No shade file with the name {filename} exists"
         ) from exc
 
-    # NOTE (robustness fix): the original code never closed 'fid' on an
-    # error path (only at the very end, on success). Any exception
-    # raised while parsing (e.g. a bad 'seek', a malformed file) would
-    # leak the file handle. Wrapping the rest of the function in
-    # try/finally guarantees fid.close() runs in every case, without
-    # changing the parsing logic itself.
     try:
         return _read_shd_from_open_file(fid, xs=xs, ys=ys, freq=freq)
     finally:
@@ -176,17 +155,7 @@ def _read_shd_from_open_file(fid, xs, ys, freq):
     docstring for the return value description, and the module docstring
     for the binary record layout.
     """
-    # NOTE (bug fixed): every 'int(np.fromfile(..., count=1))' /
-    # 'float(np.fromfile(..., count=1))' call below used to crash with
-    # `TypeError: only 0-dimensional arrays can be converted to Python
-    # scalars` on numpy >= 1.25 -- np.fromfile(..., count=1) returns a
-    # 1-element, 1-D array, and int()/float() on a non-0-D array is no
-    # longer allowed. This affected every single '.shd' file read (not
-    # just an edge case), and was only caught by round-tripping a
-    # synthetic '.shd' file in the test suite (see
-    # test_read_shd.py::TestReadshdBinSyntheticFile) -- no test in the
-    # previous pass actually exercised the real binary parsing. Fixed by
-    # indexing the first (only) element explicitly.
+
     recl = int(np.fromfile(fid, dtype=np.int32, count=1)[0])  # record length in bytes
     title = fid.read(80).decode("utf-8").strip()  # read and decode the title
 
@@ -264,8 +233,11 @@ def _read_shd_from_open_file(fid, xs, ys, freq):
             fid, freq, freqVec, Ntheta, Nsz, Nrcvrs_per_range, Nrr, recl, pressure
         )
         read_freq = freqVec[
-            np.array([0]) if freq is None
-            else np.array([np.argmin(np.abs(freqVec - f)) for f in freq])
+            (
+                np.array([0])
+                if freq is None
+                else np.array([np.argmin(np.abs(freqVec - f)) for f in freq])
+            )
         ]
         # Get rid of the useless first dimension in case of single
         # frequency (mainly for coherence with other functions like
@@ -274,11 +246,7 @@ def _read_shd_from_open_file(fid, xs, ys, freq):
             pressure = pressure[0, ...]
     else:
         # NOTE: this branch is inherited from the original MATLAB
-        # function and, per the original author's own comment, "might
-        # not work anymore" -- it has no automated test coverage here
-        # (no real-world sample file exercising this path was
-        # available) and should be validated against a known-good
-        # '.shd' file before being relied upon.
+        # function and might not work anymore.
         read_freq = None
         pressure = _read_pressure_by_source_position(
             fid, Pos, xs, ys, Ntheta, Nsz, Nrcvrs_per_range, Nrr, recl
@@ -287,7 +255,9 @@ def _read_shd_from_open_file(fid, xs, ys, freq):
     return title, PlotType, freqVec, freq0, read_freq, atten, Pos, pressure
 
 
-def _read_pressure_by_frequency(fid, freq, freqVec, Ntheta, Nsz, Nrcvrs_per_range, Nrr, recl, pressure):
+def _read_pressure_by_frequency(
+    fid, freq, freqVec, Ntheta, Nsz, Nrcvrs_per_range, Nrr, recl, pressure
+):
     """Read the pressure field for the frequency/frequencies closest to
     'freq' (or the first stored frequency if freq is None), filling and
     returning 'pressure' (pre-allocated by the caller)."""
@@ -309,7 +279,9 @@ def _read_pressure_by_frequency(fid, freq, freqVec, Ntheta, Nsz, Nrcvrs_per_rang
                     )
                     status = fid.seek(recnum * 4 * recl)
                     if status == -1:
-                        raise ValueError("Seek to specified record failed in readshd_bin")
+                        raise ValueError(
+                            "Seek to specified record failed in readshd_bin"
+                        )
 
                     temp = np.fromfile(fid, dtype=np.float32, count=2 * Nrr)
                     pressure[idx_f_pressure, itheta, isz, irz, :] = (
@@ -318,7 +290,9 @@ def _read_pressure_by_frequency(fid, freq, freqVec, Ntheta, Nsz, Nrcvrs_per_rang
     return pressure
 
 
-def _read_pressure_by_source_position(fid, Pos, xs, ys, Ntheta, Nsz, Nrcvrs_per_range, Nrr, recl):
+def _read_pressure_by_source_position(
+    fid, Pos, xs, ys, Ntheta, Nsz, Nrcvrs_per_range, Nrr, recl
+):
     """Read the pressure field at the source grid point closest to
     (xs, ys). See readshd_bin's docstring: this is a legacy code path,
     validate against a known-good file before relying on it.

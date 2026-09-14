@@ -2616,6 +2616,68 @@ def _celerity_profile_rmse(z_baseline, c_p_baseline, z_test, c_p_test):
     return np.sqrt(np.mean((c_p_test - c_p_baseline_interp) ** 2, axis=-1))
 
 
+### F1 score ###
+def get_min_max_idx(arr: np.ndarray, axs: int = 1, pad: bool = True) -> np.ndarray:
+    """Find local minima and maxima in array."""
+    grad = np.diff(arr, axis=axs)
+    grad_sign = np.sign(grad)
+    min_max = np.abs(np.sign(np.diff(grad_sign, axis=axs)))
+    if pad:
+        pad_shape = list(min_max.shape)
+        pad_shape[axs] = 1
+        min_max = np.concatenate(
+            [np.zeros(pad_shape), min_max, np.zeros(pad_shape)], axis=axs
+        )
+    return min_max
+
+
+def get_f1_score(
+    min_max_idx_truth: np.ndarray,
+    min_max_idx_ae: np.ndarray,
+    axs: int = 1,
+    kernel_size: int = 10,
+) -> np.ndarray:
+    """Compute F1 score for extremum detection."""
+    from scipy.ndimage import convolve
+
+    kernel_shape = [1] * min_max_idx_truth.ndim
+    kernel_shape[axs] = kernel_size
+    kernel = np.ones(kernel_shape)
+    truth_expanded = convolve(min_max_idx_truth, kernel, mode="constant", cval=0.0)
+    ae_expanded = convolve(min_max_idx_ae, kernel, mode="constant", cval=0.0)
+
+    true_positives = (truth_expanded > 0) & (min_max_idx_ae > 0)
+    num_true_positives = np.sum(true_positives, axis=axs)
+    false_positives = (truth_expanded == 0) & (min_max_idx_ae > 0)
+    num_false_positives = np.sum(false_positives, axis=axs)
+    false_negatives = (min_max_idx_truth > 0) & (ae_expanded == 0)
+    num_false_negatives = np.sum(false_negatives, axis=axs)
+
+    precision_den = num_true_positives + num_false_positives
+    recall_den = num_true_positives + num_false_negatives
+    precision_score = np.where(
+        precision_den == 0, 0, num_true_positives / precision_den
+    )
+    recall_score = np.where(recall_den == 0, 0, num_true_positives / recall_den)
+    sum_scores = precision_score + recall_score
+    f1_score = np.where(
+        sum_scores == 0, 0, 2 * (precision_score * recall_score) / sum_scores
+    )
+
+    return f1_score
+
+
+def _celerity_profile_f1_score(
+    z_baseline, c_p_baseline, z_test, c_p_test, kernel_size=1
+):
+    min_max_idx_truth = get_min_max_idx(c_p_baseline[np.newaxis, :], axs=1, pad=False)
+    min_max_idx_ae = get_min_max_idx(c_p_test, axs=1, pad=False)
+    f1_score = get_f1_score(
+        min_max_idx_truth, min_max_idx_ae, axs=1, kernel_size=kernel_size
+    )
+    return f1_score
+
+
 def _save_celerity_rmse_results(situation, profile_idx, rmse, result_dir):
     """Save the per-profile RMSE-from-baseline-profile results (see
     _celerity_profile_rmse()) for ONE situation to a small, dedicated
@@ -2639,6 +2701,24 @@ def _save_celerity_rmse_results(situation, profile_idx, rmse, result_dir):
     return path
 
 
+def _save_celerity_f1_score_results(situation, profile_idx, f1_score, result_dir):
+    """
+    Args:
+        situation (str): see CELERITY_SITUATIONS.
+        profile_idx, rmse (array-like): equal-length 1D arrays.
+        result_dir (str): directory to write into, as
+            '<result_dir>/rmse_<situation>.csv'.
+
+    Returns:
+        str: path to the written file.
+    """
+    os.makedirs(result_dir, exist_ok=True)
+    path = os.path.join(result_dir, f"f1_score_{situation}.csv")
+    data = np.column_stack([profile_idx, f1_score])
+    np.savetxt(path, data, delimiter=",", header="profile,f1_score", comments="")
+    return path
+
+
 def _load_celerity_rmse_results(situation, result_dir):
     """Reload a results file written by _save_celerity_rmse_results().
 
@@ -2646,6 +2726,18 @@ def _load_celerity_rmse_results(situation, result_dir):
         tuple(np.ndarray, np.ndarray): profile_idx, rmse.
     """
     path = os.path.join(result_dir, f"rmse_{situation}.csv")
+    data = np.loadtxt(path, delimiter=",", skiprows=1)
+    data = np.atleast_2d(data)
+    return data[:, 0], data[:, 1]
+
+
+def _load_celerity_f1_score_results(situation, result_dir):
+    """Reload a results file written by _save_celerity_f1_score_results().
+
+    Returns:
+        tuple(np.ndarray, np.ndarray): profile_idx, rmse.
+    """
+    path = os.path.join(result_dir, f"f1_score_{situation}.csv")
     data = np.loadtxt(path, delimiter=",", skiprows=1)
     data = np.atleast_2d(data)
     return data[:, 0], data[:, 1]
@@ -3146,6 +3238,14 @@ def process_celerity_sensitivity(
                     ds_test["c_p_ssp"].values,
                 )
 
+                f1_score = _celerity_profile_f1_score(
+                    z_baseline,
+                    c_p_baseline,
+                    ds_test["z"].values,
+                    ds_test["c_p_ssp"].values,
+                    kernel_size=10,
+                )
+
         save_sensitivity_distance_results(
             situation,
             profile_idx,
@@ -3154,7 +3254,10 @@ def process_celerity_sensitivity(
             dist_theta,
             result_dir=result_dir,
         )
+        # RMSE
         _save_celerity_rmse_results(situation, profile_idx, rmse, result_dir)
+        # F1 score
+        _save_celerity_f1_score_results(situation, profile_idx, f1_score, result_dir)
 
     return plot_sensitivity_curves(situations, result_dir=result_dir, save_dir=save_dir)
 
@@ -3284,6 +3387,102 @@ def plot_celerity_distance_vs_rmse(
         os.makedirs(save_dir, exist_ok=True)
         fname = _sensitivity_figure_filename(
             "dist_vs_rmse", situations, file_prefix="dist_", metric=metric
+        )
+        fig.savefig(os.path.join(save_dir, fname))
+
+        # plt.close(fig)
+
+    return fig
+
+
+def plot_celerity_distance_vs_f1_score(
+    env_type,
+    situations=None,
+    metric="theta",
+    result_dir=None,
+    save_dir=None,
+):
+    """Plot the RTF distance from baseline (see
+    process_celerity_sensitivity()) AS A FUNCTION OF each profile's own
+    F1 score deviation from the baseline (mean) celerity profile (see
+    _celerity_profile_f1_score()), one panel per situation -- this is the
+    celerity-sensitivity study's KEY diagnostic, per user request: the
+    profile INDEX plot_sensitivity_curves() would otherwise show on the
+    x-axis carries no information about how DIFFERENT a profile
+    actually is from the reference one, whereas the RMSE does.
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        situations (list[str]|None): which situations to plot (each
+            must have a '<result_dir>/f1_score_<situation>.csv' file from
+            process_celerity_sensitivity()). None (the default):
+            every such file under 'result_dir'.
+        metric (str): "L1", "L2", or "theta" -- which distance metric
+            to plot on the y-axis.
+        result_dir (str|None): where to read the saved distance/F1 score
+            results from. None (the default):
+            '<RESILIENCE_RESULT_DIR>/<env_type>/celerity/'.
+        save_dir (str|None): if given, save the figure to
+            '<save_dir>/<filename>.png' (see
+            _sensitivity_figure_filename()). None (the default): the
+            figure is only returned, not saved.
+
+    Returns:
+        matplotlib.figure.Figure
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+    CELERITY_ENV_TYPES[env_type]
+
+    if result_dir is None:
+        result_dir, _ = _resilience_study_dirs(env_type, "celerity")
+
+    if situations is None:
+        prefix, suffix = "f1_score_", ".csv"
+        situations = sorted(
+            name[len(prefix) : -len(suffix)]
+            for name in os.listdir(result_dir)
+            if name.startswith(prefix) and name.endswith(suffix)
+        )
+
+    n_situations = len(situations)
+    fig, axs = plt.subplots(
+        1, max(n_situations, 1), figsize=(16, 8), squeeze=False, sharey=True
+    )
+    axs = axs[0]
+
+    for i, situation in enumerate(situations):
+        profile_idx_dist, dist_L1, dist_L2, dist_theta = (
+            load_sensitivity_distance_results(
+                situation, result_dir=result_dir, file_prefix="dist_"
+            )
+        )
+        profile_idx_f1_score, f1_score = _load_celerity_f1_score_results(
+            situation, result_dir
+        )
+
+        # NOTE: both files were written from the SAME 'ds_test' within
+        # a single process_celerity_sensitivity() call, in the same
+        # order -- this re-sort by profile index is a cheap safety net
+        # against that assumption ever breaking (e.g. a future
+        # refactor reading them from separate passes), not something
+        # expected to actually reorder anything today.
+        order_dist = np.argsort(profile_idx_dist)
+        order_f1_score = np.argsort(profile_idx_f1_score)
+        dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[metric][order_dist]
+        f1_score = f1_score[order_f1_score]
+
+        axs[i].scatter(f1_score, dist, s=12)
+        axs[i].set_xlabel(r"F1 score from baseline profile")
+        axs[i].set_title(situation)
+
+    axs[0].set_ylabel(f"Distance ({METRIC_LABEL[metric]})")
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        fname = _sensitivity_figure_filename(
+            "dist_vs_f1_score", situations, file_prefix="dist_", metric=metric
         )
         fig.savefig(os.path.join(save_dir, fname))
 
@@ -4239,6 +4438,15 @@ def generate_celerity_diag(
             result_dir=result_dir,
             save_dir=img_dir,
         )
+
+        plot_celerity_distance_vs_f1_score(
+            env_type,
+            situations=celerity_situations,
+            metric=distance[0],
+            result_dir=result_dir,
+            save_dir=img_dir,
+        )
+
         # 4.3) gamma AND the profiles themselves, for the smallest-/
         # largest-distance configurations.
         plot_extremal_celerity_configs(
@@ -4321,20 +4529,29 @@ def run_all_celerity(env_type, n_profiles=1000):
 
 if __name__ == "__main__":
 
-    run_all_plateform()
+    # run_all_plateform()
 
     # # Run all for SW env
     # build_celerity_baselines(env_types=["sw"])
     # build_celerity_tests(env_types=["sw"], situations=None, n_profiles=1000)
-    # # Diag for each seasons
+    # # # Diag for each seasons
     # for situation in ["all", "winter", "spring", "summer", "automn"]:
     #     generate_celerity_diag(
     #         distance=["theta"],
     #         celerity_env_types=["sw"],
     #         celerity_situations=[situation],
-    #         process_sensi=True,
+    #         process_sensi=False,
     #         build_baseline=False,
     #     )
+
+    # Diag for SW summer
+    generate_celerity_diag(
+        distance=["theta"],
+        celerity_env_types=["sw"],
+        celerity_situations=["summer"],
+        process_sensi=True,
+        build_baseline=False,
+    )
 
     # # Diag for variations all
     # generate_celerity_diag(

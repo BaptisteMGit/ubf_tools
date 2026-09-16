@@ -53,6 +53,10 @@ os.makedirs(root_ssp_data, exist_ok=True)
 # Load CMEMS temperature/salinity data and GEBCO bathymetry over the same box
 # ======================================================================================================================
 fname = "cmems_data_1993_2026.nc"
+# fname = "cmems_data_1993_1996_daily.nc"
+# fname = "cmems_data_2016_2026_daily.nc"
+
+
 ds = xr.open_dataset(os.path.join(root_ssp_data, fname))
 
 box_center_lon = ds.longitude.values.mean()

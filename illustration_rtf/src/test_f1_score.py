@@ -93,7 +93,7 @@ if __name__ == "__main__":
 
     min_max_idx_truth = get_min_max_idx(c_p_baseline[np.newaxis, :], axs=1, pad=False)
     min_max_idx_ae = get_min_max_idx(c_p_all, axs=1, pad=False)
-    f1_score = get_f1_score(min_max_idx_truth, min_max_idx_ae, axs=1, kernel_size=3)
+    f1_score = get_f1_score(min_max_idx_truth, min_max_idx_ae, axs=1, kernel_size=5)
 
     import matplotlib.pyplot as plt
 

@@ -34,6 +34,7 @@ resulting pressure fields into a single broadband array.
 
 import os
 import shutil
+import subprocess
 import numpy as np
 import multiprocessing
 
@@ -335,6 +336,9 @@ class KrakenManager:
         kraken.exe/field.exe simultaneously from several processes
         sharing the same executable causes issues on Windows (see
         init_parallel_kraken_working_dirs).
+
+        Raises:
+            RuntimeError: if 'exec' exits with a non-zero return code.
         """
         if os.name == "nt":
             ext = ".exe"
@@ -358,7 +362,29 @@ class KrakenManager:
         if silent:
             to_ex += silent_redirection
 
-        os.system(to_ex)
+        # NOTE (bug fixed, per user report): os.system() never raises
+        # on a non-zero exit code -- confirmed a KRAKEN/FIELD crash
+        # (e.g. the Fortran runtime error "I/O past end of record on
+        # unformatted file") could go entirely undetected: it prints to
+        # the console (or is silenced -- see 'silent' above) and
+        # execution just continues into whatever readshd()/readmodes()
+        # call comes next, which may or may not itself raise (it can
+        # end up reading a STALE '.shd'/'.mod' left over from the
+        # PREVIOUS, successful run -- same filename every time, see
+        # KrakenEnv's own 'env_filename' -- silently producing WRONG
+        # results for the failed configuration instead of any error at
+        # all). subprocess.run(..., shell=True) preserves the exact
+        # same shell command (including the redirection syntax above)
+        # while actually giving back the process' own exit code, so a
+        # failure is now always turned into a RuntimeError right here,
+        # at the source -- not left to a downstream symptom that may
+        # never materialize.
+        result = subprocess.run(to_ex, shell=True)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"'{to_ex}' exited with code {result.returncode} "
+                f"(cwd={os.getcwd()})."
+            )
 
     # ------------------------------------------------------------------
     # Managing parallel working directories
@@ -507,8 +533,8 @@ class KrakenManager:
                     # only once.
                     flp.write_flp()
 
-                cls.run_kraken_exec(env.filename, parallel, worker_pid)
                 try:
+                    cls.run_kraken_exec(env.filename, parallel, worker_pid)
                     cls.run_field_exec(env.filename, parallel, worker_pid)
                     _, _, _, _, _read_freq, _, field_pos, pressure = readshd(
                         filename=env.filename + ".shd", freq=freq
@@ -518,7 +544,14 @@ class KrakenManager:
                     # '.mod' file with the next one's.
                     Modes = readmodes(env.filename + ".mod", freq=freq)
                 except Exception as exc:
-
+                    # NOTE (bug fixed, per user report): run_kraken_exec()
+                    # used to sit OUTSIDE this try/except -- since
+                    # run_exec() now raises a clear RuntimeError on a
+                    # non-zero exit code (see its own docstring) instead
+                    # of os.system()'s old silent failure, a per-
+                    # frequency KRAKEN crash would otherwise abort this
+                    # WHOLE broadband loop instead of being skipped the
+                    # same tolerant way a FIELD crash already is here.
                     print(f"Error running field executable for frequency {freq}: {exc}")
                     continue
 

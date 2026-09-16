@@ -27,11 +27,12 @@ Prérequis (voir https://cds.climate.copernicus.eu/how-to-api) :
 d'identification CDS disponibles, une fois connecté sur la plateforme CDS, à l'adresse https://cds.climate.copernicus.eu/how-to-api 
 
 Une fois ces étapes réalisées, vous pouvez exécuter ce script pour télécharger les données souhaitées.
-
 """
 
 # swir_area = [-27.9, 65.2, -27.4, 66.2]
-swir_area = [-26, 64, -29, 67]  # [south, west, north, east]
+# swir_area = [-26, 64, -29, 67]  # [south, west, north, east]
+
+area_9R = [7, -90, 28, -60]
 
 dataset = "reanalysis-era5-single-levels"
 request = {
@@ -41,9 +42,8 @@ request = {
         "10m_v_component_of_wind",
         "total_precipitation",
     ],
-    "year": ["2013"],
-    # "month": ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12"]",
-    "month": ["01", "03", "05"],
+    "year": ["2023"],
+    "month": ["01", "02", "03", "04", "05", "06"],
     "day": [
         "01",
         "02",
@@ -105,7 +105,7 @@ request = {
     ],
     "data_format": "netcdf",
     "download_format": "unarchived",
-    "area": swir_area,
+    "area": area_9R,
 }
 
 client = cdsapi.Client()

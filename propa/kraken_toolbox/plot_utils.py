@@ -1162,8 +1162,8 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
         max_cp = np.nan
         plot_cp = False
     else:
-        min_cp = np.min(cp)
-        max_cp = np.max(cp)
+        min_cp = np.nanmin(cp)
+        max_cp = np.nanmax(cp)
         plot_cp = True
 
     if np.all(cs == 0) and not np.all(cp == 0):
@@ -1171,8 +1171,8 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
         max_cs = np.nan
         plot_cs = False
     else:
-        min_cs = np.min(cs)
-        max_cs = np.max(cs)
+        min_cs = np.nanmin(cs)
+        max_cs = np.nanmax(cs)
         plot_cs = True
 
     if plot_cp:

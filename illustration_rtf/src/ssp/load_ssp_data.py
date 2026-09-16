@@ -42,9 +42,9 @@ from publication.publication_figure import PubFigure
 
 PubFigure()
 
-root_ssp_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\img\ssp"
+root_ssp_img = r"/home/program/ubf_tools/illustration_rtf/img/ssp"
 root_ssp_data = (
-    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\ssp"
+    r"/home/program/ubf_tools/illustration_rtf/data/ssp"
 )
 os.makedirs(root_ssp_img, exist_ok=True)
 os.makedirs(root_ssp_data, exist_ok=True)
@@ -61,36 +61,36 @@ dlon_box = ds.longitude.values.max() - ds.longitude.values.min()
 dlat_box = ds.latitude.values.max() - ds.latitude.values.min()
 
 # Load bathy data
-from source.utils.utils_bathy import load_bathy
+# from source.utils.utils_bathy import load_bathy
 
-bathy = load_bathy(
-    box_center_lon=box_center_lon,
-    box_center_lat=box_center_lat,
-    dlon_box=dlon_box,
-    dlat_box=dlat_box,
-)
-# Build bathy dataset
-ds_bathy = xr.Dataset(
-    data_vars=dict(
-        elevation=(["lat", "lon"], bathy.elevation.values),
-    ),
-    coords=dict(
-        lon=bathy.lon.values,
-        lat=bathy.lat.values,
-    ),
-    attrs=dict(
-        description="Bathymetry data from GEBCO 2021",
-        geodesic_frame="WGS84",
-    ),
-)
+# bathy = load_bathy(
+#     box_center_lon=box_center_lon,
+#     box_center_lat=box_center_lat,
+#     dlon_box=dlon_box,
+#     dlat_box=dlat_box,
+# )
+# # Build bathy dataset
+# ds_bathy = xr.Dataset(
+#     data_vars=dict(
+#         elevation=(["lat", "lon"], bathy.elevation.values),
+#     ),
+#     coords=dict(
+#         lon=bathy.lon.values,
+#         lat=bathy.lat.values,
+#     ),
+#     attrs=dict(
+#         description="Bathymetry data from GEBCO 2021",
+#         geodesic_frame="WGS84",
+#     ),
+# )
 
-# Add attributes to variables
-ds_bathy.elevation.attrs["units"] = "m"
-ds_bathy.lon.attrs["units"] = "°"
-ds_bathy.lat.attrs["units"] = "°"
-ds_bathy.elevation.attrs["long_name"] = "Elevation (WGS84)"
-ds_bathy.lon.attrs["long_name"] = "Longitude"
-ds_bathy.lat.attrs["long_name"] = "Latitude"
+# # Add attributes to variables
+# ds_bathy.elevation.attrs["units"] = "m"
+# ds_bathy.lon.attrs["units"] = "°"
+# ds_bathy.lat.attrs["units"] = "°"
+# ds_bathy.elevation.attrs["long_name"] = "Elevation (WGS84)"
+# ds_bathy.lon.attrs["long_name"] = "Longitude"
+# ds_bathy.lat.attrs["long_name"] = "Latitude"
 
 # Define profile coordinates
 # sw_profile = {
@@ -111,40 +111,40 @@ dw_profile = {
 # ======================================================================================================================
 # Step 1 : plot sea-surface temperature with bathymetric contours and profile locations
 # ======================================================================================================================
-ds_t0 = ds.isel(time=0)
-ds_t0_z0 = ds_t0.sel(depth=0, method="nearest")
+# ds_t0 = ds.isel(time=0)
+# ds_t0_z0 = ds_t0.sel(depth=0, method="nearest")
 
-plt.figure(figsize=(16, 8))
-ds_t0_z0.thetao.plot(x="longitude", y="latitude", cmap="jet")
-# Bathymetric contours
-levels = np.arange(
-    np.floor(ds_bathy["elevation"].min() / 100) * 100,
-    0,
-    100,
-)
+# plt.figure(figsize=(16, 8))
+# ds_t0_z0.thetao.plot(x="longitude", y="latitude", cmap="jet")
+# # Bathymetric contours
+# levels = np.arange(
+#     np.floor(ds_bathy["elevation"].min() / 100) * 100,
+#     0,
+#     100,
+# )
 
-# Contours
-cs = plt.contour(
-    ds_bathy.lon.values,
-    ds_bathy.lat.values,
-    ds_bathy.elevation.values,
-    levels=levels,
-    colors="k",
-    linewidths=0.3,
-    alpha=1,
-    # transform=ccrs.PlateCarree(),
-)
+# # Contours
+# cs = plt.contour(
+#     ds_bathy.lon.values,
+#     ds_bathy.lat.values,
+#     ds_bathy.elevation.values,
+#     levels=levels,
+#     colors="k",
+#     linewidths=0.3,
+#     alpha=1,
+#     # transform=ccrs.PlateCarree(),
+# )
 
-# Plot profile pos
-plt.scatter(
-    sw_profile["lon"], sw_profile["lat"], color="r", marker="o", label="SW profile"
-)
-plt.scatter(
-    dw_profile["lon"], dw_profile["lat"], color="g", marker="o", label="DW profile"
-)
-plt.legend(loc="upper left")
-plt.savefig(os.path.join(root_ssp_img, "sst_bathy_profiles_pos.png"))
-# plt.show()
+# # Plot profile pos
+# plt.scatter(
+#     sw_profile["lon"], sw_profile["lat"], color="r", marker="o", label="SW profile"
+# )
+# plt.scatter(
+#     dw_profile["lon"], dw_profile["lat"], color="g", marker="o", label="DW profile"
+# )
+# plt.legend(loc="upper left")
+# plt.savefig(os.path.join(root_ssp_img, "sst_bathy_profiles_pos.png"))
+# # plt.show()
 
 # ======================================================================================================================
 # Step 2 : plot temperature and salinity profile spread over time, at both locations

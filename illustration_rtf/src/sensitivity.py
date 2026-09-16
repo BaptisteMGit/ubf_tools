@@ -111,7 +111,8 @@ def _resilience_study_dirs(env_type, kind):
 if os.name == "nt":  # Windows
     SSP_DATA_DIR = os.path.join(project_root, "illustration_rtf", "data", "ssp")
 else:  # Linux
-    SSP_DATA_DIR = os.path.join(data_root, "ssp")
+    # SSP_DATA_DIR = os.path.join(data_root, "ssp")
+    SSP_DATA_DIR = os.path.join(project_root, "illustration_rtf", "data", "ssp")
 
 # NOTE: "sw"'s depth (100 m) intentionally matches the classic
 # sensitivity study's own baseline depth (see baseline_env()) --
@@ -4260,12 +4261,13 @@ def run_debug_test():
     # build_baseline()
     # build_tests(use_debug_config=True)
 
-    # Celerity resilience tests
-    # build_celerity_baselines()
-    # build_celerity_tests(env_types=None, situations=None, n_profiles=10)
+    # Run all for SW env
+    run_all_celerity(env_type="sw", n_profiles=1)
+    # Run all for DW env
+    # run_all_celerity(env_type="dw", n_profiles=1)
 
     # Depth resilience tests
-    # build_resilience_tests(env_types=None, depth_var_tide=10, npt=10)
+    build_resilience_tests(env_types=None, depth_var_tide=10, npt=1)
 
     generate_all_diagnostics(distance=["theta"], process_sensi=True)
 
@@ -4324,7 +4326,28 @@ def run_all_celerity(env_type, n_profiles=1000):
 
 if __name__ == "__main__":
 
-    run_all_plateform()
+    # run_all_plateform()
+
+    # build_baseline()
+    process_sensitivity()
+    # 1.2) plot distance from baseline for all parameters
+    plot_sensitivity_curves(
+        distance="theta",
+        ylabel="Distance from baseline at r=r0",
+        save_dir=IMG_DIR,
+    )
+    # plt.close("all")
+
+    # 1.3) plot distance from baseline for each parameter
+    for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
+        plot_sensitivity_curves(
+            test_arg_names=[test_arg_name],
+            distance="theta",
+            ylabel="Distance from baseline at r=r0",
+            save_dir=IMG_DIR,
+        )
+
+    # run_debug_test()
 
     # # Run all for SW env
     # build_celerity_baselines(env_types=["sw"])

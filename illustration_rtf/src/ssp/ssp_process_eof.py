@@ -420,13 +420,17 @@ def process_ssp_profiles(
 
 
 if __name__ == "__main__":
-    root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\img\ssp"
-    root_ssp_nc = (
-        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\ssp"
-    )
+    # root_img = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\img\ssp"
+    # root_ssp_nc = (
+    #     r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\ssp"
+    # )
 
+    root_ssp_img = r"/home/program/ubf_tools/illustration_rtf/img/ssp"
+    root_ssp_data = (
+        r"/home/program/ubf_tools/illustration_rtf/data/ssp"
+    )
     n_new_samples = 1000
-    cumulative_variance_threshold = 0.9999
+    cumulative_variance_threshold = 0.999
 
     filenames = [
         "ssp_profiles_sw",
@@ -444,9 +448,9 @@ if __name__ == "__main__":
     for filename in filenames:
         print(f"Processing {filename}...")
         process_ssp_profiles(
-            root_ssp_nc=root_ssp_nc,
+            root_ssp_nc=root_ssp_data,
             filename_ssp=filename,
-            root_img=root_img,
+            root_img=root_ssp_img,
             cumulative_variance_threshold=cumulative_variance_threshold,
             n_new_samples=n_new_samples,
         )

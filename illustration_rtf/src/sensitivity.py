@@ -147,7 +147,12 @@ ARG_LABEL = {
     "c2": r"$c_2$ [m s$^{-1}$]",
     "depth": "D [m]",
 }
-METRIC_LABEL = {"L1": "$L_1$", "L2": "$L_2$", "theta": r"$\theta$"}
+METRIC_LABEL = {
+    "L1": "$L_1$",
+    "L2": "$L_2$",
+    "theta": r"$\theta$",
+    "wasserstein": "Wasserstein",
+}
 
 
 # ======================================================================================================================
@@ -423,6 +428,77 @@ def calc_gamma_dist(gamma_a, gamma_b, dist_type="L1"):
         cos_angle = np.clip(inner_prod / (norm_a * norm_b), -1.0, 1.0)
         dist = 1 - cos_angle
 
+    if dist_type == "wasserstein":
+        # NOTE (new, per user request): unlike L1/L2/theta above (which
+        # compare GAMMA directly, in dB), the Wasserstein distance
+        # compares the RTF MAGNITUDE itself (rtf = 10 ** (gamma / 20))
+        # -- see calc_rtf_wasserstein_dist()'s own docstring for why.
+        # Only supports 'gamma_a'/'gamma_b' shaped (n_freq, 1) /
+        # (n_freq, n_values) -- i.e. dist_from_baseline()'s own usage,
+        # NOT dist_from_baseline_around_r0()'s 3D (n_freq, n_r,
+        # n_values) one (a per-r Wasserstein "mainlobe width" was not
+        # requested and would be considerably more expensive to
+        # compute -- scipy has no vectorized wasserstein_distance).
+        dist = calc_rtf_wasserstein_dist(gamma_a=gamma_a, gamma_b=gamma_b)
+
+    return dist
+
+
+def calc_rtf_wasserstein_dist(gamma_a, gamma_b):
+    """Wasserstein (earth mover's) distance between two RTF magnitude
+    spectra, each treated as a 1D distribution over FREQUENCY-BIN
+    INDEX (not the physical frequency values -- both curves share the
+    same frequency grid, so the bin index alone is enough to compare
+    them; see scipy.stats.wasserstein_distance()'s own 'u_values'/
+    'v_values', here just np.arange(n_freq) for both curves). Only the
+    RTF MAGNITUDE at each bin -- used as that bin's WEIGHT -- differs
+    between the two.
+
+    Converts gamma to the RTF magnitude itself first
+    (rtf = 10 ** (gamma / 20), matching build_kraken()'s own gamma
+    convention: gamma = 20*log10(|RTF|)) rather than comparing gamma
+    values directly the way calc_gamma_dist()'s L1/L2/theta do:
+    wasserstein_distance()'s weights must be non-negative (they
+    represent a "mass" distribution), which gamma itself -- expressed
+    in dB, so routinely negative -- cannot satisfy, while the RTF
+    magnitude always can.
+
+    NOTE: scipy.stats.wasserstein_distance() only accepts 1D inputs --
+    'gamma_b' can carry several swept values at once (each compared
+    against the same baseline 'gamma_a'), so this loops over that
+    dimension internally rather than vectorizing (there is no
+    vectorized wasserstein_distance in scipy as of this writing).
+
+    Args:
+        gamma_a (np.ndarray): baseline gamma, shape (n_freq, 1) (a
+            single reference curve, broadcast against every swept
+            value below).
+        gamma_b (np.ndarray): swept-value(s) gamma, shape
+            (n_freq, n_values).
+
+    Returns:
+        np.ndarray: shape (n_values,) -- one Wasserstein distance per
+        swept value.
+    """
+    from scipy.stats import wasserstein_distance
+
+    rtf_a = 10 ** (gamma_a / 20.0)
+    rtf_b = 10 ** (gamma_b / 20.0)
+    rtf_a = np.broadcast_to(rtf_a, rtf_b.shape)
+
+    n_freq, n_values = rtf_b.shape
+    distribution_support = np.arange(n_freq)
+
+    dist = np.empty(n_values)
+    for i in range(n_values):
+        u = np.nan_to_num(rtf_a[:, i], nan=0.0)
+        v = np.nan_to_num(rtf_b[:, i], nan=0.0)
+        dist[i] = wasserstein_distance(
+            u_values=distribution_support,
+            v_values=distribution_support,
+            u_weights=u,
+            v_weights=v,
+        )
     return dist
 
 
@@ -1317,8 +1393,21 @@ def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR, env_overrides=None):
 
 
 def dist_from_baseline(ds_baseline, ds_test, d12, r0):
-    """Compute the RTF distance (L1/L2/theta) between the baseline's
-    gamma at r0 and each swept value's gamma at r0.
+    """Compute the RTF distance (L1/L2/theta/wasserstein) between the
+    baseline's gamma at r0 and each swept value's gamma at r0.
+
+    NOTE (wasserstein added, per user request): unlike L1/L2/theta
+    (which compare gamma directly), the Wasserstein distance compares
+    the RTF MAGNITUDE itself (rtf = 10 ** (gamma / 20)) -- see
+    calc_rtf_wasserstein_dist()'s own docstring for the full rationale.
+    A genuinely different way of asking "how far is this RTF from the
+    baseline's": L1/L2 are sensitive to a uniform dB offset across the
+    whole band the same way regardless of WHERE in frequency it occurs,
+    while the Wasserstein distance treats the RTF as a mass
+    distribution over frequency and penalizes moving that mass FURTHER
+    (in frequency) more than moving it a little -- closer to "how much
+    of the RTF's energy changed position, and by how far" than "how
+    much did each frequency bin change in isolation".
 
     NOTE (performance/memory fixed): this used to call
     derive_gamma(ds_test, d12), which computes gamma OVER THE FULL r
@@ -1354,8 +1443,11 @@ def dist_from_baseline(ds_baseline, ds_test, d12, r0):
     dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
     dist_L2 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2")
     dist_theta = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta")
+    dist_wasserstein = calc_gamma_dist(
+        gamma_a=gamma_a, gamma_b=gamma_b, dist_type="wasserstein"
+    )
 
-    return dist_L1, dist_L2, dist_theta
+    return dist_L1, dist_L2, dist_theta, dist_wasserstein
 
 
 def dist_from_baseline_around_r0(ds_baseline, ds_test, d12, r0):
@@ -1594,15 +1686,17 @@ def save_sensitivity_distance_results(
     dist_L1,
     dist_L2,
     dist_theta,
+    dist_wasserstein=None,
     result_dir=RESULT_DIR,
     file_prefix="dist_",
 ):
-    """Save the RTF distance-from-baseline results (L1/L2/theta) for
-    ONE swept parameter to a small, dedicated CSV file -- small enough
-    (a handful of floats per swept value) that a plain text format is
-    the simplest, most portable choice; no need for NetCDF/xarray here,
-    unlike the much larger raw Green's function datasets this is
-    derived from (see build_sensitivity_dataset()).
+    """Save the RTF distance-from-baseline results (L1/L2/theta[/
+    wasserstein]) for ONE swept parameter to a small, dedicated CSV
+    file -- small enough (a handful of floats per swept value) that a
+    plain text format is the simplest, most portable choice; no need
+    for NetCDF/xarray here, unlike the much larger raw Green's
+    function datasets this is derived from (see
+    build_sensitivity_dataset()).
 
     Args:
         test_arg_name (str): the swept parameter's name.
@@ -1611,10 +1705,22 @@ def save_sensitivity_distance_results(
             the parameter values themselves) -- or, for
             process_sensitivity_mainlobe_width(), the mainlobe WIDTHS
             (see single_sensitivity_test_calc_dist_width()) rather than
-            raw distances; either way, 3 scalars-per-value metrics.
+            raw distances.
+        dist_wasserstein (array-like|None): the Wasserstein distance
+            (see dist_from_baseline()'s own docstring), same length as
+            the others. None (the default): omitted from the saved
+            file entirely -- callers that only ever have L1/L2/theta
+            (e.g. process_sensitivity_mainlobe_width()/
+            process_sensitivity_intrinsic_mainlobe_width(), whose
+            "distance AS A FUNCTION OF r" this hasn't been extended to
+            -- see calc_gamma_dist()'s own NOTE) keep writing the
+            original 4-column ("<test_arg_name>,L1,L2,theta") file
+            unchanged; only dist_from_baseline()'s own callers
+            (process_sensitivity()/process_celerity_sensitivity())
+            pass it.
         result_dir (str): directory to write into, as
             '<result_dir>/<file_prefix><test_arg_name>.csv'.
-        file_prefix (str): distinguishes what these 3 metrics actually
+        file_prefix (str): distinguishes what these metrics actually
             are when several kinds of results are saved side by side
             in the same 'result_dir' -- e.g. "dist_" for the raw RTF
             distance at r0 (process_sensitivity()) vs
@@ -1628,10 +1734,15 @@ def save_sensitivity_distance_results(
     """
     os.makedirs(result_dir, exist_ok=True)
     path = os.path.join(result_dir, f"{file_prefix}{test_arg_name}.csv")
-    data = np.column_stack([test_values, dist_L1, dist_L2, dist_theta])
-    np.savetxt(
-        path, data, delimiter=",", header=f"{test_arg_name},L1,L2,theta", comments=""
-    )
+    if dist_wasserstein is None:
+        data = np.column_stack([test_values, dist_L1, dist_L2, dist_theta])
+        header = f"{test_arg_name},L1,L2,theta"
+    else:
+        data = np.column_stack(
+            [test_values, dist_L1, dist_L2, dist_theta, dist_wasserstein]
+        )
+        header = f"{test_arg_name},L1,L2,theta,wasserstein"
+    np.savetxt(path, data, delimiter=",", header=header, comments="")
     return path
 
 
@@ -1649,14 +1760,18 @@ def load_sensitivity_distance_results(
             "mainlobe_width_" -- see its own docstring).
 
     Returns:
-        tuple(np.ndarray, np.ndarray, np.ndarray, np.ndarray):
-        test_values, dist_L1, dist_L2, dist_theta (or the mainlobe
-        width equivalents, depending on 'file_prefix').
+        tuple(np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray|None):
+        test_values, dist_L1, dist_L2, dist_theta, dist_wasserstein (or
+        the mainlobe width equivalents, depending on 'file_prefix').
+        dist_wasserstein is None when the file was saved without it
+        (e.g. "mainlobe_width_"/"intrinsic_mainlobe_width_" files --
+        see save_sensitivity_distance_results()'s own docstring).
     """
     path = os.path.join(result_dir, f"{file_prefix}{test_arg_name}.csv")
     data = np.loadtxt(path, delimiter=",", skiprows=1)
     data = np.atleast_2d(data)
-    return data[:, 0], data[:, 1], data[:, 2], data[:, 3]
+    dist_wasserstein = data[:, 4] if data.shape[1] > 4 else None
+    return data[:, 0], data[:, 1], data[:, 2], data[:, 3], dist_wasserstein
 
 
 def process_sensitivity(test_arg_names=None, result_dir=RESULT_DIR, save_dir=None):
@@ -1766,7 +1881,7 @@ def process_sensitivity(test_arg_names=None, result_dir=RESULT_DIR, save_dir=Non
                 join="override",
                 preprocess=preprocess,
             ) as ds_test:
-                dist_L1, dist_L2, dist_theta = dist_from_baseline(
+                dist_L1, dist_L2, dist_theta, dist_wasserstein = dist_from_baseline(
                     ds_baseline, ds_test, d12, r0
                 )
                 test_values = ds_test[test_arg_name].values
@@ -1777,6 +1892,7 @@ def process_sensitivity(test_arg_names=None, result_dir=RESULT_DIR, save_dir=Non
                 dist_L1,
                 dist_L2,
                 dist_theta,
+                dist_wasserstein,
                 result_dir=result_dir,
             )
 
@@ -1809,7 +1925,12 @@ def plot_sensitivity_curves(
             automatically.
         result_dir (str): where to read the saved results from.
         distance (str|list[str]): distance metric(s) to plot -- any of
-            "L1", "L2", "theta".
+            "L1", "L2", "theta", "wasserstein" (the last one only
+            available for files saved with a 'dist_wasserstein' -- see
+            save_sensitivity_distance_results()'s own docstring;
+            requesting it for a 'file_prefix' that doesn't have it,
+            e.g. "mainlobe_width_", raises a clear ValueError rather
+            than a cryptic one).
         file_prefix (str): which saved results to read -- "dist_" (the
             default, matching process_sensitivity()'s raw RTF distance
             at r0) or "mainlobe_width_" (matching
@@ -1830,6 +1951,10 @@ def plot_sensitivity_curves(
 
     Returns:
         matplotlib.figure.Figure
+
+    Raises:
+        ValueError: if "wasserstein" is requested in 'distance' but
+            the saved files don't have it (see 'distance' above).
     """
 
     from matplotlib.lines import Line2D
@@ -1860,10 +1985,19 @@ def plot_sensitivity_curves(
     # check just below).
     distance = np.atleast_1d(distance)
 
+    def _require_wasserstein(dist_wasserstein, test_arg_name):
+        if dist_wasserstein is None:
+            raise ValueError(
+                f"plot_sensitivity_curves: 'wasserstein' was requested but "
+                f"'{file_prefix}{test_arg_name}.csv' was saved without it "
+                f"(see save_sensitivity_distance_results()'s own docstring "
+                f"-- only dist_from_baseline()'s own callers save it)."
+            )
+
     if distance.size > 1:
-        d_L1, d_L2, d_theta = [], [], []
+        d_L1, d_L2, d_theta, d_wasserstein = [], [], [], []
         for i, test_arg_name in enumerate(test_arg_names):
-            test_values, dist_L1, dist_L2, dist_theta = (
+            test_values, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
                 load_sensitivity_distance_results(
                     test_arg_name, result_dir=result_dir, file_prefix=file_prefix
                 )
@@ -1871,18 +2005,25 @@ def plot_sensitivity_curves(
             d_L1.append(np.max(dist_L1))
             d_L2.append(np.max(dist_L2))
             d_theta.append(np.max(dist_theta))
+            if "wasserstein" in distance:
+                _require_wasserstein(dist_wasserstein, test_arg_name)
+                d_wasserstein.append(np.max(dist_wasserstein))
 
         norm_factor_L1 = np.max(d_L1)
         norm_factor_L2 = np.max(d_L2)
         norm_factor_theta = np.max(d_theta)
+        norm_factor_wasserstein = np.max(d_wasserstein) if d_wasserstein else 1
     else:
         norm_factor_L1 = 1
         norm_factor_L2 = 1
         norm_factor_theta = 1
+        norm_factor_wasserstein = 1
 
     for i, test_arg_name in enumerate(test_arg_names):
-        test_values, dist_L1, dist_L2, dist_theta = load_sensitivity_distance_results(
-            test_arg_name, result_dir=result_dir, file_prefix=file_prefix
+        test_values, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
+            load_sensitivity_distance_results(
+                test_arg_name, result_dir=result_dir, file_prefix=file_prefix
+            )
         )
         icol = 0
 
@@ -1898,6 +2039,14 @@ def plot_sensitivity_curves(
             icol += 1
         if "theta" in distance:
             axs[i].plot(test_values, dist_theta / norm_factor_theta, color=color(icol))
+            icol += 1
+        if "wasserstein" in distance:
+            _require_wasserstein(dist_wasserstein, test_arg_name)
+            axs[i].plot(
+                test_values,
+                dist_wasserstein / norm_factor_wasserstein,
+                color=color(icol),
+            )
             icol += 1
 
         axs[i].set_xlabel(arg_label.get(test_arg_name, test_arg_name))
@@ -2049,11 +2198,12 @@ def build_tests(use_debug_config=False):
     )
 
     if use_debug_config:
+        ndebug = 50
         sweeps = {
-            "depth": np.linspace(70, 130, 4),
-            "c1": np.linspace(1460, 1540, 4),
-            "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 4),
-            "attn2": np.linspace(0.0, 1.0, 4),
+            "depth": np.linspace(70, 130, ndebug),
+            "c1": np.linspace(1460, 1540, ndebug),
+            "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, ndebug),
+            "attn2": np.linspace(0.0, 1.0, ndebug),
         }
 
     else:
@@ -3219,7 +3369,7 @@ def process_celerity_sensitivity(
                 join="override",
                 preprocess=preprocess,
             ) as ds_test:
-                dist_L1, dist_L2, dist_theta = dist_from_baseline(
+                dist_L1, dist_L2, dist_theta, dist_wasserstein = dist_from_baseline(
                     ds_baseline, ds_test, d12, r0
                 )
                 profile_idx = ds_test["profile"].values
@@ -3252,6 +3402,7 @@ def process_celerity_sensitivity(
             dist_L1,
             dist_L2,
             dist_theta,
+            dist_wasserstein,
             result_dir=result_dir,
         )
         # RMSE
@@ -3359,7 +3510,7 @@ def plot_celerity_distance_vs_rmse(
     axs = axs[0]
 
     for i, situation in enumerate(situations):
-        profile_idx_dist, dist_L1, dist_L2, dist_theta = (
+        profile_idx_dist, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
             load_sensitivity_distance_results(
                 situation, result_dir=result_dir, file_prefix="dist_"
             )
@@ -3374,7 +3525,12 @@ def plot_celerity_distance_vs_rmse(
         # expected to actually reorder anything today.
         order_dist = np.argsort(profile_idx_dist)
         order_rmse = np.argsort(profile_idx_rmse)
-        dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[metric][order_dist]
+        dist = {
+            "L1": dist_L1,
+            "L2": dist_L2,
+            "theta": dist_theta,
+            "wasserstein": dist_wasserstein,
+        }[metric][order_dist]
         rmse = rmse[order_rmse]
 
         axs[i].scatter(rmse, dist, s=12)
@@ -3453,7 +3609,7 @@ def plot_celerity_distance_vs_f1_score(
     axs = axs[0]
 
     for i, situation in enumerate(situations):
-        profile_idx_dist, dist_L1, dist_L2, dist_theta = (
+        profile_idx_dist, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
             load_sensitivity_distance_results(
                 situation, result_dir=result_dir, file_prefix="dist_"
             )
@@ -3470,7 +3626,12 @@ def plot_celerity_distance_vs_f1_score(
         # expected to actually reorder anything today.
         order_dist = np.argsort(profile_idx_dist)
         order_f1_score = np.argsort(profile_idx_f1_score)
-        dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[metric][order_dist]
+        dist = {
+            "L1": dist_L1,
+            "L2": dist_L2,
+            "theta": dist_theta,
+            "wasserstein": dist_wasserstein,
+        }[metric][order_dist]
         f1_score = f1_score[order_f1_score]
 
         axs[i].scatter(f1_score, dist, s=12)
@@ -3567,10 +3728,17 @@ def plot_extremal_celerity_configs(
             _ssp_filename(env_type, situation), target_depth=env_config["depth"]
         )
 
-        profile_idx, dist_L1, dist_L2, dist_theta = load_sensitivity_distance_results(
-            situation, result_dir=result_dir, file_prefix="dist_"
+        profile_idx, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
+            load_sensitivity_distance_results(
+                situation, result_dir=result_dir, file_prefix="dist_"
+            )
         )
-        dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[metric]
+        dist = {
+            "L1": dist_L1,
+            "L2": dist_L2,
+            "theta": dist_theta,
+            "wasserstein": dist_wasserstein,
+        }[metric]
 
         idx_min = int(np.nanargmin(dist))
         idx_max = int(np.nanargmax(dist))
@@ -3960,7 +4128,7 @@ def plot_extremal_width_configs(
     )
     try:
         for test_arg_name in test_arg_names:
-            test_values, width_L1, width_L2, width_theta = (
+            test_values, width_L1, width_L2, width_theta, _ = (
                 load_sensitivity_distance_results(
                     test_arg_name, result_dir=result_dir, file_prefix=file_prefix
                 )
@@ -4152,12 +4320,17 @@ def plot_extremal_resilience_dist_configs(
         baseline_gamma_r0 = ds_baseline.gamma.sel(r=r0, method="nearest")
 
         for test_arg_name in test_arg_names:
-            test_values, dist_L1, dist_L2, dist_theta = (
+            test_values, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
                 load_sensitivity_distance_results(
                     test_arg_name, result_dir=result_dir, file_prefix="dist_"
                 )
             )
-            dist = {"L1": dist_L1, "L2": dist_L2, "theta": dist_theta}[metric]
+            dist = {
+                "L1": dist_L1,
+                "L2": dist_L2,
+                "theta": dist_theta,
+                "wasserstein": dist_wasserstein,
+            }[metric]
 
             idx_min = int(np.nanargmin(dist))
             idx_max = int(np.nanargmax(dist))
@@ -4544,14 +4717,30 @@ if __name__ == "__main__":
     #         build_baseline=False,
     #     )
 
-    # Diag for SW summer
-    generate_celerity_diag(
-        distance=["theta"],
-        celerity_env_types=["sw"],
-        celerity_situations=["summer"],
-        process_sensi=True,
-        build_baseline=False,
-    )
+    build_baseline()
+    # build_tests(use_debug_config=True)
+    # process_sensitivity()
+    # plot_sensitivity_curves(
+    #     distance=["wasserstein"],
+    #     ylabel="Distance from baseline at r=r0",
+    #     save_dir=IMG_DIR,
+    # )
+
+    generate_all_diagnostics(distance=["theta"], process_sensi=True)
+    # generate_all_diagnostics(distance=["wasserstein"], process_sensi=True)
+
+    # generate_all_diagnostics(
+    #     distance=["wasserstein"], process_sensi=True, build_baseline=False
+    # )
+
+    # # Diag for SW summer
+    # generate_celerity_diag(
+    #     distance=["wasserstein"],
+    #     celerity_env_types=["sw"],
+    #     celerity_situations=["summer"],
+    #     process_sensi=True,
+    #     build_baseline=False,
+    # )
 
     # # Diag for variations all
     # generate_celerity_diag(

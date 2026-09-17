@@ -437,7 +437,7 @@ def calc_gamma_dist(gamma_a, gamma_b, dist_type="L1"):
         norm_b = np.sqrt(np.nansum(gamma_b**2, axis=0))
         # Clip to [-1, 1] for stability
         cos_angle = np.clip(inner_prod / (norm_a * norm_b), -1.0, 1.0)
-        dist = 1 - cos_angle
+        dist = (1 - cos_angle) / 2  # In [-1, 1]
 
     if dist_type == "wasserstein":
         # NOTE (new, per user request): unlike L1/L2/theta above (which
@@ -533,7 +533,10 @@ def calc_monotonicity_domain(dist_r_r0, r, r0):
 
     # Apply moving average to avoid spurious detections
     import pandas as pd
-    dd_dr_pos_pd = pd.DataFrame(dd_dr_pos).rolling(window=5, center=True, min_periods=1).mean()
+
+    dd_dr_pos_pd = (
+        pd.DataFrame(dd_dr_pos).rolling(window=5, center=True, min_periods=1).mean()
+    )
     dd_dr_pos = dd_dr_pos_pd.to_numpy().flatten()
 
     # Find zero crossings of the derivative
@@ -555,7 +558,9 @@ def calc_monotonicity_domain(dist_r_r0, r, r0):
     # Compute the derivative of the distance
     dd_dr_neg = np.gradient(d_neg, r_neg)
 
-    dd_dr_neg_pd = pd.DataFrame(dd_dr_neg).rolling(window=5, center=True, min_periods=1).mean()
+    dd_dr_neg_pd = (
+        pd.DataFrame(dd_dr_neg).rolling(window=5, center=True, min_periods=1).mean()
+    )
     dd_dr_neg = dd_dr_neg_pd.to_numpy().flatten()
 
     # Find zero crossings of the derivative
@@ -2006,7 +2011,8 @@ def process_sensitivity(test_arg_names=None, result_dir=RESULT_DIR, save_dir=Non
 
     fpath_baseline = os.path.join(result_dir, "gf_dataset_baseline.nc")
 
-    from time import time 
+    from time import time
+
     t0 = time()
     # NOTE: the baseline is small (a single configuration, not a
     # sweep) -- safe to keep open for the whole loop, unlike the
@@ -2230,9 +2236,9 @@ def plot_sensitivity_curves(
             handles=legend_handles, loc="outside upper center", ncols=distance.size
         )
     else:
-        # theta is bounded between 0 and 2, so it is a good idea to set the y limit to [0, 2] for better visualization
+        # theta is bounded between 0 and 1, so it is a good idea to set the y limit to [0, 1] for better visualization
         if "theta" in distance and not "intrinsic" in file_prefix:
-            axs[0].set_ylim([0, 2])
+            axs[0].set_ylim([0, 1])
 
         fig.supylabel(ylabel or dist_label[distance[0]])
 

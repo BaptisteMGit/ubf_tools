@@ -2766,6 +2766,30 @@ def _celerity_profile_rmse(z_baseline, c_p_baseline, z_test, c_p_test):
     return np.sqrt(np.mean((c_p_test - c_p_baseline_interp) ** 2, axis=-1))
 
 
+def _celerity_profile_std(z_baseline, c_p_baseline, z_test, c_p_test):
+    """std (m/s) between the baseline (mean) celerity profile and one
+    or several test profiles.
+
+
+    Args:
+        z_baseline (np.ndarray): shape (n_depth_baseline,).
+        c_p_baseline (np.ndarray): shape (n_depth_baseline,).
+        z_test (np.ndarray): shape (n_depth_test,).
+        c_p_test (np.ndarray): shape (n_depth_test,) for a single
+            profile, or (n_profiles, n_depth_test) for a batch.
+
+    Returns:
+        float|np.ndarray: std (m/s) -- scalar for a single profile,
+        shape (n_profiles,) for a batch.
+    """
+    c_p_baseline_interp = np.interp(z_test, z_baseline, c_p_baseline)
+    c_p_bias = np.mean(c_p_test - c_p_baseline_interp)
+    c_p_test_unbiased = c_p_test - c_p_bias
+    unbiased_diff = c_p_test_unbiased - c_p_baseline_interp
+    c_p_std = np.std(unbiased_diff, axis=-1)
+    return c_p_std
+
+
 ### F1 score ###
 def get_min_max_idx(arr: np.ndarray, axs: int = 1, pad: bool = True) -> np.ndarray:
     """Find local minima and maxima in array."""
@@ -2869,6 +2893,29 @@ def _save_celerity_f1_score_results(situation, profile_idx, f1_score, result_dir
     return path
 
 
+def _save_celerity_std_results(situation, profile_idx, std, result_dir):
+    """Save the per-profile STD-from-baseline-profile results (see
+    _celerity_profile_std()) for ONE situation to a small, dedicated
+    CSV file, parallel to save_sensitivity_distance_results()'s own
+    "dist_<situation>.csv" (joined later on 'profile_idx' -- see
+    plot_celerity_distance_vs_std()).
+
+    Args:
+        situation (str): see CELERITY_SITUATIONS.
+        profile_idx, std (array-like): equal-length 1D arrays.
+        result_dir (str): directory to write into, as
+            '<result_dir>/std_<situation>.csv'.
+
+    Returns:
+        str: path to the written file.
+    """
+    os.makedirs(result_dir, exist_ok=True)
+    path = os.path.join(result_dir, f"std_{situation}.csv")
+    data = np.column_stack([profile_idx, std])
+    np.savetxt(path, data, delimiter=",", header="profile,std", comments="")
+    return path
+
+
 def _load_celerity_rmse_results(situation, result_dir):
     """Reload a results file written by _save_celerity_rmse_results().
 
@@ -2888,6 +2935,18 @@ def _load_celerity_f1_score_results(situation, result_dir):
         tuple(np.ndarray, np.ndarray): profile_idx, rmse.
     """
     path = os.path.join(result_dir, f"f1_score_{situation}.csv")
+    data = np.loadtxt(path, delimiter=",", skiprows=1)
+    data = np.atleast_2d(data)
+    return data[:, 0], data[:, 1]
+
+
+def _load_celerity_std_results(situation, result_dir):
+    """Reload a results file written by _save_celerity_std_results().
+
+    Returns:
+        tuple(np.ndarray, np.ndarray): profile_idx, rmse.
+    """
+    path = os.path.join(result_dir, f"std_{situation}.csv")
     data = np.loadtxt(path, delimiter=",", skiprows=1)
     data = np.atleast_2d(data)
     return data[:, 0], data[:, 1]
@@ -3381,19 +3440,27 @@ def process_celerity_sensitivity(
                 # baseline-profile diagnostic (see
                 # plot_celerity_distance_vs_rmse(), the main reason
                 # this exists at all per user request).
+                # RMSE
                 rmse = _celerity_profile_rmse(
                     z_baseline,
                     c_p_baseline,
                     ds_test["z"].values,
                     ds_test["c_p_ssp"].values,
                 )
-
+                # F1 score
                 f1_score = _celerity_profile_f1_score(
                     z_baseline,
                     c_p_baseline,
                     ds_test["z"].values,
                     ds_test["c_p_ssp"].values,
-                    kernel_size=10,
+                    kernel_size=5,
+                )
+                # Std
+                std = _celerity_profile_std(
+                    z_baseline,
+                    c_p_baseline,
+                    ds_test["z"].values,
+                    ds_test["c_p_ssp"].values,
                 )
 
         save_sensitivity_distance_results(
@@ -3409,6 +3476,8 @@ def process_celerity_sensitivity(
         _save_celerity_rmse_results(situation, profile_idx, rmse, result_dir)
         # F1 score
         _save_celerity_f1_score_results(situation, profile_idx, f1_score, result_dir)
+        # STD
+        _save_celerity_std_results(situation, profile_idx, std, result_dir)
 
     return plot_sensitivity_curves(situations, result_dir=result_dir, save_dir=save_dir)
 
@@ -3565,7 +3634,7 @@ def plot_celerity_distance_vs_f1_score(
     celerity-sensitivity study's KEY diagnostic, per user request: the
     profile INDEX plot_sensitivity_curves() would otherwise show on the
     x-axis carries no information about how DIFFERENT a profile
-    actually is from the reference one, whereas the RMSE does.
+    actually is from the reference one, whereas the F1 does.
 
     Args:
         env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
@@ -3644,6 +3713,105 @@ def plot_celerity_distance_vs_f1_score(
         os.makedirs(save_dir, exist_ok=True)
         fname = _sensitivity_figure_filename(
             "dist_vs_f1_score", situations, file_prefix="dist_", metric=metric
+        )
+        fig.savefig(os.path.join(save_dir, fname))
+
+        # plt.close(fig)
+
+    return fig
+
+
+def plot_celerity_distance_vs_std(
+    env_type,
+    situations=None,
+    metric="theta",
+    result_dir=None,
+    save_dir=None,
+):
+    """Plot the RTF distance from baseline (see
+    process_celerity_sensitivity()) AS A FUNCTION OF each profile's own
+    STD deviation from the baseline (mean) celerity profile (see
+    _celerity_profile_std()), one panel per situation -- this is the
+    celerity-sensitivity study's KEY diagnostic, per user request: the
+    profile INDEX plot_sensitivity_curves() would otherwise show on the
+    x-axis carries no information about how DIFFERENT a profile
+    actually is from the reference one, whereas the STD does.
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        situations (list[str]|None): which situations to plot (each
+            must have a '<result_dir>/std_<situation>.csv' file from
+            process_celerity_sensitivity()). None (the default):
+            every such file under 'result_dir'.
+        metric (str): "L1", "L2", or "theta" -- which distance metric
+            to plot on the y-axis.
+        result_dir (str|None): where to read the saved distance/STD
+            results from. None (the default):
+            '<RESILIENCE_RESULT_DIR>/<env_type>/celerity/'.
+        save_dir (str|None): if given, save the figure to
+            '<save_dir>/<filename>.png' (see
+            _sensitivity_figure_filename()). None (the default): the
+            figure is only returned, not saved.
+
+    Returns:
+        matplotlib.figure.Figure
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+    CELERITY_ENV_TYPES[env_type]
+
+    if result_dir is None:
+        result_dir, _ = _resilience_study_dirs(env_type, "celerity")
+
+    if situations is None:
+        prefix, suffix = "std_", ".csv"
+        situations = sorted(
+            name[len(prefix) : -len(suffix)]
+            for name in os.listdir(result_dir)
+            if name.startswith(prefix) and name.endswith(suffix)
+        )
+
+    n_situations = len(situations)
+    fig, axs = plt.subplots(
+        1, max(n_situations, 1), figsize=(16, 8), squeeze=False, sharey=True
+    )
+    axs = axs[0]
+
+    for i, situation in enumerate(situations):
+        profile_idx_dist, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
+            load_sensitivity_distance_results(
+                situation, result_dir=result_dir, file_prefix="dist_"
+            )
+        )
+        profile_idx_std, std = _load_celerity_std_results(situation, result_dir)
+
+        # NOTE: both files were written from the SAME 'ds_test' within
+        # a single process_celerity_sensitivity() call, in the same
+        # order -- this re-sort by profile index is a cheap safety net
+        # against that assumption ever breaking (e.g. a future
+        # refactor reading them from separate passes), not something
+        # expected to actually reorder anything today.
+        order_dist = np.argsort(profile_idx_dist)
+        order_std = np.argsort(profile_idx_std)
+        dist = {
+            "L1": dist_L1,
+            "L2": dist_L2,
+            "theta": dist_theta,
+            "wasserstein": dist_wasserstein,
+        }[metric][order_dist]
+        std = std[order_std]
+
+        axs[i].scatter(std, dist, s=12)
+        axs[i].set_xlabel(r"STD from baseline profile [m s$^{-1}$]")
+        axs[i].set_title(situation)
+
+    axs[0].set_ylabel(f"Distance ({METRIC_LABEL[metric]})")
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        fname = _sensitivity_figure_filename(
+            "dist_vs_std", situations, file_prefix="dist_", metric=metric
         )
         fig.savefig(os.path.join(save_dir, fname))
 
@@ -4604,6 +4772,7 @@ def generate_celerity_diag(
         # 4.2) the key diagnostic: distance vs. RMSE deviation from the
         # baseline profile (see plot_celerity_distance_vs_rmse()'s own
         # docstring for why this, rather than the raw profile index).
+        # RMSE
         plot_celerity_distance_vs_rmse(
             env_type,
             situations=celerity_situations,
@@ -4611,8 +4780,16 @@ def generate_celerity_diag(
             result_dir=result_dir,
             save_dir=img_dir,
         )
-
+        # F1 score
         plot_celerity_distance_vs_f1_score(
+            env_type,
+            situations=celerity_situations,
+            metric=distance[0],
+            result_dir=result_dir,
+            save_dir=img_dir,
+        )
+        # STD
+        plot_celerity_distance_vs_std(
             env_type,
             situations=celerity_situations,
             metric=distance[0],
@@ -4717,7 +4894,7 @@ if __name__ == "__main__":
     #         build_baseline=False,
     #     )
 
-    build_baseline()
+    # build_baseline()
     # build_tests(use_debug_config=True)
     # process_sensitivity()
     # plot_sensitivity_curves(
@@ -4726,7 +4903,7 @@ if __name__ == "__main__":
     #     save_dir=IMG_DIR,
     # )
 
-    generate_all_diagnostics(distance=["theta"], process_sensi=True)
+    # generate_all_diagnostics(distance=["theta"], process_sensi=True)
     # generate_all_diagnostics(distance=["wasserstein"], process_sensi=True)
 
     # generate_all_diagnostics(
@@ -4750,19 +4927,92 @@ if __name__ == "__main__":
     #     process_sensi=False,
     #     build_baseline=False,
     # )
-    # # Winter vs summer
-    # generate_celerity_diag(
-    #     distance=["theta"],
-    #     celerity_env_types=["sw"],
-    #     celerity_situations=["summer", "winter"],
-    #     process_sensi=False,
-    #     build_baseline=False,
+
+    # Winter vs summer
+    generate_celerity_diag(
+        distance=["theta"],
+        celerity_env_types=["sw"],
+        celerity_situations=["summer", "winter"],
+        process_sensi=True,
+        build_baseline=False,
+    )
+
+    # Illustration of the std indicator behavior
+
+    # fpath_ssp = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\ssp\ssp_profiles_sw.nc"
+    # ds_ssp = xr.open_dataset(fpath_ssp)
+
+    # z_baseline = ds_ssp.depth.values
+    # c_p_baseline = ds_ssp.ssp.mean(dim="time").values
+    # z_baseline, c_p_baseline = _drop_depths_with_any_nan(z_baseline, c_p_baseline)
+    # z_baseline, c_p_baseline = _ensure_profile_starts_at_surface(
+    #     z_baseline, c_p_baseline
+    # )
+    # z_baseline, c_p_baseline = _adapt_profile_to_depth(z_baseline, c_p_baseline, 100)
+
+    # z = ds_ssp.depth.values
+    # c_p = ds_ssp.ssp.values
+    # z, c_p = _drop_depths_with_any_nan(z, c_p)
+    # z, c_p = _ensure_profile_starts_at_surface(z, c_p)
+    # z, c_p = _adapt_profile_to_depth(z, c_p, 100)
+
+    # std = _celerity_profile_std(
+    #     z_baseline,
+    #     c_p_baseline,
+    #     z,
+    #     c_p,
     # )
 
-    # build_celerity_tests(
-    #     env_types=["sw"], situations=["all", "summer", "winter"], n_profiles=500
+    # # 2 worst profiles
+    # idx_largest_std = np.argsort(std)[-2:]
+    # largest_std = std[idx_largest_std]
+    # # 2 best
+    # idx_smallest_std = np.argsort(std)[:2]
+    # smallest_std = std[idx_smallest_std]
+
+    # plt.figure()
+    # plt.plot(c_p_baseline, z_baseline, color="k")
+    # plt.plot(
+    #     c_p[idx_largest_std[0], :],
+    #     z,
+    #     color=color(0),
+    #     label=rf"Largest std ($\sigma$ = {{{largest_std[0]:.2f}}} m/s)",
     # )
+    # plt.plot(
+    #     c_p[idx_largest_std[1], :],
+    #     z,
+    #     color=color(1),
+    #     label=rf"2nd largest std ($\sigma$ = {{{largest_std[1]:.2f}}} m/s)",
+    # )
+    # plt.plot(
+    #     c_p[idx_smallest_std[0], :],
+    #     z,
+    #     color=color(2),
+    #     label=rf"Smallest std ($\sigma$ = {{{smallest_std[0]:.2f}}} m/s)",
+    # )
+    # plt.plot(
+    #     c_p[idx_smallest_std[1], :],
+    #     z,
+    #     color=color(3),
+    #     label=rf"2nd smallest std ($\sigma$ = {{{smallest_std[1]:.2f}}} m/s)",
+    # )
+    # plt.xlabel("Celerity [m/s]")
+    # plt.ylabel("Depth [m]")
+    # plt.gca().invert_yaxis()
+    # plt.legend()
+    # # plt.savefig("test")
 
-    # generate_celerity_diag(distance=["theta"], celerity_env_types=["sw"], celerity_situations=["summer", "winter"], process_sensi=True, build_baseline=False)
+    # # std = _celerity_profile_std(
+    # #     z_baseline,
+    # #     c_p_baseline,
+    # #     z,
+    # #     c_p[idx_smallest_std[0], :],
+    # # )
+    # # std = _celerity_profile_std(
+    # #     z_baseline,
+    # #     c_p_baseline,
+    # #     z,
+    # #     c_p[idx_largest_std[0], :],
+    # # )
 
-    # run_debug_test()
+    # plt.show()

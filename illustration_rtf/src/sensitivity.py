@@ -518,6 +518,11 @@ def calc_monotonicity_domain(dist_r_r0, r, r0):
     Derive distance main lobe width defined as the monotonicity domain according to the first maximum of the distance (first zero crossing of the derivative)
     """
 
+    # # Apply moving average to avoid spurious detections
+    # import pandas as pd
+    # dist_r_r0_pd = pd.DataFrame(dist_r_r0).rolling(window=3, center=True, min_periods=1).mean()
+    # dist_r_r0 = dist_r_r0_pd.to_numpy().flatten()
+
     # Positive r - r0
     r_reduced = r - r0
     d_pos = dist_r_r0[r_reduced >= 0]
@@ -525,6 +530,12 @@ def calc_monotonicity_domain(dist_r_r0, r, r0):
 
     # Compute the derivative of the distance
     dd_dr_pos = np.gradient(d_pos, r_pos)
+
+    # Apply moving average to avoid spurious detections
+    import pandas as pd
+    dd_dr_pos_pd = pd.DataFrame(dd_dr_pos).rolling(window=5, center=True, min_periods=1).mean()
+    dd_dr_pos = dd_dr_pos_pd.to_numpy().flatten()
+
     # Find zero crossings of the derivative
     zero_crossings_pos = np.where(np.diff(np.sign(dd_dr_pos)))[0]
     if not len(zero_crossings_pos) > 0:
@@ -543,6 +554,10 @@ def calc_monotonicity_domain(dist_r_r0, r, r0):
     r_neg = r_reduced[r_reduced < 0]
     # Compute the derivative of the distance
     dd_dr_neg = np.gradient(d_neg, r_neg)
+
+    dd_dr_neg_pd = pd.DataFrame(dd_dr_neg).rolling(window=5, center=True, min_periods=1).mean()
+    dd_dr_neg = dd_dr_neg_pd.to_numpy().flatten()
+
     # Find zero crossings of the derivative
     zero_crossings_neg = np.where(np.diff(np.sign(dd_dr_neg)))[0]
 
@@ -758,12 +773,12 @@ def single_sensitivity_test_calc_dist_width(dist_L1, dist_L2, dist_theta, r_grid
     for i in range(n_values):
         for name, dist in dists.items():
             try:
-                widths[name][i], _, _ = calc_mainlobe_width_3dB(
-                    dist_r_r0=dist[:, i], r=r_grid, r0=r0
-                )
-                # widths[name][i], _, _ = calc_monotonicity_domain(
+                # widths[name][i], _, _ = calc_mainlobe_width_3dB(
                 #     dist_r_r0=dist[:, i], r=r_grid, r0=r0
                 # )
+                widths[name][i], _, _ = calc_monotonicity_domain(
+                    dist_r_r0=dist[:, i], r=r_grid, r0=r0
+                )
             except ValueError as exc:
                 print(
                     f"Warning: could not compute the {name} mainlobe width for "
@@ -5071,8 +5086,16 @@ if __name__ == "__main__":
     # generate_all_diagnostics(
     #     distance=["wasserstein"], process_sensi=True, build_baseline=False
     # )
-    generate_all_diagnostics(distance=["wasserstein", "theta"], process_sensi=True)
+    generate_all_diagnostics(distance=["theta"], process_sensi=True)
 
+    # process_sensitivity_intrinsic_mainlobe_width()
+    # # 2.2) plot mainlobe width of distance around r0 for all parameters
+    # plot_sensitivity_curves(
+    #     distance="theta",
+    #     file_prefix="intrinsic_mainlobe_width_",
+    #     ylabel="Intrinsic mainlobe width [m]",
+    #     save_dir=IMG_DIR,
+    # )
 
     # # Diag for each seasons
     # env_type = "sw"

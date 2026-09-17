@@ -126,53 +126,92 @@ def plot_resilience_depth_baseline_celerity_profiles():
     plt.show()
 
 
-def plot_resilience_depth_results():
+def _load_res(path):
+    data = np.loadtxt(path, delimiter=",", skiprows=1)
+    data = np.atleast_2d(data)
+    dist_wasserstein = data[:, 4] if data.shape[1] > 4 else None
+    return data[:, 0], data[:, 1], data[:, 2], data[:, 3], dist_wasserstein
+
+
+def plot_resilience_depth_results(distance="theta", use_plateform_res=False):
     test_arg_name = "depth"
     D_sw = CELERITY_ENV_TYPES["sw"]["depth"]
     D_dw = CELERITY_ENV_TYPES["dw"]["depth"]
 
     # Load results for sw
-    resilience_result_dir, resilience_img_dir = _resilience_study_dirs(
-        env_type="sw", kind="depth"
-    )
-    test_values, dist_L1, dist_L2, dist_theta_sw = load_sensitivity_distance_results(
-        test_arg_name, result_dir=resilience_result_dir
-    )
+
+    # Load from pc
+    if use_plateform_res:
+        # Load from plateform results
+        result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_depth"
+        path = os.path.join(result_dir, f"dist_depth_resilience_sw.csv")
+        test_values, dist_L1, dist_L2, dist_theta_sw, dist_wass_sw = _load_res(path)
+    else:
+        resilience_result_dir, resilience_img_dir = _resilience_study_dirs(
+            env_type="sw", kind="depth"
+        )
+        test_values, dist_L1, dist_L2, dist_theta_sw, dist_wass_sw = (
+            load_sensitivity_distance_results(
+                test_arg_name, result_dir=resilience_result_dir
+            )
+        )
+
     delta_D = np.array(test_values) - D_sw
-    delta_D_perc_sw = delta_D / D_sw * 100
+
     # Load results for dw
-    resilience_result_dir, resilience_img_dir = _resilience_study_dirs(
-        env_type="dw", kind="depth"
-    )
-    test_values, dist_L1, dist_L2, dist_theta_dw = load_sensitivity_distance_results(
-        test_arg_name, result_dir=resilience_result_dir
-    )
-    delta_D_perc_dw = delta_D / D_dw * 100
+    if use_plateform_res:
+        # Load from plateform results
+        result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_depth"
+        path = os.path.join(result_dir, f"dist_depth_resilience_dw.csv")
+        test_values, dist_L1, dist_L2, dist_theta_dw, dist_wass_dw = _load_res(path)
+    else:
+        resilience_result_dir, resilience_img_dir = _resilience_study_dirs(
+            env_type="dw", kind="depth"
+        )
+        test_values, dist_L1, dist_L2, dist_theta_dw, dist_wass_dw = (
+            load_sensitivity_distance_results(
+                test_arg_name, result_dir=resilience_result_dir
+            )
+        )
+
+    if distance == "theta":
+        dist_sw = dist_theta_sw
+        dist_dw = dist_theta_dw
+        ylabel = r"$\theta$"
+        use_ylim = True
+    elif distance == "wasserstein":
+        dist_sw = dist_wass_sw
+        dist_dw = dist_wass_dw
+        ylabel = "Distance de Wasserstein"
+        use_ylim = False
 
     # Plots for each env type
     plt.figure(figsize=(16, 8))
-    plt.plot(delta_D, dist_theta_sw, "o-", label="D = 100 m", color=color(0))
-    plt.plot(delta_D, dist_theta_dw, "o-", label="D = 2000 m ", color=color(1))
+    plt.plot(delta_D, dist_sw, label="D = 100 m", color=color(0))
+    plt.plot(delta_D, dist_dw, label="D = 2000 m ", color=color(1))
     plt.xlabel(r"$\delta_D$ [m]")
-    plt.ylabel(r"$\theta$")
+    plt.ylabel(ylabel)
     plt.legend()
-    plt.ylim(0, 2)
+    if use_ylim:
+        plt.ylim(0, 2)
 
-    # Plots for each env type as a function of percentage depth perturbation
-    print(f"delta_D_perc_sw: {delta_D_perc_sw}")
-    print(f"delta_D_perc_dw: {delta_D_perc_dw}")
-    plt.figure(figsize=(16, 8))
-    plt.plot(delta_D_perc_sw, dist_theta_sw, "o-", label="D = 100 m", color=color(0))
-    plt.plot(delta_D_perc_dw, dist_theta_dw, "o-", label="D = 2000 m ", color=color(1))
-    plt.xlabel(r"$\delta_D$ [%]")
-    plt.ylabel(r"$\theta$")
-    plt.legend()
-    plt.ylim(0, 2)
+    # # Plots for each env type as a function of percentage depth perturbation
+    # delta_D_perc_sw = delta_D / D_sw * 100
+    # delta_D_perc_dw = delta_D / D_dw * 100
+    # print(f"delta_D_perc_sw: {delta_D_perc_sw}")
+    # print(f"delta_D_perc_dw: {delta_D_perc_dw}")
+    # plt.figure(figsize=(16, 8))
+    # plt.plot(delta_D_perc_sw, dist_theta_sw, "o-", label="D = 100 m", color=color(0))
+    # plt.plot(delta_D_perc_dw, dist_theta_dw, "o-", label="D = 2000 m ", color=color(1))
+    # plt.xlabel(r"$\delta_D$ [\%]")
+    # plt.ylabel(r"$\theta$")
+    # plt.legend()
+    # plt.ylim(0, 2)
 
     plt.show()
 
 
-def plot_resilience_depth_results_associated_extrema_gamma():
+def plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=False):
 
     test_arg_name = "depth"
     d12 = baseline_src_rcv()["d12"]
@@ -194,11 +233,18 @@ def plot_resilience_depth_results_associated_extrema_gamma():
             # -- computed once, reused for every test_arg_name below.
             baseline_gamma_r0 = ds_baseline.gamma.sel(r=r0, method="nearest")
 
-            test_values, dist_L1, dist_L2, dist_theta = (
-                load_sensitivity_distance_results(
-                    test_arg_name, result_dir=result_dir, file_prefix="dist_"
+            if use_plateform_res:
+                plt_result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_depth"
+                path = os.path.join(
+                    plt_result_dir, f"dist_depth_resilience_{env_type}.csv"
                 )
-            )
+                test_values, dist_L1, dist_L2, dist_theta, _ = _load_res(path)
+            else:
+                test_values, dist_L1, dist_L2, dist_theta, _ = (
+                    load_sensitivity_distance_results(
+                        test_arg_name, result_dir=result_dir, file_prefix="dist_"
+                    )
+                )
             dist = dist_theta
             # idx_min = int(np.nanargmin(dist))
             # idx_max = int(np.nanargmax(dist))
@@ -408,6 +454,8 @@ def plot_resilience_depth_results_associated_extrema_rtf():
 if __name__ == "__main__":
 
     # plot_resilience_depth_baseline_celerity_profiles()
-    # plot_resilience_depth_results()
-    # plot_resilience_depth_results_associated_extrema_gamma()
-    plot_resilience_depth_results_associated_extrema_rtf()
+    plot_resilience_depth_results(distance="wasserstein", use_plateform_res=True)
+    # plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=True)
+    # plot_resilience_depth_results_associated_extrema_rtf()
+
+    pass

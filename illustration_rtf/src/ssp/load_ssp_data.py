@@ -58,6 +58,7 @@ fname = "cmems_data_1993_2026.nc"
 
 
 ds = xr.open_dataset(os.path.join(root_ssp_data, fname))
+print(ds)
 
 box_center_lon = ds.longitude.values.mean()
 box_center_lat = ds.latitude.values.mean()

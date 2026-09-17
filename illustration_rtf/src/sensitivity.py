@@ -14,6 +14,8 @@
 # ======================================================================================================================
 import os
 import glob
+import shutil
+from datetime import datetime
 
 import numpy as np
 import xarray as xr
@@ -58,6 +60,14 @@ else:  # Linux
 
 SENSITIVITY_KRAKEN_DIR = os.path.join(SENSITIVITY_DIRECTORY, "io_files")
 os.makedirs(SENSITIVITY_KRAKEN_DIR, exist_ok=True)
+
+# NOTE: KRAKEN/FIELD occasionally fail with an intermittent, hard-to-
+# reproduce Fortran runtime error (e.g. "I/O past end of record on
+# unformatted file") -- see build_kraken()'s own try/except around
+# manager.runkraken(), which logs the failed run's '.env'/'.flp'/'.prt'
+# (both kraken's own and field's -- see _log_kraken_crash()'s own
+# docstring) file contents here, for later diagnosis.
+CRASH_LOG_DIR = os.path.join(SENSITIVITY_KRAKEN_DIR, "crash_logs")
 
 RESULT_DIR = os.path.join(SENSITIVITY_DIRECTORY, "result")
 os.makedirs(RESULT_DIR, exist_ok=True)
@@ -833,6 +843,91 @@ def run_sensitivity_study(test_arg_name, test_arg_values, all_arg_dict, model="k
 # ======================================================================================================================
 # Build datasets
 # ======================================================================================================================
+def _log_kraken_crash(env, flp, exc, extra_context=None):
+    """On a KRAKEN/FIELD run failure (see build_kraken()'s own
+    try/except around manager.runkraken()), write the content of every
+    input/diagnostic file that run produced -- '.env', '.flp', and
+    BOTH '.prt' files -- to one timestamped log file under
+    CRASH_LOG_DIR.
+
+    NOTE: kraken.exe writes its own print output to
+    '<filename>.prt' (same base name as the '.env'/'.flp' -- see
+    KrakenEnv's own 'env_filename'), but field.exe writes to a FIXED,
+    un-derived filename, 'field.prt', in the same working directory
+    (env.root) -- NOT '<filename>.prt' (confirmed from an actual
+    'field.prt' sample: it has no notion of the run's own filename at
+    all). The two are therefore always separate files, neither
+    overwriting the other.
+
+    KRAKEN/FIELD occasionally fail with an intermittent, hard-to-
+    reproduce Fortran runtime error (e.g. "I/O past end of record on
+    unformatted file") that os.system() (see KrakenManager.run_exec())
+    does not turn into a Python exception by itself -- the actual
+    exception this catches is typically raised downstream, when
+    read_shd.readshd() tries to parse a '.shd' file that the crashed
+    run never finished writing. By the time that happens, every input/
+    print file below is still exactly as KRAKEN/FIELD last left it,
+    since build_sensitivity_dataset()'s per-value loop runs strictly
+    sequentially, one full KRAKEN/FIELD run at a time, always into the
+    SAME '<SENSITIVITY_KRAKEN_DIR>/<ENV_FILENAME>.*' filenames (see
+    KrakenEnv's own 'env_root'/'env_filename' in build_kraken()) -- so
+    nothing else overwrites them before this can run.
+
+    Args:
+        env (KrakenEnv): the environment the failed run was for.
+        flp (KrakenFlp): the field parameters the failed run was for.
+        exc (Exception): the exception that was actually raised (see
+            above -- rarely the Fortran error itself, but whatever
+            downstream symptom it caused).
+        extra_context (dict|None): extra key/value pairs recorded at
+            the top of the log (e.g. the waveguide parameters this
+            configuration was run with) -- purely informational, to
+            help correlate a crash with what was being swept at the
+            time.
+
+    Returns:
+        str: path to the written log file.
+    """
+    os.makedirs(CRASH_LOG_DIR, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    log_fpath = os.path.join(CRASH_LOG_DIR, f"crash_{timestamp}.log")
+
+    env_fpath = env.env_fpath
+    flp_fpath = flp.flp_fpath
+    kraken_prt_fpath = env_fpath.replace(".env", ".prt")
+    field_prt_fpath = os.path.join(os.path.dirname(env_fpath), "field.prt")
+
+    def _read_or_note_missing(fpath):
+        if not os.path.exists(fpath):
+            return f"[file not found: {fpath}]\n"
+        try:
+            with open(fpath, "r", errors="replace") as f:
+                return f.read()
+        except OSError as read_exc:
+            return f"[could not read {fpath}: {read_exc}]\n"
+
+    with open(log_fpath, "w", encoding="utf-8") as f:
+        f.write(f"KRAKEN/FIELD crash log -- {datetime.now().isoformat()}\n")
+        f.write(f"Exception: {type(exc).__name__}: {exc}\n")
+        if extra_context:
+            f.write("Context:\n")
+            for key, value in extra_context.items():
+                f.write(f"  {key}: {value}\n")
+        f.write("\n")
+
+        for label, fpath in [
+            (".env", env_fpath),
+            (".flp", flp_fpath),
+            (".prt (kraken)", kraken_prt_fpath),
+            (".prt (field)", field_prt_fpath),
+        ]:
+            f.write(f"{'=' * 70}\n{label} -- {fpath}\n{'=' * 70}\n")
+            f.write(_read_or_note_missing(fpath))
+            f.write("\n\n")
+
+    return log_fpath
+
+
 def build_kraken(
     freq,
     c1,
@@ -979,9 +1074,33 @@ def build_kraken(
     #    write_env()/write_flp() call needed here.
     # ----------------------------------------------------------------------
     manager = KrakenManager(verbose=False)
-    pressure_field, field_pos = manager.runkraken(
-        env=env, flp=flp, frequencies=env.freq
-    )
+    try:
+        pressure_field, field_pos = manager.runkraken(
+            env=env, flp=flp, frequencies=env.freq
+        )
+    except Exception as exc:
+        # NOTE: see _log_kraken_crash()'s own docstring for why this is
+        # needed and what it captures. The ORIGINAL exception is always
+        # re-raised unchanged afterward -- logging is purely a side
+        # effect, never a substitute for the caller's own error
+        # handling (or lack thereof).
+        log_fpath = _log_kraken_crash(
+            env,
+            flp,
+            exc,
+            extra_context={
+                "freq_min_max_Hz": f"{freq.min():.2f}-{freq.max():.2f}",
+                "depth_m": depth,
+                "c1_m_s": c1,
+                "c2_m_s": c2,
+                "rho1_kg_m3": rho1,
+                "rho2_kg_m3": rho2,
+                "attn2_dB_per_wavelength": attn2,
+                "realistic_profile": z_ssp is not None and c_p_ssp is not None,
+            },
+        )
+        print(f"build_kraken: run failed -- input/print files logged to {log_fpath}")
+        raise
 
     # Plot
     if plot_diag:
@@ -1143,6 +1262,33 @@ def _to_float32(arr):
     return np.asarray(arr, dtype=np.float32)
 
 
+def _clear_dir(dir_path):
+    """Delete every file already in 'dir_path' (then recreate it
+    empty) before a fresh sweep writes into it.
+
+    NOTE (added, per user request): a sweep's own per-value output
+    folder (e.g. '<RESULT_DIR>/attn2/', see
+    build_sensitivity_dataset()) used to only ever get
+    os.makedirs(..., exist_ok=True)'d -- never actually emptied. Stale
+    files left over from a PREVIOUS run (a different set/count of
+    swept values, or one that crashed partway through -- see
+    build_kraken()'s own try/except around manager.runkraken()) would
+    then sit alongside the new ones, and get silently picked up by
+    whatever later reads every '.nc' file in that folder (see
+    process_sensitivity()/process_celerity_sensitivity()'s own
+    xr.open_mfdataset() calls, matched by a glob() over the folder's
+    contents) -- corrupting the results with leftover data that
+    doesn't belong to the CURRENT sweep at all.
+
+    Args:
+        dir_path (str): directory to empty (created if it doesn't
+            exist yet).
+    """
+    if os.path.isdir(dir_path):
+        shutil.rmtree(dir_path)
+    os.makedirs(dir_path, exist_ok=True)
+
+
 def build_sensitivity_dataset(
     test_arg_name, test_arg_values, all_arg_dict, model="kraken", result_dir=RESULT_DIR
 ):
@@ -1194,7 +1340,9 @@ def build_sensitivity_dataset(
     """
 
     out_dir = os.path.join(result_dir, test_arg_name)
-    os.makedirs(out_dir, exist_ok=True)
+    # NOTE (per user request): emptied first, not just created -- see
+    # _clear_dir()'s own docstring for why.
+    _clear_dir(out_dir)
 
     # We will build the args to pass to the test function at each iteration
     all_args = all_arg_dict.copy()
@@ -2080,7 +2228,7 @@ def plot_sensitivity_curves(
         )
         fig.savefig(os.path.join(save_dir, fname))
 
-        # plt.close(fig)
+        plt.close(fig)
 
     return fig
 
@@ -2191,18 +2339,18 @@ def build_tests(use_debug_config=False):
         drop_keys=("fs", "fmax", "r0", "d12"), d12_max=5000
     )
 
-    npt = 20
-    nb_param = 4
-    size_per_test_Ko = 110000
-    total_size = size_per_test_Ko * nb_param * npt
-    print(
-        f"Total memory size (if it were all held at once) = {total_size * 1e-6} Go "
-        f"-- no longer applicable: build_sensitivity_dataset() now writes each "
-        f"value's result as soon as it's computed (see its own docstring)."
-    )
+    # npt = 20
+    # nb_param = 4
+    # size_per_test_Ko = 110000
+    # total_size = size_per_test_Ko * nb_param * npt
+    # print(
+    #     f"Total memory size (if it were all held at once) = {total_size * 1e-6} Go "
+    #     f"-- no longer applicable: build_sensitivity_dataset() now writes each "
+    #     f"value's result as soon as it's computed (see its own docstring)."
+    # )
 
     if use_debug_config:
-        ndebug = 50
+        ndebug = 10
         sweeps = {
             "depth": np.linspace(70, 130, ndebug),
             "c1": np.linspace(1460, 1540, ndebug),
@@ -2770,6 +2918,30 @@ def _celerity_profile_rmse(z_baseline, c_p_baseline, z_test, c_p_test):
     return np.sqrt(np.mean((c_p_test - c_p_baseline_interp) ** 2, axis=-1))
 
 
+def _celerity_profile_std(z_baseline, c_p_baseline, z_test, c_p_test):
+    """std (m/s) between the baseline (mean) celerity profile and one
+    or several test profiles.
+
+
+    Args:
+        z_baseline (np.ndarray): shape (n_depth_baseline,).
+        c_p_baseline (np.ndarray): shape (n_depth_baseline,).
+        z_test (np.ndarray): shape (n_depth_test,).
+        c_p_test (np.ndarray): shape (n_depth_test,) for a single
+            profile, or (n_profiles, n_depth_test) for a batch.
+
+    Returns:
+        float|np.ndarray: std (m/s) -- scalar for a single profile,
+        shape (n_profiles,) for a batch.
+    """
+    c_p_baseline_interp = np.interp(z_test, z_baseline, c_p_baseline)
+    c_p_bias = np.mean(c_p_test - c_p_baseline_interp)
+    c_p_test_unbiased = c_p_test - c_p_bias
+    unbiased_diff = c_p_test_unbiased - c_p_baseline_interp
+    c_p_std = np.std(unbiased_diff, axis=-1)
+    return c_p_std
+
+
 ### F1 score ###
 def get_min_max_idx(arr: np.ndarray, axs: int = 1, pad: bool = True) -> np.ndarray:
     """Find local minima and maxima in array."""
@@ -2873,6 +3045,29 @@ def _save_celerity_f1_score_results(situation, profile_idx, f1_score, result_dir
     return path
 
 
+def _save_celerity_std_results(situation, profile_idx, std, result_dir):
+    """Save the per-profile STD-from-baseline-profile results (see
+    _celerity_profile_std()) for ONE situation to a small, dedicated
+    CSV file, parallel to save_sensitivity_distance_results()'s own
+    "dist_<situation>.csv" (joined later on 'profile_idx' -- see
+    plot_celerity_distance_vs_std()).
+
+    Args:
+        situation (str): see CELERITY_SITUATIONS.
+        profile_idx, std (array-like): equal-length 1D arrays.
+        result_dir (str): directory to write into, as
+            '<result_dir>/std_<situation>.csv'.
+
+    Returns:
+        str: path to the written file.
+    """
+    os.makedirs(result_dir, exist_ok=True)
+    path = os.path.join(result_dir, f"std_{situation}.csv")
+    data = np.column_stack([profile_idx, std])
+    np.savetxt(path, data, delimiter=",", header="profile,std", comments="")
+    return path
+
+
 def _load_celerity_rmse_results(situation, result_dir):
     """Reload a results file written by _save_celerity_rmse_results().
 
@@ -2892,6 +3087,18 @@ def _load_celerity_f1_score_results(situation, result_dir):
         tuple(np.ndarray, np.ndarray): profile_idx, rmse.
     """
     path = os.path.join(result_dir, f"f1_score_{situation}.csv")
+    data = np.loadtxt(path, delimiter=",", skiprows=1)
+    data = np.atleast_2d(data)
+    return data[:, 0], data[:, 1]
+
+
+def _load_celerity_std_results(situation, result_dir):
+    """Reload a results file written by _save_celerity_std_results().
+
+    Returns:
+        tuple(np.ndarray, np.ndarray): profile_idx, rmse.
+    """
+    path = os.path.join(result_dir, f"std_{situation}.csv")
     data = np.loadtxt(path, delimiter=",", skiprows=1)
     data = np.atleast_2d(data)
     return data[:, 0], data[:, 1]
@@ -3137,6 +3344,17 @@ def build_celerity_sensitivity_dataset(
         result_dir, _ = _resilience_study_dirs(env_type, "celerity")
     out_dir = os.path.join(result_dir, situation)
     os.makedirs(out_dir, exist_ok=True)
+
+    # NOTE (per user request): clear stale per-profile files from a
+    # PREVIOUS sweep before writing new ones -- see _clear_dir()'s own
+    # docstring for why this matters. Deliberately NOT a blanket
+    # _clear_dir(out_dir) here, unlike build_sensitivity_dataset():
+    # this SAME folder also holds this (env_type, situation)'s own
+    # 'gf_dataset_baseline.nc' (see build_celerity_baseline()), which
+    # must survive -- only this sweep's own '<situation>_*.nc' files
+    # are removed.
+    for stale_fpath in glob.glob(os.path.join(out_dir, f"{situation}_*.nc")):
+        os.remove(stale_fpath)
 
     ssp_filename = _synthetic_ssp_filename(env_type, situation, n_samples=n_samples)
     z_ssp, c_p_ssp_all = load_synthetic_celerity_profiles(
@@ -3385,19 +3603,27 @@ def process_celerity_sensitivity(
                 # baseline-profile diagnostic (see
                 # plot_celerity_distance_vs_rmse(), the main reason
                 # this exists at all per user request).
+                # RMSE
                 rmse = _celerity_profile_rmse(
                     z_baseline,
                     c_p_baseline,
                     ds_test["z"].values,
                     ds_test["c_p_ssp"].values,
                 )
-
+                # F1 score
                 f1_score = _celerity_profile_f1_score(
                     z_baseline,
                     c_p_baseline,
                     ds_test["z"].values,
                     ds_test["c_p_ssp"].values,
-                    kernel_size=10,
+                    kernel_size=5,
+                )
+                # Std
+                std = _celerity_profile_std(
+                    z_baseline,
+                    c_p_baseline,
+                    ds_test["z"].values,
+                    ds_test["c_p_ssp"].values,
                 )
 
         save_sensitivity_distance_results(
@@ -3413,6 +3639,8 @@ def process_celerity_sensitivity(
         _save_celerity_rmse_results(situation, profile_idx, rmse, result_dir)
         # F1 score
         _save_celerity_f1_score_results(situation, profile_idx, f1_score, result_dir)
+        # STD
+        _save_celerity_std_results(situation, profile_idx, std, result_dir)
 
     return plot_sensitivity_curves(situations, result_dir=result_dir, save_dir=save_dir)
 
@@ -3550,7 +3778,7 @@ def plot_celerity_distance_vs_rmse(
         )
         fig.savefig(os.path.join(save_dir, fname))
 
-        # plt.close(fig)
+        plt.close(fig)
 
     return fig
 
@@ -3569,7 +3797,7 @@ def plot_celerity_distance_vs_f1_score(
     celerity-sensitivity study's KEY diagnostic, per user request: the
     profile INDEX plot_sensitivity_curves() would otherwise show on the
     x-axis carries no information about how DIFFERENT a profile
-    actually is from the reference one, whereas the RMSE does.
+    actually is from the reference one, whereas the F1 does.
 
     Args:
         env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
@@ -3651,7 +3879,106 @@ def plot_celerity_distance_vs_f1_score(
         )
         fig.savefig(os.path.join(save_dir, fname))
 
-        # plt.close(fig)
+        plt.close(fig)
+
+    return fig
+
+
+def plot_celerity_distance_vs_std(
+    env_type,
+    situations=None,
+    metric="theta",
+    result_dir=None,
+    save_dir=None,
+):
+    """Plot the RTF distance from baseline (see
+    process_celerity_sensitivity()) AS A FUNCTION OF each profile's own
+    STD deviation from the baseline (mean) celerity profile (see
+    _celerity_profile_std()), one panel per situation -- this is the
+    celerity-sensitivity study's KEY diagnostic, per user request: the
+    profile INDEX plot_sensitivity_curves() would otherwise show on the
+    x-axis carries no information about how DIFFERENT a profile
+    actually is from the reference one, whereas the STD does.
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        situations (list[str]|None): which situations to plot (each
+            must have a '<result_dir>/std_<situation>.csv' file from
+            process_celerity_sensitivity()). None (the default):
+            every such file under 'result_dir'.
+        metric (str): "L1", "L2", or "theta" -- which distance metric
+            to plot on the y-axis.
+        result_dir (str|None): where to read the saved distance/STD
+            results from. None (the default):
+            '<RESILIENCE_RESULT_DIR>/<env_type>/celerity/'.
+        save_dir (str|None): if given, save the figure to
+            '<save_dir>/<filename>.png' (see
+            _sensitivity_figure_filename()). None (the default): the
+            figure is only returned, not saved.
+
+    Returns:
+        matplotlib.figure.Figure
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+    CELERITY_ENV_TYPES[env_type]
+
+    if result_dir is None:
+        result_dir, _ = _resilience_study_dirs(env_type, "celerity")
+
+    if situations is None:
+        prefix, suffix = "std_", ".csv"
+        situations = sorted(
+            name[len(prefix) : -len(suffix)]
+            for name in os.listdir(result_dir)
+            if name.startswith(prefix) and name.endswith(suffix)
+        )
+
+    n_situations = len(situations)
+    fig, axs = plt.subplots(
+        1, max(n_situations, 1), figsize=(16, 8), squeeze=False, sharey=True
+    )
+    axs = axs[0]
+
+    for i, situation in enumerate(situations):
+        profile_idx_dist, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
+            load_sensitivity_distance_results(
+                situation, result_dir=result_dir, file_prefix="dist_"
+            )
+        )
+        profile_idx_std, std = _load_celerity_std_results(situation, result_dir)
+
+        # NOTE: both files were written from the SAME 'ds_test' within
+        # a single process_celerity_sensitivity() call, in the same
+        # order -- this re-sort by profile index is a cheap safety net
+        # against that assumption ever breaking (e.g. a future
+        # refactor reading them from separate passes), not something
+        # expected to actually reorder anything today.
+        order_dist = np.argsort(profile_idx_dist)
+        order_std = np.argsort(profile_idx_std)
+        dist = {
+            "L1": dist_L1,
+            "L2": dist_L2,
+            "theta": dist_theta,
+            "wasserstein": dist_wasserstein,
+        }[metric][order_dist]
+        std = std[order_std]
+
+        axs[i].scatter(std, dist, s=12)
+        axs[i].set_xlabel(r"STD from baseline profile [m s$^{-1}$]")
+        axs[i].set_title(situation)
+
+    axs[0].set_ylabel(f"Distance ({METRIC_LABEL[metric]})")
+
+    if save_dir is not None:
+        os.makedirs(save_dir, exist_ok=True)
+        fname = _sensitivity_figure_filename(
+            "dist_vs_std", situations, file_prefix="dist_", metric=metric
+        )
+        fig.savefig(os.path.join(save_dir, fname))
+
+        plt.close(fig)
 
     return fig
 
@@ -3821,8 +4148,8 @@ def plot_extremal_celerity_configs(
                 )
             )
 
-            # plt.close(fig_gamma)
-            # plt.close(fig_profile)
+            plt.close(fig_gamma)
+            plt.close(fig_profile)
 
     return figures
 
@@ -4250,8 +4577,8 @@ def plot_extremal_width_configs(
                         ),
                     )
                 )
-                # plt.close(fig_dist)
-                # plt.close(fig_gamma)
+                plt.close(fig_dist)
+                plt.close(fig_gamma)
     finally:
         if ds_baseline is not None:
             ds_baseline.close()
@@ -4386,6 +4713,7 @@ def plot_extremal_resilience_dist_configs(
                     "gamma_at_r0", test_arg_name, file_prefix="dist_", metric=metric
                 )
                 fig.savefig(os.path.join(save_dir, fname))
+                plt.close(fig)
 
     return figures
 
@@ -4467,7 +4795,7 @@ def generate_all_diagnostics(
         ylabel="Distance from baseline at r=r0",
         save_dir=IMG_DIR,
     )
-    # plt.close("all")
+    plt.close("all")
 
     # 1.3) plot distance from baseline for each parameter
     for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
@@ -4477,7 +4805,7 @@ def generate_all_diagnostics(
             ylabel="Distance from baseline at r=r0",
             save_dir=IMG_DIR,
         )
-        # plt.close("all")
+        plt.close("all")
 
     # Step 2 : Mainlobe width of distance around r0 for each configuration
     # 2.1) read all files and compute mainlobe width of distance around r0
@@ -4490,7 +4818,7 @@ def generate_all_diagnostics(
         ylabel="Intrinsic mainlobe width [m]",
         save_dir=IMG_DIR,
     )
-    # plt.close("all")
+    plt.close("all")
 
     # 2.3) plot mainlobe width of distance around r0 for each parameter
     for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
@@ -4508,7 +4836,7 @@ def generate_all_diagnostics(
             mode="intrinsic",
             save_dir=IMG_DIR,
         )
-        # plt.close("all")
+        plt.close("all")
 
     # Step 3 : Resilience tests
     # NOTE: now loops over environment types (see
@@ -4545,7 +4873,7 @@ def generate_all_diagnostics(
             result_dir=resilience_result_dir,
             save_dir=resilience_img_dir,
         )
-        # plt.close("all")
+        plt.close("all")
 
     # Step 4 : Celerity (sound-speed profile) tests
     generate_celerity_diag(
@@ -4608,6 +4936,7 @@ def generate_celerity_diag(
         # 4.2) the key diagnostic: distance vs. RMSE deviation from the
         # baseline profile (see plot_celerity_distance_vs_rmse()'s own
         # docstring for why this, rather than the raw profile index).
+        # RMSE
         plot_celerity_distance_vs_rmse(
             env_type,
             situations=celerity_situations,
@@ -4615,8 +4944,16 @@ def generate_celerity_diag(
             result_dir=result_dir,
             save_dir=img_dir,
         )
-
+        # F1 score
         plot_celerity_distance_vs_f1_score(
+            env_type,
+            situations=celerity_situations,
+            metric=distance[0],
+            result_dir=result_dir,
+            save_dir=img_dir,
+        )
+        # STD
+        plot_celerity_distance_vs_std(
             env_type,
             situations=celerity_situations,
             metric=distance[0],
@@ -4633,7 +4970,7 @@ def generate_celerity_diag(
             result_dir=result_dir,
             save_dir=img_dir,
         )
-        # plt.close("all")
+        plt.close("all")
 
 
 def run_debug_test():
@@ -4755,19 +5092,92 @@ if __name__ == "__main__":
     #     process_sensi=False,
     #     build_baseline=False,
     # )
-    # # Winter vs summer
+
+    # Winter vs summer
     # generate_celerity_diag(
     #     distance=["theta"],
     #     celerity_env_types=["sw"],
     #     celerity_situations=["summer", "winter"],
-    #     process_sensi=False,
+    #     process_sensi=True,
     #     build_baseline=False,
     # )
 
-    # build_celerity_tests(
-    #     env_types=["sw"], situations=["all", "summer", "winter"], n_profiles=500
+    # Illustration of the std indicator behavior
+
+    # fpath_ssp = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\ssp\ssp_profiles_sw.nc"
+    # ds_ssp = xr.open_dataset(fpath_ssp)
+
+    # z_baseline = ds_ssp.depth.values
+    # c_p_baseline = ds_ssp.ssp.mean(dim="time").values
+    # z_baseline, c_p_baseline = _drop_depths_with_any_nan(z_baseline, c_p_baseline)
+    # z_baseline, c_p_baseline = _ensure_profile_starts_at_surface(
+    #     z_baseline, c_p_baseline
+    # )
+    # z_baseline, c_p_baseline = _adapt_profile_to_depth(z_baseline, c_p_baseline, 100)
+
+    # z = ds_ssp.depth.values
+    # c_p = ds_ssp.ssp.values
+    # z, c_p = _drop_depths_with_any_nan(z, c_p)
+    # z, c_p = _ensure_profile_starts_at_surface(z, c_p)
+    # z, c_p = _adapt_profile_to_depth(z, c_p, 100)
+
+    # std = _celerity_profile_std(
+    #     z_baseline,
+    #     c_p_baseline,
+    #     z,
+    #     c_p,
     # )
 
-    # generate_celerity_diag(distance=["theta"], celerity_env_types=["sw"], celerity_situations=["summer", "winter"], process_sensi=True, build_baseline=False)
+    # # 2 worst profiles
+    # idx_largest_std = np.argsort(std)[-2:]
+    # largest_std = std[idx_largest_std]
+    # # 2 best
+    # idx_smallest_std = np.argsort(std)[:2]
+    # smallest_std = std[idx_smallest_std]
 
-    # run_debug_test()
+    # plt.figure()
+    # plt.plot(c_p_baseline, z_baseline, color="k")
+    # plt.plot(
+    #     c_p[idx_largest_std[0], :],
+    #     z,
+    #     color=color(0),
+    #     label=rf"Largest std ($\sigma$ = {{{largest_std[0]:.2f}}} m/s)",
+    # )
+    # plt.plot(
+    #     c_p[idx_largest_std[1], :],
+    #     z,
+    #     color=color(1),
+    #     label=rf"2nd largest std ($\sigma$ = {{{largest_std[1]:.2f}}} m/s)",
+    # )
+    # plt.plot(
+    #     c_p[idx_smallest_std[0], :],
+    #     z,
+    #     color=color(2),
+    #     label=rf"Smallest std ($\sigma$ = {{{smallest_std[0]:.2f}}} m/s)",
+    # )
+    # plt.plot(
+    #     c_p[idx_smallest_std[1], :],
+    #     z,
+    #     color=color(3),
+    #     label=rf"2nd smallest std ($\sigma$ = {{{smallest_std[1]:.2f}}} m/s)",
+    # )
+    # plt.xlabel("Celerity [m/s]")
+    # plt.ylabel("Depth [m]")
+    # plt.gca().invert_yaxis()
+    # plt.legend()
+    # # plt.savefig("test")
+
+    # # std = _celerity_profile_std(
+    # #     z_baseline,
+    # #     c_p_baseline,
+    # #     z,
+    # #     c_p[idx_smallest_std[0], :],
+    # # )
+    # # std = _celerity_profile_std(
+    # #     z_baseline,
+    # #     c_p_baseline,
+    # #     z,
+    # #     c_p[idx_largest_std[0], :],
+    # # )
+
+    # plt.show()

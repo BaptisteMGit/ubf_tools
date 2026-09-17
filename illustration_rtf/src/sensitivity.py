@@ -2216,7 +2216,7 @@ def plot_sensitivity_curves(
         )
     else:
         # theta is bounded between 0 and 2, so it is a good idea to set the y limit to [0, 2] for better visualization
-        if "theta" in distance:
+        if "theta" in distance and not "intrinsic" in file_prefix:
             axs[0].set_ylim([0, 2])
 
         fig.supylabel(ylabel or dist_label[distance[0]])
@@ -5068,40 +5068,32 @@ if __name__ == "__main__":
     #     save_dir=IMG_DIR,
     # )
 
-    generate_all_diagnostics(distance=["theta"], process_sensi=True)
-    # generate_all_diagnostics(distance=["wasserstein"], process_sensi=True)
-
     # generate_all_diagnostics(
     #     distance=["wasserstein"], process_sensi=True, build_baseline=False
     # )
+    generate_all_diagnostics(distance=["wasserstein", "theta"], process_sensi=True)
 
-    # # Diag for SW summer
-    # generate_celerity_diag(
-    #     distance=["wasserstein"],
-    #     celerity_env_types=["sw"],
-    #     celerity_situations=["summer"],
-    #     process_sensi=True,
-    #     build_baseline=False,
-    # )
 
-    # # Diag for variations all
+    # # Diag for each seasons
+    # env_type = "sw"
+    # # Winter vs summer
     # generate_celerity_diag(
     #     distance=["theta"],
-    #     celerity_env_types=["sw"],
-    #     celerity_situations=["all"],
+    #     celerity_env_types=[env_type],
+    #     celerity_situations=["summer", "winter"],
     #     process_sensi=False,
     #     build_baseline=False,
     # )
 
-    # Winter vs summer
+    # env_type = "dw"
+    # # Winter vs summer
     # generate_celerity_diag(
     #     distance=["theta"],
-    #     celerity_env_types=["sw"],
+    #     celerity_env_types=[env_type],
     #     celerity_situations=["summer", "winter"],
-    #     process_sensi=True,
+    #     process_sensi=False,
     #     build_baseline=False,
     # )
-
     # Illustration of the std indicator behavior
 
     # fpath_ssp = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\ssp\ssp_profiles_sw.nc"

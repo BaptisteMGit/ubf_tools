@@ -495,9 +495,9 @@ def calc_rtf_wasserstein_dist(gamma_a, gamma_b):
 
     # rtf_a = 10 ** (gamma_a / 20.0)
     # rtf_b = 10 ** (gamma_b / 20.0)
-    water_level = min(np.min(gamma_a), np.min(gamma_b)) + 1e-5
-    rtf_a = gamma_a + water_level
-    rtf_b = gamma_b + water_level
+    water_level = min(np.nanmin(gamma_a), np.nanmin(gamma_b))
+    rtf_a = gamma_a - water_level + 1e-5
+    rtf_b = gamma_b - water_level + 1e-5
     rtf_a = np.broadcast_to(rtf_a, rtf_b.shape)
 
     n_freq, n_values = rtf_b.shape

@@ -113,13 +113,12 @@ axs[1].legend()
 
 # plt.savefig("test")
 
+
 # Step 2 : transform into positive only (distribution like)
-
-
 def shift_to_positive(gamma_a, gamma_b):
-    water_level = min(np.nanmin(gamma_a), np.nanmin(gamma_b)) + 1e-5
-    gamma_a_shift = gamma_a + water_level
-    gamma_b_shift = gamma_b + water_level
+    water_level = min(np.nanmin(gamma_a), np.nanmin(gamma_b)) - 1e-5
+    gamma_a_shift = gamma_a - water_level
+    gamma_b_shift = gamma_b - water_level
     gamma_a_shift = np.broadcast_to(gamma_a_shift, gamma_b_shift.shape)
 
     return gamma_a_shift, gamma_b_shift
@@ -141,6 +140,97 @@ axs[1].plot(f, gamma_dw_2_shift, label=f"D = {ds_dw_2.depth.values} m")
 axs[0].legend()
 axs[1].legend()
 
-plt.savefig("test")
+# plt.savefig("test")
 
-print()
+
+# Compute wasserstein distance
+def get_wassertein_dist(gamma_a_shift, gamma_b_shift):
+    n_freq = gamma_a_shift.size
+    distribution_support = np.arange(n_freq)
+
+    # Remove nan values
+    common_nan_idx = np.isnan(gamma_a_shift * gamma_b_shift)
+    u = gamma_a_shift.copy()
+    v = gamma_b_shift.copy()
+    u[common_nan_idx] = 0.0
+    v[common_nan_idx] = 0.0
+
+    # u = np.nan_to_num(gamma_a_shift, nan=0.0)
+    # v = np.nan_to_num(gamma_b_shift, nan=0.0)
+    wd = wasserstein_distance(
+        u_values=distribution_support,
+        v_values=distribution_support,
+        u_weights=u,
+        v_weights=v,
+    )
+    return wd
+
+
+wd_sw = get_wassertein_dist(
+    gamma_a_shift=gamma_sw_1_shift, gamma_b_shift=gamma_sw_2_shift
+)
+wd_dw = get_wassertein_dist(
+    gamma_a_shift=gamma_dw_1_shift, gamma_b_shift=gamma_dw_2_shift
+)
+
+print(f"Wasserstein distance for delta_d = 10 m : \n\tSW = {wd_sw} \n\tDW = {wd_dw}")
+
+
+# Normalise to get same mass
+df = ds_sw_1.f.values[1] - ds_sw_1.f.values[0]
+
+
+def get_wassertein_dist_normalized(gamma_a_shift, gamma_b_shift, df):
+    n_freq = gamma_a_shift.size
+    distribution_support = np.arange(n_freq)
+
+    # u = np.nan_to_num(gamma_a_shift, nan=0.0)
+    # v = np.nan_to_num(gamma_b_shift, nan=0.0)
+
+    # Remove nan values
+    common_nan_idx = np.isnan(gamma_a_shift * gamma_b_shift)
+    u = gamma_a_shift.copy()
+    v = gamma_b_shift.copy()
+    u[common_nan_idx] = 0.0
+    v[common_nan_idx] = 0.0
+
+    mass_u = np.sum(u)
+    mass_v = np.sum(v)
+    u = u / mass_u
+    v = v / mass_v
+    wd = wasserstein_distance(
+        u_values=distribution_support,
+        v_values=distribution_support,
+        u_weights=u,
+        v_weights=v,
+    )
+    return u, v, wd
+
+
+u_sw_1, u_sw_2, wd_norm_sw = get_wassertein_dist_normalized(
+    gamma_a_shift=gamma_sw_1_shift, gamma_b_shift=gamma_sw_2_shift, df=df
+)
+u_dw_1, u_dw_2, wd_norm_dw = get_wassertein_dist_normalized(
+    gamma_a_shift=gamma_dw_1_shift, gamma_b_shift=gamma_dw_2_shift, df=df
+)
+
+print(np.sum(u_sw_1), np.sum(u_sw_2), np.sum(u_dw_1), np.sum(u_dw_2))
+# Plot normalized
+fig, axs = plt.subplots(2, 1, figsize=(16, 8))
+axs[0].plot(f, u_sw_1, label=f"D = {ds_sw_1.depth.values} m")
+axs[0].plot(f, u_sw_2, label=f"D = {ds_sw_2.depth.values} m")
+axs[1].plot(f, u_dw_1, label=f"D = {ds_dw_1.depth.values} m")
+axs[1].plot(f, u_dw_2, label=f"D = {ds_dw_2.depth.values} m")
+
+axs[0].legend()
+axs[1].legend()
+
+# plt.savefig("test")
+
+
+print(
+    f"Wasserstein distance after normalisation for delta_d = 10 m : \n\tSW = {wd_norm_sw} \n\tDW = {wd_norm_dw}"
+)
+
+
+plt.show()

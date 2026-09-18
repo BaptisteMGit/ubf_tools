@@ -42,10 +42,21 @@ from publication.publication_figure import PubFigure
 
 PubFigure()
 
-root_ssp_img = r"/home/program/ubf_tools/illustration_rtf/img/ssp"
-root_ssp_data = (
-    r"/home/program/ubf_tools/illustration_rtf/data/ssp"
-)
+
+# Usefull paths
+if os.name == "nt":  # Windows
+    root_ssp_img = (
+        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\img\ssp"
+    )
+    root_ssp_data = (
+        r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\ssp"
+    )
+
+else:  # Linux
+    root_ssp_img = r"/home/program/ubf_tools/illustration_rtf/img/ssp"
+    root_ssp_data = r"/home/program/ubf_tools/illustration_rtf/data/ssp"
+
+
 os.makedirs(root_ssp_img, exist_ok=True)
 os.makedirs(root_ssp_data, exist_ok=True)
 
@@ -282,7 +293,8 @@ f_sw.savefig(os.path.join(root_ssp_img, "ssp_sw.png"))
 f_dw.savefig(os.path.join(root_ssp_img, "ssp_dw.png"))
 
 # plt.show()
-
+print(f"Number of profiles for shallow-water environment : {ssp_sw.sizes['time']}")
+print(f"Number of profiles for deep-water environment : {ssp_dw.sizes['time']}")
 
 # ======================================================================================================================
 # Step 4 : split each location's SSP time series into meteorological seasons

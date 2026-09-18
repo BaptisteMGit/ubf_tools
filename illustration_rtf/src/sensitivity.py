@@ -505,14 +505,28 @@ def calc_rtf_wasserstein_dist(gamma_a, gamma_b):
 
     dist = np.empty(n_values)
     for i in range(n_values):
-        u = np.nan_to_num(rtf_a[:, i], nan=0.0)
-        v = np.nan_to_num(rtf_b[:, i], nan=0.0)
+        # Remove nan values
+        common_nan_idx = np.isnan(rtf_a[:, i] * rtf_b[:, i])
+        u = rtf_a[:, i].copy()
+        v = rtf_b[:, i].copy()
+        u[common_nan_idx] = 0.0
+        v[common_nan_idx] = 0.0
+
+        # u = np.nan_to_num(rtf_a[:, i], nan=0.0)
+        # v = np.nan_to_num(rtf_b[:, i], nan=0.0)
+
+        # Ensure distributions have mass 1
+        u = u / np.sum(u)
+        v = v / np.sum(v)
+
+        # Compute Wasserstein distance
         dist[i] = wasserstein_distance(
             u_values=distribution_support,
             v_values=distribution_support,
             u_weights=u,
             v_weights=v,
         )
+
     return dist
 
 

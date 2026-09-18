@@ -33,7 +33,9 @@ from illustration_rtf.src.sensitivity import (
     ARG_LABEL,
 )
 from propa.kraken_toolbox.plot_utils import plot_ssp
-from publication.publication_figure import set_subfigures_abc_labels, color
+from publication.publication_figure import set_subfigures_abc_labels, color, PubFigure
+
+PubFigure(label_fontsize=26, ticks_fontsize=24)
 
 # ======================================================================================================================
 # Dedicated plots
@@ -144,7 +146,9 @@ def plot_resilience_depth_results(distance="theta", use_plateform_res=False):
     if use_plateform_res:
         # Load from plateform results
         result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_depth"
-        path = os.path.join(result_dir, f"dist_depth_resilience_sw.csv")
+        # path = os.path.join(result_dir, f"dist_depth_resilience_sw.csv")
+        path = os.path.join(result_dir, f"dist_depth_resilience_sw_wasserstein_dB.csv")
+
         test_values, dist_L1, dist_L2, dist_theta_sw, dist_wass_sw = _load_res(path)
     else:
         resilience_result_dir, resilience_img_dir = _resilience_study_dirs(
@@ -162,7 +166,9 @@ def plot_resilience_depth_results(distance="theta", use_plateform_res=False):
     if use_plateform_res:
         # Load from plateform results
         result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_depth"
-        path = os.path.join(result_dir, f"dist_depth_resilience_dw.csv")
+        # path = os.path.join(result_dir, f"dist_depth_resilience_dw.csv")
+        path = os.path.join(result_dir, f"dist_depth_resilience_dw_wasserstein_dB.csv")
+
         test_values, dist_L1, dist_L2, dist_theta_dw, dist_wass_dw = _load_res(path)
     else:
         resilience_result_dir, resilience_img_dir = _resilience_study_dirs(
@@ -193,7 +199,7 @@ def plot_resilience_depth_results(distance="theta", use_plateform_res=False):
     plt.ylabel(ylabel)
     plt.legend()
     if use_ylim:
-        plt.ylim(0, 2)
+        plt.ylim(0, 1)
 
     # # Plots for each env type as a function of percentage depth perturbation
     # delta_D_perc_sw = delta_D / D_sw * 100
@@ -451,11 +457,215 @@ def plot_resilience_depth_results_associated_extrema_rtf():
     plt.show()
 
 
+def plot_ssp_all():
+    fpath_sw = os.path.join(SSP_DATA_DIR, "ssp_profiles_sw.nc")
+    ds_sw = xr.open_dataset(fpath_sw)
+    fpath_dw = os.path.join(SSP_DATA_DIR, "ssp_profiles_dw.nc")
+    ds_dw = xr.open_dataset(fpath_dw)
+
+    # Plot profiles
+    fig, axs = plt.subplots(1, 2, figsize=(12, 8), sharey=False)
+    axs_sw, axs_dw = axs[0], axs[1]
+    for it in range(ds_sw.sizes["time"]):
+        # Shallow water profiles
+        ds_sw.ssp.isel(time=it).plot(
+            y="depth", yincrease=False, alpha=0.1, color="b", ax=axs_sw
+        )
+
+        # Deep water profiles
+        ds_dw.ssp.isel(time=it).plot(
+            y="depth", yincrease=False, alpha=0.1, color="b", ax=axs_dw
+        )
+
+    ds_sw.ssp.mean(dim="time").plot(y="depth", yincrease=False, color="k", ax=axs_sw)
+    ds_dw.ssp.mean(dim="time").plot(y="depth", yincrease=False, color="k", ax=axs_dw)
+
+    axs_sw.set_ylabel("")
+    axs_dw.set_ylabel("")
+    axs_sw.set_xlabel("")
+    axs_dw.set_xlabel("")
+    axs_sw.set_title("")
+    axs_dw.set_title("")
+
+    from matplotlib.ticker import MaxNLocator
+
+    axs_dw.xaxis.set_major_locator(MaxNLocator(nbins=5))
+    axs_sw.xaxis.set_major_locator(MaxNLocator(nbins=5))
+
+    fig.suptitle("")
+    fig.supxlabel("Célérité [m s$^{-1}$]")
+    fig.supylabel("Profondeur [m]")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    plt.show()
+
+
+def plot_seasonal_profiles(ssp_season, axs, season_name):
+    print(f"Season {season_name}: {ssp_season.sizes['time']} profiles")
+    for it in range(ssp_season.sizes["time"]):
+        ssp_season.isel(time=it).plot(
+            y="depth", yincrease=False, alpha=0.25, color="b", ax=axs
+        )
+    ssp_season.mean(dim="time").plot(
+        y="depth", yincrease=False, color="k", linewidth=2, ax=axs
+    )
+    axs.set_title(f"{season_name}")
+    axs.set_xlabel("")
+    axs.set_ylabel("")
+
+
+def plot_ssp_seasons():
+
+    fnames = [
+        "ssp_profiles_sw_winter.nc",
+        "ssp_profiles_sw_spring.nc",
+        "ssp_profiles_sw_summer.nc",
+        "ssp_profiles_sw_automn.nc",
+        "ssp_profiles_dw_winter.nc",
+        "ssp_profiles_dw_spring.nc",
+        "ssp_profiles_dw_summer.nc",
+        "ssp_profiles_dw_automn.nc",
+    ]
+
+    fig, axs = plt.subplots(2, 4, figsize=(14, 10), sharey="row", sharex="row")
+
+    for k, fname in enumerate(fnames):
+        j = k % 4
+        i = k // 4
+        # print(i, j)
+        ssp_season = xr.open_dataset(os.path.join(SSP_DATA_DIR, fname)).ssp
+        plot_seasonal_profiles(
+            ssp_season, axs[i, j], season_name=fname.split("_")[3][:-3]
+        )
+
+    from matplotlib.ticker import MaxNLocator
+
+    for ax in axs.flatten():
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+        ax.set_title("")
+
+    fig.supxlabel("Célérité [m s$^{-1}$]")
+    fig.supylabel("Profondeur [m]")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    # plt.show()
+
+
+def plot_temp_salinity_seasons():
+    # Load dataset
+    fname = "cmems_data_1993_2026.nc"
+    ds = xr.open_dataset(os.path.join(SSP_DATA_DIR, fname))
+    # Load ssp to get pos
+    fpath_sw = os.path.join(SSP_DATA_DIR, "ssp_profiles_sw.nc")
+    ssp_sw = xr.open_dataset(fpath_sw)
+    fpath_dw = os.path.join(SSP_DATA_DIR, "ssp_profiles_dw.nc")
+    ssp_dw = xr.open_dataset(fpath_dw)
+
+    ds_sw = ds.sel(
+        longitude=ssp_sw.longitude.values,
+        latitude=ssp_sw.latitude.values,
+        method="nearest",
+    )
+    ds_dw = ds.sel(
+        longitude=ssp_dw.longitude.values,
+        latitude=ssp_dw.latitude.values,
+        method="nearest",
+    )
+
+    # Extract profiles for each season
+    winter_months = [12, 1, 2]
+    spring_months = [3, 4, 5]
+    summer_months = [6, 7, 8]
+    automn_months = [9, 10, 11]
+
+    ds_sw_winter = ds_sw.sel(time=ds_sw.time.dt.month.isin(winter_months))
+    ds_sw_spring = ds_sw.sel(time=ds_sw.time.dt.month.isin(spring_months))
+    ds_sw_summer = ds_sw.sel(time=ds_sw.time.dt.month.isin(summer_months))
+    ds_sw_automn = ds_sw.sel(time=ds_sw.time.dt.month.isin(automn_months))
+
+    ds_dw_winter = ds_dw.sel(time=ds_dw.time.dt.month.isin(winter_months))
+    ds_dw_spring = ds_dw.sel(time=ds_dw.time.dt.month.isin(spring_months))
+    ds_dw_summer = ds_dw.sel(time=ds_dw.time.dt.month.isin(summer_months))
+    ds_dw_automn = ds_dw.sel(time=ds_dw.time.dt.month.isin(automn_months))
+
+    ds_list = [
+        ds_sw_winter,
+        ds_sw_spring,
+        ds_sw_summer,
+        ds_sw_automn,
+        ds_dw_winter,
+        ds_dw_spring,
+        ds_dw_summer,
+        ds_dw_automn,
+    ]
+
+    # Temperature
+    fig, axs = plt.subplots(2, 4, figsize=(14, 10), sharey="row", sharex="row")
+
+    for k, ds_ in enumerate(ds_list):
+        j = k % 4
+        i = k // 4
+        # print(i, j)
+        plot_seasonal_profiles(ds_.thetao, axs[i, j], season_name="")
+
+    from matplotlib.ticker import MaxNLocator
+
+    for ax in axs.flatten():
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+        ax.set_title("")
+
+    fig.supxlabel("Température [°C]")
+    fig.supylabel("Profondeur [m]")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    # Salinité
+    fig, axs = plt.subplots(2, 4, figsize=(14, 10), sharey="row", sharex="row")
+
+    for k, ds_ in enumerate(ds_list):
+        j = k % 4
+        i = k // 4
+        # print(i, j)
+        plot_seasonal_profiles(ds_.so, axs[i, j], season_name="")
+
+    from matplotlib.ticker import MaxNLocator
+
+    for ax in axs.flatten():
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
+        ax.set_title("")
+
+    fig.supxlabel("Salinité [psu]")
+    fig.supylabel("Profondeur [m]")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    # plt.show()
+
+
+def plot_ssp_acp_process():
+    pass
+
+
 if __name__ == "__main__":
 
     # plot_resilience_depth_baseline_celerity_profiles()
-    plot_resilience_depth_results(distance="wasserstein", use_plateform_res=True)
-    # plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=True)
     # plot_resilience_depth_results_associated_extrema_rtf()
 
-    pass
+    # plot_resilience_depth_results(distance="wasserstein", use_plateform_res=True)
+    # plot_resilience_depth_results(distance="theta", use_plateform_res=True)
+    plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=True)
+    # plot_ssp_all()
+    # plot_ssp_seasons()
+    # plot_temp_salinity_seasons()
+
+    plt.show()

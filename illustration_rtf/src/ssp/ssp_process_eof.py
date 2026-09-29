@@ -172,6 +172,7 @@ def plot_input_profiles_and_eofs(ssp, eof):
         tuple(matplotlib.figure.Figure, np.ndarray): the figure and
         its array of axes (1 profile panel + 1 panel per EOF).
     """
+
     n_components = eof.shape[0]
     fig, axs = plt.subplots(
         1,
@@ -426,9 +427,7 @@ if __name__ == "__main__":
     # )
 
     root_ssp_img = r"/home/program/ubf_tools/illustration_rtf/img/ssp"
-    root_ssp_data = (
-        r"/home/program/ubf_tools/illustration_rtf/data/ssp"
-    )
+    root_ssp_data = r"/home/program/ubf_tools/illustration_rtf/data/ssp"
     n_new_samples = 1000
     cumulative_variance_threshold = 0.999
 

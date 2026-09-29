@@ -17,6 +17,7 @@ import glob
 import numpy as np
 import xarray as xr
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 from matplotlib.lines import Line2D
 
@@ -28,9 +29,14 @@ from illustration_rtf.src.sensitivity import (
     load_sensitivity_distance_results,
     _resilience_study_dirs,
     derive_gamma,
+    _load_celerity_std_results,
+    plot_celerity_distance_vs_std,
+    plot_sensitivity_curves,
     CELERITY_ENV_TYPES,
     SSP_DATA_DIR,
     ARG_LABEL,
+    METRIC_LABEL,
+    RESULT_DIR,
 )
 from propa.kraken_toolbox.plot_utils import plot_ssp
 from publication.publication_figure import set_subfigures_abc_labels, color, PubFigure
@@ -147,7 +153,10 @@ def plot_resilience_depth_results(distance="theta", use_plateform_res=False):
         # Load from plateform results
         result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_depth"
         # path = os.path.join(result_dir, f"dist_depth_resilience_sw.csv")
-        path = os.path.join(result_dir, f"dist_depth_resilience_sw_wasserstein_dB.csv")
+        # path = os.path.join(result_dir, f"dist_depth_resilience_sw_wasserstein_dB.csv")
+        path = os.path.join(
+            result_dir, f"dist_depth_resilience_sw_wasserstein_dB_mass_norm.csv"
+        )
 
         test_values, dist_L1, dist_L2, dist_theta_sw, dist_wass_sw = _load_res(path)
     else:
@@ -167,7 +176,10 @@ def plot_resilience_depth_results(distance="theta", use_plateform_res=False):
         # Load from plateform results
         result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_depth"
         # path = os.path.join(result_dir, f"dist_depth_resilience_dw.csv")
-        path = os.path.join(result_dir, f"dist_depth_resilience_dw_wasserstein_dB.csv")
+        # path = os.path.join(result_dir, f"dist_depth_resilience_dw_wasserstein_dB.csv")
+        path = os.path.join(
+            result_dir, f"dist_depth_resilience_dw_wasserstein_dB_mass_norm.csv"
+        )
 
         test_values, dist_L1, dist_L2, dist_theta_dw, dist_wass_dw = _load_res(path)
     else:
@@ -636,8 +648,6 @@ def plot_temp_salinity_seasons():
         # print(i, j)
         plot_seasonal_profiles(ds_.so, axs[i, j], season_name="")
 
-    from matplotlib.ticker import MaxNLocator
-
     for ax in axs.flatten():
         ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
         ax.set_title("")
@@ -653,7 +663,458 @@ def plot_temp_salinity_seasons():
 
 
 def plot_ssp_acp_process():
-    pass
+
+    fpath_sw = os.path.join(SSP_DATA_DIR, "ssp_profiles_sw.nc")
+    ssp_original_sw = xr.open_dataset(fpath_sw).ssp
+    fpath_dw = os.path.join(SSP_DATA_DIR, "ssp_profiles_dw.nc")
+    ssp_original_dw = xr.open_dataset(fpath_dw).ssp
+
+    # fpath_sw = os.path.join(SSP_DATA_DIR, "synthetic_ssp_profiles_sw_1000.nc")
+    # ds_synthetic_sw = xr.open_dataset(fpath_sw)
+    # fpath_dw = os.path.join(SSP_DATA_DIR, "synthetic_ssp_profiles_dw_1000.nc")
+    # ds_synthetic_dw = xr.open_dataset(fpath_dw)
+
+    from illustration_rtf.src.ssp.ssp_process_eof import (
+        get_ssp_eof,
+        generate_new_ssp_profiles,
+        convert_synthetic_to_xarray,
+    )
+
+    # Get EOFs
+    n_new_samples = 50
+    cumulative_variance_threshold = 0.999
+
+    def get_eof_and_synthetic(ssp):
+        ssp, eof, X_pca, pca, scaler = get_ssp_eof(
+            ssp,
+            cumulative_variance_threshold=cumulative_variance_threshold,
+            verbose=True,
+        )
+
+        # Generate synthetic profiles
+        X_ssp_synthetic = generate_new_ssp_profiles(
+            pca, scaler, n_new_samples=n_new_samples
+        )
+        ssp_synthetic = convert_synthetic_to_xarray(
+            X_ssp_synthetic=X_ssp_synthetic,
+            ssp_original=ssp,
+            n_components=pca.n_components_,
+        )
+
+        return eof, ssp_synthetic
+
+    eof_sw, ssp_synthetic_sw = get_eof_and_synthetic(ssp=ssp_original_sw)
+    eof_dw, ssp_synthetic_dw = get_eof_and_synthetic(ssp=ssp_original_dw)
+
+    # Plot EOFs and original profiles
+    fig, axs = plot_synthetic_profiles_and_eofs(
+        ssp_original_sw,
+        ssp_synthetic_sw,
+        eof_sw,
+        ssp_original_dw,
+        ssp_synthetic_dw,
+        eof_dw,
+        n_eof_max=5,
+        n_profiles_max=50,
+    )
+
+    # fig.supxlabel("Célérité [m s$^{-1}$]")
+    fig.supylabel("Profondeur [m]")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    # plt.show()
+
+
+def plot_synthetic_profiles_and_eofs(
+    ssp_original_sw,
+    ssp_synthetic_sw,
+    eof_sw,
+    ssp_original_dw,
+    ssp_synthetic_dw,
+    eof_dw,
+    n_eof_max=4,
+    n_profiles_max=50,
+):
+
+    # n_components = eof.shape[0]
+    n_components = min(eof_sw.shape[0], n_eof_max)
+    fig, axs = plt.subplots(
+        2,
+        n_components + 1,
+        figsize=(14, 10),
+        sharey="row",
+        gridspec_kw={"width_ratios": [1] + [0.6] * n_components},
+    )
+
+    ### Shallow water ###
+    # Plot synthetic profiles
+    if ssp_synthetic_sw.sizes["time"] > n_profiles_max:
+        ssp_synthetic_sw = ssp_synthetic_sw.isel(
+            time=np.random.choice(
+                ssp_synthetic_sw.sizes["time"], n_profiles_max, replace=False
+            )
+        )
+
+    for it in range(ssp_synthetic_sw.sizes["time"]):
+        ssp_synthetic_sw.isel(time=it).plot(y="depth", yincrease=False, ax=axs[0, 0])
+
+    # Plot original mean profile
+    ssp_original_sw.mean(dim="time").plot(
+        y="depth", yincrease=False, color="k", lw=2, ax=axs[0, 0]
+    )
+
+    # Plot EOFs
+    for ic in range(n_components):
+        idx_comp = ic + 1
+        axs[0, idx_comp].plot(
+            eof_sw[ic, :], ssp_synthetic_sw.depth.values, color="k", lw=2
+        )
+        # axs[0, idx_comp].set_title(rf"$v_{{{idx_comp}}}$")
+
+    axs[0, 0].set_xlabel(r"")
+    axs[0, 0].set_ylabel("")
+    axs[0, 0].set_title("")
+
+    ### Deep water ###
+    # Plot synthetic profiles
+    if ssp_synthetic_dw.sizes["time"] > n_profiles_max:
+        ssp_synthetic_dw = ssp_synthetic_dw.isel(
+            time=np.random.choice(
+                ssp_synthetic_dw.sizes["time"], n_profiles_max, replace=False
+            )
+        )
+
+    for it in range(ssp_synthetic_dw.sizes["time"]):
+        ssp_synthetic_dw.isel(time=it).plot(y="depth", yincrease=False, ax=axs[1, 0])
+
+    # Plot original mean profile
+    ssp_original_dw.mean(dim="time").plot(
+        y="depth", yincrease=False, color="k", lw=2, ax=axs[1, 0]
+    )
+
+    # Plot EOFs
+    for ic in range(n_components):
+        idx_comp = ic + 1
+        axs[1, idx_comp].plot(
+            eof_dw[ic, :], ssp_synthetic_dw.depth.values, color="k", lw=2
+        )
+        # axs[1, idx_comp].set_title(rf"$v_{{{idx_comp}}}$")
+
+    axs[1, 0].set_xlabel(r"[m~s$^{-1}$]")
+    axs[1, 0].set_ylabel("")
+    axs[1, 0].set_title("")
+
+    for ax in axs.flatten():
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=3))
+
+    fig.supylabel("Profondeur [m]")
+
+    return fig, axs
+
+
+def _add_celerity(
+    ax, result_dir, situation, metric="theta", set_label=False, linear_reg=False
+):
+    profile_idx_dist, dist_L1, dist_L2, dist_theta, dist_wasserstein = (
+        load_sensitivity_distance_results(
+            situation, result_dir=result_dir, file_prefix="dist_"
+        )
+    )
+    profile_idx_std, std = _load_celerity_std_results(situation, result_dir)
+
+    # Sort
+    order_dist = np.argsort(profile_idx_dist)
+    order_std = np.argsort(profile_idx_std)
+    dist = {
+        "L1": dist_L1,
+        "L2": dist_L2,
+        "theta": dist_theta,
+        "wasserstein": dist_wasserstein,
+    }[metric][order_dist]
+
+    # TODO remove that
+    if metric == "theta":
+        dist /= 2
+    else:
+        dist /= np.max(dist)
+
+    print(situation, np.max(dist))
+
+    std = std[order_std]
+
+    if set_label:
+        ax.scatter(std, dist, label=f"{METRIC_LABEL[metric]}", s=12)
+        ax.legend()
+
+    else:
+        ax.scatter(std, dist, s=12)
+
+    ax.set_ylim(0, 1)
+
+    # Linear regression
+    if linear_reg:
+        from scipy.stats import linregress
+
+        slope, intercept, r, p, se = linregress(x=std, y=dist)
+        x_std = np.linspace(0, std.max(), 100)
+        y_dist = intercept + slope * x_std
+        ax.plot(
+            x_std,
+            y_dist,
+            color="k",
+            label=f"{intercept:.2f} + {slope:.2f}$\sigma_c$ ($r^2$ = {r**2:.2f})",
+        )
+
+        ax.legend(fontsize=12)
+
+    # # Remove percentile
+    # # axs[0].axvline(np.percentile(std, 50))
+    # std_max = np.percentile(std, 75)
+    # slope, intercept, r, p, se = linregress(x=std[std < std_max], y=dist[std < std_max])
+    # x_std = np.linspace(0, std_max, 100)
+    # y_dist = intercept + slope * x_std
+    # ax.plot(
+    #     x_std,
+    #     y_dist,
+    #     color="k",
+    #     linestyle="--",
+    #     label=f"{intercept:.2f} + {slope:.2f}$\sigma$ ($r^2$ = {r**2:.2f})",
+    # )
+
+
+def _plot_celerity_distance_vs_std(
+    result_dir,
+    situation=None,
+    metric="theta",
+):
+
+    result_dir_ = result_dir
+    fig, axs = plt.subplots(1, 2, figsize=(16, 8), squeeze=False, sharey=True)
+    axs = axs.flatten()
+
+    if np.asarray(metric).size > 1:
+        for met in metric:
+            result_dir = os.path.join(result_dir_, "sw")
+            _add_celerity(
+                ax=axs[0],
+                result_dir=result_dir,
+                situation=situation,
+                metric=met,
+                set_label=True,
+            )
+
+            result_dir = os.path.join(result_dir_, "dw")
+            _add_celerity(
+                ax=axs[1],
+                result_dir=result_dir,
+                situation=situation,
+                metric=met,
+                set_label=True,
+            )
+
+        # fig.supxlabel(r"STD from baseline profile [m s$^{-1}$]")
+        fig.supxlabel(r"$\sigma_c$ [m s$^{-1}$]")
+
+        fig.supylabel(f"Distance")
+    else:
+        result_dir = os.path.join(result_dir_, "sw")
+        _add_celerity(
+            ax=axs[0],
+            result_dir=result_dir,
+            situation=situation,
+            metric=metric,
+            set_label=False,
+        )
+
+        result_dir = os.path.join(result_dir_, "dw")
+        _add_celerity(
+            ax=axs[1],
+            result_dir=result_dir,
+            situation=situation,
+            metric=metric,
+            set_label=False,
+        )
+
+        # fig.supxlabel(r"STD from baseline profile [m s$^{-1}$]")
+        fig.supxlabel(r"$\sigma_c$ [m s$^{-1}$]")
+        fig.supylabel(f"Distance {METRIC_LABEL[metric]}")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    return fig
+
+
+def plot_resilience_celerity_results(metric="theta", use_plateform_res=True):
+
+    # Load from pc
+    if use_plateform_res:
+        # Load from plateform results
+        result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_ssp"
+    else:
+        result_dir = None
+
+    situation = "all"
+    fig = _plot_celerity_distance_vs_std(
+        situation=situation,
+        metric=metric,
+        result_dir=result_dir,
+    )
+
+    situation = "winter"
+    fig = _plot_celerity_distance_vs_std(
+        situation=situation,
+        metric=metric,
+        result_dir=result_dir,
+    )
+
+    situation = "summer"
+    fig = _plot_celerity_distance_vs_std(
+        situation=situation,
+        metric=metric,
+        result_dir=result_dir,
+    )
+
+    situation = "automn"
+    fig = _plot_celerity_distance_vs_std(
+        situation=situation,
+        metric=metric,
+        result_dir=result_dir,
+    )
+
+    situation = "spring"
+    fig = _plot_celerity_distance_vs_std(
+        situation=situation,
+        metric=metric,
+        result_dir=result_dir,
+    )
+
+
+def plot_sensitivity_at_r0(distance=["theta"]):
+    result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\sensitivity_17092026\result"
+
+    fig = plot_sensitivity_curves(
+        distance=distance,
+        ylabel=f"Distance ({METRIC_LABEL[distance[0]]})",
+        result_dir=result_dir,
+        save_dir=None,
+    )
+
+    axs = fig.get_axes()
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+
+def plot_sensitivity_mainlobe_width(distance=["theta"], use_plateform_res=True):
+
+    # Load from pc
+    if use_plateform_res:
+        # Load from plateform results
+        result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\sensitivity_17092026\result"
+    else:
+        result_dir = RESULT_DIR
+
+    fig = plot_sensitivity_curves(
+        distance=distance,
+        file_prefix="intrinsic_mainlobe_width_",
+        ylabel=r"$2 r_{\text{-3dB}}$ [m]",
+        result_dir=result_dir,
+        save_dir=None,
+    )
+
+    axs = fig.get_axes()
+
+    for ax in axs:
+        ax.set_ylim(0, 2000)
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+
+def plot_celerity_distance_vs_std_seasons(
+    metric="theta", use_plateform_res=True, linear_reg=False, add_all=False
+):
+
+    # Load from pc
+    if use_plateform_res:
+        # Load from plateform results
+        result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_ssp"
+    else:
+        result_dir = None
+
+    seasons = [
+        "winter",
+        "spring",
+        "summer",
+        "automn",
+    ] * 2
+
+    if add_all:
+        seasons = ["all"] + seasons[:4] + ["all"] + seasons[4:]
+    print(seasons)
+
+    result_dir_ = result_dir
+    result_dir_sw = os.path.join(result_dir_, "sw")
+    result_dir_dw = os.path.join(result_dir_, "dw")
+    result_dirs = [result_dir_sw, result_dir_dw]
+
+    ncol = len(seasons) // 2
+    fig, axs = plt.subplots(
+        2, ncol, figsize=(16, 8), squeeze=False, sharey=True, sharex=True
+    )
+
+    if np.asarray(metric).size > 1:
+        for met in metric:
+
+            for k, season in enumerate(seasons):
+                j = k % ncol
+                i = k // ncol
+                # print(i, j)
+
+                result_dir = result_dirs[i]
+
+                _add_celerity(
+                    ax=axs[i, j],
+                    result_dir=result_dir,
+                    situation=season,
+                    metric=met,
+                    set_label=True,
+                    linear_reg=linear_reg,
+                )
+
+        # fig.supxlabel(r"STD from baseline profile [m s$^{-1}$]")
+        fig.supxlabel(r"$\sigma_c$ [m s$^{-1}$]")
+        fig.supylabel(f"Distance")
+
+    else:
+        for k, season in enumerate(seasons):
+            j = k % ncol
+            i = k // ncol
+            print(i, j)
+
+            result_dir = result_dirs[i]
+
+            _add_celerity(
+                ax=axs[i, j],
+                result_dir=result_dir,
+                situation=season,
+                metric=metric,
+                set_label=False,
+                linear_reg=linear_reg,
+            )
+
+        # fig.supxlabel(r"STD from baseline profile [m s$^{-1}$]")
+        fig.supxlabel(r"$\sigma_c$ [m s$^{-1}$]")
+        fig.supylabel(f"Distance {METRIC_LABEL[metric]}")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
 
 
 if __name__ == "__main__":
@@ -661,11 +1122,20 @@ if __name__ == "__main__":
     # plot_resilience_depth_baseline_celerity_profiles()
     # plot_resilience_depth_results_associated_extrema_rtf()
 
+    # plot_resilience_celerity_results(metric=["theta", "wasserstein"])
+
+    # plot_sensitivity_mainlobe_width(distance=["theta"], use_plateform_res=False)
+
+    # # Validé
+    # plot_sensitivity_at_r0(distance=["theta"])
     # plot_resilience_depth_results(distance="wasserstein", use_plateform_res=True)
     # plot_resilience_depth_results(distance="theta", use_plateform_res=True)
-    plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=True)
+    # plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=True)
     # plot_ssp_all()
     # plot_ssp_seasons()
     # plot_temp_salinity_seasons()
+    # plot_ssp_acp_process()
+    # plot_resilience_celerity_results(metric="theta")
+    plot_celerity_distance_vs_std_seasons(linear_reg=True, add_all=True)
 
     plt.show()

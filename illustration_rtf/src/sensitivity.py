@@ -795,12 +795,12 @@ def single_sensitivity_test_calc_dist_width(dist_L1, dist_L2, dist_theta, r_grid
     for i in range(n_values):
         for name, dist in dists.items():
             try:
-                # widths[name][i], _, _ = calc_mainlobe_width_3dB(
-                #     dist_r_r0=dist[:, i], r=r_grid, r0=r0
-                # )
-                widths[name][i], _, _ = calc_monotonicity_domain(
+                widths[name][i], _, _ = calc_mainlobe_width_3dB(
                     dist_r_r0=dist[:, i], r=r_grid, r0=r0
                 )
+                # widths[name][i], _, _ = calc_monotonicity_domain(
+                #     dist_r_r0=dist[:, i], r=r_grid, r0=r0
+                # )
             except ValueError as exc:
                 print(
                     f"Warning: could not compute the {name} mainlobe width for "
@@ -1625,6 +1625,72 @@ def dist_from_baseline(ds_baseline, ds_test, d12, r0):
     gamma_test_r0 = 20 * np.log10(np.abs(g_fr_2.values / g_fr_1.values))
     gamma_b = gamma_test_r0.T
 
+    # # TODO Remove
+    # df = ds_baseline.f.values[1] - ds_baseline.f.values[0]
+    # idx_no_nan_a = ~np.isnan(gamma_a.flatten())
+    # gamma_a_no_nan = gamma_a.flatten()[idx_no_nan_a]
+    # idx_no_nan_b = ~np.isnan(gamma_b[:, 50])
+    # gamma_b_no_nan = gamma_b[idx_no_nan_b, 50]
+
+    # rfft_freq_a = np.fft.rfftfreq(gamma_a_no_nan.size, d=df)
+    # rfft_gamma_a = np.fft.rfft(gamma_a_no_nan)
+    # rfft_freq_b = np.fft.rfftfreq(gamma_b_no_nan.size, d=df)
+    # rfft_gamma_b = np.fft.rfft(gamma_b_no_nan)
+
+    # # Get last index above
+    # norm_rfft_a = np.abs(rfft_gamma_a) / np.max(np.abs(rfft_gamma_a))
+    # norm_rfft_b = np.abs(rfft_gamma_b) / np.max(np.abs(rfft_gamma_b))
+
+    # th = 0.01
+    # last_idx_above_th_a = np.where(norm_rfft_a**2 >= th)[0][-1]
+    # fmax_a = rfft_freq_a[last_idx_above_th_a]
+    # last_idx_above_th_b = np.where(norm_rfft_b**2 >= th)[0][-1]
+    # fmax_b = rfft_freq_b[last_idx_above_th_b]
+
+    # plt.figure()
+    # plt.axhline(th, color="k", linestyle="--")
+    # plt.plot(rfft_freq_a, norm_rfft_a**2, color=color(0))
+    # plt.axvline(fmax_a, color=color(0))
+    # plt.plot(rfft_freq_b, norm_rfft_b**2, color=color(1))
+    # plt.axvline(fmax_b, color=color(1))
+    # plt.savefig("test1")
+
+    # # Resample
+    # from scipy.signal import decimate
+
+    # freq_a = ds_baseline.f.values
+    # down_sampling_a = int(rfft_freq_a.max() / fmax_a)
+    # # gamma_a_rs = resample_poly(gamma_a, up=1, down=down_sampling_a)
+    # gamma_a_rs = decimate(gamma_a_no_nan, q=down_sampling_a)
+    # # samples_decimated = int(gamma_a_no_nan.size / down_sampling_a)
+    # fnew_a = np.linspace(
+    #     freq_a[idx_no_nan_a].min(),
+    #     freq_a[idx_no_nan_a].max(),
+    #     gamma_a_rs.size,
+    #     endpoint=True,
+    # )
+
+    # freq_b = ds_test.f.values
+    # down_sampling_b = int(rfft_freq_b.max() / fmax_b)
+    # gamma_b_rs = decimate(gamma_b_no_nan, q=down_sampling_b)
+    # # samples_decimated = int(gamma_b_no_nan.size / down_sampling_b)
+    # fnew_b = np.linspace(
+    #     freq_b[idx_no_nan_b].min(),
+    #     freq_b[idx_no_nan_b].max(),
+    #     gamma_b_rs.size,
+    #     endpoint=True,
+    # )
+
+    # print(down_sampling_a, down_sampling_b)
+    # plt.figure()
+    # plt.plot(freq_a, gamma_a, linestyle="-")
+    # plt.scatter(fnew_a, gamma_a_rs, marker="x")
+    # plt.plot(freq_b[idx_no_nan_b], gamma_b_no_nan, linestyle="-")
+    # plt.scatter(fnew_b, gamma_b_rs, marker="x")
+    # plt.savefig("test2")
+
+    # plt.show()
+
     # Compute distance
     dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
     dist_L2 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2")
@@ -2217,6 +2283,13 @@ def plot_sensitivity_curves(
         )
         icol = 0
 
+        # TODO remove
+        # print(
+        #     test_arg_name, np.nanmax(dist_theta), test_values[np.nanargmax(dist_theta)]
+        # )
+        # if test_arg_name != "c1":
+        #     dist_theta = dist_theta / 2
+
         # NOTE : not relevant
         # if test_arg_name == "depth":
         #     axs[i].set_xscale("log")
@@ -2399,7 +2472,7 @@ def build_tests(use_debug_config=False):
     else:
         sweeps = {
             "depth": np.linspace(30, 5000, 300),
-            "c1": np.linspace(1460, 1540, 160),
+            "c1": np.linspace(1450, 1550, 200),
             # "c2": np.linspace(1550.0, 1900.0, npt),
             "rho2": np.linspace(1.0 * 1e3, 2.5 * 1e3, 250),
             "attn2": np.linspace(0.0, 1.0, 100),
@@ -5098,7 +5171,7 @@ if __name__ == "__main__":
     #     )
 
     # build_baseline()
-    # build_tests(use_debug_config=True)
+    # build_tests(use_debug_config=False)
     # process_sensitivity()
     # plot_sensitivity_curves(
     #     distance=["wasserstein"],
@@ -5111,7 +5184,7 @@ if __name__ == "__main__":
     # )
     generate_all_diagnostics(distance=["theta"], process_sensi=True)
 
-    # process_sensitivity_intrinsic_mainlobe_width()
+    # # process_sensitivity_intrinsic_mainlobe_width()
     # # 2.2) plot mainlobe width of distance around r0 for all parameters
     # plot_sensitivity_curves(
     #     distance="theta",
@@ -5119,6 +5192,23 @@ if __name__ == "__main__":
     #     ylabel="Intrinsic mainlobe width [m]",
     #     save_dir=IMG_DIR,
     # )
+
+    # # 2.3) plot mainlobe width of distance around r0 for each parameter
+    # for test_arg_name in ["depth", "c1", "rho2", "attn2"]:
+    #     plot_sensitivity_curves(
+    #         test_arg_names=[test_arg_name],
+    #         distance=["theta"],
+    #         file_prefix="intrinsic_mainlobe_width_",
+    #         ylabel="Intrinsic mainlobe width [m]",
+    #         save_dir=IMG_DIR,
+    #     )
+    #     # Plot the two configurations with the smallest and largest mainlobe width
+    #     plot_extremal_width_configs(
+    #         test_arg_names=[test_arg_name],
+    #         metric="theta",
+    #         mode="intrinsic",
+    #         save_dir=IMG_DIR,
+    #     )
 
     # # Diag for each seasons
     # env_type = "sw"

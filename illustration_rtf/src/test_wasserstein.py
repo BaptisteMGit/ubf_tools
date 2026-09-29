@@ -232,5 +232,9 @@ print(
     f"Wasserstein distance after normalisation for delta_d = 10 m : \n\tSW = {wd_norm_sw} \n\tDW = {wd_norm_dw}"
 )
 
+# print(wasserstein_distance([3, 1, 2, 4, 5], [1, 4, 5, 3, 2]))
+# print(
+#     wasserstein_distance(np.arange(5), np.arange(5), [3, 1, 2, 4, 5], [1, 4, 5, 3, 2])
+# )
 
 plt.show()

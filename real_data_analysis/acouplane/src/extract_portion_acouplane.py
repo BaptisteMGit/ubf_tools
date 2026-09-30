@@ -158,16 +158,13 @@ plt.scatter(event_2_pos.lon, event_2_pos.lat, marker="o", color="m", label="even
 plt.legend()
 plt.xlabel("Longitude [°]")
 plt.ylabel("Latitude [°]")
-# plt.show()
-plt.close("all")
+plt.show()
+# plt.close("all")
 
-# %% [markdown]
 # # Représentation des signaux associés à chaque segment
 
-# %% [markdown]
 # ## Library
 
-# %%
 start_dt = lib_pos.time.values[0]
 end_dt = lib_pos.time.values[-1]
 print(f"Library sequence : from {start_dt} to {end_dt}")
@@ -177,10 +174,8 @@ print(f"Library sequence : from {start_dt} to {end_dt}")
 #     ds_wav, start_analysis_dt, analysis_duration_s, nperseg=2**7, alpha_overlap=0.75
 # )
 
-# %% [markdown]
-# ## Event 1
 
-# %%
+# ## Event 1
 start_dt = event_1_pos.time.values[0]
 start_dt = pd.to_datetime(str(start_dt)).strftime(datetime_format)
 end_dt = event_1_pos.time.values[-1]
@@ -190,17 +185,15 @@ print(f"Event sequence 1 : from {start_dt} to {end_dt}")
 
 # plot_sequence(ds_wav, start_dt, analysis_duration_s, nperseg=2**7, alpha_overlap=0.75)
 
-# %% [markdown]
 # ## Event 2
-
 start_dt = event_2_pos.time.values[0]
 start_dt = pd.to_datetime(str(start_dt)).strftime(datetime_format)
 end_dt = event_2_pos.time.values[-1]
 end_dt = pd.to_datetime(str(end_dt)).strftime(datetime_format)
 print(f"Event sequence 2 : from {start_dt} to {end_dt}")
-analysis_duration_s = 10 * 60
+analysis_duration_s = 60 * 60
 
-# start_dt = "2026-02-24_22-00-00"
+start_dt = "2026-02-24_21-30-00"
 ds_wav_ = ds_wav.sel(obs_id=[4, 7])
 plot_sequence(ds_wav_, start_dt, analysis_duration_s, nperseg=2**7, alpha_overlap=0.75)
 
@@ -210,7 +203,7 @@ plt.close("all")
 
 # ### STA / LTA
 
-# %%
+
 # interval_inter_pulse_s = 3
 # sta_duration = 0.45
 # lta_duration = 3
@@ -256,11 +249,17 @@ sig_dt, signals, arrivals_dt, arrivals_dt_idx = apply_sta_lta_only_first(
     pulse_interval_s=interval_inter_pulse_s,
     fs=ds_wav.fs.isel(obs_id=0).values,
 )
-# plt.show()
-plt.close("all")
+plt.show()
+# plt.close("all")
 
 
 # Attention, il y a une ambiguïté pour associer les paires de réceptions, il faut vérifier à l'aide des données de positions.
+
+# # NOTE : Fix temporaire à modifier --> marche pas vraiment il faut attendre d'avoir les temps d'émission
+min_size = np.min([len(arrivals_dt[i]) for i in range(len(arrivals_dt))])
+for i in range(len(arrivals_dt)):
+    if len(arrivals_dt[i]) > min_size:
+        arrivals_dt[i] = arrivals_dt[i][len(arrivals_dt[i]) - min_size :]
 
 # Conversion en dataset xarray
 arr_dt = np.array(arrivals_dt)
@@ -281,6 +280,7 @@ common_kwargs = dict(
     offset_s=0.1,
     pulse_len_s=interval_inter_pulse_s,
     ref_obs=[4],
+    nfft=2**13,
 )
 
 # Option 1: common window / Option 2: shifted windows

@@ -2993,7 +2993,13 @@ def load_synthetic_celerity_profiles(
                 f"-- fewer than the requested n_profiles={n_profiles}; using "
                 f"all of them."
             )
-        c_p_all = c_p_all[:n_profiles]
+        # c_p_all = c_p_all[:n_profiles]      # Old version : truncation
+        profiles_idx = np.random.choice(
+            c_p_all.shape[0], size=min(n_profiles, c_p_all.shape[0]), replace=False
+        )  # random.choice with replace=False to avoid duplicates
+        c_p_all = c_p_all[
+            profiles_idx, :
+        ]  # New version (from 01/10/2026) : random selection
 
     return z, c_p_all
 
@@ -3392,13 +3398,41 @@ def _synthetic_ssp_filename(
     return f"synthetic_{base}{suffix}_{n_samples}.nc"
 
 
+def _real_ssp_filename(
+    env_type,
+    situation,
+):
+    """Build the filename of the real-profile '.nc' file produced by load_ssp_data.py
+    load_ssp_data produces one file for each (env_type, situation) combination.
+
+    Args:
+        env_type (str): "sw" or "dw" -- see CELERITY_ENV_TYPES.
+        situation (str): "all" (Whole, multi-decade
+            dataset) or one of "winter"/"spring"/"summer"/"automn"
+            (single season only) -- see CELERITY_SITUATIONS.
+
+    Returns:
+        str
+
+    Raises:
+        KeyError: if 'env_type' is not one of CELERITY_ENV_TYPES.
+    """
+
+    base = CELERITY_ENV_TYPES[env_type]["ssp_filename"]
+    if base.endswith(".nc"):
+        base = base[: -len(".nc")]
+    suffix = "" if situation == "all" else f"_{situation}"
+    return f"{base}{suffix}.nc"
+
+
 def build_celerity_sensitivity_dataset(
     env_type,
     situation,
     result_dir=None,
     ssp_data_dir=SSP_DATA_DIR,
-    n_samples=CELERITY_N_SYNTHETIC_SAMPLES,
     n_profiles=None,
+    celerity_profile_source="synthetic",
+    n_samples=CELERITY_N_SYNTHETIC_SAMPLES,
 ):
     """Sweep over synthetic celerity profiles generated for ONE
     (env_type, situation) combination (see illustration_rtf/ssp/
@@ -3467,13 +3501,28 @@ def build_celerity_sensitivity_dataset(
     for stale_fpath in glob.glob(os.path.join(out_dir, f"{situation}_*.nc")):
         os.remove(stale_fpath)
 
-    ssp_filename = _synthetic_ssp_filename(env_type, situation, n_samples=n_samples)
-    z_ssp, c_p_ssp_all = load_synthetic_celerity_profiles(
-        ssp_filename,
-        target_depth=depth,
-        ssp_data_dir=ssp_data_dir,
-        n_profiles=n_profiles,
-    )
+    if celerity_profile_source == "synthetic":
+        ssp_filename = _synthetic_ssp_filename(env_type, situation, n_samples=n_samples)
+        z_ssp, c_p_ssp_all = load_synthetic_celerity_profiles(
+            ssp_filename,
+            target_depth=depth,
+            ssp_data_dir=ssp_data_dir,
+            n_profiles=n_profiles,
+        )
+    elif celerity_profile_source == "real":
+        ssp_filename = _real_ssp_filename(env_type, situation)
+        z_ssp, c_p_ssp_all = load_synthetic_celerity_profiles(
+            ssp_filename,
+            target_depth=depth,
+            ssp_data_dir=ssp_data_dir,
+            n_profiles=n_profiles,
+        )
+    else:
+        raise ValueError(
+            f"build_celerity_sensitivity_dataset: unknown "
+            f"celerity_profile_source='{celerity_profile_source}'"
+        )
+
     n_profiles = c_p_ssp_all.shape[0]
 
     all_arg_dict = load_all_arg_dict(
@@ -3529,8 +3578,9 @@ def build_celerity_sensitivity_dataset(
 def build_celerity_tests(
     env_types=None,
     situations=None,
-    n_samples=CELERITY_N_SYNTHETIC_SAMPLES,
     n_profiles=None,
+    celerity_profile_source="synthetic",
+    n_samples=CELERITY_N_SYNTHETIC_SAMPLES,
 ):
     """Run build_celerity_sensitivity_dataset() for every
     (env_type, situation) combination requested -- the celerity-
@@ -3571,6 +3621,7 @@ def build_celerity_tests(
                 situation,
                 n_samples=n_samples,
                 n_profiles=n_profiles,
+                celerity_profile_source=celerity_profile_source,
             )
     return results
 
@@ -5121,10 +5172,15 @@ def run_all_plateform():
     )
 
 
-def run_all_celerity(env_type, n_profiles=1000):
+def run_all_celerity(env_type, n_profiles=1000, celerity_profile_source="real"):
 
-    build_celerity_baselines(env_types=[env_type])
-    build_celerity_tests(env_types=[env_type], situations=None, n_profiles=n_profiles)
+    # build_celerity_baselines(env_types=[env_type])
+    build_celerity_tests(
+        env_types=[env_type],
+        situations=None,
+        n_profiles=n_profiles,
+        celerity_profile_source=celerity_profile_source,
+    )
     # Diag for each seasons
     for situation in ["all", "winter", "spring", "summer", "automn"]:
         generate_celerity_diag(
@@ -5155,34 +5211,15 @@ def run_all_celerity(env_type, n_profiles=1000):
 
 if __name__ == "__main__":
 
+    run_all_celerity(env_type="sw", n_profiles=1000, celerity_profile_source="real")
+    # run_all_celerity(env_type="dw", n_profiles=1000, celerity_profile_source="real")
+
     # run_all_plateform()
-
-    # # Run all for SW env
-    # build_celerity_baselines(env_types=["sw"])
-    # build_celerity_tests(env_types=["sw"], situations=None, n_profiles=1000)
-    # # # Diag for each seasons
-    # for situation in ["all", "winter", "spring", "summer", "automn"]:
-    #     generate_celerity_diag(
-    #         distance=["theta"],
-    #         celerity_env_types=["sw"],
-    #         celerity_situations=[situation],
-    #         process_sensi=False,
-    #         build_baseline=False,
-    #     )
-
-    # build_baseline()
-    # build_tests(use_debug_config=False)
-    # process_sensitivity()
-    # plot_sensitivity_curves(
-    #     distance=["wasserstein"],
-    #     ylabel="Distance from baseline at r=r0",
-    #     save_dir=IMG_DIR,
-    # )
 
     # generate_all_diagnostics(
     #     distance=["wasserstein"], process_sensi=True, build_baseline=False
     # )
-    generate_all_diagnostics(distance=["theta"], process_sensi=True)
+    # generate_all_diagnostics(distance=["theta"], process_sensi=True)
 
     # # process_sensitivity_intrinsic_mainlobe_width()
     # # 2.2) plot mainlobe width of distance around r0 for all parameters

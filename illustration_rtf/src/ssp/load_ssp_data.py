@@ -63,7 +63,9 @@ os.makedirs(root_ssp_data, exist_ok=True)
 # ======================================================================================================================
 # Load CMEMS temperature/salinity data and GEBCO bathymetry over the same box
 # ======================================================================================================================
-fname = "cmems_data_1993_2026.nc"
+# fname = "cmems_data_1993_2026.nc"
+fname = "cmems_data_1993_2026_daily.nc"
+
 # fname = "cmems_data_1993_1996_daily.nc"
 # fname = "cmems_data_2016_2026_daily.nc"
 
@@ -177,7 +179,11 @@ ds_dw = ds.sel(
 # Plot
 f_sw, axs_sw = plt.subplots(1, 2, figsize=(16, 8), sharey=True)
 f_dw, axs_dw = plt.subplots(1, 2, figsize=(16, 8), sharey=True)
-for it in range(ds.sizes["time"]):
+max_number_of_profiles_to_plot = 500
+selected_time_indices = np.random.randint(
+    ds.sizes["time"], size=max_number_of_profiles_to_plot
+)
+for it in selected_time_indices:
     # Shallow water profiles
     ds_sw.isel(time=it).so.plot(
         y="depth", yincrease=False, alpha=0.25, color="b", ax=axs_sw[0]
@@ -269,7 +275,11 @@ ssp_dw.to_netcdf(os.path.join(root_ssp_data, "ssp_profiles_dw.nc"))
 # Plot profiles
 f_sw, axs_sw = plt.subplots(1, 1, figsize=(10, 8))
 f_dw, axs_dw = plt.subplots(1, 1, figsize=(10, 8))
-for it in range(ds.sizes["time"]):
+max_number_of_profiles_to_plot = 500
+selected_time_indices = np.random.randint(
+    ds.sizes["time"], size=max_number_of_profiles_to_plot
+)
+for it in selected_time_indices:
     # Shallow water profiles
     ssp_sw.isel(time=it).plot(
         y="depth", yincrease=False, alpha=0.25, color="b", ax=axs_sw

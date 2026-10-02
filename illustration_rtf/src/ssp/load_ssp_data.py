@@ -336,9 +336,15 @@ ssp_dw_automn.to_netcdf(os.path.join(root_ssp_data, "ssp_profiles_dw_automn.nc")
 
 
 # Plot seasonal profiles
-def plot_seasonal_profiles(ssp_season, axs, season_name):
+def plot_seasonal_profiles(
+    ssp_season, axs, season_name, max_number_of_profiles_to_plot=500
+):
     print(f"Season {season_name}: {ssp_season.sizes['time']} profiles")
-    for it in range(ssp_season.sizes["time"]):
+    selected_time_indices = np.random.choice(
+        ssp_season.sizes["time"], size=max_number_of_profiles_to_plot, replace=False
+    )  # random.choice with replace=False to avoid duplica
+
+    for it in selected_time_indices:
         ssp_season.isel(time=it).plot(
             y="depth", yincrease=False, alpha=0.25, color="b", ax=axs
         )

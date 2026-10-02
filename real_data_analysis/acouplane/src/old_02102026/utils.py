@@ -24,16 +24,9 @@ import matplotlib.dates as mdates
 
 from datetime import datetime, timedelta
 from scipy.ndimage import uniform_filter1d
-from publication.publication_figure import PubFigure, set_subfigures_abc_labels
+from publication.publication_figure import set_subfigures_abc_labels
 
-project_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd"
-root_data = (
-    r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\real_data_analysis\acouplane\data"
-)
-root_bathy_data = os.path.join(project_root, "data", "bathy")
-root_metadata = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ACOUPLANE\METADATA"
-
-PubFigure()
+from real_data_analysis.acouplane.src.acouplane_cst import *
 
 dict_corresp_before_verif = {
     4: "4",
@@ -43,11 +36,8 @@ dict_corresp_before_verif = {
     5: "c",
     6: "d",
 }
-
-source_position_dataset_fpath = os.path.join(root_data, "acouplane_source_position.nc")
-wav_dataset_fpath = os.path.join(root_data, "acouplane_sample_wav.nc")
-obs_position_fpath = os.path.join(root_metadata, "obs_pos.txt")
 datetime_format = "%Y-%m-%d_%H-%M-%S"
+
 # ======================================================================================================================
 # Functions
 # ======================================================================================================================
@@ -542,6 +532,22 @@ def compute_rtf(
 # ======================================================================================================================
 
 
+### Positions ###
+def plot_obs_pos(df_rcv_pos, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
+
+    for id in df_rcv_pos.id:
+        rcv = df_rcv_pos.loc[df_rcv_pos["id"] == id]
+        plt.scatter(rcv.lon, rcv.lat, marker="d", label=f"{rcv.id.values[0].upper()}")
+    ax.set_xlabel("Longitude [°]")
+    ax.set_ylabel("Latitude [°]")
+    ax.set_title("OBS positions")
+    ax.legend()
+    return ax
+
+
+### Signal and spectrogram ###
 def plot_sequence(
     ds_wav, start_analysis_dt, analysis_duration_s, nperseg=2**8, alpha_overlap=0.75
 ):

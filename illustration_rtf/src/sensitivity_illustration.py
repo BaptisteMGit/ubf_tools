@@ -39,9 +39,14 @@ from illustration_rtf.src.sensitivity import (
     RESULT_DIR,
 )
 from propa.kraken_toolbox.plot_utils import plot_ssp
-from publication.publication_figure import set_subfigures_abc_labels, color, PubFigure
+from publication.publication_figure import (
+    set_subfigures_abc_labels,
+    color,
+    set_round_xticks,
+    PubFigure,
+)
 
-PubFigure(label_fontsize=26, ticks_fontsize=24)
+PubFigure(label_fontsize=24, ticks_fontsize=20)
 
 # ======================================================================================================================
 # Dedicated plots
@@ -515,9 +520,15 @@ def plot_ssp_all():
     plt.show()
 
 
-def plot_seasonal_profiles(ssp_season, axs, season_name):
+def plot_seasonal_profiles(
+    ssp_season, axs, season_name, max_number_of_profiles_to_plot=500
+):
     print(f"Season {season_name}: {ssp_season.sizes['time']} profiles")
-    for it in range(ssp_season.sizes["time"]):
+    selected_time_indices = np.random.choice(
+        ssp_season.sizes["time"], size=max_number_of_profiles_to_plot, replace=False
+    )  # random.choice with replace=False to avoid duplica
+
+    for it in selected_time_indices:
         ssp_season.isel(time=it).plot(
             y="depth", yincrease=False, alpha=0.25, color="b", ax=axs
         )
@@ -529,7 +540,7 @@ def plot_seasonal_profiles(ssp_season, axs, season_name):
     axs.set_ylabel("")
 
 
-def plot_ssp_seasons():
+def plot_ssp_seasons(add_all=False, max_number_of_profiles_to_plot=500):
 
     fnames = [
         "ssp_profiles_sw_winter.nc",
@@ -542,22 +553,34 @@ def plot_ssp_seasons():
         "ssp_profiles_dw_automn.nc",
     ]
 
-    fig, axs = plt.subplots(2, 4, figsize=(14, 10), sharey="row", sharex="row")
-
-    for k, fname in enumerate(fnames):
-        j = k % 4
-        i = k // 4
-        # print(i, j)
-        ssp_season = xr.open_dataset(os.path.join(SSP_DATA_DIR, fname)).ssp
-        plot_seasonal_profiles(
-            ssp_season, axs[i, j], season_name=fname.split("_")[3][:-3]
+    if add_all:
+        fnames = (
+            ["ssp_profiles_sw.nc"] + fnames[:4] + ["ssp_profiles_dw.nc"] + fnames[4:]
         )
 
-    from matplotlib.ticker import MaxNLocator
+    ncols = len(fnames) // 2
+    fig, axs = plt.subplots(2, ncols, figsize=(14, 10), sharey="row", sharex="row")
+
+    for k, fname in enumerate(fnames):
+        j = k % ncols
+        i = k // ncols
+        # print(i, j)
+        ssp_season = xr.open_dataset(os.path.join(SSP_DATA_DIR, fname)).ssp
+        season_name = fname.split("_")[3][:-3] if len(fname.split("_")) > 3 else "all"
+        plot_seasonal_profiles(
+            ssp_season,
+            axs[i, j],
+            season_name=season_name,
+            max_number_of_profiles_to_plot=max_number_of_profiles_to_plot,
+        )
+
+    for row in range(axs.shape[0]):
+        set_round_xticks(axs[row], base=10, n_ticks=4)
 
     for ax in axs.flatten():
-        ax.xaxis.set_major_locator(MaxNLocator(nbins=4))
         ax.set_title("")
+        # ax.xaxis.set_major_locator(LinearLocator(numticks=4))
+        # ax.xaxis.set_major_formatter(FormatStrFormatter("%.0f"))
 
     fig.supxlabel("Célérité [m s$^{-1}$]")
     fig.supylabel("Profondeur [m]")
@@ -746,8 +769,14 @@ def plot_synthetic_profiles_and_eofs(
         n_components + 1,
         figsize=(14, 10),
         sharey="row",
+        # sharex="row",
         gridspec_kw={"width_ratios": [1] + [0.6] * n_components},
     )
+
+    # Share x axis by row among the EOF columns only (column 0 stays independent)
+    for row in range(2):
+        for ic in range(2, n_components + 1):
+            axs[row, ic].sharex(axs[row, 1])
 
     ### Shallow water ###
     # Plot synthetic profiles
@@ -954,7 +983,7 @@ def plot_resilience_celerity_results(metric="theta", use_plateform_res=True):
     # Load from pc
     if use_plateform_res:
         # Load from plateform results
-        result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_ssp"
+        result_dir = RESULT_PLATEFORM_DIR_RESILIENCE_SSP
     else:
         result_dir = None
 
@@ -994,10 +1023,14 @@ def plot_resilience_celerity_results(metric="theta", use_plateform_res=True):
     )
 
 
-def plot_sensitivity_at_r0(distance=["theta"]):
-    result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\sensitivity_17092026\result"
+def plot_sensitivity_at_r0(
+    distance=["theta"],
+    params=["c1", "rho2", "attn2"],
+):
+    result_dir = RESULT_PLATEFORM_DIR_SENSITIVITY
 
     fig = plot_sensitivity_curves(
+        test_arg_names=params,
         distance=distance,
         ylabel=f"Distance ({METRIC_LABEL[distance[0]]})",
         result_dir=result_dir,
@@ -1015,7 +1048,7 @@ def plot_sensitivity_mainlobe_width(distance=["theta"], use_plateform_res=True):
     # Load from pc
     if use_plateform_res:
         # Load from plateform results
-        result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\sensitivity_17092026\result"
+        result_dir = RESULT_PLATEFORM_DIR_SENSITIVITY
     else:
         result_dir = RESULT_DIR
 
@@ -1043,7 +1076,7 @@ def plot_celerity_distance_vs_std_seasons(
     # Load from pc
     if use_plateform_res:
         # Load from plateform results
-        result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_ssp"
+        result_dir = RESULT_PLATEFORM_DIR_RESILIENCE_SSP
     else:
         result_dir = None
 
@@ -1119,6 +1152,16 @@ def plot_celerity_distance_vs_std_seasons(
 
 if __name__ == "__main__":
 
+    RESULT_PLATEFORM_DIR_ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim"
+    RESULT_PLATEFORM_DIR_RESILIENCE_SSP = os.path.join(
+        RESULT_PLATEFORM_DIR_ROOT, "resilience_ssp"
+    )
+    RESULT_PLATEFORM_DIR_SENSITIVITY = os.path.join(
+        RESULT_PLATEFORM_DIR_ROOT, "sensitivity_17092026", "result"
+    )
+
+    # result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_ssp"
+
     # plot_resilience_depth_baseline_celerity_profiles()
     # plot_resilience_depth_results_associated_extrema_rtf()
 
@@ -1132,10 +1175,10 @@ if __name__ == "__main__":
     # plot_resilience_depth_results(distance="theta", use_plateform_res=True)
     # plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=True)
     # plot_ssp_all()
-    # plot_ssp_seasons()
+    plot_ssp_seasons(add_all=True, max_number_of_profiles_to_plot=100)
     # plot_temp_salinity_seasons()
     # plot_ssp_acp_process()
     # plot_resilience_celerity_results(metric="theta")
-    plot_celerity_distance_vs_std_seasons(linear_reg=True, add_all=True)
+    # plot_celerity_distance_vs_std_seasons(linear_reg=True, add_all=True)
 
     plt.show()

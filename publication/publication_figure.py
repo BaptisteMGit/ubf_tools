@@ -89,6 +89,8 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
+from matplotlib.ticker import LinearLocator, MultipleLocator, FormatStrFormatter
+
 
 def set_subfigures_abc_labels(
     axs,
@@ -162,6 +164,23 @@ def color(n: int):
 
     k = n % len(figcolors)
     return figcolors[k][:]
+
+
+def set_round_xticks(axs_row, n_ticks=4, base=5):
+    """Force n_ticks evenly spaced ticks, all multiples of `base`, on a row of
+    axes that share their x axis."""
+    ax0 = axs_row[0]
+    xmin, xmax = ax0.get_xlim()
+
+    n_intervals = n_ticks - 1
+    xmin = np.floor(xmin / base) * base  # start on a multiple of 5
+    step = np.ceil((xmax - xmin) / n_intervals / base) * base  # step is a multiple of 5
+    xmax = xmin + n_intervals * step
+
+    ax0.set_xlim(xmin, xmax)  # propagates to the whole row thanks to sharex="row"
+    for ax in axs_row:
+        ax.xaxis.set_major_locator(MultipleLocator(step))
+        ax.xaxis.set_major_formatter(FormatStrFormatter("%.0f"))
 
 
 # ======================================================================================================================
@@ -427,7 +446,14 @@ class WaveguideFigure(LargeFigure):
     LaTeX rendering.
     """
 
-    def __init__(self, size=(15, 8), title_fontsize=18, label_fontsize=16, ticks_fontsize=13, **kwargs):
+    def __init__(
+        self,
+        size=(15, 8),
+        title_fontsize=18,
+        label_fontsize=16,
+        ticks_fontsize=13,
+        **kwargs,
+    ):
         super().__init__(
             size=size,
             title_fontsize=title_fontsize,
@@ -443,7 +469,14 @@ class TLFigure(LargeFigure):
     colorbar. Sized to match those functions' own figsize=(16, 8).
     """
 
-    def __init__(self, size=(16, 8), title_fontsize=18, label_fontsize=16, ticks_fontsize=13, **kwargs):
+    def __init__(
+        self,
+        size=(16, 8),
+        title_fontsize=18,
+        label_fontsize=16,
+        ticks_fontsize=13,
+        **kwargs,
+    ):
         super().__init__(
             size=size,
             title_fontsize=title_fontsize,
@@ -461,7 +494,14 @@ class ModeShapeFigure(LargeFigure):
     panels share the same width.
     """
 
-    def __init__(self, size=(15, 5), title_fontsize=18, label_fontsize=14, ticks_fontsize=11, **kwargs):
+    def __init__(
+        self,
+        size=(15, 5),
+        title_fontsize=18,
+        label_fontsize=14,
+        ticks_fontsize=11,
+        **kwargs,
+    ):
         super().__init__(
             size=size,
             title_fontsize=title_fontsize,

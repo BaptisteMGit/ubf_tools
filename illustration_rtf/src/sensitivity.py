@@ -2283,7 +2283,7 @@ def plot_sensitivity_curves(
         )
         icol = 0
 
-        # TODO remove
+        # # TODO remove
         # print(
         #     test_arg_name, np.nanmax(dist_theta), test_values[np.nanargmax(dist_theta)]
         # )
@@ -5174,7 +5174,7 @@ def run_all_plateform():
 
 def run_all_celerity(env_type, n_profiles=1000, celerity_profile_source="real"):
 
-    # build_celerity_baselines(env_types=[env_type])
+    build_celerity_baselines(env_types=[env_type])
     build_celerity_tests(
         env_types=[env_type],
         situations=None,

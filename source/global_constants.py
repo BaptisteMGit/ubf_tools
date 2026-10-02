@@ -210,11 +210,17 @@ sediments_TG = {
 
 # Usefull paths
 if os.name == "nt":  # Windows
-    project_root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd"
+    ROOT_PROGRAM = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd"
+    ROOT_DATA = os.path.join(ROOT_PROGRAM, "data")
+    ROOT_BATHY = os.path.join(ROOT_DATA, "bathy")
+
 
 else:  # Linux
-    project_root = "/home/program/ubf_tools"
+    ROOT_PROGRAM = "/home/program/ubf_tools"
+    ROOT_DATA = "/home/data"
+    # ROOT_BATHY = os.path.join(ROOT_DATA, "bathy") # CHECK TIM
 
+project_root = ROOT_PROGRAM  # Legacy variable for backward compatibility
 
 if __name__ == "__main__":
     for k, val in sediments_TG.items():

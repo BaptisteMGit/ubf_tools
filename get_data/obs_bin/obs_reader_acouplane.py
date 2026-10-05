@@ -145,7 +145,7 @@ def read_obs_channel_H(folder, read_raw=False, fs=FS, verbose=False):
         stop_gps_date = float(file_info["stop"]) / 1e6
 
         # Convert to string datetime
-        dt_fmt = "%d/%m/%Y %H:%M:%S"
+        dt_fmt = "%d/%m/%Y %H:%M:%S UTC"
         start_str = ConvertGPSDate2String(gpsDate=start_gps_date, format=dt_fmt)
         stop_str = ConvertGPSDate2String(gpsDate=stop_gps_date, format=dt_fmt)
         if verbose:

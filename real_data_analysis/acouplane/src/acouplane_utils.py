@@ -39,13 +39,13 @@ def build_obs_datetime_vector(ds_pressure):
     datetime_obs_dict = {}
 
     for obs_id in ds_pressure.obs_id.values:
-        start_datetime_obs = ds_pressure.start_datetime.sel(obs_id=obs_id).values
+        start_datetime_obs = pd.to_datetime(
+            ds_pressure.start_datetime.sel(obs_id=obs_id).values
+        ).to_pydatetime()
         signal_duration_obs_s = (
             ds_pressure[f"time_{obs_id}"].values[-1] * 1 / ds_pressure.fs
         )
-        end_datetime_obs = ds_pressure.start_datetime.sel(
-            obs_id=obs_id
-        ).values + timedelta(seconds=signal_duration_obs_s)
+        end_datetime_obs = start_datetime_obs + timedelta(seconds=signal_duration_obs_s)
         datetime_obs = pd.date_range(
             start=start_datetime_obs,
             end=end_datetime_obs,
@@ -60,11 +60,16 @@ def build_obs_datetime_vector(ds_pressure):
 
 def convert_raw_pressure_to_physical_units(ds_pressure):
     for obs_id in ds_pressure.obs_id.values:
-        raw_pressure = ds_pressure[f"pressure_{obs_id}"].values
+        raw_pressure = ds_pressure[f"pressure_{obs_id}"]
         pressure = convert_raw_data(
             raw_data=raw_pressure, fullScale=ds_pressure.fullscale
         )
-        ds_pressure[f"pressure_{obs_id}"] = (f"time_{obs_id}", pressure)
+        # time_attrs = ds_pressure[f"time_{obs_id}"].attrs
+        ds_pressure[f"pressure_{obs_id}"] = pressure
+        # ds_pressure[f"time_{obs_id}"].attrs = time_attrs
+
+        # Update unit
+        ds_pressure[f"pressure_{obs_id}"].attrs["units"] = "V"
 
     return ds_pressure
 
@@ -75,15 +80,17 @@ def convert_raw_pressure_to_physical_units(ds_pressure):
 
 
 ### Positions ###
-def plot_obs_pos(df_rcv_pos, ax=None):
+def plot_obs_pos(ds_pos, ax=None):
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 6))
 
-    for id in df_rcv_pos.id:
-        rcv = df_rcv_pos.loc[df_rcv_pos["id"] == id]
-        plt.scatter(rcv.lon, rcv.lat, marker="d", label=f"{rcv.id.values[0].upper()}")
+    for id in ds_pos.rcv_id.values:
+        rcv = ds_pos.sel(rcv_id=id)
+        plt.scatter(rcv.rcv_lon, rcv.rcv_lat, marker="d", label=f"{id}", s=200)
+
     ax.set_xlabel("Longitude [°]")
     ax.set_ylabel("Latitude [°]")
     ax.set_title("OBS positions")
     ax.legend()
+
     return ax

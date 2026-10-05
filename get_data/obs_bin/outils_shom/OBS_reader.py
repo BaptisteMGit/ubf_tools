@@ -308,70 +308,114 @@ class OBSdata:
 
 ### TILT CORRECTION ###
 if __name__ == "__main__":
-    FMIN_INTEG = 1
-    folderfile = "E:\ACOUPLANE\ACOUPLANE_2026\OBS4\DATA"
+
+    ### Adaptation pour test données ACOUPLANE ###
+    folderfile = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ACOUPLANE\DATA\PRESSURE\BIN\OBS1"
+
+    # ELOBS_D-3042301_TB_1455972318000000-1455997319874500_channel3_2026-03-02-09-52-44_002
+    # 1455972318000000 to 1455997319874500
+    # D'après le code matlab de JM B. le code GPS de début fin est contenu dans les 10 premiers éléments
+    start_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=1455972318)
+    print("start_utc_from_file_code : ", start_utc_from_file_code)
+
+    end_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=1455997319)
+    print("end_utc_from_file_code : ", end_utc_from_file_code)
+
     # arrêt du canon
-    start_date = "26/02/2026 20:20:00"  # en UTC !!!
-    stop_date = "26/02/2026 20:40:00"  # en UTC !!!
+    start_date = "24/02/2026 12:45:00"  # en UTC !!!
+    stop_date = "24/02/2026 19:41:41"  # en UTC !!!
     # charger des données longues
     GPS_start_time = obsr.ConvertStrUTC2GPSDate(start_date, "%d/%m/%Y %H:%M:%S")
+    print(GPS_start_time)
     data_length = obsr.SecBetweenDates(start_date, stop_date, "%d/%m/%Y %H:%M:%S")
-    # set channel to extract
-    channel = "all"
-    OBS7 = OBSdata()
-    OBS7.extract_raw_OBS(folderfile, [start_date, stop_date], channel, True)
-    # gérer les variations du tilt
-    TiltI, TiltC, Date, TiltMystR = read_tilt_from_health(
-        folderfile, OBS7.time
-    )  # CONTROLER  si le tilt change sur la série temporelle
-    GPS_Date = [obsr.ConvertStrUTC2GPSDate(d, "%Y-%m-%d %H:%M:%S") for d in Date]
-    SelectIndX = np.where(
-        (np.array(GPS_Date) <= GPS_start_time + data_length)
-        * (np.array(GPS_Date) >= GPS_start_time)
-    )[0]
-    # Test variabilité de I et de C
-    if np.std([TiltI[i] for i in SelectIndX]) == 0 + np.std(
-        [TiltC[i] for i in SelectIndX]
-    ):
-        I = TiltI[SelectIndX[0]] / 180 * np.pi
-        C = TiltC[SelectIndX[0]] / 180 * np.pi
-        M = TiltMystR[SelectIndX[0]] / 180 * np.pi
-    else:
-        # David.exit('l\'OBS a bougé pendant cette mesure')
-        raise Exception("l'OBS a bougé pendant cette mesure")
-    if np.abs(C) != np.pi / 2:
-        sC = np.cos(C) / np.abs(np.cos(C))
-    else:
-        sC = 1
-    if np.abs(I) != np.pi / 2:
-        sI = np.cos(I) / np.abs(np.cos(I))
-    else:
-        sI = 1
+    # # set channel to extract
+    # channel = "all"
+    # OBS7 = OBSdata()
+    # OBS7.extract_raw_OBS(folderfile, [start_date, stop_date], channel, True)
+    # start_date, stop_date = None, None
+    sig, timestamps, lh, sn = obsr.readOBS(
+        folderfile, start_date, stop_date, channel="H", calib=True, SeismoVar="acc"
+    )
+    p_raw = sig
+    time = timestamps
+    print("p_raw : ", p_raw)
+    print("time : ", time)
+    print("lh : ", lh)
+    print("sn : ", sn)
 
-    # charger le tilt en conséquence
-    # qualifier l'offset sur les voies X Y Z
-    M = np.zeros((3, 3))
-    M[0, 0] = sC * sI * np.sqrt(np.cos(C) ** 2 - np.sin(I) ** 2)
-    M[0, 1] = -np.sin(I)
-    M[0, 2] = np.sin(C)
-    M[1, 0] = sC * np.tan(I) * np.sqrt(np.cos(C) ** 2 - np.sin(I) ** 2)
-    M[1, 1] = np.cos(I)
-    M[1, 2] = np.sin(C) * np.tan(I)
-    M[2, 0] = -np.sin(C) / np.cos(I)
-    M[2, 2] = sC * np.sqrt(np.cos(C) ** 2 - np.sin(I) ** 2) / np.cos(I)
-    Vect = [
-        OBS7.az,
-        OBS7.ax,
-        OBS7.ay,
-    ]  # !!! A CONTROLER EN FONCTION DES DENOMINATIONS CHAN 0 CHAN 1 CHAN 2 CHAN 3 dans la lecture -> ok contrôlé
+    print(p_raw.shape)
+    # OBS7 = OBSdata()
+    # OBS7.extract_raw_OBS(folderfile, [start_date, stop_date], channel="H", Acc=True)
 
-    # faire la correction de tilt
-    Vect_tilt_corr = np.dot(M, Vect)  # [Z_corr, X_corr, Y_corr]
-    OBS7.az = Vect_tilt_corr[0]
-    OBS7.ax = Vect_tilt_corr[1]
-    OBS7.ay = Vect_tilt_corr[2]
-    meta = "calibration statique - tilt corrigé - pas de correction azimutale"
-    print(meta)
-    OBS7.ax_meta = meta
-    OBS7.ay_meta = meta
-    OBS7.az_meta = meta
+    plt.figure()
+    plt.plot(time, p_raw)
+    plt.show()
+
+    ### Code fourni par Myriam L. ###
+    # FMIN_INTEG = 1
+    # folderfile = "E:\ACOUPLANE\ACOUPLANE_2026\OBS4\DATA"
+    # # arrêt du canon
+    # start_date = "26/02/2026 20:20:00"  # en UTC !!!
+    # stop_date = "26/02/2026 20:40:00"  # en UTC !!!
+    # # charger des données longues
+    # GPS_start_time = obsr.ConvertStrUTC2GPSDate(start_date, "%d/%m/%Y %H:%M:%S")
+    # data_length = obsr.SecBetweenDates(start_date, stop_date, "%d/%m/%Y %H:%M:%S")
+    # # set channel to extract
+    # channel = "all"
+    # OBS7 = OBSdata()
+    # OBS7.extract_raw_OBS(folderfile, [start_date, stop_date], channel, True)
+    # # gérer les variations du tilt
+    # TiltI, TiltC, Date, TiltMystR = read_tilt_from_health(
+    #     folderfile, OBS7.time
+    # )  # CONTROLER  si le tilt change sur la série temporelle
+    # GPS_Date = [obsr.ConvertStrUTC2GPSDate(d, "%Y-%m-%d %H:%M:%S") for d in Date]
+    # SelectIndX = np.where(
+    #     (np.array(GPS_Date) <= GPS_start_time + data_length)
+    #     * (np.array(GPS_Date) >= GPS_start_time)
+    # )[0]
+    # # Test variabilité de I et de C
+    # if np.std([TiltI[i] for i in SelectIndX]) == 0 + np.std(
+    #     [TiltC[i] for i in SelectIndX]
+    # ):
+    #     I = TiltI[SelectIndX[0]] / 180 * np.pi
+    #     C = TiltC[SelectIndX[0]] / 180 * np.pi
+    #     M = TiltMystR[SelectIndX[0]] / 180 * np.pi
+    # else:
+    #     # David.exit('l\'OBS a bougé pendant cette mesure')
+    #     raise Exception("l'OBS a bougé pendant cette mesure")
+    # if np.abs(C) != np.pi / 2:
+    #     sC = np.cos(C) / np.abs(np.cos(C))
+    # else:
+    #     sC = 1
+    # if np.abs(I) != np.pi / 2:
+    #     sI = np.cos(I) / np.abs(np.cos(I))
+    # else:
+    #     sI = 1
+
+    # # charger le tilt en conséquence
+    # # qualifier l'offset sur les voies X Y Z
+    # M = np.zeros((3, 3))
+    # M[0, 0] = sC * sI * np.sqrt(np.cos(C) ** 2 - np.sin(I) ** 2)
+    # M[0, 1] = -np.sin(I)
+    # M[0, 2] = np.sin(C)
+    # M[1, 0] = sC * np.tan(I) * np.sqrt(np.cos(C) ** 2 - np.sin(I) ** 2)
+    # M[1, 1] = np.cos(I)
+    # M[1, 2] = np.sin(C) * np.tan(I)
+    # M[2, 0] = -np.sin(C) / np.cos(I)
+    # M[2, 2] = sC * np.sqrt(np.cos(C) ** 2 - np.sin(I) ** 2) / np.cos(I)
+    # Vect = [
+    #     OBS7.az,
+    #     OBS7.ax,
+    #     OBS7.ay,
+    # ]  # !!! A CONTROLER EN FONCTION DES DENOMINATIONS CHAN 0 CHAN 1 CHAN 2 CHAN 3 dans la lecture -> ok contrôlé
+
+    # # faire la correction de tilt
+    # Vect_tilt_corr = np.dot(M, Vect)  # [Z_corr, X_corr, Y_corr]
+    # OBS7.az = Vect_tilt_corr[0]
+    # OBS7.ax = Vect_tilt_corr[1]
+    # OBS7.ay = Vect_tilt_corr[2]
+    # meta = "calibration statique - tilt corrigé - pas de correction azimutale"
+    # print(meta)
+    # OBS7.ax_meta = meta
+    # OBS7.ay_meta = meta
+    # OBS7.az_meta = meta

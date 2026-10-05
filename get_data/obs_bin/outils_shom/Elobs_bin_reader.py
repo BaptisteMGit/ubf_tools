@@ -59,12 +59,12 @@ ObitXMLFileFmt = ["ELOBS_{type}-{sn}_TB_{start}-{stop}_{date}.xml",
                   "{mission}_ELOBS_{type}-{sn}_TB_{start}-{stop}_{date}.xml"]
 
 # Axes du VectorSensor correspondant aux voies suivant version firmware
-# Avant V4: ICVH, après V4: VICH
+# Avant V4: ICVH, aprï¿½s V4: VICH
 VS_Axes = ['Z', 'Y', 'X', 'H']
 VS_Axes_V4 = ['X', 'Z', 'Y', 'H']
 
-# Axes génériques d'ELOBS A / D correspondant aux voies suivant version firmware
-# Avant V4: ICVH, après V4: VICH
+# Axes gï¿½nï¿½riques d'ELOBS A / D correspondant aux voies suivant version firmware
+# Avant V4: ICVH, aprï¿½s V4: VICH
 Gen_Axes_A = ['X', 'Y', 'Z', 'H']
 Gen_Axes_A_V4 = ['Z', 'X', 'Y', 'H']
 Gen_Axes_D = ['X', 'Z', 'Y', 'H']
@@ -73,39 +73,39 @@ Gen_Axes_D_V4 = ['Z', 'X', 'Y', 'H']  # ELOBS SHOM
 # Fullscale SiDel3 en Vpp: +/-2,25V avec gain de 0dB
 FS_SIGDEL3_V = 4.52
 
-# FullScale QS3 en m/s²: +/-5m/s². La conversion bin vers wav retourne directement en accélération
+# FullScale QS3 en m/sï¿½: +/-5m/sï¿½. La conversion bin vers wav retourne directement en accï¿½lï¿½ration
 FS_QS3_V = 10
 
 # Ecart en seconde entre temps UNIX et temps GPS
 GPSfromUTC = (datetime.datetime(1980, 1, 6) - datetime.datetime(1970, 1, 1)).total_seconds()
 
-# Réponse en fréquence du capteur vectoriel externe en eau
+# Rï¿½ponse en frï¿½quence du capteur vectoriel externe en eau
 VSEau_RepFreq_Axial = [[50, 100, 200, 300, 400, 500, 600],
                        [-6, -4, -2, -3, 6, 2, 4]]
 VSEau_RepFreq_Radial = [[50, 100, 200, 300, 400, 500, 600, 700],
                         [-5.5, -4.5, -3.5, -3.5, -2.5, 2, 4, 6]]
 
-# Fréquence de coupure basse en Hz
+# Frï¿½quence de coupure basse en Hz
 LOW_CUT = 0
 
-# Fréquence minimale pour l'intégration en vitesse en Hertz
+# Frï¿½quence minimale pour l'intï¿½gration en vitesse en Hertz
 FMIN_INTEG = 1
 
-# Durée maximum d'acquisition autorisée: 1 an
+# Durï¿½e maximum d'acquisition autorisï¿½e: 1 an
 DUREE_MAX_ACQ = 3600 * 24 * 365
 
 # Nombre courant de leap seconds
 LeapSeconds = 18
 
 # Ecart maximal entre fichiers en secondes pour rabouter plusieurs fichiers
-# notamment dans le cas d'un arrêt pour une mesure de tilt
+# notamment dans le cas d'un arrï¿½t pour une mesure de tilt
 ECART_MAX_FICHIERS_S = 90
 
 
 def fileListGet(path, ext="bin"):
-    """ Retourne la liste des fichiers .bin triée par ordre alphabétique
-        Entrées:
-            - répertoire des fichiers
+    """ Retourne la liste des fichiers .bin triï¿½e par ordre alphabï¿½tique
+        Entrï¿½es:
+            - rï¿½pertoire des fichiers
             - ext: extension des fichiers
         Sortie: liste des fichiers
     """
@@ -117,10 +117,10 @@ def fileListGet(path, ext="bin"):
 
 def parseELOBSfilename(f, ext="bin"):
     """ Parse le nom du fichier ELOBS
-        Entrées:
+        Entrï¿½es:
             - f: fichier bin
             - ext: extension bin ou xml
-        Sortie: fichier parsé
+        Sortie: fichier parsï¿½
     """
     if ext == "bin":
         fileFmt = ObitBinFileFmt
@@ -150,14 +150,14 @@ def SecBetweenDates(StrDate1,StrDate2,dateformat):
 
 
 def getDataFromBin(file, fs, offset=0, duree=-1, fullScale=FS_SIGDEL3_V):
-    """  Lit les données sismiques à partir d'un fichier bin. Les convertit en volts
-         Entrées:
+    """  Lit les donnï¿½es sismiques ï¿½ partir d'un fichier bin. Les convertit en volts
+         Entrï¿½es:
              - file: fichier bin
-             - fs: fréquence d'échantillonnage
+             - fs: frï¿½quence d'ï¿½chantillonnage
              - offset: offset de temps en seconde
-             - duree: durée de l'extraction en seconde (-1 si jusqu'à la fin)
+             - duree: durï¿½e de l'extraction en seconde (-1 si jusqu'ï¿½ la fin)
              - fullScale: dynamique max pic/pic (4,5 , 2,25 ou 1,125 pour SD3, 10 pour MEMs)
-        Sortie: données sismiques lues
+        Sortie: donnï¿½es sismiques lues
     """
     rawData = np.fromfile(file, np.int32, -1, "")
     if (duree == -1) or ((offset + duree) * fs > len(rawData)):
@@ -170,12 +170,12 @@ def getDataFromBin(file, fs, offset=0, duree=-1, fullScale=FS_SIGDEL3_V):
 
 
 def getParamsFromXMLFile(rep, sn, timestamp):
-    """ Récupère les paamètres du fichier XML associé aux fichiers bin
-        Entrées:
-             - rep: répertoire contenant les fichiers bin
-             - sn: numéro de série
-             - timestamp: date de début
-        Sortie: (fréquence d'écantillonnage en Hz, gain en dB, version firmware majeure)
+    """ Rï¿½cupï¿½re les paamï¿½tres du fichier XML associï¿½ aux fichiers bin
+        Entrï¿½es:
+             - rep: rï¿½pertoire contenant les fichiers bin
+             - sn: numï¿½ro de sï¿½rie
+             - timestamp: date de dï¿½but
+        Sortie: (frï¿½quence d'ï¿½cantillonnage en Hz, gain en dB, version firmware majeure)
     """
     lf = fileListGet(rep, "xml")
     fs = 0
@@ -188,7 +188,7 @@ def getParamsFromXMLFile(rep, sn, timestamp):
                 # Lecture XML
                 xp = minidom.parse(f)
                 xsr = xp.getElementsByTagName('Sampling_Rate')
-                # Fréquence d'échantillonnage
+                # Frï¿½quence d'ï¿½chantillonnage
                 sfs = xsr[0].firstChild.data
                 fsp = parse.parse("{sr}ms ({fs} Hz)", sfs)
                 if fsp == None:
@@ -214,24 +214,24 @@ def getParamsFromXMLFile(rep, sn, timestamp):
                 break
 
     if fs == 0:
-        print("SN %d, timestamp %f: aucun fichier XML trouvé" % (sn, timestamp))
+        print("SN %d, timestamp %f: aucun fichier XML trouvï¿½" % (sn, timestamp))
 
     return (fs, g, v)
 
 
 def getListeBinFiles(rep, sn, channel, timestamp, duree, fs):
-    """ Retourne la liste des fichiers correspondant au timestamp et la durée demandée
-        Entrées:
-             - rep: répertoire contenant les fichiers bin
-             - sn: numéro de série
-             - channel: voie, 'channel0' à 'channel3'
-             - fs: fréquence d'échantillonnage
-             - timestamp: timestamp de début en secondes
-             - duree: durée de l'extraction en secondes
+    """ Retourne la liste des fichiers correspondant au timestamp et la durï¿½e demandï¿½e
+        Entrï¿½es:
+             - rep: rï¿½pertoire contenant les fichiers bin
+             - sn: numï¿½ro de sï¿½rie
+             - channel: voie, 'channel0' ï¿½ 'channel3'
+             - fs: frï¿½quence d'ï¿½chantillonnage
+             - timestamp: timestamp de dï¿½but en secondes
+             - duree: durï¿½e de l'extraction en secondes
              - fullScale: fullScale SD3 (1600, 400 ou 100)
-             - fs: fréquence d'échantillonnage
+             - fs: frï¿½quence d'ï¿½chantillonnage
         Sortie:
-            - (fichiers, timestamps de début associés, durées associées, trous dans l'acquisition')
+            - (fichiers, timestamps de dï¿½but associï¿½s, durï¿½es associï¿½es, trous dans l'acquisition')
     """
     lb = fileListGet(rep)
     lf = []
@@ -244,10 +244,14 @@ def getListeBinFiles(rep, sn, channel, timestamp, duree, fs):
             if (int(fp['sn']) == sn) and (int(fp['chan']) == channel):
                 tstart = float(fp['start']) / 1e6
                 # Le timestamp de stop n'est pas bon sur les anciennes versions => calcul sur taille du fichier
+                # NOTE : B. Menetrier -> 
+                # os.path.getsize(f) donne la taille du fichier en octets (bytes)
+                # Le facteur 4 correspond Ã  la taille d'un int32 en octets, et le facteur fs correspond au nombre d'Ã©chantillons par seconde. 
+                # Donc, os.path.getsize(f) / 4 / fs calcule la durÃ©e du fichier en secondes.
                 tstop = tstart + os.path.getsize(f) / 4 / fs
                 if (tstart > timestamp) and (tstart <= (timestamp + ECART_MAX_FICHIERS_S)) and (
                         duree > (tstart - timestamp)):
-                    # Petit trou dans la donnée, on prend quand même le fichier suivant. On corrige timestamp
+                    # Petit trou dans la donnï¿½e, on prend quand mï¿½me le fichier suivant. On corrige timestamp
                     duree -= tstart - timestamp
                     lh.append([timestamp, tstart])
                     timestamp = tstart
@@ -255,7 +259,7 @@ def getListeBinFiles(rep, sn, channel, timestamp, duree, fs):
                     lf.append(f)
                     lts.append(tstart)
                     if duree == -1:
-                        # On prend le premier fichier jusqu'à la fin
+                        # On prend le premier fichier jusqu'ï¿½ la fin
                         duree = tstop - timestamp
                     dint = min(duree, tstop - timestamp)
                     ld.append(dint)
@@ -268,57 +272,60 @@ def getListeBinFiles(rep, sn, channel, timestamp, duree, fs):
 
 
 def getMinTimestamp(rep, sn, ts):
-    """ Retourne le timestamp minimal à partir du paramètre timestamp permettant
+    """ Retourne le timestamp minimal ï¿½ partir du paramï¿½tre timestamp permettant
         d'avoir les 4 voies
-        Entrées:
-            - rep: répertorie contenant les fichiers bin
-            - sn: numéro de série
-            - ts: timestamp demandé
+        Entrï¿½es:
+            - rep: rï¿½pertorie contenant les fichiers bin
+            - sn: numï¿½ro de sï¿½rie
+            - ts: timestamp demandï¿½
         Sortie: timestamp minimal permettant d'avoir les 4 voies
     """
     ts_int = np.ones(4) * -1
     lf = fileListGet(rep)
     for f in lf:
         fp = parseELOBSfilename(f)
+        print(f, fp)
         if int(fp['sn']) == sn:
             chan = int(fp['chan'])
             if ts_int[chan] == -1:
                 start = float(fp['start']) * 1e-6
                 stop = float(fp['stop']) * 1e-6
+                print(start, stop, ts, ts_int)
                 if ts == -1:
-                    # Pas de date de début spécifié => on prend le début du fichier
+                    # Pas de date de dï¿½but spï¿½cifiï¿½ => on prend le dï¿½but du fichier
                     ts_int[chan] = start
                 elif ts >= start and ts <= stop:
-                    # date de début dans le fichier => on garde cette date
+                    # date de dï¿½but dans le fichier => on garde cette date
                     ts_int[chan] = ts
                 elif ts < start:
-                    # date de début avant le début du fichier => on prend le début du fichier
+                    # date de dï¿½but avant le dï¿½but du fichier => on prend le dï¿½but du fichier
                     ts_int[chan] = start
-    # Si aucune voie détectée, on passe
+    # NOTE : B. Menetrier -> dans notre cas les fichiers bins ne contiennent volontairement que la voie hydro (3) et donc cette fonction renvoie toujours -1. 
+    # Si aucune voie dï¿½tectï¿½e, on passe
     if np.isin(ts_int, -1).all():
         return -1
     if np.isin(-1, ts_int).any():
         # Manque au moins une voie => erreur
         print("Voie manquante")
         return -1
-    # On retourne la date la lus élevée pour avoir les 4 voies
+    # On retourne la date la lus ï¿½levï¿½e pour avoir les 4 voies
     return np.max(ts_int)
 
 
 def getDataFromBinFiles(rep, sn, channel, fs, timestamp, duree, fullScale=FS_SIGDEL3_V):
-    """  Lit des données à partir de fichiers bin contenus dans un répertoire.
-         Unité: Volt
-         Entrées:
-             - rep: répertoire contenant les fichiers bin
-             - sn: numéro de série
-             - channel: voie, 'channel0' à 'channel3'
-             - fs: fréquence d'échantillonnage
+    """  Lit des donnï¿½es ï¿½ partir de fichiers bin contenus dans un rï¿½pertoire.
+         Unitï¿½: Volt
+         Entrï¿½es:
+             - rep: rï¿½pertoire contenant les fichiers bin
+             - sn: numï¿½ro de sï¿½rie
+             - channel: voie, 'channel0' ï¿½ 'channel3'
+             - fs: frï¿½quence d'ï¿½chantillonnage
              - timestamp: timestamp de debut en secondes
-             - duree: durée de l'extraction en secondes
+             - duree: durï¿½e de l'extraction en secondes
              - fullScale: fullScale SD3 (1600, 400 ou 100)
-         Sortie: tableau de données lues, trous détectés dans l'acquisition'
+         Sortie: tableau de donnï¿½es lues, trous dï¿½tectï¿½s dans l'acquisition'
     """
-    # Liste des fichiers à parcourir
+    # Liste des fichiers ï¿½ parcourir
     lf, lts, ld, lh = getListeBinFiles(rep, sn, channel, timestamp, duree, fs)
     ts = timestamp
     seismicDataFloat = np.array([])
@@ -326,7 +333,7 @@ def getDataFromBinFiles(rep, sn, channel, fs, timestamp, duree, fullScale=FS_SIG
     for i, f in enumerate(lf):
         print('fichier ',f)
         if (i != 0) and (ts < lts[i]):
-            # Petite rupture, on remplit de 0 le fichier sauf au début
+            # Petite rupture, on remplit de 0 le fichier sauf au dï¿½but
             seismicDataFloat = np.append(seismicDataFloat, np.zeros(int((lts[i] - ts) * fs)))
             duree -= lts[i] - ts
             ts = lts[i]
@@ -341,18 +348,18 @@ def getDataFromBinFiles(rep, sn, channel, fs, timestamp, duree, fullScale=FS_SIG
 
 
 def egalisation(sig, fs, rf):
-    """ Corrige le signal de la réponse en fréquence du capteur
-        Entrées:
+    """ Corrige le signal de la rï¿½ponse en frï¿½quence du capteur
+        Entrï¿½es:
             - sig: signal
-            - fs: fréquence d'échantillonnage
-            - rf: réponse en fréquence (tableau 2D (f(Hz), g(dB))
-        Sortie: signal corrigé
+            - fs: frï¿½quence d'ï¿½chantillonnage
+            - rf: rï¿½ponse en frï¿½quence (tableau 2D (f(Hz), g(dB))
+        Sortie: signal corrigï¿½
     """
-    # Conversion réponse en fréquence en tableau numpy
+    # Conversion rï¿½ponse en frï¿½quence en tableau numpy
     nrf = np.array(rf)
-    # Il faut passer dans le domaine fréquentiel pour pouvoir appliquer la réponse en fréquence
+    # Il faut passer dans le domaine frï¿½quentiel pour pouvoir appliquer la rï¿½ponse en frï¿½quence
     sf = np.fft.rfft(sig)
-    # Fonction d'interpolation linéaire
+    # Fonction d'interpolation linï¿½aire
     fi = interp1d(nrf[0, :], np.power(10, nrf[1][:] / 20), bounds_error=False,
                   fill_value=(np.power(10, nrf[1][0] / 20), np.power(10, nrf[1][-1] / 20)))
     nbpts = len(sf)
@@ -360,34 +367,34 @@ def egalisation(sig, fs, rf):
         f = i*fs/nbpts
         sf[i] /= fi(f)'''
     sf /= fi(np.linspace(0, fs / 2, nbpts))
-    # Retour dans le domaine fréquentiel
+    # Retour dans le domaine frï¿½quentiel
     sig = np.fft.irfft(sf)
     return sig
 
 
 def convAcc2Vit(acc, fe=2000):
-    """ Convertit un signal d'accélération (m/s²) en vitesse (m/s)
-        Entrées:
-            - acc: signal en m/s²
-            - fe: fréquence d'échantillonage
+    """ Convertit un signal d'accï¿½lï¿½ration (m/sï¿½) en vitesse (m/s)
+        Entrï¿½es:
+            - acc: signal en m/sï¿½
+            - fe: frï¿½quence d'ï¿½chantillonage
         sortie:
             - signal converti en m/s
     """
 
-    # Conversion d'un signal large bande dans le domaine fréquentiel
+    # Conversion d'un signal large bande dans le domaine frï¿½quentiel
     npts = len(acc)
     if (npts % 2) == 0:
         nptsFFT = int(npts / 2 + 1)
     else:
         nptsFFT = int((npts + 1) / 2)
-    # Calcul de la vélocité à partir de l'accélération par division par i.2.PI.F dans le domaine fréquentiel
+    # Calcul de la vï¿½locitï¿½ ï¿½ partir de l'accï¿½lï¿½ration par division par i.2.PI.F dans le domaine frï¿½quentiel
     accf = np.fft.rfft(acc, norm="ortho")
     # Suppression composante continue et division par 2.PI.F pour conversion en m/s
     vf = np.zeros_like(accf)
     for i in range(1, nptsFFT):
         f = i / npts * fe
         if f > FMIN_INTEG:
-            # On ne conserve que la bande d'intérêt
+            # On ne conserve que la bande d'intï¿½rï¿½t
             vf[i] = accf[i] / (2 * np.pi * f) * (1j)
     # retour dans le domaine temporel et passage en Pa
     v = np.fft.irfft(vf, npts, norm="ortho")
@@ -395,12 +402,12 @@ def convAcc2Vit(acc, fe=2000):
 
 
 def getSerialNumbers(rep, sn_user):
-    """ Récupère les numéros de série des fichiers listés ainsi que le type
+    """ Rï¿½cupï¿½re les numï¿½ros de sï¿½rie des fichiers listï¿½s ainsi que le type
         (ANALOG ou DIGITAL)
-        Entrées:
-            - rep: répertoire des fichiers bin
-            - sn: numéro de série spécifique (-1 si non spécifié)
-        Sortie: liste de tuplets (numéros de série, type)
+        Entrï¿½es:
+            - rep: rï¿½pertoire des fichiers bin
+            - sn: numï¿½ro de sï¿½rie spï¿½cifique (-1 si non spï¿½cifiï¿½)
+        Sortie: liste de tuplets (numï¿½ros de sï¿½rie, type)
     """
     lsn = []
     lf = fileListGet(rep)
@@ -411,22 +418,22 @@ def getSerialNumbers(rep, sn_user):
             if sn not in [x[0] for x in lsn] and (sn_user == -1 or sn_user == sn):
                 lsn.append((sn, fp['type']))
     lsn.sort()
-    print("Numéros de série trouvés: " + str([x[0] for x in lsn]))
+    # print("Numï¿½ros de sï¿½rie trouvï¿½s: " + str([x[0] for x in lsn]))
     return lsn
 
 
 def writeHoles(csvname, channel, lh):
-    """ Ecrit la liste des trous détectés dans le fichier csv
-        Entrées:
-            - csvname: chemin d'accès complet du fichier csv
-            - channel: voie concernée
+    """ Ecrit la liste des trous dï¿½tectï¿½s dans le fichier csv
+        Entrï¿½es:
+            - csvname: chemin d'accï¿½s complet du fichier csv
+            - channel: voie concernï¿½e
             - lh: liste des trous
         Sortie: fichier csv rempli
     """
-    # Ecriture des trous trouvés dans l'acquisition
+    # Ecriture des trous trouvï¿½s dans l'acquisition
     with open(csvname, 'a') as csvfile:
         if csvfile.tell() == 0:
-            # Ecriture entête
+            # Ecriture entï¿½te
             csvfile.write('channel;start;stop\n')
         for h in lh:
             csvfile.write('%d;%.4f;%.4f\n' % (channel, h[0], h[1]))
@@ -434,8 +441,8 @@ def writeHoles(csvname, channel, lh):
 def readOBS(folder,start,stop,channel='H',calib=True,SeismoVar='acc'):
 
     # folder = str de type : 'F:\/24-Classif_2024\OBS\OBS5\/test_extract'
-    # start = date de début de la donnée à charger au format str : jj/mm/yyy hh:mm:ss
-    # stop = date de fin de la donnée à charger au format str : jj/mm/yyy hh:mm:ss
+    # start = date de dï¿½but de la donnï¿½e ï¿½ charger au format str : jj/mm/yyy hh:mm:ss
+    # stop = date de fin de la donnï¿½e ï¿½ charger au format str : jj/mm/yyy hh:mm:ss
     # channel = str : 'H' 'Y'...
     # calib = boolean
     # OBStype = 'A' ou 'D'
@@ -540,18 +547,18 @@ def readOBS(folder,start,stop,channel='H',calib=True,SeismoVar='acc'):
         print("Directory not found")
         exit(0)
 
-    # Récupère les numéros de série avec le type DIGITAL ou ANALOG
+    # Rï¿½cupï¿½re les numï¿½ros de sï¿½rie avec le type DIGITAL ou ANALOG
     lsn = getSerialNumbers(args.dir, args.sn)
-    # Liste les fichiers correspondant aux heures demandées
+    # Liste les fichiers correspondant aux heures demandï¿½es
     for sn in lsn:
         ts = getMinTimestamp(args.dir, sn[0], args.ts)
         if ts > GPS_start_time:
             GPS_start_time = ts
         print(ts)
         lb = []
-        # Lecture paramètres d'acquisition
+        # Lecture paramï¿½tres d'acquisition
         (fs, g, v) = getParamsFromXMLFile(args.dir, sn[0], ts)
-        # Détermination des axes
+        # Dï¿½termination des axes
         if args.device == "VS":
             if v >= 4:
                 axes = VS_Axes_V4
@@ -592,14 +599,14 @@ def readOBS(folder,start,stop,channel='H',calib=True,SeismoVar='acc'):
             #         writeHoles(
             #             os.path.join(args.dir, "ELOBS_%s-SN%d-TS%.4f-D%.4f-Holes.csv" % (sn[1], sn[0], ts, args.len)), chan,
             #             lh)
-            #         # Application de la réponse en fréquence du capteur
+            #         # Application de la rï¿½ponse en frï¿½quence du capteur
             #         if sn[1] == 'D' and args.device == "VS" and args.calib:
             #             s4[axes.index('X'), :] = egalisation(s4[axes.index('X'), :], fs, VSEau_RepFreq_Radial)
             #             s4[axes.index('Y'), :] = egalisation(s4[axes.index('Y'), :], fs, VSEau_RepFreq_Radial)
             #             s4[axes.index('Z'), :] = egalisation(s4[axes.index('Z'), :], fs, VSEau_RepFreq_Axial)
             #         elif args.calib:
             #             print("Frequency response not applied (only for Vector Sensor)")
-            #             # Intégration en vitesse avec filtrage passe-haut
+            #             # Intï¿½gration en vitesse avec filtrage passe-haut
             #         if sn[1] == 'D' and args.velocity:
             #             s4[axes.index('X'), :] = convAcc2Vit(s4[axes.index('X'), :], fs)
             #             s4[axes.index('Y'), :] = convAcc2Vit(s4[axes.index('Y'), :], fs)
@@ -607,9 +614,11 @@ def readOBS(folder,start,stop,channel='H',calib=True,SeismoVar='acc'):
             #     TimeStamps = np.linspace(GPS_start_time, data_length, len(s4[0]))
             # else:
             if axes[chan] == channel:
+                # NOTE: BM
+                fs = 2000
                 s4, lh = getDataFromBinFiles(args.dir, sn[0], chan, fs, ts, args.len, fullScale)
                 TimeStamps = np.linspace(GPS_start_time, GPS_start_time+data_length, len(s4))
-                # Application de la réponse en fréquence du capteur
+                # Application de la rï¿½ponse en frï¿½quence du capteur
                 if sn[1] == 'D' and args.device == "VS" and args.calib and channel!='H':
                     if channel!='Z':
                         s4 = egalisation(s4, fs, VSEau_RepFreq_Radial)
@@ -619,6 +628,6 @@ def readOBS(folder,start,stop,channel='H',calib=True,SeismoVar='acc'):
                         s4[axes.index(channel), :] = convAcc2Vit(s4[axes.index(channel), :], fs)
                 elif args.calib:
                     print("Frequency response not applied (only for Vector Sensor)")
-                    # Intégration en vitesse avec filtrage passe-haut
+                    # Intï¿½gration en vitesse avec filtrage passe-haut
         Sig = s4
     return Sig, TimeStamps, lh, sn

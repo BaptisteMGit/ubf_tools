@@ -33,6 +33,8 @@ ACOUPLANE_DATA_POSITION_TRAME_GPS_ATL_DIR = os.path.join(
 )
 ACOUPLANE_DATA_POSITION_SHOT_DIR = os.path.join(ACOUPLANE_DATA_POSITION_DIR, "SHOT")
 ACOUPLANE_DATA_PRESSURE_DIR = os.path.join(ACOUPLANE_DATA_DIR, "PRESSURE")
+ACOUPLANE_DATA_PRESSURE_BIN_DIR = os.path.join(ACOUPLANE_DATA_PRESSURE_DIR, "BIN")
+ACOUPLANE_DATA_PRESSURE_WAV_DIR = os.path.join(ACOUPLANE_DATA_PRESSURE_DIR, "WAV")
 
 # Processed data
 ROOT_ACOUPLANE_PROGRAM_DIR = os.path.join(
@@ -52,7 +54,7 @@ ACOUPLANE_POSITIONS_NC_FPATH = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_DATA_DIR, "acouplane_pos.nc"
 )
 ACOUPLANE_PRESSURE_NC_FPATH = os.path.join(
-    ROOT_ACOUPLANE_PROCESSED_DATA_DIR, "acouplane_pressure.nc"
+    ROOT_ACOUPLANE_PROCESSED_DATA_DIR, "acouplane_raw_pressure.nc"
 )
 
 # ======================================================================================================================

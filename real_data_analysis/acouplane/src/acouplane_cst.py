@@ -41,6 +41,7 @@ ROOT_ACOUPLANE_PROGRAM_DIR = os.path.join(
     ROOT_PROGRAM, "real_data_analysis", "acouplane"
 )
 ROOT_ACOUPLANE_PROCESSED_DATA_DIR = os.path.join(ROOT_ACOUPLANE_PROGRAM_DIR, "data")
+ROOT_ACOUPLANE_PROCESSED_IMG_DIR = os.path.join(ROOT_ACOUPLANE_PROGRAM_DIR, "img")
 
 
 ### Files paths ###
@@ -57,6 +58,17 @@ ACOUPLANE_PRESSURE_NC_FPATH = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_DATA_DIR, "acouplane_raw_pressure.nc"
 )
 
+# Ensure direcotries exist 
+def ensure_dirs_exist():
+    dirs = [
+        ROOT_ACOUPLANE_PROGRAM_DIR, 
+        ROOT_ACOUPLANE_PROCESSED_DATA_DIR,
+        ROOT_ACOUPLANE_PROCESSED_IMG_DIR,
+    ]
+    for dir in dirs:
+        if not os.path.exists(dir):
+            os.makedirs(dir, exist_ok=True)
+
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
@@ -64,4 +76,6 @@ PubFigure(label_fontsize=24, ticks_fontsize=20)
 
 
 if __name__ == "__main__":
-    pass
+
+    print(ROOT_ACOUPLANE_PROGRAM_DIR, ROOT_ACOUPLANE_PROCESSED_DATA_DIR)
+    ensure_dirs_exist()

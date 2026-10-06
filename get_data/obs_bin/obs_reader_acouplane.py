@@ -188,10 +188,18 @@ def read_obs_channel_H(folder, read_raw=False, fs=FS, verbose=False):
     for i in range(len(obs_time) - 1):
         step = (obs_time[i + 1][0] - obs_time[i][-1]).total_seconds()
         if step != 1 / fs:
-            raise ValueError(
+            # raise ValueError(
+            #     f"Time arrays are not continuous between files {i} and {i+1}: "
+            #     f"{obs_time[i][-1]} != {obs_time[i + 1][0]}"
+            # )
+            print(
                 f"Time arrays are not continuous between files {i} and {i+1}: "
                 f"{obs_time[i][-1]} != {obs_time[i + 1][0]}"
             )
+            # Pad with zeros to avoid holes 
+            nzeros = 0
+            obs_data[i] = np.concat(obs_data[i], )
+            # np.zeros(int((lts[i] - ts) * fs))
 
     # Concatenate all data and time
     obs_data = np.concatenate(obs_data)

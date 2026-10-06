@@ -161,19 +161,23 @@ def read_obs_channel_H(folder, read_raw=False, fs=FS, verbose=False):
             # Convert raw data to physical units
             data = convert_raw_data(data, fullScale)
 
-        # NOTE: check the following lines -> ensure data as the required length
-        # The extraction is copied from getDataFromBin() and thus assumes that the data to keep is the first samples of the file.
-        # I don't know exactly why we are doing this
-        data_duration_s = (stop_dt - start_dt).seconds
-        last_data_sample = int(data_duration_s * fs)
 
-        # Slice the data to the required length
-        data = data[:last_data_sample]
         # Create a time vector for the data
         time = pd.date_range(
             start=start_dt, end=stop_dt, freq=f"{1/fs}s", inclusive="left"
         )
 
+        # NOTE: check the following lines -> ensure data as the required length
+        # The extraction is copied from getDataFromBin() and thus assumes that the data to keep is the first samples of the file.
+        # I don't know exactly why we are doing this
+        data_duration_s = (stop_dt - start_dt).seconds
+        last_data_sample = int(data_duration_s * fs)
+        # Slice data and time to the required length
+        last_data_sample = min(last_data_sample, data.size)
+        data = data[:last_data_sample]
+        time = time[:last_data_sample]
+
+        # print(f"data size = {data.size}, time size = {time.size}, equal = {data.size == time.size}")
         # Store the data and time in the lists
         obs_data.append(data)
         obs_time.append(time)
@@ -184,6 +188,9 @@ def read_obs_channel_H(folder, read_raw=False, fs=FS, verbose=False):
     obs_data = [obs_data[i] for i in idx_sorted]
     obs_time = [obs_time[i] for i in idx_sorted]
 
+    # for i in range(len(obs_data)):
+    #     print(f"data size = {obs_data[i].size}, time size = {obs_time[i].size}, equal = {obs_data[i].size == obs_time[i].size}")
+
     # Check that the time arrays are continuous (no gaps between files)
     for i in range(len(obs_time) - 1):
         step = (obs_time[i + 1][0] - obs_time[i][-1]).total_seconds()
@@ -193,17 +200,25 @@ def read_obs_channel_H(folder, read_raw=False, fs=FS, verbose=False):
             #     f"{obs_time[i][-1]} != {obs_time[i + 1][0]}"
             # )
             print(
-                f"Time arrays are not continuous between files {i} and {i+1}: "
-                f"{obs_time[i][-1]} != {obs_time[i + 1][0]}"
+                f"Warning : Time arrays are not continuous between files {i} and {i+1}: "
+                f"{obs_time[i][-1]} != {obs_time[i + 1][0]}, holes will be filled with zeros !"
             )
-            # Pad with zeros to avoid holes 
-            nzeros = 0
-            obs_data[i] = np.concat(obs_data[i], )
+            # Fill with zeros to avoid holes     
+            fill_times = pd.date_range(start=obs_time[i][-1], end=obs_time[i+1][0], freq=f"{1/fs}s", inclusive="neither")        
+            obs_data[i] = np.concatenate([obs_data[i], np.zeros(fill_times.size)])
+            obs_time[i] = np.concatenate([obs_time[i], fill_times])
             # np.zeros(int((lts[i] - ts) * fs))
+
+    # for i in range(len(obs_data)):
+    #     print(f"data size = {obs_data[i].size}, time size = {obs_time[i].size}, equal = {obs_data[i].size == obs_time[i].size}")
 
     # Concatenate all data and time
     obs_data = np.concatenate(obs_data)
     obs_time = np.concatenate(obs_time)
+
+    if read_raw:
+        # Ensure raw data are stored as int32
+        obs_data = obs_data.astype(np.int32)
 
     return obs_data, obs_time, fullScale
 

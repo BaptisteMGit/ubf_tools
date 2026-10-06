@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from signals.signals import pulse, pulse_train, ship_noise, generate_ship_signal
 from signals.AcousticComponent import AcousticSource
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PFIG = PubFigure()
 

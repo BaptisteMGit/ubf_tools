@@ -3,7 +3,7 @@
 """
 @File    :   rtf_estimation_kraken.py
 @Time    :   2024/10/17 09:15:19
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -18,9 +18,9 @@ import matplotlib.pyplot as plt
 import scipy.interpolate as sp_int
 
 from misc import *
-from propa.rtf.ideal_waveguide import *
+from propa.ideal_waveguide import *
 from propa.kraken_toolbox.run_kraken import runkraken
-from propa.rtf.ideal_waveguide import waveguide_params
+from propa.ideal_waveguide import waveguide_params
 from localisation.verlinden.testcases.testcase_envs import TestCase1_0
 from real_data_analysis.real_data_utils import get_csdm_snapshot_number
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_consts import *

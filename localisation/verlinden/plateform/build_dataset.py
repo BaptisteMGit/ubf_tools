@@ -71,7 +71,7 @@ def build_dataset(
     )
 
     nregion_memory = ds.sizes["all_az"]
-    max_size_bytes = 1 * 1e9  # 1 Go
+    max_size_bytes = 0.5 * 1e9  # 0.5 Go
     size = ds.tf.nbytes / nregion_memory
     while size <= max_size_bytes and nregion_memory > 1:  # At least 1 region
         nregion_memory -= 1

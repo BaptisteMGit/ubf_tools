@@ -3,7 +3,7 @@
 """
 @File    :   classical_mfp.py
 @Time    :   2024/11/05 15:44:06
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -12,9 +12,6 @@
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
-import sys
-
-sys.path.append(r"C:\Users\baptiste.menetrier\Desktop\devPy\phd")
 
 import dask.array as da
 import scipy.interpolate as sp_int
@@ -27,6 +24,12 @@ from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_kraken import *
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_consts import *
 from propa.rtf.rtf_estimation.short_ri_waveguide.rtf_short_ri_testcases import *
 
+from propa.rtf.rtf_utils import (
+    D_hermitian_angle_fast,
+    D_frobenius,
+    D_frobenius_module,
+    D_frobenius_module_phase,
+)
 
 ROOT_DATA = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\rtf\short_ri_waveguide"
 ROOT_IMG_TEST = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\img\illustration\rtf\rtf_localisation\short_ri_waveguide\test_implementation"
@@ -59,7 +62,7 @@ def get_target_signal(testcase, snr_dB):
     return result
 
 
-def mfp_simulated_replicas(testcase, snr_dB):
+def mfp_simulated_replicas(testcase, snr_dB, dist="hermitian_angle"):
 
     n_rcv, z_src, r_src, delta_rcv = common_params()
 
@@ -148,7 +151,7 @@ def mfp_simulated_replicas(testcase, snr_dB):
 
     ## Step 3 : Match field processing ##
     # Select dist function to apply
-    dist = "hermitian_angle"
+
     if dist == "frobenius":
         dist_func = D_frobenius
         dist_kwargs = {}
@@ -156,14 +159,37 @@ def mfp_simulated_replicas(testcase, snr_dB):
     elif dist == "hermitian_angle":
         dist_func = D_hermitian_angle_fast
         dist_kwargs = {
-            "ax_rcv": 3,
+            "ax_rcv": 1,
+            "ax_f": 0,
             "unit": "deg",
             "apply_mean": True,
         }
+        dist_label = r"$\theta$ [°]"
+    elif dist == "frobenius_module":
+        dist_func = D_frobenius_module
+        dist_kwargs = {
+            "ax_rcv": 1,
+            "ax_f": 0,
+            "apply_mean": True,
+        }
+        dist_label = r"$\lVert \lvert\hat{\Pi} \rvert - \lvert \Pi \rvert \rVert_{2}$"
+    elif dist == "frobenius_module_phase":
+        dist_func = D_frobenius_module_phase
+        dist_kwargs = {
+            "ax_rcv": 1,
+            "ax_f": 0,
+            "apply_mean": True,
+        }
+        dist_label = r"$\lVert \hat{\Pi} - \Pi \rVert_{2}$"
+
+    # Reorganise dimensions
+    rtf_grid = rtf_grid.transpose("f", "idx_rcv", "z", "r")
+    rtf_cs = rtf_cs.transpose("f", "idx_rcv")
+    rtf_cw = rtf_cw.transpose("f", "idx_rcv")
 
     # Compute distance bewteen the estimated RTF and RTF at each grid point
-    D_cs = dist_func(rtf_cs, rtf_grid, **dist_kwargs)
-    D_cw = dist_func(rtf_cw, rtf_grid, **dist_kwargs)
+    D_cs = dist_func(rtf_cs.values, rtf_grid.values, **dist_kwargs)
+    D_cw = dist_func(rtf_cw.values, rtf_grid.values, **dist_kwargs)
 
     # Add the distance to the xarray
     D_cs = xr.DataArray(
@@ -188,7 +214,7 @@ def mfp_simulated_replicas(testcase, snr_dB):
         "root_img": root_img,
         "testcase": result["tc_label"],
         "mfp_method": "simulated_replicas",
-        "dist_label": r"$\theta \, \textrm{[°]}$",
+        "dist_label": dist_label,
     }
 
     plot_args["rtf_method"] = "cs"
@@ -212,7 +238,7 @@ def mfp_simulated_replicas(testcase, snr_dB):
     return pos_hat_cs, pos_hat_cw
 
 
-def mfp_measured_replicas(testcase, snr_dB):
+def mfp_measured_replicas(testcase, snr_dB, dist="hermitian_angle"):
 
     # Load params
     n_rcv, z_src, r_src, delta_rcv = common_params()
@@ -296,11 +322,12 @@ def mfp_measured_replicas(testcase, snr_dB):
     alpha_overlap = 1 / 2
     noverlap = int(nperseg * alpha_overlap)
 
-    # Use the first signal slice to set f_cs by running rtf_covariance_substraction once
+    # Use the first signal slice to set f_cs by running rtf_covariance_subtraction once
     rcv_sig = ds_rcv_sig.sel(r=r_src, z=z_src).values
     rcv_noise = ds_noise.sel(r=r_src, z=z_src).values
-    f_rtf, rtf, _, _, _ = rtf_covariance_substraction(
-        t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
+    noisy_signal = rcv_sig + rcv_noise
+    f_rtf, rtf, _, _, _ = rtf_covariance_subtraction(
+        t, noisy_signal, rcv_noise, nperseg=nperseg, noverlap=noverlap
     )
 
     # Use Dask delayed and progress bar for tracking
@@ -311,26 +338,27 @@ def mfp_measured_replicas(testcase, snr_dB):
             for r_i in ds_rcv_sig.r.values:
                 rcv_sig = ds_rcv_sig.sel(r=r_i, z=z_i).values
                 rcv_noise = ds_noise.sel(r=r_i, z=z_i).values
+                noisy_signal = rcv_sig + rcv_noise
 
                 # Wrap function call in dask delayed
                 delayed_rtf_cs = da.from_delayed(
                     delayed(
-                        lambda t, sig, noise: rtf_covariance_substraction(
-                            t, sig, noise, nperseg, noverlap
+                        lambda t, noisy_sig, noise: rtf_covariance_subtraction(
+                            t, noisy_sig, noise, nperseg, noverlap
                         )[1]
-                    )(t, rcv_sig, rcv_noise),
-                    shape=(len(f_rtf), rcv_sig.shape[1]),
+                    )(t, noisy_signal, rcv_noise),
+                    shape=(len(f_rtf), noisy_signal.shape[1]),
                     dtype=complex,
                 )
                 results_cs.append(delayed_rtf_cs)
 
                 delayed_rtf_cw = da.from_delayed(
                     delayed(
-                        lambda t, sig, noise: rtf_covariance_whitening(
-                            t, sig, noise, nperseg, noverlap
+                        lambda t, noisy_sig, noise: rtf_covariance_whitening(
+                            t, noisy_sig, noise, nperseg, noverlap
                         )[1]
-                    )(t, rcv_sig, rcv_noise),
-                    shape=(len(f_rtf), rcv_sig.shape[1]),
+                    )(t, noisy_signal, rcv_noise),
+                    shape=(len(f_rtf), noisy_signal.shape[1]),
                     dtype=complex,
                 )
                 results_cw.append(delayed_rtf_cw)
@@ -396,8 +424,22 @@ def mfp_measured_replicas(testcase, snr_dB):
     plt.savefig(fpath)
 
     ## Step 3 : Match field processing ##
+    # # Select dist function to apply
+    # dist = "hermitian_angle"
+    # if dist == "frobenius":
+    #     dist_func = D_frobenius
+    #     dist_kwargs = {}
+
+    # elif dist == "hermitian_angle":
+    #     dist_func = D_hermitian_angle_fast
+    #     dist_kwargs = {
+    #         "ax_rcv": 3,
+    #         "unit": "deg",
+    #         "apply_mean": True,
+    #     }
+
     # Select dist function to apply
-    dist = "hermitian_angle"
+
     if dist == "frobenius":
         dist_func = D_frobenius
         dist_kwargs = {}
@@ -405,10 +447,34 @@ def mfp_measured_replicas(testcase, snr_dB):
     elif dist == "hermitian_angle":
         dist_func = D_hermitian_angle_fast
         dist_kwargs = {
-            "ax_rcv": 3,
+            "ax_rcv": 1,
+            "ax_f": 0,
             "unit": "deg",
             "apply_mean": True,
         }
+        dist_label = r"$\theta$ [°]"
+    elif dist == "frobenius_module":
+        dist_func = D_frobenius_module
+        dist_kwargs = {
+            "ax_rcv": 1,
+            "ax_f": 0,
+            "apply_mean": True,
+        }
+        dist_label = r"$\lVert \lvert\hat{\Pi} \rvert - \lvert \Pi \rvert \rVert_{2}$"
+    elif dist == "frobenius_module_phase":
+        dist_func = D_frobenius_module_phase
+        dist_kwargs = {
+            "ax_rcv": 1,
+            "ax_f": 0,
+            "apply_mean": True,
+        }
+        dist_label = r"$\lVert \hat{\Pi} - \Pi \rVert_{2}$"
+
+    # Reorganise dimensions
+    rtf_cs_xr = rtf_cs_xr.transpose("f", "idx_rcv", "z", "r")
+    rtf_cw_xr = rtf_cw_xr.transpose("f", "idx_rcv", "z", "r")
+    rtf_cs = rtf_cs.transpose("f", "idx_rcv")
+    rtf_cw = rtf_cw.transpose("f", "idx_rcv")
 
     # Compute distance bewteen the estimated RTF and RTF at each grid point
     D_cs = dist_func(rtf_cs, rtf_cs_xr, **dist_kwargs)
@@ -439,7 +505,7 @@ def mfp_measured_replicas(testcase, snr_dB):
         "root_img": root_img,
         "testcase": result["tc_label"],
         "mfp_method": "measured_replicas",
-        "dist_label": r"$\theta \, \textrm{[°]}$",
+        "dist_label": dist_label,
     }
 
     plot_args["rtf_method"] = "cs"
@@ -825,16 +891,23 @@ if __name__ == "__main__":
     tc = 1
     snr = 0
 
-    mfp_simulated_replicas(tc, snr)
-    mfp_measured_replicas(tc, snr)
+    mfp_simulated_replicas(testcase=tc, snr_dB=snr, dist="hermitian_angle")
+    mfp_simulated_replicas(testcase=tc, snr_dB=snr, dist="frobenius_module")
+    mfp_simulated_replicas(testcase=tc, snr_dB=snr, dist="frobenius_module_phase")
 
-    snrs = [-30, -20, -10, 0, 10, 20, 30]
-    # snrs = np.arange(-50, 55, 5)
+    # mfp_measured_replicas(testcase=tc, snr_dB=snr, dist="hermitian_angle")
+    # mfp_measured_replicas(testcase=tc, snr_dB=snr, dist="frobenius_module")
+    # mfp_measured_replicas(testcase=tc, snr_dB=snr, dist="frobenius_module_phase")
 
-    _, z_src, r_src, _ = common_params()
+    # mfp_measured_replicas(tc, snr)
 
-    # snrs = [0, 1]
-    n_monte_carlo = 10
+    # snrs = [-30, -20, -10, 0, 10, 20, 30]
+    # # snrs = np.arange(-50, 55, 5)
+
+    # _, z_src, r_src, _ = common_params()
+
+    # # snrs = [0, 1]
+    # n_monte_carlo = 10
 
     # pos_cs_hat_simulated_replicas = []
     # pos_cw_hat_simulated_replicas = []
@@ -1300,7 +1373,7 @@ if __name__ == "__main__":
 #         rcv_noise = ds_noise.sel(r=r_i, z=z_i)
 
 #         # Estimate RTF using covariance substraction method
-#         f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_substraction(
+#         f_cs, rtf_cs, Rx, Rs, Rv = rtf_covariance_subtraction(
 #             t, rcv_sig, rcv_noise, nperseg=nperseg, noverlap=noverlap
 #         )
 

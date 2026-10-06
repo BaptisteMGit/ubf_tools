@@ -3,7 +3,7 @@
 """
 @File    :   bathy_obs.py
 @Time    :   2024/05/14 16:03:31
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -22,7 +22,7 @@ from localisation.verlinden.plateform.init_dataset import init_grid
 from matplotlib.colors import BoundaryNorm, LinearSegmentedColormap
 import matplotlib.patches as patches
 
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 pubfig = PubFigure(legend_fontsize=20)
 
@@ -101,7 +101,7 @@ def plot_swir_bathy(contour=True):
     #         "spacing": "proportional",
     #     },
     # )
-    ds_bathy.elevation.plot(cmap="jet")
+    ds_bathy.elevation.plot(cmap="terrain")
 
     if contour:
         ds_bathy.elevation.plot.contour(levels=blevels, colors="k", linewidths=0.5)
@@ -155,7 +155,7 @@ def plot_swir_obs(ds_bathy, rcv_id, col=None):
         # Plot obs_id next to the point
         plt.text(
             rcv_info["lons"][i_obs] + 0.03,
-            rcv_info["lats"][i_obs] - 0.03,
+            rcv_info["lats"][i_obs] + 0.03,
             f"{obs_id}",
             fontsize=22,
             color="k",

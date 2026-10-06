@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 
 def plot_angle_repartition(ds, bathy_dlat, bathy_dlon):

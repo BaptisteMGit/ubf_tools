@@ -3,79 +3,570 @@
 """
 @File    :   plot_utils.py
 @Time    :   2024/03/12 08:48:09
-@Author  :   Menetrier Baptiste 
-@Version :   1.0
+@Author  :   Menetrier Baptiste
+@Version :   1.1 (refactor)
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   Utility functions to plot kraken outputs
+@Desc    :   Utility functions to plot KRAKEN/FIELD outputs: mode
+             shapes, transmission-loss (TL) maps and range profiles,
+             and environment profiles (SSP, attenuation, density).
+
 """
 
 # ======================================================================================================================
 # Import
 # ======================================================================================================================
 
+import math
+
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
+from publication.publication_figure import PubFigure
 from propa.kraken_toolbox.read_modes import readmodes
 from propa.kraken_toolbox.read_shd import readshd
-from propa.kraken_toolbox.utils import get_component
 from cst import TICKS_FONTSIZE, TITLE_FONTSIZE, LABEL_FONTSIZE
 
 
-def plotmode(filename, freq=0, modes=None):
-    """Plot modes produced by KRAKEN from a '.mod' binary file.
-    Usage: plotmode(filename, freq, modes)
+# ======================================================================================================================
+# Mode shapes
+# ======================================================================================================================
+def _grid_shape(n_panels, ncols=None, panel_w=3.2, panel_h=4.2, target_fig_aspect=1.6):
+    """Compute a (nrows, ncols) grid for 'n_panels' subplots, chosen so
+    the panels are arranged in a layout that WOULD come out landscape
+    (wider than tall) at panel_w x panel_h each, given that each
+    individual panel is itself taller than wide.
 
-    filename don't need to include the extension.
+    A grid that is "roughly square" in terms of CELL COUNT (e.g. 2x3
+    for 6 panels) is not the same as a landscape FIGURE once each cell
+    is itself a tall rectangle: 2 rows x 3 columns of (3.2, 4.2) panels
+    gives a (9.6, 8.4) figure -- already close to square, and easily
+    portrait for other panel counts. Instead, every achievable (nrows,
+    ncols) pair (nrows from 1 to n_panels, ncols = ceil(n_panels /
+    nrows)) is scored by how close its resulting OVERALL aspect ratio
+    (ncols*panel_w / (nrows*panel_h)) comes to 'target_fig_aspect',
+    restricted to pairs that are actually landscape (aspect >= 1)
+    whenever at least one such pair exists.
 
-    Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter https://oalib.hlsresearch.com/AcousticsToolbox/
+    Args:
+        n_panels (int): number of subplots needed.
+        ncols (int|None): force this many columns instead of searching
+            for a landscape-optimal layout.
+        panel_w, panel_h (float): the NOTIONAL size (inches) of a
+            single panel, used only to score candidate (nrows, ncols)
+            layouts here -- no longer the actual per-panel figsize
+            plotmode() renders at (see its own NOTE).
+        target_fig_aspect (float): the ideal overall width/height ratio
+            to aim for among the landscape-qualifying layouts (1.6 is a
+            fairly standard "wide" report-figure ratio; the search does
+            not need to hit it exactly, just get close while staying
+            landscape).
 
+    Returns:
+        tuple(nrows, ncols)
     """
-    Modes = readmodes(filename, freq, modes)
+    if ncols is not None:
+        nrows = math.ceil(n_panels / ncols)
+        return nrows, ncols
 
-    if Modes["M"] == 0:
+    candidates = []
+    for nrows in range(1, n_panels + 1):
+        ncols_candidate = math.ceil(n_panels / nrows)
+        aspect = (ncols_candidate * panel_w) / (nrows * panel_h)
+        candidates.append((nrows, ncols_candidate, aspect))
+
+    landscape_candidates = [c for c in candidates if c[2] >= 1.0]
+    if landscape_candidates:
+        nrows, ncols, _aspect = min(
+            landscape_candidates, key=lambda c: abs(c[2] - target_fig_aspect)
+        )
+    else:
+        # No landscape layout is achievable at all (only possible for a
+        # single panel, since panel_h > panel_w) -- fall back to
+        # whichever grid comes closest to landscape.
+        nrows, ncols, _aspect = max(candidates, key=lambda c: c[2])
+    return nrows, ncols
+
+
+def plotmode(
+    filename,
+    freq=0,
+    n_modes=6,
+    modes=None,
+    bathy_depth=None,
+    normalize_mode=False,
+    ncols=None,
+):
+    """Plot mode shapes produced by KRAKEN, read from a '.mod' binary
+    file: one subplot per mode, arranged in an automatically-sized
+    grid, sharing a single depth axis and a single legend for the whole
+    figure.
+
+    Supports one or several frequencies at once: 'freq' can be a scalar
+    or an array-like. With several frequencies, each mode's subplot
+    overlays that SAME mode number's shape at every frequency (one
+    color per frequency, real part solid, imaginary part dashed in the
+    same color) -- the natural way to compare how a given mode changes
+    with frequency. A frequency that has fewer modes than another
+    simply contributes no curve to the subplots beyond its own count
+    (grid size is set by whichever frequency has the most).
+
+
+    Args:
+        filename (str): path to the '.mod' file (extension optional).
+        freq (float|array-like): frequency/frequencies (Hz) to read and
+            plot.
+        n_modes (int): number of modes to plot, starting from mode 1,
+            when 'modes' is not given. Capped automatically by however
+            many modes are actually available (at whichever frequency
+            has the most).
+        modes (array-like|None): explicit 1-based mode indices to plot
+            instead of 1..n_modes (e.g. [1, 5, 10, 20] to inspect a
+            sparse selection rather than the lowest-order modes). Give
+            them in ascending order.
+        bathy_depth (float|None): if given, draws a horizontal dashed
+            line at this depth (the local seafloor) on every subplot,
+            clips the shared depth axis to 1.4x this value, and adds a
+            "Seafloor" entry to the legend.
+        normalize_mode (bool): normalize each plotted mode curve to
+            [-1, 1] (by its own peak absolute value).
+        ncols (int|None): force this many columns in the subplot grid
+            instead of the automatic, roughly-square layout.
+
+    Returns:
+        matplotlib.figure.Figure
+
+    Raises:
+        ValueError: if the mode file contains an ELASTIC medium. Mode
+            shapes are read directly from Modes["phi"] (see "NOTE (bug
+            fixed)" below), which requires a 1-to-1 correspondence
+            between Modes["phi"]'s rows and Modes["z"]'s depths -- true
+            for an ACOUSTIC-only mode file (every case in this
+            project's examples), but not for an ELASTIC one (where each
+            depth occupies 4 rows in Modes["phi"], see
+            utils.get_component). Reading an ELASTIC file's mode shapes
+            correctly needs that per-point, per-component unpacking;
+            this function does not attempt it and fails loudly instead
+            of silently plotting misaligned data.
+    """
+    # NOTE (bug fixed): this function used to extract mode shapes via
+    # `utils.get_component(Modes, "N")`, which partitions Modes["phi"]'s
+    # rows across media using `Modes["N"]` (the number of points per
+    # medium) as the boundary. On real data, this produced visibly
+    # wrong mode shapes: confirmed that `Modes["N"]` is actually the
+    # number of MESH SUBDIVISIONS requested in the '.env' file's medium
+    # block (KrakenMedium's own 'nmesh' parameter), not the number of
+    # points in the '.mod' file's actual output z/phi grid, which is
+    # typically much finer (KRAKEN interpolates internally). Confirmed
+    # on a real single-ACOUSTIC-medium mode file: N=[25] while the
+    # actual z/phi grid had 2601 points for that same medium --
+    # get_component filled only the first 25 rows and silently left the
+    # remaining 2576 at zero. For an ACOUSTIC-only mode file (every
+    # example in this project), Modes["phi"]'s rows already correspond
+    # 1-to-1 to Modes["z"]'s depths in order, with no need to partition
+    # by medium at all -- reading it directly is both simpler and
+    # actually correct, confirmed against the same real data.
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    all_modes = []
+    for f in freqs:
+        Modes = readmodes(filename, f, requested_modes)
+        if Modes["M"] == 0:
+            raise Exception(f"No modes in mode file at {f} Hz")
+        all_modes.append(Modes)
+
+    return _render_mode_grid(
+        all_modes,
+        freqs,
+        requested_modes,
+        bathy_depth=bathy_depth,
+        normalize_mode=normalize_mode,
+        ncols=ncols,
+    )
+
+
+def plotmode_from_data(
+    all_modes,
+    freq,
+    n_modes=6,
+    modes=None,
+    bathy_depth=None,
+    normalize_mode=False,
+    ncols=None,
+):
+    """Plot mode shapes from an already-loaded list of Modes dicts (one
+    per frequency), instead of reading them from a '.mod' file. Same
+    rendering and arguments as plotmode() (see its docstring) -- this
+    is its counterpart for when there is no single on-disk '.mod' file
+    containing every frequency's modes to read from in the first place.
+
+    This is exactly the situation after a broadband + range-dependent
+    KRAKEN run (see KrakenManager.runkraken_broadband_range_dependent /
+    run_kraken.runkraken_broadband_range_dependent's module docstring):
+    KRAKEN is re-run once per frequency, overwriting the SAME '.mod'
+    file each time, so only the LAST frequency's modes are ever left on
+    disk afterwards. Both of those functions now collect each
+    frequency's Modes dict (via read_modes.readmodes) INSIDE their
+    per-frequency loop, before the next iteration overwrites the file,
+    and return/expose the resulting list (KrakenManager.runkraken()
+    sets it on self.last_modes) for exactly this function to plot --
+    mirroring how plotshd_from_pressure_field() plots a pressure field
+    that was similarly collected in memory rather than read back from a
+    single '.shd' file.
+
+    Args:
+        all_modes (list[dict]): one Modes dict (as returned by
+            read_modes.readmodes) per frequency, in the same order as
+            'freq'.
+        freq (float|array-like): the frequency/frequencies 'all_modes'
+            corresponds to (used for labelling only -- the actual
+            frequency each Modes dict was read at is not re-derived
+            from it).
+        n_modes, modes, bathy_depth, normalize_mode, ncols: see
+            plotmode().
+
+    Returns:
+        matplotlib.figure.Figure
+
+    Raises:
+        ValueError: if 'all_modes' and 'freq' have different lengths,
+            or if any entry contains an ELASTIC medium -- see plotmode().
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    if len(all_modes) != len(freqs):
+        raise ValueError(
+            f"'all_modes' has {len(all_modes)} entries but 'freq' has "
+            f"{len(freqs)} -- they must correspond 1-to-1, in order."
+        )
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    return _render_mode_grid(
+        all_modes,
+        freqs,
+        requested_modes,
+        bathy_depth=bathy_depth,
+        normalize_mode=normalize_mode,
+        ncols=ncols,
+    )
+
+
+def _render_mode_grid(
+    all_modes, freqs, requested_modes, bathy_depth, normalize_mode, ncols
+):
+    """Shared rendering logic for plotmode() / plotmode_from_data(): one
+    subplot per mode, arranged in an automatically-sized landscape
+    grid, sharing a single depth axis and a single legend for the whole
+    figure. See plotmode()'s docstring for the full behaviour
+    description; this function assumes 'all_modes' has already been
+    validated (each entry ACOUSTIC-only, i.e. Modes["phi"].shape[0] ==
+    len(Modes["z"])) by its caller.
+    """
+    for f, Modes in zip(freqs, all_modes):
+        if Modes["phi"].shape[0] != len(Modes["z"]):
+            raise ValueError(
+                f"plotmode()/plotmode_from_data() only support ACOUSTIC-only "
+                f"mode files (they read Modes['phi'] directly against "
+                f"Modes['z'], depth-for-depth). At {f:g} Hz, Modes['phi'] has "
+                f"{Modes['phi'].shape[0]} rows but Modes['z'] has "
+                f"{len(Modes['z'])} depths -- this mode data includes an "
+                f"ELASTIC medium (4 rows per depth in Modes['phi']; see "
+                f"utils.get_component to unpack a specific component from it)."
+            )
+
+    n_panels = min(len(requested_modes), max(m["nb_selected_modes"] for m in all_modes))
+    if n_panels == 0:
         raise Exception("No modes in mode file")
+    mode_numbers = requested_modes[:n_panels]
 
-    freqdiff = np.abs(Modes["freqVec"] - freq)
-    freq_index = np.argmin(freqdiff)
-    phi = get_component(Modes, "N")
+    nrows, ncols = _grid_shape(n_panels, ncols=ncols)
 
-    nx = phi.shape[1]  # Assuming all modes have the same length
+    pfig = PubFigure(titlepad=25, labelpad=25)
+    fig, axs = plt.subplots(
+        nrows,
+        ncols,
+        figsize=(16, 12),
+        sharey=True,
+        squeeze=False,
+        constrained_layout=True,
+    )
+    axs_flat = axs.ravel()
+    for extra_ax in axs_flat[n_panels:]:
+        extra_ax.axis("off")
 
-    if nx > 1:
-        x = np.arange(1, nx + 1)
-        doo = np.real(phi)
-        plt.figure()
-        plt.pcolor(x, Modes["z"], doo, shading="auto", cmap="jet")
-        plt.gca().invert_yaxis()
-        plt.colorbar()
-        # caxis_lim = max(np.abs(plt.clim()))
-        # plt.clim(-caxis_lim, caxis_lim)
-        plt.xlabel("Mode index")
-        plt.ylabel("Depth (m)")
-        plt.title([Modes["title"], f'Freq = {Modes["freqVec"][freq_index]} Hz'])
+    multi_freq = len(freqs) > 1
+    for panel_idx, mode_number in enumerate(mode_numbers):
+        ax = axs_flat[panel_idx]
+        max_abs = 0.0
+        for i_f, (f, Modes) in enumerate(zip(freqs, all_modes)):
+            local_idx = np.flatnonzero(Modes["selected_modes"] == mode_number)
+            if local_idx.size == 0:
+                continue  # this frequency doesn't have this mode number
+            phi_col = Modes["phi"][:, local_idx[0]]
 
-    Nplots = min(Modes["nb_selected_modes"], 10)
-    iskip = Modes["nb_selected_modes"] // Nplots
+            if normalize_mode:
+                peak = np.max(np.abs(phi_col))
+                if peak > 0:
+                    phi_col = phi_col / peak
 
-    fig, ax = plt.subplots(1, Nplots, figsize=(15, 5), sharey=True)
-    for iplot in range(Nplots):
-        imode = 1 + (iplot) * iskip
-        if iplot == 0:
-            ax[iplot].plot(np.real(phi[:, imode - 1]), Modes["z"], "k", label="Real")
-            ax[iplot].plot(np.imag(phi[:, imode - 1]), Modes["z"], "b--", label="Imag")
-            ax[iplot].legend()
-        else:
-            ax[iplot].plot(np.real(phi[:, imode - 1]), Modes["z"], "k")
-            ax[iplot].plot(np.imag(phi[:, imode - 1]), Modes["z"], "b--")
-        ax[iplot].set_xlabel(f"Mode {Modes['selected_modes'][imode - 1]}")
+            color = f"C{i_f}"
+            ax.plot(np.real(phi_col), Modes["z"], color=color, linestyle="-")
+            ax.plot(np.imag(phi_col), Modes["z"], color=color, linestyle="--")
+            max_abs = max(
+                max_abs, np.max(np.abs(phi_col.real)), np.max(np.abs(phi_col.imag))
+            )
 
-    ax[0].set_ylabel("Depth (m)")
-    ax[0].invert_yaxis()
-    plt.suptitle([Modes["title"], f'Freq = {Modes["freqVec"][freq_index]} Hz'])
-    # plt.show()
+        if max_abs > 0:
+            ax.set_xlim(-1.05 * max_abs, 1.05 * max_abs)
+
+        if bathy_depth is not None:
+            ax.axhline(y=bathy_depth, color="r", linestyle="--")
+
+        ax.set_title(f"Mode {mode_number}")
+
+        if normalize_mode:
+            ax.set_xlim([-1.2, 1.2])
+
+    if bathy_depth is not None:
+        axs_flat[0].set_ylim([0, bathy_depth * 1.4])
+
+    axs_flat[0].invert_yaxis()  # shared y-axis -> propagates to every panel
+
+    legend_handles = []
+    if multi_freq:
+        for i_f, f in enumerate(freqs):
+            legend_handles.append(
+                Line2D([0], [0], color=f"C{i_f}", linestyle="-", label=f"{f:g} Hz")
+            )
+        legend_handles.append(
+            Line2D([0], [0], color="k", linestyle="-", label="Real part")
+        )
+        legend_handles.append(
+            Line2D([0], [0], color="k", linestyle="--", label="Imag part")
+        )
+    else:
+        legend_handles.append(
+            Line2D([0], [0], color="C0", linestyle="-", label="Real part")
+        )
+        legend_handles.append(
+            Line2D([0], [0], color="C0", linestyle="--", label="Imag part")
+        )
+    if bathy_depth is not None:
+        legend_handles.append(
+            Line2D([0], [0], color="r", linestyle="--", label="Seafloor")
+        )
+
+    fig.legend(handles=legend_handles, loc="outside center right")
+
+    fig.supxlabel("Mode amplitude")
+    fig.supylabel("Depth [m]")
+    freqs_str = ", ".join(f"{f:g}" for f in freqs)
+    fig.suptitle(f'{all_modes[0]["title"]}\nFreq = {freqs_str} Hz')
+    return fig
 
 
+# ======================================================================================================================
+# Group speed (vg) / phase speed (vphi)
+# =====================================================================================================================
+def _read_krm(filename, freqs, requested_modes):
+    """Read modal wavenumbers kr(freq, mode) across several
+    frequencies, padded with NaN so every frequency's row has the same
+    number of columns (matching whichever frequency actually has the
+    most modes) -- shared by plot_group_speed()/plot_phase_speed()/
+    plot_phase_and_group_speed() (factored out to avoid re-reading the
+    same '.mod' file three times with three near-identical copies of
+    this loop).
+
+    Args:
+        filename (str): path to the '.mod' file (extension optional).
+        freqs (np.ndarray): frequencies (Hz) to read, in order.
+        requested_modes (np.ndarray): 1-based mode indices to request
+            at each frequency.
+
+    Returns:
+        np.ndarray: complex, shape (n_freq, n_modes_max).
+
+    Raises:
+        Exception: if a frequency has no modes at all (see readmodes()).
+    """
+    all_modes = []
+    for f in freqs:
+        Modes = readmodes(filename, f, requested_modes)
+        if Modes["M"] == 0:
+            raise Exception(f"No modes in mode file at {f} Hz")
+        all_modes.append(Modes)
+
+    n_max_modes = np.max([modes["k"].size for modes in all_modes])
+
+    krm = []
+    for modes_f in all_modes:
+        n_missing_modes = n_max_modes - modes_f["k"].size
+        krm_f = np.pad(
+            modes_f["k"], (0, n_missing_modes), mode="constant", constant_values=np.nan
+        )
+        krm.append(krm_f)
+    return np.array(krm)
+
+
+def plot_group_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot group speed vg = domega/dkr (numerically differentiated
+    across the given frequencies) for each mode, as a function of
+    frequency.
+
+    Args:
+        filename (str): path to the '.mod' file (extension optional).
+        freq (float|array-like): frequency/frequencies (Hz) to read and
+            plot -- needs at least 2 distinct values for the derivative
+            to mean anything; pass a reasonably dense array for a
+            smooth-looking curve.
+        n_modes (int): number of modes to plot, starting from mode 1,
+            when 'modes' is not given. Capped automatically by however
+            many modes are actually available (at whichever frequency
+            has the most).
+        modes (array-like|None): explicit 1-based mode indices to plot
+            instead of 1..n_modes (e.g. [1, 5, 10, 20] to inspect a
+            sparse selection rather than the lowest-order modes). Give
+            them in ascending order.
+        ax (matplotlib.axes.Axes|None): plot into this axis instead of
+            creating a new figure -- lets plot_phase_and_group_speed()
+            (and any other caller wanting to overlay this on an
+            existing axis) reuse this function directly.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+
+    # Derive vgm = domega/dkrm (real part of kr -- the imaginary part
+    # represents modal attenuation).
+    omega = 2 * np.pi * freqs
+    vgm = np.full(krm.shape, np.nan)
+    for im in range(krm.shape[1]):
+        kr = np.real(krm[:, im])
+        vgm[:, im] = np.gradient(omega, kr)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    for im, m in enumerate(requested_modes):
+        ax.plot(freqs, vgm[:, im], label=f"Mode {m}")
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Group speed [m.s$^{-1}$]")
+    ax.legend()
+
+    return fig
+
+
+def plot_phase_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot phase speed vphi = omega/kr for each mode, as a function of
+    frequency.
+
+    Args, Returns: see plot_group_speed() (same signature/convention --
+    the only difference is the quantity plotted).
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+
+    # vphim = omega / krm (real part of krm).
+    omega = 2 * np.pi * freqs
+    with np.errstate(divide="ignore", invalid="ignore"):
+        vphim = omega[:, np.newaxis] / np.real(krm)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    for im, m in enumerate(requested_modes):
+        ax.plot(freqs, vphim[:, im], label=f"Mode {m}")
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Phase speed [m.s$^{-1}$]")
+    ax.legend()
+
+    return fig
+
+
+def plot_phase_and_group_speed(filename, n_modes=6, freq=None, modes=None, ax=None):
+    """Plot BOTH phase speed (vphi = omega/kr) and group speed
+    (vg = domega/dkr) for the same modes, overlaid on ONE axis: solid
+    lines for phase speed, dashed lines for group speed, matching
+    colors per mode (each mode's group-speed curve reuses the color
+    matplotlib auto-assigned to that mode's phase-speed curve, so the
+    two are visually paired without needing an explicit color list).
+    The legend distinguishes modes (by color, one entry each) from the
+    phase/group distinction (by linestyle, 2 extra entries) rather than
+    listing "Mode 1 (phase)"/"Mode 1 (group)"/... separately.
+
+    Args, Returns: see plot_group_speed() (same signature/convention).
+    """
+    freqs = np.atleast_1d(freq).astype(float)
+    requested_modes = (
+        np.atleast_1d(modes).astype(int)
+        if modes is not None
+        else np.arange(1, n_modes + 1)
+    )
+
+    krm = _read_krm(filename, freqs, requested_modes)
+    omega = 2 * np.pi * freqs
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        vphim = omega[:, np.newaxis] / np.real(krm)
+
+    vgm = np.full(krm.shape, np.nan)
+    for im in range(krm.shape[1]):
+        kr = np.real(krm[:, im])
+        vgm[:, im] = np.gradient(omega, kr)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    mode_handles = []
+    for im, m in enumerate(requested_modes):
+        (line_phase,) = ax.plot(freqs, vphim[:, im], linestyle="-")
+        ax.plot(freqs, vgm[:, im], color=line_phase.get_color(), linestyle="--")
+        mode_handles.append(
+            Line2D([0], [0], color=line_phase.get_color(), label=f"Mode {m}")
+        )
+
+    style_handles = [
+        Line2D([0], [0], color="k", linestyle="-", label="Phase speed"),
+        Line2D([0], [0], color="k", linestyle="--", label="Group speed"),
+    ]
+    ax.legend(handles=mode_handles + style_handles)
+    ax.set_xlabel("Frequency [Hz]")
+    ax.set_ylabel(r"Speed [m.s$^{-1}$]")
+
+    return fig
+
+
+# ======================================================================================================================
+# Transmission loss (TL)
+# ======================================================================================================================
 def plotshd(
     filename,
     freq=None,
@@ -87,28 +578,60 @@ def plotshd(
     tl_min=None,
     tl_max=None,
     bathy=None,
+    axis=None,
+    rasterized=True,
 ):
-    """Plot Transmission loss field read from '.shd' binary file produced by FIELD.exe.
-    Usage :  plotshd(filename, freq, m, n, p, units)
+    """Plot the transmission-loss field read from a '.shd' binary file
+    produced by FIELD.exe.
+    Usage: plotshd(filename, freq, m, n, p, units)
 
-    Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter https://oalib.hlsresearch.com/AcousticsToolbox/
+    Args:
+        filename (str): path to the '.shd' file.
+        freq (float): the single frequency to read and plot (this
+            function does not support plotting several frequencies at
+            once -- see plot_tl_profile_multi_freq for TL profiles, or
+            plotmode's own multi-frequency support for mode shapes).
+        m, n, p (int|None): if all three are given, plot into subplot
+            (m, n, p) of a new figure instead of a full-size standalone
+            figure.
+        units (str): 'm' (default) or 'km' for the range axis. Note:
+            read_shd.readshd's own 'Pos["r"]["r"]' is always in METERS
+            (the '.shd' file's native convention, regardless of the
+            kilometers used in '.env'/'.flp' input files -- see
+            read_shd.py's docstring); this function converts to km
+            for you when units='km'.
+        title (str|None): plot title. None builds a default title from
+            the file's own title, frequency and source depth.
+        tl_min, tl_max (float|None): color scale bounds (dB). None
+            picks a sensible range automatically from the data.
+        bathy (Bathymetry|None): if given, overlays the bottom profile.
+        axis (matplotlib.axes.Axes|None): plot into this axis instead
+            of creating a new figure (ignored if m/n/p are given).
+        rasterized (bool): rasterize the pcolor mesh (smaller file size
+            for vector-format figure exports).
 
+    Returns:
+        matplotlib.figure.Figure: the figure that was drawn into (newly
+        created, a new subplot's, or the one owning 'axis' if given).
+
+    Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter
+    https://oalib.hlsresearch.com/AcousticsToolbox/
     """
 
-    # Read data based on the number of input arguments
-    filename = filename.lower()  # Convert filename to lowercase
     PlotTitle, _, _, _, read_freq, _, Pos, pressure = readshd(
         filename=filename, freq=freq
     )
+    pressure = np.squeeze(pressure)
 
-    pressure = np.squeeze(pressure, axis=(0, 1))
-
-    if m is not None and n is not None and p is not None:
-        # Create a subplot
-        plt.figure()
-        plt.subplot(m, n, p)
-    else:
-        plt.figure(figsize=(16, 8))
+    if axis is None:
+        if m is not None and n is not None and p is not None:
+            # Create a subplot
+            plt.figure()
+            plt.subplot(m, n, p)
+            axis = plt.gca()
+        else:
+            plt.figure(figsize=(16, 8))
+            axis = plt.gca()
 
     # Calculate caxis limits
     tlt = np.abs(pressure).astype(float)
@@ -126,62 +649,52 @@ def plotshd(
     tlmin = tlmax - 50
 
     xlab = "Range [m]"
+    r = Pos["r"]["r"]
+    bathy_mult = 1e3
     if units == "km":
-        Pos["r"]["r"] = Pos["r"]["r"] / 1000.0
+        r = r / 1000.0
         xlab = "Range [km]"
+        bathy_mult = 1
 
-    if tl_min is not None:
-        tlmin_plot = tl_min
-    else:
-        tlmin_plot = tlmin
+    tlmin_plot = tl_min if tl_min is not None else tlmin
+    tlmax_plot = tl_max if tl_max is not None else tlmax
 
-    if tl_max is not None:
-        tlmax_plot = tl_max
-    else:
-        tlmax_plot = tlmax
-    # tlmin_plot = 30
-    # tlmax_plot = 80
     # Plot the data
     tej = plt.get_cmap("jet", 256).reversed()
-    plt.pcolor(
-        Pos["r"]["r"],
+    im = axis.pcolor(
+        r,
         Pos["r"]["z"],
         tlt,
         shading="auto",
         cmap=tej,
         vmin=tlmin_plot,
         vmax=tlmax_plot,
+        rasterized=rasterized,
     )
 
-    # plt.clim(tlmin_plot, tlmax_plot)
-
     if bathy is not None:
-        plt.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k")
+        axis.plot(bathy.bathy_range * bathy_mult, bathy.bathy_depth, "k", linewidth=2)
 
-    plt.gca().invert_yaxis()
-    plt.gca().tick_params(direction="out")
+    axis.invert_yaxis()
+    axis.tick_params(direction="out")
 
-    cbar = plt.colorbar()
+    cbar = plt.colorbar(im, ax=axis, pad=0.005)
     cbar.set_label("TL [dB]")
     cbar.ax.invert_yaxis()
 
-    plt.xlabel(xlab, fontsize=LABEL_FONTSIZE)
-    plt.ylabel("Depth [m]", fontsize=LABEL_FONTSIZE)
-    plt.yticks(fontsize=TICKS_FONTSIZE)
-    plt.xticks(fontsize=TICKS_FONTSIZE)
+    axis.set_xlabel(xlab)
+    axis.set_ylabel("Depth [m]")
 
     if title is None:
         title = (
             PlotTitle.replace("_", " ")
             + f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
         )
-    plt.title(title, fontsize=TITLE_FONTSIZE)
+    axis.set_title(title, fontsize=TITLE_FONTSIZE)
 
-    plt.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
+    axis.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
 
-    # If a subplot is created, return a handle to the figure
-    if m is not None and n is not None and p is not None:
-        return plt.gcf()
+    return axis.figure
 
 
 def plotshd_from_pressure_field(
@@ -196,28 +709,93 @@ def plotshd_from_pressure_field(
     tl_min=None,
     tl_max=None,
     bathy=None,
+    axis=None,
+    pos=None,
+    base_title=None,
 ):
-    """
-    Plot Transmission loss field directly from pressure field array.
-    This function is particularly useful when running broadband simulations with range dependent environments.
-    Usage :  plotshd_from_pressure_field(filename, pressure_field, freq, m, n, p, units)
-    """
-    # Dummy read to get freq and position vectors
-    filename = filename.lower()  # Convert filename to lowercase
-    PlotTitle, _, _, _, read_freq, _, Pos, _ = readshd(filename=filename, freq=freq)
+    """Plot a transmission-loss field directly from an already-computed
+    pressure field array, rather than reading it from a '.shd' file.
+    Particularly useful for broadband simulations with range-dependent
+    environments, where the pressure field returned by
+    KrakenManager.runkraken() is a single in-memory array covering
+    every simulated frequency (re-reading each frequency's own '.shd'
+    slice from disk would work too, but this avoids doing so).
+    Usage: plotshd_from_pressure_field(filename, pressure_field, freq, m, n, p, units)
 
-    pressure = np.squeeze(pressure_field, axis=(0, 1))
+    By default, 'filename' is used to read the grid metadata (Pos,
+    title) via a "dummy" read (its own pressure data is discarded) --
+    see read_shd.readshd. Pass 'pos' directly instead (see Args) to
+    skip that read entirely: needed whenever no single '.shd' file
+    holding this information actually exists in the first place -- see
+    the NOTE below.
 
-    if m is not None and n is not None and p is not None:
-        # Create a subplot
-        plt.figure()
-        plt.subplot(m, n, p)
+    Args otherwise the same as plotshd (see its docstring), plus:
+
+    Args:
+        pressure_field (np.ndarray): the pressure field to plot,
+            typically the array returned by KrakenManager.runkraken()
+            (or a single-frequency slice of it). Must reduce to a plain
+            (depth, range) 2D array once every singleton axis (theta,
+            source depth, frequency) is squeezed out.
+        pos (dict|None): the receiver/source grid position dict (see
+            read_shd.readshd's docstring for the 'Pos' return value) to
+            use directly, instead of reading it from 'filename'. When
+            given, 'filename' is not accessed at all (it may be None).
+        base_title (str|None): the simulation title to use when
+            building the default axis title (see 'title' below),
+            instead of the 'PlotTitle' a dummy read of 'filename' would
+            otherwise provide (typically env.simulation_title). Only
+            used when 'pos' is given; ignored otherwise, and ignored
+            entirely if 'title' is given directly.
+
+    Returns:
+        matplotlib.figure.Figure: the figure that was drawn into (newly
+        created, a new subplot's, or the one owning 'axis' if given).
+
+    NOTE: after a broadband + range-dependent KRAKEN run (see
+    KrakenManager.runkraken_broadband_range_dependent's module
+    docstring), KRAKEN is re-run once per frequency, overwriting the
+    SAME '.shd' file each time -- so, same as for mode shapes (see
+    plotmode_from_data), there is no single on-disk '.shd' file left
+    containing every frequency's grid metadata to read back afterwards
+    (the file that does exist afterwards holds only the LAST
+    frequency's data, and typically sits in a different,
+    'parallel_working_dir' subdirectory than a naive caller would
+    expect). KrakenManager.runkraken() already returns 'field_pos'
+    (the very same 'Pos' dict) directly, in memory, precisely so it can
+    be passed here as 'pos' -- no file access needed at all in that
+    case. Use 'base_title=env.simulation_title' alongside it for a
+    sensible default axis title.
+    """
+    if pos is not None:
+        # NOTE (bug fixed, see docstring above): skips the dummy
+        # readshd() call entirely -- needed because, after a broadband
+        # + range-dependent run, no single '.shd' file exists on disk
+        # with every frequency's metadata to read it from in the first
+        # place (confirmed to raise FileNotFoundError for a caller
+        # naively pointing 'filename' at the expected, but never
+        # actually written there, top-level path).
+        Pos = pos
+        PlotTitle = base_title if base_title is not None else ""
+        read_freq = freq
     else:
-        plt.figure(figsize=(16, 8))
+        PlotTitle, _, _, _, read_freq, _, Pos, _ = readshd(filename=filename, freq=freq)
+
+    pressure = np.squeeze(pressure_field)
+
+    return_fig_handle = False
+    if axis is None:
+        if m is not None and n is not None and p is not None:
+            plt.figure()
+            plt.subplot(m, n, p)
+            axis = plt.gca()
+            return_fig_handle = True
+        else:
+            plt.figure(figsize=(16, 8))
+            axis = plt.gca()
 
     # Calculate caxis limits
     tlt = np.abs(pressure).astype(float)
-    # Remove infinities and nan values
     tlt[np.isnan(tlt)] = 1e-6
     tlt[np.isinf(tlt)] = 1e-6
 
@@ -231,110 +809,384 @@ def plotshd_from_pressure_field(
     tlmin = tlmax - 50
 
     xlab = "Range [m]"
+    r = Pos["r"]["r"]
+    bathy_mult = 1e3
     if units == "km":
-        Pos["r"]["r"] = Pos["r"]["r"] / 1000.0
+        r = r / 1000.0
         xlab = "Range [km]"
+        bathy_mult = 1
 
-    # Plot the data
     tej = plt.get_cmap("jet", 256).reversed()
-    plt.pcolor(Pos["r"]["r"], Pos["r"]["z"], tlt, shading="auto", cmap=tej)
-    if tl_min is not None:
-        tlmin_plot = tl_min
-    else:
-        tlmin_plot = tlmin
+    im = axis.pcolor(r, Pos["r"]["z"], tlt, shading="auto", cmap=tej)
 
-    if tl_max is not None:
-        tlmax_plot = tl_max
-    else:
-        tlmax_plot = tlmax
-    plt.clim(tlmin_plot, tlmax_plot)
+    tlmin_plot = tl_min if tl_min is not None else tlmin
+    tlmax_plot = tl_max if tl_max is not None else tlmax
+    im.set_clim(tlmin_plot, tlmax_plot)
 
     if bathy is not None:
-        plt.plot(bathy.bathy_range * 1e3, bathy.bathy_depth, "k")
+        axis.plot(bathy.bathy_range * bathy_mult, bathy.bathy_depth, "k")
 
-    plt.gca().invert_yaxis()
-    plt.gca().tick_params(direction="out")
+    axis.invert_yaxis()
+    axis.tick_params(direction="out")
 
-    cbar = plt.colorbar()
+    cbar = plt.colorbar(im, ax=axis)
     cbar.set_label("TL [dB]")
     cbar.ax.invert_yaxis()
 
-    plt.xlabel(xlab, fontsize=LABEL_FONTSIZE)
-    plt.ylabel("Depth [m]", fontsize=LABEL_FONTSIZE)
-    plt.yticks(fontsize=TICKS_FONTSIZE)
-    plt.xticks(fontsize=TICKS_FONTSIZE)
+    axis.set_xlabel(xlab, fontsize=LABEL_FONTSIZE)
+    axis.set_ylabel("Depth [m]", fontsize=LABEL_FONTSIZE)
+    axis.tick_params(axis="both", labelsize=TICKS_FONTSIZE)
 
     if title is None:
-        title = PlotTitle.replace("_", " ")
-        +f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
-    plt.title(title, fontsize=TITLE_FONTSIZE)
+        title = (
+            PlotTitle.replace("_", " ")
+            + f'\nFreq = {read_freq} Hz    z_src = {Pos["s"]["z"][0]} m'
+        )
+    axis.set_title(title, fontsize=TITLE_FONTSIZE)
 
-    plt.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
+    axis.scatter(0, Pos["s"]["z"][0], marker="o", c="k", s=50)
 
-    # If a subplot is created, return a handle to the figure
-    if m is not None and n is not None and p is not None:
-        return plt.gcf()
-
-
-""" Plot environment profiles """
+    return axis.figure
 
 
+def _read_tl_grid(filename, freq, units="km"):
+    """Shared helper for plot_tl_profile[_multi_freq]: read a '.shd'
+    file and return (r, z_m, TL_dB) as plain arrays for a single
+    frequency, with 'r' converted to the requested units.
+
+    Args:
+        filename (str): path to the '.shd' file.
+        freq (float): single frequency (Hz) to read.
+        units (str): 'm' or 'km' for the returned range array.
+
+    Returns:
+        tuple(r, z_m, TL): r in 'units', z_m in meters, TL in dB, TL
+        shaped (n_depth, n_range).
+    """
+    _, _, _, _, _, _, Pos, pressure = readshd(filename=filename, freq=freq)
+    pressure_2d = np.squeeze(pressure)
+    with np.errstate(divide="ignore"):
+        TL = -20 * np.log10(np.abs(pressure_2d) + 1e-30)
+
+    r = Pos["r"]["r"]  # meters, readshd's native convention
+    if units == "km":
+        r = r / 1000.0
+    return r, Pos["r"]["z"], TL
+
+
+def _add_spreading_loss_references(
+    ax, r, units, show_spherical_loss, show_cylindrical_loss
+):
+    """Overlay canonical spreading-loss reference curves on a TL-vs-range
+    axis: TL = 20*log10(r) (spherical spreading) and/or TL = 10*log10(r)
+    (cylindrical spreading), r in meters, referenced to r=1 m (TL=0 dB
+    there) -- the standard textbook definitions, useful to visually
+    compare a real TL profile's decay rate against these two idealized
+    reference models. No-op if both flags are False.
+
+    Args:
+        ax (matplotlib.axes.Axes): axis to draw into.
+        r (array-like): range values already in 'units' (as plotted on
+            the x-axis) -- converted internally to meters for the
+            log10(r) formulas.
+        units (str): 'm' or 'km', matching what 'r' is expressed in.
+        show_spherical_loss (bool): overlay 20*log10(r).
+        show_cylindrical_loss (bool): overlay 10*log10(r).
+    """
+    if not (show_spherical_loss or show_cylindrical_loss):
+        return
+
+    r = np.asarray(r, dtype=float)
+    r_m = r * 1000.0 if units == "km" else r
+    with np.errstate(divide="ignore"):
+        if show_spherical_loss:
+            TL_spherical = 20.0 * np.log10(r_m)
+            TL_spherical[~np.isfinite(TL_spherical)] = (
+                np.nan
+            )  # r=0 -> log10(0) -> gap, not a crash
+            ax.plot(
+                r,
+                TL_spherical,
+                color="k",
+                linestyle=":",
+                label=r"Spherical ($20\log_{10}(r)$)",
+            )
+        if show_cylindrical_loss:
+            TL_cylindrical = 10.0 * np.log10(r_m)
+            TL_cylindrical[~np.isfinite(TL_cylindrical)] = np.nan
+            ax.plot(
+                r,
+                TL_cylindrical,
+                color="gray",
+                linestyle="-.",
+                label=r"Cylindrical ($10\log_{10}(r)$)",
+            )
+
+
+def plot_tl_profile(
+    filename,
+    freq,
+    rcv_depth,
+    units="km",
+    ax=None,
+    label=None,
+    show_spherical_loss=False,
+    show_cylindrical_loss=False,
+):
+    """Plot transmission loss vs. range at the receiver depth closest
+    to 'rcv_depth', for a single frequency.
+
+    Args:
+        filename (str): path to the '.shd' file.
+        freq (float): frequency (Hz) to read.
+        rcv_depth (float): target receiver depth (m); the closest depth
+            actually available in the '.shd' file's receiver grid is
+            used (see the returned title/axis for the exact value).
+        units (str): 'm' or 'km' for the range axis.
+        ax (matplotlib.axes.Axes|None): plot into this axis instead of
+            creating a new figure.
+        label (str|None): legend label for this line (useful when
+            overlaying this call's result with others on the same
+            axis). No legend is drawn if None and both spreading-loss
+            flags below are also False.
+        show_spherical_loss (bool): overlay the 20*log10(r) spherical
+            spreading reference curve (see _add_spreading_loss_references).
+        show_cylindrical_loss (bool): overlay the 10*log10(r) cylindrical
+            spreading reference curve.
+
+    Returns:
+        matplotlib.figure.Figure: the figure the profile was drawn
+        into (new, or the one owning 'ax' if provided).
+    """
+    r, z_m, TL = _read_tl_grid(filename, freq, units=units)
+    iz = int(np.argmin(np.abs(z_m - rcv_depth)))
+    actual_depth = z_m[iz]
+
+    if r.size == 1:
+        TL = TL[:, np.newaxis]
+    if z_m.size == 1:
+        TL = TL[np.newaxis, :]
+
+    if ax is None:
+        pfig = PubFigure(titlepad=50, labelpad=25)
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    ax.plot(r, TL[iz, :], label=label)
+    _add_spreading_loss_references(
+        ax, r, units, show_spherical_loss, show_cylindrical_loss
+    )
+    ax.invert_yaxis()
+    ax.set_xlabel(f"Range [{units}]")
+    ax.set_ylabel("TL [dB]")
+    ax.set_title(
+        f"Transmission loss profile at {actual_depth:.1f} m depth, {freq:g} Hz"
+    )
+    # ax.grid(True)
+    if label is not None or show_spherical_loss or show_cylindrical_loss:
+        ax.legend()
+    plt.tight_layout()
+    return fig
+
+
+def plot_tl_profile_multi_freq(
+    filename,
+    freqs,
+    rcv_depth,
+    units="km",
+    ax=None,
+    show_spherical_loss=False,
+    show_cylindrical_loss=False,
+):
+    """Overlay transmission-loss-vs-range profiles at a fixed receiver
+    depth, one line per frequency -- useful to compare how propagation
+    loss depends on frequency in a broadband run.
+
+    Args:
+        filename (str): path to the '.shd' file.
+        freqs (array-like): frequencies (Hz) to read and overlay.
+        rcv_depth (float): target receiver depth (m); see plot_tl_profile.
+        units (str): 'm' or 'km' for the range axis.
+        ax (matplotlib.axes.Axes|None): plot into this axis instead of
+            creating a new figure.
+        show_spherical_loss (bool): overlay the 20*log10(r) spherical
+            spreading reference curve (see _add_spreading_loss_references).
+        show_cylindrical_loss (bool): overlay the 10*log10(r) cylindrical
+            spreading reference curve.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    if ax is None:
+        pfig = PubFigure(titlepad=50, labelpad=25)
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    actual_depth = None
+    r = None
+    for freq in freqs:
+        r, z_m, TL = _read_tl_grid(filename, freq, units=units)
+        iz = int(np.argmin(np.abs(z_m - rcv_depth)))
+        actual_depth = z_m[iz]
+        ax.plot(r, TL[iz, :], label=f"{freq:g} Hz")
+
+    _add_spreading_loss_references(
+        ax, r, units, show_spherical_loss, show_cylindrical_loss
+    )
+    ax.invert_yaxis()
+    ax.set_xlabel(f"Range [{units}]")
+    ax.set_ylabel("TL [dB]")
+    ax.set_title(f"Transmission loss profiles at {actual_depth:.1f} m depth")
+    ax.legend()
+    # ax.grid(True)
+    plt.tight_layout()
+    return fig
+
+
+def plot_tl_profile_multi_freq_from_data(
+    pressure_field,
+    freqs,
+    field_pos,
+    rcv_depth,
+    units="km",
+    ax=None,
+    show_spherical_loss=False,
+    show_cylindrical_loss=False,
+):
+    """Like plot_tl_profile_multi_freq(), but reading an already-computed
+    broadband pressure field (e.g. from KrakenManager.runkraken(),
+    aggregated across every frequency) instead of a '.shd' file.
+
+    NOTE: after a broadband + range-dependent KRAKEN run (see
+    KrakenManager.runkraken_broadband_range_dependent's module
+    docstring), KRAKEN is re-run once per frequency, overwriting the
+    SAME '.shd' file each time -- so, same as for mode shapes (see
+    plotmode_from_data) and single-frequency-slice TL maps (see
+    plotshd_from_pressure_field), there is no single on-disk '.shd'
+    file left containing every frequency's pressure field to read back
+    afterwards. KrakenManager.runkraken() already returns the
+    aggregated 'pressure_field' and 'field_pos' directly, in memory,
+    precisely so they can be passed here.
+
+    Args:
+        pressure_field (np.ndarray): pressure field covering every
+            frequency in 'freqs', typically KrakenManager.runkraken()'s
+            first return value. Shape (n_freq, ...), reducing to a
+            plain (depth, range) 2D array per frequency once every
+            other singleton axis (theta, source depth) is squeezed out.
+        freqs (array-like): the frequencies 'pressure_field' covers, in
+            the same order as its first axis.
+        field_pos (dict): grid position dict (see read_shd.readshd's
+            'Pos' return value), typically KrakenManager.runkraken()'s
+            second return value.
+        rcv_depth (float): target receiver depth (m); see plot_tl_profile.
+        units (str): 'm' or 'km' for the range axis.
+        ax (matplotlib.axes.Axes|None): plot into this axis instead of
+            creating a new figure.
+        show_spherical_loss (bool): overlay the 20*log10(r) spherical
+            spreading reference curve (see _add_spreading_loss_references).
+        show_cylindrical_loss (bool): overlay the 10*log10(r) cylindrical
+            spreading reference curve.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    freqs = np.atleast_1d(freqs).astype(float)
+    r = field_pos["r"]["r"]
+    if units == "km":
+        r = r / 1000.0
+    z_m = field_pos["r"]["z"]
+    iz = int(np.argmin(np.abs(z_m - rcv_depth)))
+    actual_depth = z_m[iz]
+
+    if ax is None:
+        pfig = PubFigure(titlepad=50, labelpad=25)
+        fig, ax = plt.subplots(figsize=(16, 8))
+    else:
+        fig = ax.figure
+
+    for i, f in enumerate(freqs):
+        pressure_2d = np.squeeze(pressure_field[i])
+        with np.errstate(divide="ignore"):
+            TL = -20 * np.log10(np.abs(pressure_2d) + 1e-30)
+        ax.plot(r, TL[iz, :], label=f"{f:g} Hz")
+
+    _add_spreading_loss_references(
+        ax, r, units, show_spherical_loss, show_cylindrical_loss
+    )
+    ax.invert_yaxis()
+    ax.set_xlabel(f"Range [{units}]")
+    ax.set_ylabel("TL [dB]")
+    ax.set_title(f"Transmission loss profiles at {actual_depth:.1f} m depth")
+    ax.legend()
+    # ax.grid(True)
+    plt.tight_layout()
+    return fig
+
+
+# ======================================================================================================================
+# Environment profiles
+# ======================================================================================================================
 def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
+    """Plot a compressional-wave (and, if present, shear-wave) sound
+    speed profile as a function of depth.
+
+    Args:
+        cp_ssp (array-like|float): compressional wave celerity (m/s),
+            scalar (constant with depth) or matching the size of 'z'.
+        cs_ssp (array-like|float): shear wave celerity (m/s), same
+            convention as cp_ssp. If entirely zero (and cp is not),
+            the S-wave curve is omitted (a fluid medium has no shear
+            waves to plot).
+        z (array-like): depths (m).
+        z_bottom (float|None): if given, shades the water column
+            (0 to z_bottom) light blue and the sediment/bottom
+            (z_bottom to max(z)) light grey.
+        ax (matplotlib.axes.Axes|None): plot into this axis instead of
+            creating a new figure.
+    """
     if ax is None:
         plt.figure(figsize=(10, 8))
         ax = plt.gca()
         ax.set_ylabel("Depth [m]")
 
-    if np.array(cp_ssp).size == 1:
-        cp = np.ones(z.size) * cp_ssp
-    else:
-        cp = cp_ssp
-
-    if np.array(cs_ssp).size == 1:
-        cs = np.ones(z.size) * cs_ssp
-    else:
-        cs = cs_ssp
+    z = np.asarray(z)
+    cp = np.full(z.size, cp_ssp) if np.array(cp_ssp).size == 1 else np.asarray(cp_ssp)
+    cs = np.full(z.size, cs_ssp) if np.array(cs_ssp).size == 1 else np.asarray(cs_ssp)
 
     # No need to plot the C-wave celerity if it is 0 and cs is not 0
     if np.all(cp == 0) and not np.all(cs == 0):
-        cp = np.ones(z.size) * np.nan
         min_cp = np.nan
         max_cp = np.nan
         plot_cp = False
     else:
-        min_cp = np.min(cp)
-        max_cp = np.max(cp)
+        min_cp = np.nanmin(cp)
+        max_cp = np.nanmax(cp)
         plot_cp = True
 
-    # No need to plot the S-wave celerity if it is 0 and cp is not 0
-    cs = 0
     if np.all(cs == 0) and not np.all(cp == 0):
-        cs = np.ones(z.size) * np.nan
         min_cs = np.nan
         max_cs = np.nan
         plot_cs = False
     else:
-        min_cs = np.min(cs)
-        max_cs = np.max(cs)
+        min_cs = np.nanmin(cs)
+        max_cs = np.nanmax(cs)
         plot_cs = True
 
     if plot_cp:
-        col1 = "red"
-        ax.plot(cp, z, color=col1, label="C-wave")
+        ax.plot(cp, z, color="red", label="C-wave")
     ax.set_xlabel("Celerity " + r"[$m.s^{-1}$]")
 
     if plot_cs:
-        col2 = "blue"
-        ax.plot(cs, z, color=col2, label="S-wave")
+        ax.plot(cs, z, color="blue", label="S-wave")
 
     ax.invert_yaxis()
     ax.legend(loc="upper right")
 
-    # Color domains with water and sediment
     min_x = np.nanmin([min_cp, min_cs])
     max_x = np.nanmax([max_cp, max_cs])
-
-    # Set the x-axis limits
     x_offset = max(0.1 * (max_x - min_x), 10)
     min_x -= x_offset
     max_x += x_offset
@@ -344,24 +1196,18 @@ def plot_ssp(cp_ssp, cs_ssp, z, z_bottom=None, ax=None):
 
 
 def plot_attenuation(ap, ash, z, z_bottom=None, ax=None):
+    """Plot compressional- and (if present) shear-wave attenuation as a
+    function of depth. See plot_ssp for the shared argument conventions."""
     if ax is None:
         plt.figure(figsize=(10, 8))
         ax = plt.gca()
         ax.set_ylabel("Depth [m]")
 
-    if np.array(ap).size == 1:
-        ap = np.ones(z.size) * ap
-    else:
-        pass
+    z = np.asarray(z)
+    ap = np.full(z.size, ap) if np.array(ap).size == 1 else np.asarray(ap)
+    ash = np.full(z.size, ash) if np.array(ash).size == 1 else np.asarray(ash)
 
-    if np.array(ash).size == 1:
-        ash = np.ones(z.size) * ash
-    else:
-        pass
-
-    # No need to plot the C-wave attenuation if it is 0 and as is not 0
     if np.all(ap == 0) and not np.all(ash == 0):
-        ap = np.ones(z.size) * np.nan
         min_ap = np.nan
         max_ap = np.nan
         plot_ap = False
@@ -370,9 +1216,7 @@ def plot_attenuation(ap, ash, z, z_bottom=None, ax=None):
         max_ap = np.max(ap)
         plot_ap = True
 
-    # No need to plot the S-wave attenuation if it is 0 and ap is not 0
     if np.all(ash == 0) and not np.all(ap == 0):
-        ash = np.ones(z.size) * np.nan
         min_as = np.nan
         max_as = np.nan
         plot_as = False
@@ -382,19 +1226,14 @@ def plot_attenuation(ap, ash, z, z_bottom=None, ax=None):
         plot_as = True
 
     if plot_ap:
-        col1 = "red"
-        ax.plot(ap, z, color=col1, label="C-wave")
-    ax.set_xlabel(r"$\alpha$ " + r"[$dB.\lambda^{-1}$]")
+        ax.plot(ap, z, color="red", label="C-wave")
 
     if plot_as:
-        col2 = "blue"
-        ax.plot(ash, z, color=col2, label="S-wave")
+        ax.plot(ash, z, color="blue", label="S-wave")
 
-    # Color domains with water and sediment
+    ax.set_xlabel(r"$\alpha$ " + r"[$dB.\lambda^{-1}$]")
     min_x = np.nanmin([min_ap, min_as])
     max_x = np.nanmax([max_ap, max_as])
-
-    # Set the x-axis limits
     x_offset = max(0.1 * (max_x - min_x), 2)
     min_x -= x_offset
     max_x += x_offset
@@ -407,25 +1246,22 @@ def plot_attenuation(ap, ash, z, z_bottom=None, ax=None):
 
 
 def plot_density(rho, z, z_bottom=None, ax=None):
+    """Plot density as a function of depth. See plot_ssp for the shared
+    argument conventions."""
     if ax is None:
         plt.figure(figsize=(10, 8))
         ax = plt.gca()
         ax.set_ylabel("Depth [m]")
 
-    if np.array(rho).size == 1:
-        rho = np.ones(z.size) * rho
-    else:
-        pass
+    z = np.asarray(z)
+    rho = np.full(z.size, rho) if np.array(rho).size == 1 else np.asarray(rho)
 
     ax.plot(rho, z, label=r"$\rho$", color="k")
     ax.invert_yaxis()
     ax.set_xlabel(r"$\rho$ " + r"[$g.cm^{-3}$]")
 
-    # Color domains with water and sediment
     min_x = np.min(rho)
     max_x = np.max(rho)
-
-    # Set the x-axis limits
     x_offset = max(0.1 * (max_x - min_x), 0.1)
     min_x -= x_offset
     max_x += x_offset
@@ -435,23 +1271,52 @@ def plot_density(rho, z, z_bottom=None, ax=None):
 
 
 def color_domains(ax, min_x, max_x, z, z_bottom=None):
-    if z_bottom is not None:
-        # Bottom domain
-        ax.fill_between(
-            [min_x, max_x],
-            [z_bottom, z_bottom],
-            np.max(z),
-            color="lightgrey",
-        )
-        # Water domain
-        ax.fill_between(
-            [min_x, max_x],
-            [z_bottom, z_bottom],
-            0,
-            color="lightblue",
-        )
+    """Shade the water column (0 to z_bottom) light blue and the
+    sediment/bottom (z_bottom to max(z)) light grey on a depth-profile
+    axis. No-op if z_bottom is None."""
+    if z_bottom is None:
+        return
+    ax.fill_between([min_x, max_x], [z_bottom, z_bottom], np.max(z), color="lightgrey")
+    ax.fill_between([min_x, max_x], [z_bottom, z_bottom], 0, color="lightblue")
+
+
+def plot_bathymetry(bathy, ax=None):
+    """Plot a bathymetry profile (range vs. depth), water shaded blue
+    above the seafloor and sediment shaded grey below it -- the
+    range-dependent counterpart to plot_ssp/plot_attenuation/
+    plot_density's z_bottom shading, for the one piece of the
+    environment plot_env() does not itself show (it only plots the
+    profile that was used to build the KrakenEnv, not how it varies
+    with range).
+
+    Args:
+        bathy (Bathymetry): a loaded Bathymetry instance (see
+            kraken_env.Bathymetry), i.e. one with 'bathy_range' (km)
+            and 'bathy_depth' (m) populated.
+        ax (matplotlib.axes.Axes|None): plot into this axis instead of
+            creating a new figure.
+
+    Returns:
+        matplotlib.figure.Figure
+    """
+    if ax is None:
+        pfig = PubFigure(titlepad=50, labelpad=25)
+        fig, ax = plt.subplots(figsize=(16, 8))
     else:
-        pass
+        fig = ax.figure
+
+    ax.plot(bathy.bathy_range, bathy.bathy_depth, color="k", linewidth=2, marker="o")
+    y_max = np.max(bathy.bathy_depth) * 1.1
+    ax.fill_between(bathy.bathy_range, bathy.bathy_depth, y_max, color="lightgrey")
+    ax.fill_between(bathy.bathy_range, bathy.bathy_depth, 0, color="lightblue")
+    ax.set_ylim(0, y_max)
+    ax.invert_yaxis()
+    ax.set_xlabel("Range [km]")
+    ax.set_ylabel("Depth [m]")
+    ax.set_title("Bathymetry")
+    ax.grid(True)
+    plt.tight_layout()
+    return fig
 
 
 if __name__ == "__main__":

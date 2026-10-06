@@ -3,7 +3,7 @@
 """
 @File    :   rtf_variation.py
 @Time    :   2024/09/27 16:30:32
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -21,7 +21,7 @@ import xarray as xr
 import matplotlib.pyplot as plt
 
 
-from propa.rtf.ideal_waveguide import *
+from propa.ideal_waveguide import *
 from propa.rtf.rtf_estimation_const import ROOT_RTF_DATA
 from propa.rtf.rtf_utils import (
     D_frobenius,
@@ -30,7 +30,7 @@ from propa.rtf.rtf_utils import (
     D2,
     D_hermitian_angle_fast,
 )
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)

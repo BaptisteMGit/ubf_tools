@@ -3,7 +3,7 @@
 """
 @File    :   rtf_estimation_plot_tools.py
 @Time    :   2024/10/18 11:00:36
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -19,7 +19,7 @@ import matplotlib.ticker as ticker
 
 from cst import C0
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from propa.rtf.ideal_waveguide import print_arrivals
+from propa.ideal_waveguide import print_arrivals
 from propa.rtf.rtf_estimation.rtf_estimation_utils import *
 from propa.rtf.rtf_estimation_const import *
 from propa.rtf.rtf_utils import (

@@ -3,10 +3,10 @@
 """
 @File    :   extract_ais_area.py
 @Time    :   2024/09/05 16:14:20
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
-@Desc    :   Script to extract ais data from csv file for a specific area (SWIR) 
+@Desc    :   Script to extract ais data from csv file for a specific area (SWIR)
 """
 
 # ======================================================================================================================
@@ -19,9 +19,10 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from pyproj import Geod, Proj, transform
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 from illustration.RHUMRUM.SWIR.bathy_obs import plot_swir_bathy, plot_swir_obs
 
+# from real_data_analysis.real_data_utils import load_and_preprocess_ais_data
 
 wgs84 = Proj(proj="latlong", datum="WGS84")  # Système géodésique WGS84
 ecef = Proj(proj="geocent", datum="WGS84")  # Système ECEF
@@ -115,7 +116,7 @@ def interpolate_trajectories(ais_df, time_step="5min"):
             lat2 = df_tmp["lat"].iloc[i]
 
             profile_coords = geod.inv_intermediate(
-                lon1, lat1, lon2, lat2, npts=time_interp.size
+                lon1, lat1, lon2, lat2, npts=time_interp.size, return_back_azimuth=False
             )
 
             # Add profile_coords to high_res_pos
@@ -235,6 +236,9 @@ def project_to_enu(df):
         df_2ships_enu (pd.DataFrame): ais data ENU coordinates
     """
 
+    # ATTENTION : cette fonction n'est pas excatement une transformation vers un repère ENU
+    # Azimuthal Equidistant (AEQD) -> Localement équivalent à un repère ENU 2D ? à vérifier !
+    # La vraie transformation est implémentée dans
     # Initialisation du système ENU avec un point d'origine (lon0, lat0)
     lon0, lat0 = df["lon"].median(), df["lat"].median()  # Barycentre
     proj_enu = Proj(proj="aeqd", datum="WGS84", lat_0=lat0, lon_0=lon0)  # ENU
@@ -341,7 +345,7 @@ def segment_intersection(p1, p2, q1, q2):
 def plot_traj_over_bathy(
     df_ais, rcv_info, lon_min, lon_max, lat_min, lat_max, intersection_data=None
 ):
-    ds_bathy = plot_swir_bathy(contour=False)
+    ds_bathy = plot_swir_bathy(contour=True)
     plot_swir_obs(ds_bathy, rcv_info["id"], col=None)
     PubFigure(legend_fontsize=7)
 
@@ -415,7 +419,7 @@ def plot_traj_over_bathy(
                 df_tmp["lon"],
                 df_tmp["lat"],
                 color="k",
-                linestyle="--",
+                linestyle="-",
                 linewidth=3,
                 label=df_tmp["shipName"].values[0],
             )
@@ -424,6 +428,26 @@ def plot_traj_over_bathy(
 
     plt.ylim(lat_min, lat_max)
     plt.xlim(lon_min, lon_max)
+
+
+def load_and_preprocess_ais_data():
+    root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ais\extract-ais-pos-for-zone-ecole-navale-by-month-201305.csv"
+    fname = "extract-ais-pos-for-zone-ecole-navale-by-month-201305.csv"
+    fpath = os.path.join(root, fname)
+
+    lon_min = 64
+    lon_max = 67
+    lat_min = -29
+    lat_max = -26
+
+    # Load and pre-filter
+    df = extract_ais_area(fpath, lon_min, lon_max, lat_min, lat_max)
+    # Remove ships with less than 2 points
+    df = df.groupby("mmsi").filter(lambda x: len(x) > 1)
+    # Interpolate trajectories to have a point every 5 minutes
+    df_interp = interpolate_trajectories(df, time_step="5min")
+
+    return df_interp
 
 
 def compute_distance_ship_rcv(ais_data, rcv_info):
@@ -497,6 +521,7 @@ def plot_distance_ship_rcv(ais_data, distance, cpa, rcv_info):
     available_mmsi = ais_data["mmsi"].unique()
 
     fig, ax = plt.subplots(len(available_mmsi), 1, sharex=False)
+    ax = np.atleast_1d(ax)
     for i, rcv_id in enumerate(rcv_info["id"]):
         for j, mmsi in enumerate(available_mmsi):
             df_mmsi = ais_data[ais_data["mmsi"] == mmsi]
@@ -516,6 +541,7 @@ def plot_distance_ship_rcv(ais_data, distance, cpa, rcv_info):
                 xytext=(cpa_time, cpa_r + 10000),
                 arrowprops=dict(facecolor="black", arrowstyle="->"),
                 ha="center",
+                fontsize=18,
             )
 
             ship_name = df_mmsi["shipName"].values[0]
@@ -753,7 +779,7 @@ if __name__ == "__main__":
     # plt.legend()
 
     # Interpolate trajectories
-    from publication.PublicationFigure import PubFigure
+    from publication.publication_figure import PubFigure
 
     # PubFigure(legend_fontsize=5)
 

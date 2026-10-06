@@ -3,7 +3,7 @@
 """
 @File    :   deconvolution_test.py
 @Time    :   2024/11/13 10:42:42
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -13,7 +13,7 @@
 # Import
 # ======================================================================================================================
 from real_data_analysis.deconvolution_utils import *
-from publication.PublicationFigure import PubFigure
+from publication.publication_figure import PubFigure
 
 PubFigure()
 
@@ -224,13 +224,13 @@ def test_wiener_deconvolution(snr_dB=0, sig="chirp"):
     y, bandpass_filter_info = apply_bandpass_filter(x, ts)
     h = bandpass_filter_info["ri"]
 
-    ff, s_yy = sp.welch(y, fs=1 / ts, nperseg=2**14, noverlap=2**13)
-    ff, s_hh = sp.welch(h, fs=1 / ts, nperseg=2**14, noverlap=2**13)
+    # ff, s_yy = sp.welch(y, fs=1 / ts, nperseg=2**14, noverlap=2**13)
+    # ff, s_hh = sp.welch(h, fs=1 / ts, nperseg=2**14, noverlap=2**13)
 
     # Add white noise
     sigma_noise = np.sqrt(10 ** (-snr_dB / 10))
     noise = np.random.normal(loc=0, scale=sigma_noise, size=x.size) * np.std(y)
-    _, s_nn = sp.welch(noise, fs=1 / ts, nperseg=2**14, noverlap=2**13)
+    # _, s_nn = sp.welch(noise, fs=1 / ts, nperseg=2**14, noverlap=2**13)
     y += noise
     y /= np.std(y)
 
@@ -238,7 +238,7 @@ def test_wiener_deconvolution(snr_dB=0, sig="chirp"):
     # rho_f = s_yy / s_nn
     # # Interp rho_f to match fft_freq
     fft_freq = np.fft.rfftfreq(len(x), ts)
-    transmitted_band_idx = fft_freq > f1
+    # transmitted_band_idx = fft_freq > f1
     # rho_f = np.interp(fft_freq, ff, rho_f)
     # rho_f[fft_freq < 500] = rho_f[fft_freq >= 500][0]
 
@@ -249,8 +249,8 @@ def test_wiener_deconvolution(snr_dB=0, sig="chirp"):
     )
     rho_f = sigma_h2 / sigma_n2
 
-    plt.figure()
-    plt.plot(fft_freq, rho_f, label=r"$\rho_f$")
+    # plt.figure()
+    # plt.plot(fft_freq, rho_f, label=r"$\rho_f$")
     # plt.figure()
 
     # plt.plot(ff, s_hh, label=r"$S_{hh}$")
@@ -301,6 +301,6 @@ def test_wiener_deconvolution(snr_dB=0, sig="chirp"):
 if __name__ == "__main__":
     # test_crosscorr_deconvolution(snr_dB=20, sig="chirp")
     # test_crosscorr_deconvolution(snr_dB=20, sig="white_noise")
-    test_wiener_deconvolution(snr_dB=20, sig="chirp")
-    test_wiener_deconvolution(snr_dB=20, sig="white_noise")
+    # test_wiener_deconvolution(snr_dB=20, sig="chirp")
+    test_wiener_deconvolution(snr_dB=10, sig="white_noise")
     plt.show()

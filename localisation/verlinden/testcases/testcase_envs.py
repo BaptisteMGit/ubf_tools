@@ -5,7 +5,7 @@ import scipy.io as sio
 import matplotlib.pyplot as plt
 
 from cst import SAND_PROPERTIES, RHO_W
-from propa.kraken_toolbox.kraken_env import (
+from propa.kraken_toolbox.src.kraken_env import (
     KrakenEnv,
     KrakenTopHalfspace,
     KrakenMedium,
@@ -163,7 +163,14 @@ class TestCase:
             "flp_rcv_z_max": None,
             "phase_speed_limits": None,
             "bottom_boundary_condition": "acousto_elastic",
-            "bott_hs_properties": None,
+            "bott_hs_properties": {
+                "rho": 1.9 * RHO_W * 1e-3,  # Density (g/cm^3)
+                "c_p": 1650,  # P-wave celerity (m/s)
+                "c_s": 0.0,  # S-wave celerity (m/s) TODO check and update
+                "a_p": 0.8,  # Compression wave attenuation (dB/wavelength)
+                "a_s": 0.0,  # Shear wave attenuation (dB/wavelength)
+                "z": None,
+            },
         }
 
         # Set env directory
@@ -268,6 +275,7 @@ class TestCase:
 
     def set_field(self):
         z_max = np.ceil(self.bott_hs.sedim_layer_max_depth + 5)
+        # z_max = 3940
         n_rcv_z = default_nb_rcv_z(max(self.freq), z_max, n_per_l=12)
 
         if self.phase_speed_limits is None:
@@ -340,7 +348,7 @@ class TestCase:
         )
 
     def set_flp(self):
-        self.flp_n_rcv_r = self.max_range_m / self.dr_flp + 1
+        self.flp_n_rcv_r = int(self.max_range_m / self.dr_flp) + 1
 
         # # Source = ship radiating sound at 5m depth
         if self.flp_n_rcv_z is None:
@@ -830,11 +838,11 @@ class TestCase3_1(TestCase3):
 if __name__ == "__main__":
 
     # Test class
-    # tc1_0 = TestCase1_0(mode="show")
+    tc1_0 = TestCase1_0(mode="show")
     # tc1_1 = TestCase1_1(mode="show")
     # tc1_2 = TestCase1_2(mode="show")
     # tc1_3 = TestCase1_3(mode="show")
-    tc1_4 = TestCase1_4(mode="show")
+    # tc1_4 = TestCase1_4(mode="show")
     # tc2_0 = TestCase2_0(mode="show")
 
     # tc_varin = {

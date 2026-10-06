@@ -3,7 +3,7 @@
 """
 @File    :   real_data_analysis_1.ipynb
 @Time    :   2024/09/06 12:01:19
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None
@@ -28,8 +28,9 @@ import matplotlib.pyplot as plt
 
 from get_data.ais.ais_tools import *
 from get_data.wav.get_data_from_rhumrum import *
-from publication.PublicationFigure import PubFigure
-from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
+from publication.publication_figure import PubFigure
+
+# from localisation.verlinden.misc.verlinden_utils import load_rhumrum_obs_pos
 
 PubFigure(label_fontsize=22, title_fontsize=24, legend_fontsize=16, ticks_fontsize=20)
 
@@ -248,26 +249,6 @@ def plot_dsp(data, fmin, fmax, save=False):
         plt.close()
 
 
-def load_and_preprocess_ais_data():
-    root = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ais\extract-ais-pos-for-zone-ecole-navale-by-month-201305.csv"
-    fname = "extract-ais-pos-for-zone-ecole-navale-by-month-201305.csv"
-    fpath = os.path.join(root, fname)
-
-    lon_min = 65
-    lon_max = 66
-    lat_min = -28
-    lat_max = -27
-
-    # Load and pre-filter
-    df = extract_ais_area(fpath, lon_min, lon_max, lat_min, lat_max)
-    # Remove ships with less than 2 points
-    df = df.groupby("mmsi").filter(lambda x: len(x) > 1)
-    # Interpolate trajectories to have a point every 5 minutes
-    df_interp = interpolate_trajectories(df, time_step="5min")
-
-    return df_interp
-
-
 def compute_csd_matrix_fast(stfts, n_seg_cov):
     """
     Compute the Cross Spectral Density (CSD) matrix for a set of receivers using matrix operations.
@@ -330,3 +311,31 @@ def get_csdm_snapshot_number(y, fs, nperseg, noverlap):
     k = len(tt)
 
     return k
+
+
+def V2uPa(s, Sh, G=0):
+    """
+    Source: OBS_analyse.py (Thimothee Maison, SHOM)
+
+    Convert data from Volt (raw audio data) to uPa (underwater acoustics convention),
+    such that data(uPa) = data(V)*10**((-Sh-G)/20)
+    ----------
+    s : array-like
+        data in Volt
+    Sh : float
+        hydrophone sensitivity in dB re 1V/uPa (negative)
+    G : float, optionnal
+        amplification of recorder in dB. Default to 0 (no gain).
+    -------
+    s : array-like
+        data in uPa
+
+    """
+
+    suPa = s * 10 ** ((-Sh - G) / 20)
+
+    return suPa
+
+
+if __name__ == "__main__":
+    pass

@@ -413,6 +413,7 @@ def run_all_testcases(random_source=False):
     # rcv_id = ["RR41", "RR44", "RR45"]
     rcv_id = ["RR44", "RR45", "RR47"]
     # rcv_id = ["RRdebug0", "RRdebug1", "RRdebug2"]
+    rcv_id = ["RR41", "RR44", "RR45", "RR47"]
 
     f0_lib = 5  # Fundamental frequency of the ship signal
     dt, fs, event_sig_info = set_event_sig_info(f0=f0_lib)

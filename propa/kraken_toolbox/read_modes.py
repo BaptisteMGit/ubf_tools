@@ -1,13 +1,17 @@
 #!/usr/bin/env python
 # -*-coding:utf-8 -*-
-'''
+"""
 @File    :   read_modes.py
 @Time    :   2024/07/08 09:09:27
-@Author  :   Menetrier Baptiste 
-@Version :   1.0
+@Author  :   Menetrier Baptiste
+@Version :   1.1 (refactor)
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Read the modes produced by KRAKEN from a '.mod' binary file.
-'''
+
+Adapted from the original Matlab Acoustics
+Toolbox by Michael B. Porter, https://oalib.hlsresearch.com/AcousticsToolbox/
+
+"""
 
 # ======================================================================================================================
 # Import
@@ -19,29 +23,29 @@ import numpy as np
 def readmodes(modfil, freq=0, modes=None):
     """Read the modes produced by KRAKEN from a '.mod' binary file.
 
-    Usage: Modes = read_modes(filename, freq, modes)
-    filename can include the extension or not
+    Usage: Modes = readmodes(filename, freq, modes)
+    filename can include the extension or not (any extension is
+    replaced with '.mod').
 
-    freq is the frequency, 0 selects the first frequency in the file
-    modes is an optional vector of mode indices
+    Args:
+        modfil (str): path to the '.mod' file (extension optional).
+        freq (float): frequency (Hz) to read; the closest frequency
+            actually stored in the file is used. 0 selects the first
+            frequency in the file.
+        modes (array-like|None): optional list/array of 1-based mode
+            indices to read. None reads every mode.
 
-    Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter https://oalib.hlsresearch.com/AcousticsToolbox/
+    Returns:
+        dict: 'Modes', see readmodes_bin's docstring for its content,
+        plus (if at least one mode was found) 'Top'/'Bot' halfspace
+        wavenumber info ('k2', 'gamma', 'phi') added by this function.
 
+    Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter
+    https://oalib.hlsresearch.com/AcousticsToolbox/
     """
+    file_root, _ext = os.path.splitext(modfil)
+    modfil = file_root + ".mod"
 
-    # Identify the file type
-    file_root = os.path.join(
-        os.path.dirname(modfil), os.path.basename(modfil).split(".")[0]
-    )
-    ext = "." + os.path.basename(modfil).split(".")[-1]
-    # file_path, file_root, ext = os.path.splitext(modfil)
-
-    if not ext or ext != ".mod":
-        ext = ".mod"  # Use this as the default extension if none is specified
-
-    modfil = file_root + ext
-
-    # Read the modal data
     Modes = readmodes_bin(modfil, freq, modes)
 
     # Identify the index of the frequency closest to the user-specified value
@@ -52,7 +56,7 @@ def readmodes(modfil, freq=0, modes=None):
     if Modes["M"] != 0:
         if Modes["Top"]["BC"] == "A":  # Top
             Modes["Top"]["k2"] = (
-                2 * np.pi * Modes["freqVec"][0] / Modes["Top"]["cp"]
+                2 * np.pi * Modes["freqVec"][freq_index] / Modes["Top"]["cp"]
             ) ** 2
             gamma2 = Modes["k"] ** 2 - Modes["Top"]["k2"]
             Modes["Top"]["gamma"] = np.sqrt(gamma2)  # Vertical wavenumber
@@ -80,24 +84,43 @@ def readmodes(modfil, freq=0, modes=None):
 def readmodes_bin(filename, freq=0, modes=None):
     """Read the modes '.mod' binary file.
 
-    Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter https://oalib.hlsresearch.com/AcousticsToolbox/
+    Args:
+        filename (str): path to the '.mod' file (exact name, extension
+            included -- see readmodes() for extension resolution).
+        freq (float): frequency (Hz) to read; the closest frequency
+            actually stored in the file is used.
+        modes (array-like|None): optional list/array of 1-based mode
+            indices to read. None reads every mode found at the
+            selected frequency.
 
+    Returns:
+        dict with (amongst others): 'title', 'Nfreq', 'Nmedia', 'N'
+        (points per medium), 'Mater' (material per medium), 'depth',
+        'rho', 'freqVec', 'z', 'M' (number of modes at the selected
+        frequency), 'selected_modes', 'nb_selected_modes', 'Top', 'Bot'
+        (halfspace info), 'phi' (mode shapes), 'k' (complex
+        wavenumbers).
+
+    Adapted from the original Matlab Acoustics Toolbox by Michael B. Porter
+    https://oalib.hlsresearch.com/AcousticsToolbox/
     """
 
-    if not hasattr(readmodes_bin, "fid"):
-        fid = open(filename, "rb")
-        if not fid:
-            raise Exception("Mode file does not exist")
+    with open(filename, "rb") as fid:
+        return _read_modes_from_open_file(fid, freq=freq, modes=modes)
 
-        iRecProfile = 1  # (first time only)
-        lrecl = (
-            4 * np.fromfile(fid, dtype=np.int32, count=1)[0]
-        )  # This is converted to bytes. Fortran versions use words instead
+
+def _read_modes_from_open_file(fid, freq, modes):
+    """Actual '.mod' parsing logic, factored out of readmodes_bin so the
+    file handle can be guaranteed to close via the caller's 'with'
+    block regardless of where parsing stops (return or exception)."""
+    iRecProfile = 1  # (first time only)
+    lrecl = (
+        4 * np.fromfile(fid, dtype=np.int32, count=1)[0]
+    )  # This is converted to bytes. Fortran versions use words instead
 
     rec = iRecProfile - 1
     fid.seek(rec * lrecl + 4)
 
-    # Initialize Modes dictionary
     Modes = {}
 
     Modes["title"] = fid.read(80).decode("utf-8").strip()
@@ -141,8 +164,6 @@ def readmodes_bin(filename, freq=0, modes=None):
     fid.seek(rec * lrecl)
     Modes["z"] = np.fromfile(fid, dtype=np.float32, count=Ntot)
 
-    # Skip through frequencies to get to the selected set
-
     # Identify the index of the frequency closest to the user-specified value
     freqdiff = np.abs(Modes["freqVec"] - freq)
     freq_index = np.argmin(freqdiff)
@@ -165,10 +186,12 @@ def readmodes_bin(filename, freq=0, modes=None):
         modes = np.arange(
             1, Modes["M"] + 1
         )  # Read all modes if the user didn't specify
+    else:
+        modes = np.atleast_1d(np.asarray(modes))
 
     # Don't try to read modes that don't exist
     ii = modes <= Modes["M"]
-    modes = np.array(modes)[ii]
+    modes = modes[ii]
 
     Modes["selected_modes"] = modes
     Modes["nb_selected_modes"] = len(modes)
@@ -184,8 +207,8 @@ def readmodes_bin(filename, freq=0, modes=None):
     Modes["Top"]["cp"] = complex(cp_real, cp_imag)
     cs_real, cs_imag = np.fromfile(fid, dtype=np.float32, count=2)
     Modes["Top"]["cs"] = complex(cs_real, cs_imag)
-    Modes["Top"]["rho"] = np.fromfile(fid, dtype=np.float32, count=1)
-    Modes["Top"]["depth"] = np.fromfile(fid, dtype=np.float32, count=1)
+    Modes["Top"]["rho"] = float(np.fromfile(fid, dtype=np.float32, count=1)[0])
+    Modes["Top"]["depth"] = float(np.fromfile(fid, dtype=np.float32, count=1)[0])
 
     # Bottom
     Modes["Bot"] = {}
@@ -194,8 +217,8 @@ def readmodes_bin(filename, freq=0, modes=None):
     Modes["Bot"]["cp"] = complex(cp_real, cp_imag)
     cs_real, cs_imag = np.fromfile(fid, dtype=np.float32, count=2)
     Modes["Bot"]["cs"] = complex(cs_real, cs_imag)
-    Modes["Bot"]["rho"] = np.fromfile(fid, dtype=np.float32, count=1)
-    Modes["Bot"]["depth"] = np.fromfile(fid, dtype=np.float32, count=1)
+    Modes["Bot"]["rho"] = float(np.fromfile(fid, dtype=np.float32, count=1)[0])
+    Modes["Bot"]["depth"] = float(np.fromfile(fid, dtype=np.float32, count=1)[0])
 
     # Read the modes (eigenfunctions, then eigenvalues)
     rec = iRecProfile

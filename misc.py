@@ -3,7 +3,7 @@
 """
 @File    :   misc.py
 @Time    :   2024/07/08 09:13:24
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Miscellaneous functions.
@@ -22,6 +22,7 @@ import psutil
 import numpy as np
 import pandas as pd
 import multiprocessing
+import scipy.stats as sst
 import scipy.fft as sp_fft
 
 # import moviepy.editor as mpy
@@ -31,6 +32,33 @@ import matplotlib.transforms as transforms
 
 from PIL import Image
 from matplotlib.patches import Ellipse
+from scipy.signal import butter, lfilter
+
+
+# ======================================================================================================================
+# Band filtering class
+# ======================================================================================================================
+class BandFilter:
+    """
+    Wrapping class to apply Butterworth filtering using scipy.signal.butter and scipy.signal.lfilter
+    """
+
+    def __init__(
+        self,
+        order: int = 4,
+        lowcut: float = 1,
+        highcut: float = 50,
+    ):
+
+        self.order = order
+        self.lowcut = lowcut
+        self.highcut = highcut
+
+    def apply_filter(self, signal, fs):
+        b, a = butter(self.order, [self.lowcut, self.highcut], fs=fs, btype="band")
+        signal_filter = lfilter(b, a, signal)
+
+        return signal_filter
 
 
 def mult_along_axis(A, B, axis):
@@ -62,17 +90,23 @@ def mult_along_axis(A, B, axis):
     return A * B_brc
 
 
-def cast_matrix_to_target_shape(matrix, target_shape):
+def cast_matrix_to_target_shape(matrix, target_shape, missing_dims_axis=None):
 
+    # print(f"Matrix to transform : {matrix.shape}")
+    # print(f"target shape: {target_shape}")
     # Cast matrix to target shape
-    # 1) Identify missing dimensions
-    missing_dims = [dim for dim in target_shape if dim not in matrix.shape]
-    # Link missing dimensions to the corresponding axis
-    missing_dims_axis = [
-        i for i in range(len(target_shape)) if target_shape[i] in missing_dims
-    ]
+
+    if missing_dims_axis is None:
+        # 1) Identify missing dimensions
+        missing_dims = [dim for dim in target_shape if dim not in matrix.shape]
+        # Link missing dimensions to the corresponding axis
+        missing_dims_axis = [
+            i for i in range(len(target_shape)) if target_shape[i] in missing_dims
+        ]
+
     # 2) Add missing dimensions
     matrix_target_shape = np.expand_dims(matrix, axis=missing_dims_axis)
+    # print(f"matrix target shape {matrix_target_shape.shape}")
     # 3) Repeat matrix along missing dimensions
     tile_shape = tuple(
         [
@@ -334,7 +368,7 @@ def gather_acronyms(manuscript_folder, output_file):
             f.write(acronym + "\n")
 
 
-def gather_bibliographies(manuscript_folder, output_file):
+def gather_bibliographies(manuscript_folder, output_file, verbose=False):
     bib_entries = {}
 
     # Define the regex pattern for the bibliography entry
@@ -343,10 +377,15 @@ def gather_bibliographies(manuscript_folder, output_file):
 
     # Walk through the manuscript folder
     for root, _, files in os.walk(manuscript_folder):
+        if verbose:
+            print(f"Processing folder: {root}")
+
         for file in files:
-            if file == "biblio.bib":
+            if file == "biblio.bib" or file.endswith(".bib"):
                 filepath = os.path.join(root, file)
                 with open(filepath, "r", encoding="utf-8") as f:
+                    print(f"Processing file: {filepath}")
+
                     content = f.read()
                     # Split the content into individual entries
                     entries = re.split(r"(@\w+\{[^,]+,)", content)
@@ -575,14 +614,276 @@ def compute_hyperbola(receiver1, receiver2, source, num_points=500, tmax=2):
     return (x_right, y_right), (x_left, y_left)
 
 
+def dms_to_deg(d, m, s):
+    """
+    Convert degrees, minutes, seconds to decimal degrees.
+
+    Parameters:
+        d (int): Degrees.
+        m (int): Minutes.
+        s (float): Seconds.
+
+    Returns:
+        float: Decimal degrees.
+    """
+    return d + m / 60 + s / 3600
+
+
+def deg_to_dms(deg):
+    """
+    Convert decimal degrees to degrees, minutes, seconds.
+
+    Parameters:
+        deg (float): Decimal degrees.
+
+    Returns:
+        tuple: (degrees, minutes, seconds).
+    """
+    d = int(deg)
+    m = int((deg - d) * 60)
+    s = (deg - d - m / 60) * 3600
+    return d, m, s
+
+
+def newton(f, df, x0, eps):
+    """Newton's method for finding roots of a function.
+
+    Parameters
+    ----------
+    f : function
+        The function for which we want to find the root.
+    df : function
+        The derivative of the function f.
+    x0 : float
+        Initial guess for the root.
+    eps : float
+        Tolerance for convergence.
+
+    Returns
+    -------
+    float
+        The root of the function f.
+    """
+    x = x0  # Initial guess
+    as_converged = False  # Convergence flag
+    while not as_converged:
+        x_new = x - f(x) / df(x)  # Newton's update x_n+1 = x_n - f(x_n) / f'(x_n)
+        if abs(x_new - x) < eps:
+            as_converged = True
+        x = x_new  # Update x : x_n = x_n+1
+    return x
+
+
+def equivalent_celerity(c_z, z):
+    dz = np.diff(z, append=z[-1] + z[-1] - z[-2])
+    t_tot = np.sum(1 / c_z * dz)
+    c_eq = np.max(z) / t_tot
+    return c_eq
+
+
+######################### Least-squares solution #######################
+def calc_wls(
+    Y,
+    t,
+    X_0,
+    W,
+    fct,
+    jac,
+    f_kwargs={},
+    jac_kwargs={},
+    tol=1e-3,
+    max_iter=100,
+    verbose=True,
+):
+    # # nombre d'observations
+    n = W.shape[0]
+    # nombre de paramètres inconnus
+    X_0 = np.atleast_1d(X_0)
+    p = X_0.size
+
+    # Init dY
+    dY_0 = Y - fct(X_0, t, **f_kwargs)
+    # Init X_k
+    X_k = X_0
+
+    if verbose:
+        print(f"Initial guess : {X_0}")
+        print(f"dY_0 : {dY_0}")
+        print(f"Weighting matrix : {W}")
+        print(f"Initial cost : {np.sum(np.diag(W) * dY_0**2)}")
+
+    # Init convergence condition
+    cost_k = np.sum(np.diag(W) * dY_0**2)
+    conv = False
+    niter = 0
+    while not conv and niter < max_iter:
+        # Derive the jacobian with Xk
+        J_k = jac(X_k, t, **jac_kwargs)
+        if verbose:
+            print(f"Jacobian : {J_k}")
+        # Derive dY_k
+        dY_k = Y - fct(X_k, t, **f_kwargs)
+        # Derive dX_k
+        N_k = J_k.T @ W @ J_k
+        if verbose:
+            print(f"N_k : {N_k}")
+        N_kinv = np.linalg.inv(N_k)
+        dX_k = (N_kinv @ J_k.T @ W) @ dY_k
+        # Update X_k
+        X_k = X_k + dX_k
+        # Derive new cost
+        r_kplusone = Y - fct(X_k, t, **f_kwargs)
+        cost_kplusone = np.sum(np.diag(W) * r_kplusone**2)
+        # Update the convergence condition
+        conv = np.abs((cost_kplusone - cost_k) / cost_k) < tol
+        # Update cost k
+        cost_k = cost_kplusone
+
+        niter += 1
+
+    #  Vecteur des résidus
+    Vhat = r_kplusone
+    # FUV a posteriori
+    sigma02hat = Vhat.T @ W @ Vhat / (n - p)
+    # #  Covariance a posteriori de la solution
+    SigmaXhat = sigma02hat * N_kinv
+    # #  Covariance a posteriori des observations
+    # SigmaYhat = sigma02hat * SigmaY
+    # #  Covariance a posteriori des résidus
+    # SigmaVhat = SigmaYhat - np.dot(np.dot(A, SigmaXhat), A.T)
+
+    return X_k, dY_k, cost_k, SigmaXhat, sigma02hat
+
+
+def test_calc_wls():
+    # Test on a simple model
+    a = 5
+    b = 0.5
+    t_max = 200
+    t = np.linspace(0, t_max, 1000)
+
+    # Define signal
+    def f(X, t):
+        a, b = X
+        return a**2 * t + 100 * np.cos(b * t)
+
+    def jac(X, t):
+        a, b = X
+        J = np.array([2 * a * t, -100 * t * np.sin(b * t)]).T
+        return J
+
+    X = [a, b]
+    y = f(X, t)
+
+    # Add noise
+    s = 0.01
+    vi = np.random.normal(loc=0, scale=s, size=y.shape)
+    yi = y + vi
+    plt.figure()
+    plt.scatter(t, yi)
+    plt.plot(t, y, color="r")
+
+    n = yi.size
+    W = np.eye(n) * 1 / s**2
+
+    # Initial guess
+    X_0 = [a + 0.01, b + 0.01]
+    # Apply WLS
+    X_hat, _, _, _, _ = calc_wls(Y=yi, t=t, X_0=X_0, W=W, fct=f, jac=jac, tol=1e-5)
+
+    plt.figure()
+    plt.scatter(t, yi, color="r")
+    plt.plot(t, f(X_hat, t), color="k")
+    plt.plot(t, y, color="b")
+
+
+def draw_ellipse(X, SigmaX, ddl, alpha, title, color="k", fac=1):
+
+    D, R = np.linalg.eig(SigmaX)
+    lambda_m = np.sqrt(sst.f.ppf(alpha, 2, ddl) * 2)
+    a, b = lambda_m * np.sqrt(D[0]), lambda_m * np.sqrt(D[1])
+    try:
+        theta = np.arctan(R[1, 0] / R[0, 0]) * 180 / np.pi
+    except:
+        theta = np.sign(R[1, 0]) * 90
+    # re-order semi axis of ellipse
+    if a <= b:
+        theta = theta + 90
+        a, b = lambda_m * np.sqrt(D[1]), lambda_m * np.sqrt(D[0])
+    theta = np.mod(theta, 360)
+
+    ellipse = Ellipse(
+        xy=(X[0], X[1]),
+        width=a * 2 * fac,
+        height=b * 2 * fac,
+        angle=theta,
+        edgecolor=color,
+        lw=2,
+        facecolor="none",
+        zorder=20,
+    )
+    plt.legend()
+    plt.gca().add_patch(ellipse)
+
+    return plt.gca().add_patch(ellipse)
+
+
+def progression_bar(index: int, index0: int, indexf: int, prev_progress: int) -> int:
+    step = 1
+    no_graduations = 100
+    current_progress = int((index - index0) / (indexf - index0) * 100)
+
+    if current_progress >= prev_progress + step:
+        print("\r", end="")
+        print(
+            f"Progress: "
+            + "\u2588" * int(current_progress)
+            + "." * (no_graduations - current_progress)
+            + f" {int(current_progress)}%",
+            end="",
+        )
+        return current_progress
+
+    return prev_progress
+
+
+def filter_outliers_iqr(values, k=1.5):
+    """
+    Filtre les outliers d'un tableau de valeurs en utilisant l'IQR.
+    """
+    Q1 = np.percentile(values, 25)
+    Q3 = np.percentile(values, 75)
+    IQR = Q3 - Q1
+    lower = Q1 - k * IQR
+    upper = Q3 + k * IQR
+    filtered = values[(values >= lower) & (values <= upper)]
+    return filtered
+
+
 if __name__ == "__main__":
 
-    """Gather acronyms and bibliographies from a manuscript folder"""
-    # # Usage
-    # manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
-    # output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\glossary_acoustics.tex"
+    """Test newton"""
+    # f = lambda x: x**2 - 2
+    # df = lambda x: 2 * x
+    # x0 = 1.0
+    # eps = 1e-6
+    # root = newton(f, df, x0, eps)
+    # print(f"Root: {root}, f(root): {f(root)}")
 
-    # # gather_acronyms(manuscript_folder, output_file)
+    """Test dms to deg and deg to dms"""
+    # d, m, s = 48, 23, 34.5
+    # deg = dms_to_deg(d, m, s)
+    # print(f"{d}°{m}'{s}'' = {deg}°")
+
+    # # Other way
+    # d, m, s = deg_to_dms(deg)
+    # print(f"{deg}° = {d}°{m}'{s}''")
+
+    """Gather acronyms and bibliographies from a manuscript folder"""
+    # Usage
+    manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
+    output_file = r"C:\Users\baptiste.menetrier\Desktop\rapports\glossary_acoustics.tex"
+    gather_acronyms(manuscript_folder, output_file)
 
     # Usage
     manuscript_folder = r"C:\Users\baptiste.menetrier\Desktop\rapports\manuscript"
@@ -598,6 +899,14 @@ if __name__ == "__main__":
 
     # # Utilisation
     # export_to_dat(result_df, result_filepath)
+
+    # # Test progress bar
+    # index0 = 0
+    # indexf = 1000000
+    # prev_progress = 0
+
+    # for i in range(index0, indexf + 1):
+    #     prev_progress = progression_bar(i, index0, indexf, prev_progress)
 
 
 # # Test plot_animation_moviepy

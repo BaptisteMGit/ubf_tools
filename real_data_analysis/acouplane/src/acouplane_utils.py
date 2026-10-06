@@ -80,17 +80,20 @@ def convert_raw_pressure_to_physical_units(ds_pressure):
 
 
 ### Positions ###
-def plot_obs_pos(ds_pos, ax=None):
+def plot_obs_pos(ds_pos, ax=None, add_legend=True, add_title=True):
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 6))
 
     for id in ds_pos.rcv_id.values:
         rcv = ds_pos.sel(rcv_id=id)
-        plt.scatter(rcv.rcv_lon, rcv.rcv_lat, marker="d", label=f"{id}", s=200)
+        ax.scatter(rcv.rcv_lon, rcv.rcv_lat, marker="d", label=f"{id}", s=200)
 
     ax.set_xlabel("Longitude [°]")
     ax.set_ylabel("Latitude [°]")
-    ax.set_title("OBS positions")
-    ax.legend()
+
+    if add_title:
+        ax.set_title("OBS positions")
+    if add_legend:
+        ax.legend()
 
     return ax

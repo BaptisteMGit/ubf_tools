@@ -309,6 +309,27 @@ class OBSdata:
 ### TILT CORRECTION ###
 if __name__ == "__main__":
 
+    # Test continuité des fichiers (fichier 2 et 3 de OBS 1)
+    fich_2 = "ELOBS_D-2744775_TB_1456025622500000-1456050626249500_channel3_2026-03-02-08-45-30_002"
+    gps_date = fich_2.split("_")[3]
+    start_date_gps = float(gps_date.split("-")[0]) / 1e6
+    end_date_gps = float(gps_date.split("-")[1]) / 1e6
+    start_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=start_date_gps)
+    print("start_utc_from_file_code : ", start_utc_from_file_code)
+
+    end_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=end_date_gps)
+    print("end_utc_from_file_code : ", end_utc_from_file_code)
+
+    fich_3 = "ELOBS_D-2744775_TB_1456050626250000-1456075631249500_channel3_2026-03-02-08-45-30_002"
+    gps_date = fich_3.split("_")[3]
+    start_date_gps = float(gps_date.split("-")[0]) / 1e6
+    end_date_gps = float(gps_date.split("-")[1]) / 1e6
+    start_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=start_date_gps)
+    print("start_utc_from_file_code : ", start_utc_from_file_code)
+
+    end_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=end_date_gps)
+    print("end_utc_from_file_code : ", end_utc_from_file_code)
+
     ### Adaptation pour test données ACOUPLANE ###
     folderfile = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ACOUPLANE\DATA\PRESSURE\BIN\OBS1"
 
@@ -350,6 +371,7 @@ if __name__ == "__main__":
     plt.figure()
     plt.plot(time, p_raw)
     plt.show()
+
 
     ### Code fourni par Myriam L. ###
     # FMIN_INTEG = 1

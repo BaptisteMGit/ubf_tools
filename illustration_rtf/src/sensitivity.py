@@ -437,7 +437,7 @@ def calc_gamma_dist(gamma_a, gamma_b, dist_type="L1"):
         norm_b = np.sqrt(np.nansum(gamma_b**2, axis=0))
         # Clip to [-1, 1] for stability
         cos_angle = np.clip(inner_prod / (norm_a * norm_b), -1.0, 1.0)
-        dist = (1 - cos_angle) / 2  # In [-1, 1]
+        dist = (1 - cos_angle) / 2  #  [-1, 1] to [0, 1]
 
     if dist_type == "wasserstein":
         # NOTE (new, per user request): unlike L1/L2/theta above (which

@@ -57,6 +57,9 @@ ACOUPLANE_POSITIONS_NC_FPATH = os.path.join(
 ACOUPLANE_PRESSURE_NC_FPATH = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_DATA_DIR, "acouplane_raw_pressure.nc"
 )
+ACOUPLANE_PORTION_NC_ROOT_FPATH = os.path.join(
+    ROOT_ACOUPLANE_PROCESSED_DATA_DIR, "acouplane_portion"
+)
 
 # Ensure direcotries exist 
 def ensure_dirs_exist():

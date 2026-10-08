@@ -864,13 +864,13 @@ def _add_celerity(
         "wasserstein": dist_wasserstein,
     }[metric][order_dist]
 
-    # TODO remove that
-    if metric == "theta":
-        dist /= 2
-    else:
-        dist /= np.max(dist)
+    # # TODO remove that
+    # if metric == "theta":
+    #     dist /= 2
+    # else:
+    #     dist /= np.max(dist)
 
-    print(situation, np.max(dist))
+    # print(situation, np.max(dist))
 
     std = std[order_std]
 
@@ -881,7 +881,8 @@ def _add_celerity(
     else:
         ax.scatter(std, dist, s=12)
 
-    ax.set_ylim(0, 1)
+    if metric == "theta":
+        ax.set_ylim(0, 1)
 
     # Linear regression
     if linear_reg:
@@ -1128,7 +1129,7 @@ def plot_celerity_distance_vs_std_seasons(
         for k, season in enumerate(seasons):
             j = k % ncol
             i = k // ncol
-            print(i, j)
+            # print(i, j)
 
             result_dir = result_dirs[i]
 
@@ -1153,9 +1154,14 @@ def plot_celerity_distance_vs_std_seasons(
 if __name__ == "__main__":
 
     RESULT_PLATEFORM_DIR_ROOT = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim"
+    # RESULT_PLATEFORM_DIR_RESILIENCE_SSP = os.path.join(
+    #     RESULT_PLATEFORM_DIR_ROOT, "resilience_ssp_17092026"
+    # )
+
     RESULT_PLATEFORM_DIR_RESILIENCE_SSP = os.path.join(
-        RESULT_PLATEFORM_DIR_ROOT, "resilience_ssp"
+        RESULT_PLATEFORM_DIR_ROOT, "resillience_ssp_06102026"
     )
+
     RESULT_PLATEFORM_DIR_SENSITIVITY = os.path.join(
         RESULT_PLATEFORM_DIR_ROOT, "sensitivity_17092026", "result"
     )
@@ -1170,15 +1176,17 @@ if __name__ == "__main__":
     # plot_sensitivity_mainlobe_width(distance=["theta"], use_plateform_res=False)
 
     # # Validé
-    # plot_sensitivity_at_r0(distance=["theta"])
+    plot_sensitivity_at_r0(distance=["theta"])
     # plot_resilience_depth_results(distance="wasserstein", use_plateform_res=True)
     # plot_resilience_depth_results(distance="theta", use_plateform_res=True)
     # plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=True)
     # plot_ssp_all()
-    plot_ssp_seasons(add_all=True, max_number_of_profiles_to_plot=100)
+    # plot_ssp_seasons(add_all=True, max_number_of_profiles_to_plot=100)
     # plot_temp_salinity_seasons()
     # plot_ssp_acp_process()
     # plot_resilience_celerity_results(metric="theta")
-    # plot_celerity_distance_vs_std_seasons(linear_reg=True, add_all=True)
+    # plot_resilience_celerity_results(metric="wasserstein")
+
+    # plot_celerity_distance_vs_std_seasons(metric="theta", linear_reg=True, add_all=True)
 
     plt.show()

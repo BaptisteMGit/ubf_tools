@@ -218,7 +218,7 @@ if os.name == "nt":  # Windows
 else:  # Linux
     ROOT_PROGRAM = "/home/program/ubf_tools"
     ROOT_DATA = "/home/data"
-    # ROOT_BATHY = os.path.join(ROOT_DATA, "bathy") # CHECK TIM
+    ROOT_BATHY = os.path.join(ROOT_DATA, "BATHY")
 
 project_root = ROOT_PROGRAM  # Legacy variable for backward compatibility
 

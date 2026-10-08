@@ -15,7 +15,7 @@
 import os
 
 from publication.publication_figure import PubFigure
-from source.global_constants import ROOT_PROGRAM, ROOT_DATA
+from source.global_constants import ROOT_PROGRAM, ROOT_DATA, ROOT_BATHY
 
 # ======================================================================================================================
 # Useful paths
@@ -49,8 +49,12 @@ ROOT_ACOUPLANE_PROCESSED_IMG_DIR = os.path.join(ROOT_ACOUPLANE_PROGRAM_DIR, "img
 # Raw data
 OBS_TLQ_POS_FPATH = os.path.join(ACOUPLANE_DATA_POSITION_DIR, "OBS_TLQ_POS.csv")
 AIS_FPATH = os.path.join(ACOUPLANE_DATA_POSITION_DIR, "AIS_LPLNE.csv")
+GEBCO_BATHY_FPATH = os.path.join(ROOT_BATHY, "GEBCO_2026_sub_ice.nc")
 
 # Processed data
+ACOUPLANE_BATHY_NC_FPATH = os.path.join(
+    ROOT_ACOUPLANE_PROCESSED_DATA_DIR, "acouplane_bathy.nc"
+)
 ACOUPLANE_POSITIONS_NC_FPATH = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_DATA_DIR, "acouplane_pos.nc"
 )

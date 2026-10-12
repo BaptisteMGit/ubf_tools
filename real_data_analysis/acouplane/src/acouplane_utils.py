@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 # from scipy.ndimage import uniform_filter1d
 from publication.publication_figure import set_subfigures_abc_labels, color
 from real_data_analysis.acouplane.src.acouplane_cst import *
-from get_data.obs_bin.obs_reader_acouplane import convert_raw_data
+from get_data.obs_bin.obs_reader_acouplane import convert_data_raw_to_physical
 
 # ======================================================================================================================
 # Data preprocessing
@@ -41,15 +41,25 @@ def build_obs_datetime_vector(ds_pressure):
         start_datetime_obs = pd.to_datetime(
             ds_pressure.start_datetime.sel(obs_id=obs_id).values
         ).to_pydatetime()
-        signal_duration_obs_s = (
-            ds_pressure[f"time_{obs_id}"].values[-1] * 1 / ds_pressure.fs
-        )
-        end_datetime_obs = start_datetime_obs + timedelta(seconds=signal_duration_obs_s)
+
+        # # OLD (before 12/10/2026)
+        # signal_duration_obs_s = (
+        #     ds_pressure[f"time_{obs_id}"].values[-1] * 1 / ds_pressure.fs
+        # )
+        # end_datetime_obs = start_datetime_obs + timedelta(seconds=signal_duration_obs_s)
+        # datetime_obs = pd.date_range(
+        #     start=start_datetime_obs,
+        #     end=end_datetime_obs,
+        #     freq=f"{1/ds_pressure.fs}s",
+        #     inclusive="both",
+        # )
+
+        # NEW (after 12/10/2026)  -> exactly the same but cleaner (no need to explicitly compute end_datetime)
         datetime_obs = pd.date_range(
             start=start_datetime_obs,
-            end=end_datetime_obs,
             freq=f"{1/ds_pressure.fs}s",
-            inclusive="both",
+            inclusive="left",
+            periods=ds_pressure.sizes[f"time_{obs_id}"],
         )
 
         datetime_obs_dict[obs_id] = datetime_obs
@@ -60,7 +70,7 @@ def build_obs_datetime_vector(ds_pressure):
 def convert_raw_pressure_to_physical_units(ds_pressure):
     for obs_id in ds_pressure.obs_id.values:
         raw_pressure = ds_pressure[f"pressure_{obs_id}"]
-        pressure = convert_raw_data(
+        pressure = convert_data_raw_to_physical(
             raw_data=raw_pressure, fullScale=ds_pressure.fullscale
         )
         # time_attrs = ds_pressure[f"time_{obs_id}"].attrs
@@ -264,7 +274,7 @@ def plot_pressure_section(ds_pressure_section, single_fig=False):
         fig.supylabel(ylab)
 
         return fig, axs
-    
+
 
 def plot_spectrogram_section(ds_pressure_section, nperseg=2**8, noverlap=2**7, cmap="magma"):
 

@@ -309,6 +309,16 @@ class OBSdata:
 ### TILT CORRECTION ###
 if __name__ == "__main__":
 
+    # Tets 
+    # import pandas as pd 
+    # df_bapt = pd.read_csv("/home/program/ubf_tools/real_data_analysis/acouplane/data/data_baptiste.csv")
+    # df_shom = pd.read_csv("/home/program/ubf_tools/real_data_analysis/acouplane/data/data_shom.csv")
+
+    # plt.figure()
+    # plt.plot(df_bapt)
+    # plt.plot(df_shom)
+    # plt.show()
+
     # Test continuité des fichiers (fichier 2 et 3 de OBS 1)
     fich_2 = "ELOBS_D-2744775_TB_1456025622500000-1456050626249500_channel3_2026-03-02-08-45-30_002"
     gps_date = fich_2.split("_")[3]
@@ -331,20 +341,25 @@ if __name__ == "__main__":
     print("end_utc_from_file_code : ", end_utc_from_file_code)
 
     ### Adaptation pour test données ACOUPLANE ###
-    folderfile = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ACOUPLANE\DATA\PRESSURE\BIN\OBS1"
+    # folderfile = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ACOUPLANE\DATA\PRESSURE\BIN\OBS1"
+    folderfile = "/home/data/ACOUPLANE/DATA/PRESSURE/BIN/OBS1"
 
     # ELOBS_D-3042301_TB_1455972318000000-1455997319874500_channel3_2026-03-02-09-52-44_002
     # 1455972318000000 to 1455997319874500
     # D'après le code matlab de JM B. le code GPS de début fin est contenu dans les 10 premiers éléments
-    start_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=1455972318)
+    start_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=1455975618.0)
     print("start_utc_from_file_code : ", start_utc_from_file_code)
 
-    end_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=1455997319)
+    end_utc_from_file_code = obsr.ConvertGPSDate2String(gpsDate=1456000620.5)
     print("end_utc_from_file_code : ", end_utc_from_file_code)
 
     # arrêt du canon
-    start_date = "24/02/2026 12:45:00"  # en UTC !!!
-    stop_date = "24/02/2026 19:41:41"  # en UTC !!!
+    start_date = "25/02/2026 03:33:24"  # en UTC !!!
+    stop_date = "25/02/2026 17:30:52"  # en UTC !!!2026-02-25 17:26:52
+    # start_date = start_utc_from_file_code
+    # start_date = obsr.ConvertStrUTC2GPSDate(start_utc_from_file_code, dateformat = "%b %d %Y %H:%M:%S UTC")
+    100016000.0
+    100017500
     # charger des données longues
     GPS_start_time = obsr.ConvertStrUTC2GPSDate(start_date, "%d/%m/%Y %H:%M:%S")
     print(GPS_start_time)
@@ -384,7 +399,7 @@ if __name__ == "__main__":
     # data_length = obsr.SecBetweenDates(start_date, stop_date, "%d/%m/%Y %H:%M:%S")
     # # set channel to extract
     # channel = "all"
-    # OBS7 = OBSdata()
+    OBS7 = OBSdata()
     # OBS7.extract_raw_OBS(folderfile, [start_date, stop_date], channel, True)
     # # gérer les variations du tilt
     # TiltI, TiltC, Date, TiltMystR = read_tilt_from_health(

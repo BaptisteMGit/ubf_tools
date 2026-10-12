@@ -307,7 +307,7 @@ def getMinTimestamp(rep, sn, ts):
     if np.isin(-1, ts_int).any():
         # Manque au moins une voie => erreur
         print("Voie manquante")
-        return -1
+        # return -1
     # On retourne la date la lus �lev�e pour avoir les 4 voies
     return np.max(ts_int)
 

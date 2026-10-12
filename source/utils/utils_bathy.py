@@ -24,10 +24,13 @@ def load_bathy(
     box_center_lat,
     dlon_box=0.25,
     dlat_box=0.25,
+    bathy_fpath=None,
     root_bathy_data=ROOT_BATHY_DATA,
+    bathy_fname="GEBCO_2021_sub_ice_topo.nc"
 ):
     # input_data_root = os.path.join(project_root, "data")
-    bathy_fpath = os.path.join(root_bathy_data, "GEBCO_2021_sub_ice_topo.nc")
+    if bathy_fpath is None:
+        bathy_fpath = os.path.join(root_bathy_data, bathy_fname)
 
     # Load bathy data
     ds_bathy = xr.open_dataset(bathy_fpath)

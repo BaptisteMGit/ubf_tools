@@ -49,7 +49,7 @@ ROOT_ACOUPLANE_PROCESSED_IMG_DIR = os.path.join(ROOT_ACOUPLANE_PROGRAM_DIR, "img
 # Raw data
 OBS_TLQ_POS_FPATH = os.path.join(ACOUPLANE_DATA_POSITION_DIR, "OBS_TLQ_POS.csv")
 AIS_FPATH = os.path.join(ACOUPLANE_DATA_POSITION_DIR, "AIS_LPLNE.csv")
-GEBCO_BATHY_FPATH = os.path.join(ROOT_BATHY, "GEBCO_2026_sub_ice.nc")
+GEBCO_BATHY_FPATH = os.path.join(ROOT_BATHY, "GEBCO_2026_sub_ice", "GEBCO_2026_sub_ice.nc")
 
 # Processed data
 ACOUPLANE_BATHY_NC_FPATH = os.path.join(

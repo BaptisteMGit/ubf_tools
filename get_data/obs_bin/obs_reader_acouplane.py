@@ -138,14 +138,16 @@ def read_obs_channel_H(folder, read_raw=False, fs=FS, verbose=False):
         # Le facteur 4 correspond à la taille d'un int32 en octets, et le facteur fs correspond au nombre d'échantillons par seconde.
         # Donc, os.path.getsize(f) / 4 / fs calcule la durée du fichier en secondes.
         # NOTE: il faut que fs = 2000 Hz pour que stop_gps_date match avec float(file_info["stop"]) / 1e6
-        # stop_gps_date = start_gps_date + os.path.getsize(fpath) / 4 / fs
+        stop_gps_date = start_gps_date + os.path.getsize(fpath) / 4 / fs
 
         # Here we trust the stop timestamp in the file name, but we can also compute it from the file size if needed
         # NOTE: one can check that it matches start_dt and stop_dt provided by the MATLAB code (provided by JM B.)
-        stop_gps_date = float(file_info["stop"]) / 1e6
+        # stop_gps_date = float(file_info["stop"]) / 1e6
 
         # Convert to string datetime
         dt_fmt = "%d/%m/%Y %H:%M:%S UTC"
+        # dt_fmt = "%d/%m/%Y %H:%M:%S:%f UTC"
+
         start_str = ConvertGPSDate2String(gpsDate=start_gps_date, format=dt_fmt)
         stop_str = ConvertGPSDate2String(gpsDate=stop_gps_date, format=dt_fmt)
         if verbose:

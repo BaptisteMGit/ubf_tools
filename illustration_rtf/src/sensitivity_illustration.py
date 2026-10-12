@@ -1162,8 +1162,11 @@ if __name__ == "__main__":
         RESULT_PLATEFORM_DIR_ROOT, "resillience_ssp_06102026"
     )
 
+    # RESULT_PLATEFORM_DIR_SENSITIVITY = os.path.join(
+    #     RESULT_PLATEFORM_DIR_ROOT, "sensitivity_17092026", "result"
+    # )
     RESULT_PLATEFORM_DIR_SENSITIVITY = os.path.join(
-        RESULT_PLATEFORM_DIR_ROOT, "sensitivity_17092026", "result"
+        RESULT_PLATEFORM_DIR_ROOT, "sensitivity_08102026", "result"
     )
 
     # result_dir = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_ssp"
@@ -1176,7 +1179,10 @@ if __name__ == "__main__":
     # plot_sensitivity_mainlobe_width(distance=["theta"], use_plateform_res=False)
 
     # # Validé
-    plot_sensitivity_at_r0(distance=["theta"])
+    # plot_sensitivity_at_r0(distance=["theta"])
+    # plot_sensitivity_at_r0(distance=["wasserstein"])
+    # plot_sensitivity_at_r0(distance=["theta", "wasserstein"])
+
     # plot_resilience_depth_results(distance="wasserstein", use_plateform_res=True)
     # plot_resilience_depth_results(distance="theta", use_plateform_res=True)
     # plot_resilience_depth_results_associated_extrema_gamma(use_plateform_res=True)
@@ -1188,5 +1194,8 @@ if __name__ == "__main__":
     # plot_resilience_celerity_results(metric="wasserstein")
 
     # plot_celerity_distance_vs_std_seasons(metric="theta", linear_reg=True, add_all=True)
+    plot_celerity_distance_vs_std_seasons(
+        metric="wasserstein", linear_reg=True, add_all=True
+    )
 
     plt.show()

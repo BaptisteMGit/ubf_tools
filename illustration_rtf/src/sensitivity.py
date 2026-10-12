@@ -1032,9 +1032,7 @@ def build_kraken(
     # Use only propative modes
     nb_modes = pekeris_n_modes(f=freq.max(), c1=c1_for_estimate, c2=c2, d=depth)
     # clim_max = c2
-    clim_max = (
-        np.ceil((c2) / 1000) * 1000
-    )  # Round to upper closest multiple of five to avoid being to close to cuttoff
+    clim_max = np.ceil((c2) / 1000) * 1000  # Round to upper closest
     clim_min = 1400
 
     # attn2 = 0  # TODO remove
@@ -3511,6 +3509,7 @@ def build_celerity_sensitivity_dataset(
         )
     elif celerity_profile_source == "real":
         ssp_filename = _real_ssp_filename(env_type, situation)
+        # NOTE: rename the following function to avoid confusion
         z_ssp, c_p_ssp_all = load_synthetic_celerity_profiles(
             ssp_filename,
             target_depth=depth,

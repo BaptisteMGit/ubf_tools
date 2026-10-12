@@ -592,11 +592,11 @@ def apply_alpha_att_perturbation(krm, alpha_m):
     Eq. 5.167
     For the convention e^(-iwt)
     krm = krm_0 + 2i * alpham * krm_0
-    e^i(kr - wt) = e^i(kr_0 r - wt) x e^(-2 alpha_m kr_0)
+    e^i(kr - wt) = e^i(kr_0 r - wt) x e^(-2 alpha_m kr_0 r)
 
     For the convention e^(+iwt) :
     krm = krm_0 - 2i * alpham * krm_0  to obtain attenuation
-    e^i(wt - kr) = e^i(wt - kr_0 r) x e^(-2 alpha_m kr_0)
+    e^i(wt - kr) = e^i(wt - kr_0 r) x e^(-2 alpha_m kr_0 r)
 
     """
 
@@ -1116,6 +1116,146 @@ def test_modal_fct_pekeris():
     plt.show()
 
 
+def test_modal_fct_var_pekeris(param="c1"):
+
+    c1, c2, rho1, rho2, d = test_pekeris_env()
+    # _, _, _, _, freq = test_pekeris_sig()
+
+    if param == "c1":
+        param_arr = np.linspace(1450, 1550, 5)
+    elif param == "c2":
+        param_arr = np.linspace(1600, 1800, 5)
+    elif param == "rho1":
+        param_arr = np.linspace(1000, 1030, 5)
+    elif param == "rho2":
+        param_arr = np.linspace(1000, 2500, 5)
+    else:
+        pass
+    # print(c1_arr)
+
+    f0 = 100
+    freq = np.array([f0])
+
+    depth = d
+    legend_handles = []
+    for ic in range(param_arr.size):
+        # print(ic)
+
+        if param == "c1":
+            c1 = param_arr[ic]
+            label = f"$c_1$ = {c1} m s$^{{{-1}}}$"
+        elif param == "c2":
+            c2 = param_arr[ic]
+            label = f"$c_2$ = {c2} m s$^{{{-1}}}$"
+        elif param == "rho1":
+            rho1 = param_arr[ic]
+            label = r"$\rho_1$ " + f" = {rho1} kg m$^{{{-3}}}$"
+        elif param == "rho2":
+            rho2 = param_arr[ic]
+            label = r"$\rho_2$ " + f" = {rho2} kg m$^{{{-3}}}$"
+
+        # Derive modal fct
+        # Horizontal wavenumbers
+        krm = pekeris_kr_m(freq, c1, c2, rho1, rho2, d)
+
+        dz = 0.01
+        z = np.arange(dz, d + 30, dz)
+        phim_arr = pekeris_modal_fct(z, freq, c1, c2, d, krm)
+
+        # Single freq
+        idx_f0 = np.argmin(np.abs(freq - f0))
+        phim_f0 = phim_arr[idx_f0, ...]
+        # M_f0 = np.max(pekeris_n_modes(f0, c1, c2, d))
+        # plot_modal_function(modal_fcts=phim_f0, z=z, depth=d, n_modes=M_f0)
+
+        # Mode number m
+        modal_fcts = phim_f0
+        n_modes = modal_fcts.shape[0]
+
+        if ic == 0:
+            # print("fig")
+            modes = np.arange(1, np.max(n_modes) + 1, 1)
+            fig, axs = plt.subplots(1, len(modes), sharey=True)
+            axs = np.atleast_1d(axs)
+            axs[0].invert_yaxis()
+            axs[0].set_ylabel("Profondeur [m]")
+
+        # Plot modal functions
+        max_amp = np.nanmax(np.abs(modal_fcts))
+
+        for i, m in enumerate(modes):
+            axs[i].plot(
+                np.real(modal_fcts[i]),
+                z,
+                # label=f"c1 = {c1}",
+                linestyle="-",
+                color=color(ic),
+            )
+            if i == 0:
+                legend_handles.append(
+                    Line2D(
+                        [0],
+                        [0],
+                        color=color(ic),
+                        linestyle="-",
+                        label=label,
+                    )
+                )
+
+    fig.legend(handles=legend_handles, loc="outside center right")
+
+    modes = np.arange(1, axs.shape[0] + 1, 1)
+
+    for i, m in enumerate(modes):
+        # axs[i].plot(np.imag(modal_fcts[i]), z, linestyle="--", color="r")
+        axs[i].set_title(f"Mode {m}")
+        axs[i].set_xlim([-1.1 * max_amp, 1.1 * max_amp])
+        axs[i].grid()
+
+        # Add depth line
+        if depth is not None:
+            axs[i].axhline(depth, linestyle="--", color="k")
+
+    plt.show()
+
+
+def test_attn2_pekeris():
+
+    fplot = [100, 500, 1000]
+    c1, c2, rho1, rho2, d = test_pekeris_env()
+    attn2 = 0.8  # dB/lambda
+
+    # Horizontal wavenumbers
+    krm = pekeris_kr_m(fplot, c1, c2, rho1, rho2, d)  # (n_f, n_modes)
+
+    # Compute modal loss tangent
+    # alpha_2_dB_lambda = 10
+    alpha_2 = alpha_dB_lambda_to_nepers_m(fplot, attn2, c2)
+    # print(
+    #     f"Att coeff in sediment alpha_2 = {alpha_2_dB_lambda} dB / lambda = {alpha_2} nepers / m"
+    # )
+    alpha_m = pekeris_alpha_attn(fplot, krm, c1, alpha_2, c2, rho2, d)
+    # Apply to krm
+    krm = apply_alpha_att_perturbation(krm, alpha_m)
+
+    mode_attn = -np.imag(krm)
+
+    mode_number = np.arange(1, mode_attn.shape[1] + 1)
+    plt.figure()
+    for i in range(len(fplot)):
+        plt.plot(
+            mode_number,
+            mode_attn[i, :],
+            label=f"{fplot[i]} Hz",
+            color=color(i),
+            marker="o",
+        )
+    plt.xlabel("Mode number $m$")
+    plt.ylabel("- Im($k_{rm}$)")
+    plt.legend()
+    plt.show()
+
+
 def run_full_diag(sig_param, env_param, src_rcv_param):
 
     # Unpack params
@@ -1483,7 +1623,15 @@ if __name__ == "__main__":
     # test_pekeris_Jensen_p636()  # OK
     # test_pekeris_Jensen_p350()
 
-    test_pekeris_short_ir()  # OK
+    # test_pekeris_short_ir()  # OK
+
+    # test_attn2_pekeris()    # OK
+    # test_modal_fct_var_pekeris(param="c1")  # OK
+    # test_modal_fct_var_pekeris(param="c2")  # OK
+    # test_modal_fct_var_pekeris(param="rho1")  # OK
+    test_modal_fct_var_pekeris(param="rho2")  # OK
+
+    pass
 
 # ======================================================================================================================
 # Left overs

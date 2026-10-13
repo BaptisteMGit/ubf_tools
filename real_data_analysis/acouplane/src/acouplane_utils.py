@@ -14,6 +14,8 @@
 # ======================================================================================================================
 # import os
 # import sys
+
+import re
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -81,6 +83,182 @@ def convert_raw_pressure_to_physical_units(ds_pressure):
         ds_pressure[f"pressure_{obs_id}"].attrs["units"] = "V"
 
     return ds_pressure
+
+
+# ======================================================================================================================
+# Celerity data preprocessing
+# ======================================================================================================================
+
+def edf_parser_convert_value(value):
+    """Convert a string to a suitable Python type."""
+    value = value.strip()
+
+    # Empty values
+    if not value:
+        return None
+
+    # Explicit missing values
+    if value.lower() in {"none", "n/a", "null"}:
+        return None
+
+    # Integer or float, including scientific notation
+    try:
+        number = float(value)
+
+        if number.is_integer() and not any(
+            char in value.lower() for char in (".", "e")
+        ):
+            return int(number)
+
+        return number
+
+    except ValueError:
+        return value
+
+
+def parse_edf_header(lines):
+    """Parse a SIPPICANS *.edf file header into a clean nested dictionary."""
+    header = {}
+    section = "general"
+
+    header_length = None
+
+    for line in lines:
+        line_ = line  # Unstripped line
+        line = line.strip()
+
+        if not line:
+            continue
+
+        # Detect section headings
+        if line.startswith("//"):
+            section_name = line.lstrip("/ ").strip()
+
+            if section_name:
+                if section_name != "Data":
+                    section = section_name.lower().replace(" ", "_")
+                    header.setdefault(section, {})
+                    # print(section_name)
+                else:
+                    header_length = lines.index(line_)
+
+            continue
+
+        # Parse key-value pairs
+        match = re.match(r"^([^:]+?)\s*:\s*(.*)$", line)
+
+        if not match:
+            continue
+
+        key, value = match.groups()
+        key = key.strip()
+        value = edf_parser_convert_value(value)
+
+        header.setdefault(section, {})[key] = value
+
+    return header, header_length
+
+
+def dmm_to_decimal(coord):
+    """
+    Convert degrees and decimal minutes to decimal degrees.
+    Example: '43 9.88329N' -> 43.1647215
+    """
+    match = re.fullmatch(r"\s*(\d+)\s+(\d+(?:\.\d+)?)\s*([NSEW])\s*", coord.upper())
+
+    if not match:
+        raise ValueError(f"Invalid coordinate format: {coord}")
+
+    degrees = float(match.group(1))
+    minutes = float(match.group(2))
+    hemisphere = match.group(3)
+
+    decimal = degrees + minutes / 60
+
+    if hemisphere in ("S", "W"):
+        decimal = -decimal
+
+    return decimal
+
+
+def read_sippicans(data_folder=ACOUPLANE_DATA_CELERITY_SIPPICANS_DIR, verbose=True):
+
+    from charset_normalizer import from_bytes
+
+    # List files in SIPPICANS folder
+    sip_files = [
+        os.path.join(data_folder, f)
+        for f in os.listdir(data_folder)
+        if os.path.isfile(os.path.join(data_folder, f))
+    ]
+
+    celerity_data = {}
+
+    default_value = -99
+    for fpath in sip_files:
+        # Step 1: read data in binary format and guess encoding
+        with open(fpath, "rb") as f:
+            data = f.read()
+        result = from_bytes(data).best()
+        encoding = result.encoding
+        # encoding = "cp1250"
+
+        if verbose:
+            print(
+                f"Reading file {fpath} with encoding {encoding}"
+                if result
+                else "Encoding not detected"
+            )
+
+        with open(fpath, "r", encoding=result.encoding) as f:
+            lines = f.readlines()
+
+        # Read metadata
+        metadata, header_length = parse_edf_header(lines)
+        # metadata
+
+        # Read data
+        names = [
+            metadata["data_fields"][f"Field{i}"]
+            for i in range(1, metadata["data_fields"]["Num Data Fields"] + 1)
+        ]
+        df_celerity = pd.read_csv(
+            fpath, header=header_length, delimiter="\t", encoding=encoding, names=names
+        )
+        # df_celerity
+
+        # Replace invalid values by nan
+        df_celerity.loc[
+            df_celerity["Temperature (°C)"] == default_value, "Temperature (°C)"
+        ] = np.nan
+        df_celerity.loc[
+            df_celerity["Sound Velocity (m/s)"] == default_value, "Sound Velocity (m/s)"
+        ] = np.nan
+        # print(df_celerity)
+
+        # Store
+        # print(metadata['launch_information']["Longitude"], metadata['launch_information']["Latitude"])
+        f_id = metadata["file_information"]["Raw Data Filename"]
+        celerity_data[f_id] = {}  # Init
+        celerity_data[f_id]["longitude"] = np.round(
+            dmm_to_decimal(metadata["launch_information"]["Longitude"]), 7
+        )
+        celerity_data[f_id]["latitude"] = np.round(
+            dmm_to_decimal(metadata["launch_information"]["Latitude"]), 7
+        )
+        celerity_data[f_id]["surface_temperatude_degC"] = metadata[
+            "launch_information"
+        ]["T°surf_(dd.d)"]
+        celerity_data[f_id]["pression_atmo_hPa"] = metadata["launch_information"][
+            "P_atm(pppp.p)"
+        ]
+        celerity_data[f_id]["salinity_ppt"] = float(
+            metadata["information_-_xbt"]["Salinity"].split(" ")[0]
+        )
+        celerity_data[f_id]["data"] = df_celerity
+
+    return celerity_data
+
 
 # ======================================================================================================================
 # Data processing
@@ -186,14 +364,14 @@ def compute_src_rcv_geodesic_dist(ds_pos_sections):
     return ds_pos_sections
 
 def build_and_save_portion_tree(ds_pos_sections, ds_pressure_sections, sections_orientation, sections_label, portion_id, root_fpath=ACOUPLANE_PORTION_NC_ROOT_FPATH):
-    # Copy to avoid muting the same object 
+    # Copy to avoid muting the same object
     ds_pos_sections = [ds.copy() for ds in ds_pos_sections]
     ds_pressure_sections = [ds.copy() for ds in ds_pressure_sections]
 
-    # Add horizontal distance info to dataset 
+    # Add horizontal distance info to dataset
     ds_pos_sections = compute_src_rcv_geodesic_dist(ds_pos_sections=ds_pos_sections)
 
-    # Add metadata to improve traceability 
+    # Add metadata to improve traceability
     for i in range(len(ds_pos_sections)):
         ds_pos_sections[i].attrs["portion_id"] = portion_id
         ds_pos_sections[i].attrs["section_orientation"] = sections_orientation[i]
@@ -208,9 +386,8 @@ def build_and_save_portion_tree(ds_pos_sections, ds_pressure_sections, sections_
         #     ds_pos_sections[i].attrs["section_id"],
         #     ds_pos_sections[i].attrs["section_orientation"],
         # )
-        
 
-    # Build tree dict 
+    # Build tree dict
     tree_dict_positions = {f"/position/{sections_label[i]}": ds_pos_sections[i] for i in range(len(sections_label))}
     tree_dict_pressure = {f"/pressure/{sections_label[i]}": ds_pressure_sections[i] for i in range(len(sections_label))}
     tree_dict = tree_dict_positions | tree_dict_pressure
@@ -218,11 +395,12 @@ def build_and_save_portion_tree(ds_pos_sections, ds_pressure_sections, sections_
     # Build tree
     portion_tree = xr.DataTree.from_dict(tree_dict)
 
-    # Save as netcdf 
+    # Save as netcdf
     fpath = f"{root_fpath}_{portion_id}.nc"
     portion_tree.to_netcdf(fpath)
 
     return portion_tree
+
 
 # ======================================================================================================================
 # Plot functions

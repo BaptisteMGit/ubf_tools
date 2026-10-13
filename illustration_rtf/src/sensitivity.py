@@ -1526,10 +1526,29 @@ def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR, env_overrides=None):
     # Build xarray dataset and save
     # NOTE: see _to_float32()'s own docstring -- same write-time
     # downcast as build_sensitivity_dataset(), for the same reason.
-    ds = xr.Dataset(
-        data_vars=dict(gf=(["f", "r"], _to_float32(np.abs(g_fr_full)))),
-        coords={"f": _to_float32(all_arg_dict["freq"]), "r": _to_float32(kraken_r)},
-    )
+    if "c_p_ssp" in env_overrides.keys():
+        # Save ssp as well
+        ds = xr.Dataset(
+            data_vars=dict(
+                gf=(["f", "r"], _to_float32(np.abs(g_fr_full))),
+                c_p_ssp=(["z_ssp"], _to_float32(env_overrides["c_p_ssp"])),
+            ),
+            coords={
+                "f": _to_float32(all_arg_dict["freq"]),
+                "r": _to_float32(kraken_r),
+                "z_ssp": _to_float32(env_overrides["z_ssp"]),
+            },
+        )
+    else:
+        ds = xr.Dataset(
+            data_vars=dict(
+                gf=(["f", "r"], _to_float32(np.abs(g_fr_full))),
+                #    c_p_ssp=(["z"],_to_float32(c_p_ssp_all[i_profile])[np.newaxis, :],
+            ),
+            coords={"f": _to_float32(all_arg_dict
+                                     ["freq"]), "r": _to_float32(kraken_r)},
+        )
+        
     # Keep the FULL baseline config as attrs (including "r0"/"d12", not
     # part of 'all_arg_dict' used for the KRAKEN call above) -- needed
     # later by process_sensitivity()/dist_from_baseline(). 'z_ssp'/

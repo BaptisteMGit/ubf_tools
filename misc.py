@@ -675,9 +675,36 @@ def newton(f, df, x0, eps):
 
 
 def equivalent_celerity(c_z, z):
+    """Derive equivalent celerity, defined such as the travel time for a ray propagating
+    vertically from the surface to the bottom takes the same amount ot time using real
+    celerity or equivalent celerity.
+
+    1/c_eq = 1/D integral_0^D (dz * 1/c(z))
+    D = np.sum(dz)   # Water column described by celerity profile
+
+    Ref : Thèse Trabatonni, eq.10 p.35
+
+    Parameters
+    ----------
+    c_z : np.ndarray of float
+        celerity at depth z (m/s)
+    z : np.ndarray of float
+        depth (m)
+
+    Returns
+    -------
+    float
+        equivalent celerity (m/s)
+    """
+
+    # Remove nan if any
+    nan_idx = np.isnan(z * c_z)
+    z = z[~nan_idx]
+    c_z = c_z[~nan_idx]
+
     dz = np.diff(z, append=z[-1] + z[-1] - z[-2])
     t_tot = np.sum(1 / c_z * dz)
-    c_eq = np.max(z) / t_tot
+    c_eq =  np.sum(dz) / t_tot
     return c_eq
 
 

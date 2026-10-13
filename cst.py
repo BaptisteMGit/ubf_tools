@@ -13,7 +13,7 @@
 # Import
 # ======================================================================================================================
 import os
-from colorama import Fore
+# from colorama import Fore
 
 """ Usefull constants """
 # Physical properties
@@ -35,13 +35,13 @@ AVERAGE_LOC_DISTANCE = 10 * 1e3  # Average localisation distance (m)
 LIBRARY_COLOR = "red"
 EVENT_COLOR = "black"
 
-# TDQM bar format
-BAR_FORMAT = "%s{l_bar}%s{bar}%s{r_bar}%s" % (
-    Fore.YELLOW,
-    Fore.GREEN,
-    Fore.YELLOW,
-    Fore.RESET,
-)
+# # TDQM bar format
+# BAR_FORMAT = "%s{l_bar}%s{bar}%s{r_bar}%s" % (
+#     Fore.YELLOW,
+#     Fore.GREEN,
+#     Fore.YELLOW,
+#     Fore.RESET,
+# )
 
 # Graph constants
 LABEL_FONTSIZE = 20

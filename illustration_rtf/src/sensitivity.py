@@ -1548,7 +1548,7 @@ def build_baseline(result_dir=RESULT_DIR, img_dir=IMG_DIR, env_overrides=None):
             coords={"f": _to_float32(all_arg_dict
                                      ["freq"]), "r": _to_float32(kraken_r)},
         )
-        
+
     # Keep the FULL baseline config as attrs (including "r0"/"d12", not
     # part of 'all_arg_dict' used for the KRAKEN call above) -- needed
     # later by process_sensitivity()/dist_from_baseline(). 'z_ssp'/

@@ -5209,8 +5209,9 @@ def run_all_celerity(env_type, n_profiles=1000, celerity_profile_source="real"):
 
 
 if __name__ == "__main__":
+    pass
 
-    run_all_celerity(env_type="sw", n_profiles=1000, celerity_profile_source="real")
+    # run_all_celerity(env_type="sw", n_profiles=1000, celerity_profile_source="real")
     # run_all_celerity(env_type="dw", n_profiles=1000, celerity_profile_source="real")
 
     # run_all_plateform()

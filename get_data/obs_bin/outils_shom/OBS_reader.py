@@ -358,8 +358,13 @@ if __name__ == "__main__":
     stop_date = "25/02/2026 17:30:52"  # en UTC !!!2026-02-25 17:26:52
     # start_date = start_utc_from_file_code
     # start_date = obsr.ConvertStrUTC2GPSDate(start_utc_from_file_code, dateformat = "%b %d %Y %H:%M:%S UTC")
-    100016000.0
-    100017500
+    # 100016000.0
+    # 100017500
+
+    # NOTE Test avec toute la séquence, on prend un start_date <= à la plus petite date de début et un stop date >= à la grande date de fin 
+    start_date = "24/02/2026 00:00:00"  # en UTC !!!
+    stop_date = "02/03/2026 12:00:00"  # en UTC !!!
+
     # charger des données longues
     GPS_start_time = obsr.ConvertStrUTC2GPSDate(start_date, "%d/%m/%Y %H:%M:%S")
     print(GPS_start_time)
@@ -399,7 +404,7 @@ if __name__ == "__main__":
     # data_length = obsr.SecBetweenDates(start_date, stop_date, "%d/%m/%Y %H:%M:%S")
     # # set channel to extract
     # channel = "all"
-    OBS7 = OBSdata()
+    # OBS7 = OBSdata()
     # OBS7.extract_raw_OBS(folderfile, [start_date, stop_date], channel, True)
     # # gérer les variations du tilt
     # TiltI, TiltC, Date, TiltMystR = read_tilt_from_health(

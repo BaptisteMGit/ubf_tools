@@ -46,7 +46,7 @@ ROOT_SIMULATION = Path(
 )
 
 # ----------------------------------------------------------------------
-# PARAMETERS TO ADJUST (placeholders -- not given in your message)
+# PARAMETERS TO ADJUST 
 # ----------------------------------------------------------------------
 # Frequency vector used to build the impulse response (rfft grid)
 FMAX = 800.0  # Hz

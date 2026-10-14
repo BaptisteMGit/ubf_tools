@@ -3,7 +3,7 @@
 """
 @File    :   bathy_profile_extraction.py
 @Time    :   2024/02/13 15:52:45
-@Author  :   Menetrier Baptiste 
+@Author  :   Menetrier Baptiste
 @Version :   1.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   None

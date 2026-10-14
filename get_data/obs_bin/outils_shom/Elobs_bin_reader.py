@@ -307,7 +307,7 @@ def getMinTimestamp(rep, sn, ts):
     if np.isin(-1, ts_int).any():
         # Manque au moins une voie => erreur
         print("Voie manquante")
-        # return -1
+        # return -1     # NOTE : BM: on ne dispose pas des données XML et on a une unique voie (voie H = 3)
     # On retourne la date la lus �lev�e pour avoir les 4 voies
     return np.max(ts_int)
 
@@ -554,7 +554,7 @@ def readOBS(folder,start,stop,channel='H',calib=True,SeismoVar='acc'):
         ts = getMinTimestamp(args.dir, sn[0], args.ts)
         if ts > GPS_start_time:
             GPS_start_time = ts
-        print(ts)
+        # print(ts)
         lb = []
         # Lecture param�tres d'acquisition
         (fs, g, v) = getParamsFromXMLFile(args.dir, sn[0], ts)
@@ -580,7 +580,7 @@ def readOBS(folder,start,stop,channel='H',calib=True,SeismoVar='acc'):
             g = args.gain
         print("S/N %d  %s (V%d): Fs = %dHz, G = %ddB" % (sn[0], sn[1], v, fs, g))
         for chan in range(NbVoies):
-            print(chan)
+            # print(chan)
             if sn[1] == 'A' or chan == 3:
                 fullScale = FS_SIGDEL3_V / np.power(10, g / 20)
             else:

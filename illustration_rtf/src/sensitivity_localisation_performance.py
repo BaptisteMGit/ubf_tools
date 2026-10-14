@@ -52,7 +52,7 @@ RTF_CELERITY_RESILIENCE_DATA_DIR = os.path.join(ROOT_RTF_RESILIENCE_DATA_DIR, ru
 
 def dist_from_baseline_loc_performance(ds_baseline, ds_test, d12, r0):
     """Compute the RTF distance (L1/L2/theta/wasserstein) between the
-    baseline's gamma at r0 and each swept value's gamma at r0.
+    baseline's gamma at all r and each swept value's gamma at r0.
 
     """
     # Baseline gamma (along r axis) -- already precomputed for every r at
@@ -64,7 +64,35 @@ def dist_from_baseline_loc_performance(ds_baseline, ds_test, d12, r0):
     g_fr_1 = ds_test.gf.sel(r=r0, method="nearest")
     g_fr_2 = ds_test.gf.sel(r=r0 + d12, method="nearest")
     gamma_test_r0 = 20 * np.log10(np.abs(g_fr_2.values / g_fr_1.values))
-    gamma_b = gamma_test_r0.T[:, np.newaxis, :]
+    gamma_b = gamma_test_r0.T[:, np.newaxis, :]  # (nf, 1, nprofile)
+
+    # Compute distance
+    dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
+    dist_L2 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L2")
+    dist_theta = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="theta")
+
+    # NOTE : wasserstein implementation does not support vectorisation
+    # It could be by-passed by ugly loop over position if required
+    # dist_wasserstein = calc_gamma_dist(
+    #     gamma_a=gamma_a, gamma_b=gamma_b, dist_type="wasserstein"
+    # )
+    dist_wasserstein = None
+
+    return dist_L1, dist_L2, dist_theta, dist_wasserstein
+
+
+def dist_from_baseline_loc_performance_baseline(ds_baseline, r0):
+    """Compute the RTF distance (L1/L2/theta/wasserstein) between the
+    baseline's gamma at all r and baseline's gamma at r0
+
+    """
+    # Baseline gamma (along r axis) -- already precomputed for every r at
+    # build_baseline()
+    gamma_baseline = ds_baseline.gamma  # (nf, nr)
+    gamma_a = gamma_baseline.values  # (nf, nr)
+    gamma_b = gamma_baseline.sel(r=r0, method="nearest").values[
+        :, np.newaxis
+    ]  # (nf, 1)
 
     # Compute distance
     dist_L1 = calc_gamma_dist(gamma_a=gamma_a, gamma_b=gamma_b, dist_type="L1")
@@ -153,9 +181,13 @@ def get_msr(ds_single_profile, dist="L1"):
         ds_res_p[f"dist_{dist}"].max() - ds_res_p[f"dist_{dist}"].min()
     )
     # Get main lobe domain
-    _, r_d_neg_sup_3dB, r_d_pos_sup_3dB = calc_mainlobe_width_3dB(
-        d_norm, ds_res_p.r, ds_res_p[f"r_hat_{dist}"]
-    )
+    try:
+        _, r_d_neg_sup_3dB, r_d_pos_sup_3dB = calc_mainlobe_width_3dB(
+            d_norm, ds_res_p.r, ds_res_p[f"r_hat_{dist}"]
+        )
+    except:
+        return np.nan
+
     # Exclude main lobe
     idx_main_lobe = np.logical_and(
         ds_res_p.r >= ds_res_p[f"r_hat_{dist}"] + r_d_neg_sup_3dB,
@@ -208,6 +240,12 @@ def process_celerity_sensitivity_loc_performance(
                 ds_baseline.z_ssp.values,
                 ds_baseline.c_p_ssp.values,
             )
+
+            # Derive theta(r) for baseline
+            baseline_dist_L1, baseline_dist_L2, baseline_dist_theta, _ = (
+                dist_from_baseline_loc_performance_baseline(ds_baseline, r0)
+            )
+
             # NOTE: concat_dim="profile" -- matches
             # build_celerity_sensitivity_dataset()'s own saved
             # dimension name (every swept "value" here is a profile,
@@ -257,6 +295,9 @@ def process_celerity_sensitivity_loc_performance(
                 dist_L2=(["r", "profile"], dist_L2),
                 dist_theta=(["r", "profile"], dist_theta),
                 # dist_wasserstein=(["r", "profile"], dist_wasserstein),        # NOTE : not handled yet
+                baseline_dist_L1=(["r"], baseline_dist_L1),
+                baseline_dist_L2=(["r"], baseline_dist_L2),
+                baseline_dist_theta=(["r"], baseline_dist_theta),
                 ssp_rmse=(["profile"], rmse),
                 ssp_std=(["profile"], std),
                 ssp_f1=(["profile"], f1_score),
@@ -295,6 +336,11 @@ def process_celerity_sensitivity_loc_performance(
             msr_L1.append(get_msr(ds_single_profile=ds_res_p, dist="L1"))
             msr_L2.append(get_msr(ds_single_profile=ds_res_p, dist="L2"))
             msr_theta.append(get_msr(ds_single_profile=ds_res_p, dist="theta"))
+
+        # Add to dataset
+        ds_res["msr_L1"] = (["profile"], msr_L1)
+        ds_res["msr_L2"] = (["profile"], msr_L2)
+        ds_res["msr_theta"] = (["profile"], msr_theta)
 
         # Save results
         output_fname = f"resilience_loc_performance_{situation}.nc"
@@ -417,15 +463,43 @@ if __name__ == "__main__":
     r0 = 15000
     rmse_pos_theta = np.sqrt(np.mean((ds_res.r_hat_theta - r0) ** 2))
 
-    plt.figure()
-    ds_res.r_hat_theta.plot.hist(bins=50)
+    # plt.figure()
+    # ds_res.r_hat_theta.plot.hist(bins=50)
 
     err_theta = ds_res.r_hat_theta - r0
     err_L2 = ds_res.r_hat_L2 - r0
-    plt.figure()
-    plt.scatter(ds_res.ssp_std, err_theta, marker=".")
-    plt.scatter(ds_res.ssp_std, err_L2, marker="x")
+    # plt.figure()
+    # plt.scatter(ds_res.ssp_std, err_theta, marker=".")
+    # plt.scatter(ds_res.ssp_std, err_L2, marker="x")
 
-    plt.figure()
-    plt.scatter(ds_res.ssp_rmse, err_theta)
-    print()
+    # plt.figure()
+    # plt.scatter(ds_res.ssp_std, -ds_res.msr_L1, label="L1")
+    # plt.scatter(ds_res.ssp_std, -ds_res.msr_L2, label="L2")
+    # plt.scatter(ds_res.ssp_std, -ds_res.msr_theta, label="theta")
+    # plt.legend()
+    # plt.scatter(ds_res.ssp_rmse, err_theta)
+    # print()
+
+    # Plot theta sorted by ascending ssp std and compare to baseline distance
+    idx_sort = np.argsort(ds_res.ssp_std)
+    fig, axs = plt.subplots(2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8))
+    # Sort by ascending ssp_std
+    axs[0].pcolormesh(
+        ds_res.r,
+        ds_res.ssp_std.values[idx_sort],
+        ds_res.dist_theta.values[:, idx_sort].T,
+    )
+    ds_res.baseline_dist_theta.plot(ax=axs[1])
+
+    # Plot theta sorted by ascending ssp rmse and compare to baseline distance
+    idx_sort = np.argsort(ds_res.ssp_rmse)
+    fig, axs = plt.subplots(2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8))
+    # Sort by ascending ssp_std
+    axs[0].pcolormesh(
+        ds_res.r,
+        ds_res.ssp_std.values[idx_sort],
+        ds_res.dist_theta.values[:, idx_sort].T,
+    )
+    ds_res.baseline_dist_theta.plot(ax=axs[1])
+
+    plt.show()

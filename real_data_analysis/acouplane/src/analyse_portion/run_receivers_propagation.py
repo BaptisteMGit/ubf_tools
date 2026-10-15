@@ -46,7 +46,7 @@ ROOT_SIMULATION = Path(
 )
 
 # ----------------------------------------------------------------------
-# PARAMETERS TO ADJUST 
+# PARAMETERS TO ADJUST
 # ----------------------------------------------------------------------
 # Frequency vector used to build the impulse response (rfft grid)
 FMAX = 800.0  # Hz
@@ -64,17 +64,27 @@ BUFFER_FMIN = 100.0
 SRC_DEPTH = 5.0  # m, must be < shallowest depth of every profile (~97 m)
 N_RCV_Z = 201  # number of depths of the output grid
 N_RCV_R = 501  # number of ranges of the output grid
+# BOTTOM = {
+#     "c_p": 1650.0,
+#     "c_s": 0.0,
+#     "rho": 1.8,
+#     "a_p": 0.8,
+#     "a_s": 0.0,
+# }  # sandy sediment
+from source.global_constants import sables_TG
+
 BOTTOM = {
-    "c_p": 1650.0,
+    "c_p": sables_TG["c_p"],
     "c_s": 0.0,
-    "rho": 1.8,
-    "a_p": 0.8,
+    "rho": sables_TG["rho"],
+    "a_p": sables_TG["a_p"],
     "a_s": 0.0,
 }  # sandy sediment
 PARALLEL = True  # frequencies distributed over N_CORES processes (global_constants.py)
 STORE_DTYPE = (
     np.complex64
 )  # dtype of the returned/saved pressure field (complex128 = 2x memory)
+N_WORKERS = 10
 
 
 def get_frequencies(test_mode=False, fmin_compute=FMIN_COMPUTE):
@@ -203,7 +213,7 @@ def run_receiver(
         return
 
     # --- KRAKEN + FIELD
-    manager = KrakenManager(verbose=True, parallel=parallel)
+    manager = KrakenManager(verbose=True, parallel=parallel, n_workers=N_WORKERS)
     pressure_field, field_pos = manager.runkraken(
         env=env, flp=flp, frequencies=env.freq
     )

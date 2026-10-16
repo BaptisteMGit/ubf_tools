@@ -484,8 +484,11 @@ if __name__ == "__main__":
     #     build_baseline=False,
     # )
 
+    ROOT_DIAG_IMG = r"/home/program/ubf_tools/illustration_rtf/img"
+
     env_type = "sw"
     situation = "winter"
+
     output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
     output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
     ds_res = xr.open_dataset(output_fpath)
@@ -498,27 +501,33 @@ if __name__ == "__main__":
     err_L2 = ds_res.r_hat_L2 - r0
     abs_err_L2 = np.abs(err_L2)
 
+    # Hist params
+    nbins = 100
     # Fig1:  Histogram of estimated position
     plt.figure()
-    ds_res.r_hat_theta.plot.hist(bins=50)
+    ds_res.r_hat_theta.plot.hist(bins=nbins)
+    plt.xlabel(r"$\hat{r}$")
+    plt.ylabel("Population")
 
     # Fig2: Histogram of err
     plt.figure()
-    err_theta.plot.hist(bins=200)
+    err_theta.plot.hist(bins=nbins)
     plt.xlabel(r"$\lvert r - \hat{r} \rvert$")
+    plt.ylabel("Population")
 
     # Fig3: error vs ssp_std
     plt.figure()
-    plt.scatter(ds_res.ssp_std, err_theta, marker=".")
-    plt.scatter(ds_res.ssp_std, err_L2, marker="x")
+    plt.scatter(ds_res.ssp_std, err_theta, marker=".", label="theta")
+    plt.scatter(ds_res.ssp_std, err_L2, marker="x", label="L2")
+    plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
 
-    # plt.figure()
-    # plt.scatter(ds_res.ssp_std, -ds_res.msr_L1, label="L1")
-    # plt.scatter(ds_res.ssp_std, -ds_res.msr_L2, label="L2")
-    # plt.scatter(ds_res.ssp_std, -ds_res.msr_theta, label="theta")
-    # plt.legend()
-    # plt.scatter(ds_res.ssp_rmse, err_theta)
-    # print()
+    # Fig4: MSR vs ssp_std
+    plt.figure()
+    plt.scatter(ds_res.ssp_std, -ds_res.msr_L1, label="L1")
+    plt.scatter(ds_res.ssp_std, -ds_res.msr_L2, label="L2")
+    plt.scatter(ds_res.ssp_std, -ds_res.msr_theta, label="theta")
+    plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
+    plt.legend()
 
     # Plot theta sorted by ascending ssp std and compare to baseline distance
     idx_sort = np.argsort(ds_res.ssp_std)

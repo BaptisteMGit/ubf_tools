@@ -488,67 +488,83 @@ if __name__ == "__main__":
 
     env_type = "sw"
     situation = "winter"
+    env_types = ["sw", "dw"]
+    situations = ["summer", "winter"]
 
-    output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
-    output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
-    ds_res = xr.open_dataset(output_fpath)
+    def plot_diags(situations, env_types):
+        for env_type in env_types:
+            for situation in situations:
 
-    # Compute pos rmse
-    r0 = ds_res.r0
-    rmse_pos_theta = np.sqrt(np.mean((ds_res.r_hat_theta - r0) ** 2))
-    err_theta = ds_res.r_hat_theta - r0
-    abs_err_theta = np.abs(err_theta)
-    err_L2 = ds_res.r_hat_L2 - r0
-    abs_err_L2 = np.abs(err_L2)
+                output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
+                output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
+                ds_res = xr.open_dataset(output_fpath)
 
-    # Hist params
-    nbins = 100
-    # Fig1:  Histogram of estimated position
-    plt.figure()
-    ds_res.r_hat_theta.plot.hist(bins=nbins)
-    plt.xlabel(r"$\hat{r}$")
-    plt.ylabel("Population")
+                # Compute pos rmse
+                r0 = ds_res.r0
+                rmse_pos_theta = np.sqrt(np.mean((ds_res.r_hat_theta - r0) ** 2))
+                err_theta = ds_res.r_hat_theta - r0
+                abs_err_theta = np.abs(err_theta)
+                err_L2 = ds_res.r_hat_L2 - r0
+                abs_err_L2 = np.abs(err_L2)
 
-    # Fig2: Histogram of err
-    plt.figure()
-    err_theta.plot.hist(bins=nbins)
-    plt.xlabel(r"$\lvert r - \hat{r} \rvert$")
-    plt.ylabel("Population")
+                # Hist params
+                nbins = 100
+                # Fig1:  Histogram of estimated position
+                plt.figure()
+                ds_res.r_hat_theta.plot.hist(bins=nbins)
+                plt.xlabel(r"$\hat{r}$")
+                plt.ylabel("Population")
+                fpath = os.path.join(ROOT_DIAG_IMG, "hist_r.png")
+                plt.savefig(fpath)
 
-    # Fig3: error vs ssp_std
-    plt.figure()
-    plt.scatter(ds_res.ssp_std, err_theta, marker=".", label="theta")
-    plt.scatter(ds_res.ssp_std, err_L2, marker="x", label="L2")
-    plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
+                # Fig2: Histogram of err
+                plt.figure()
+                err_theta.plot.hist(bins=nbins)
+                plt.xlabel(r"$\lvert r - \hat{r} \rvert$")
+                plt.ylabel("Population")
+                fpath = os.path.join(ROOT_DIAG_IMG, "hist_err_r.png")
+                plt.savefig(fpath)
 
-    # Fig4: MSR vs ssp_std
-    plt.figure()
-    plt.scatter(ds_res.ssp_std, -ds_res.msr_L1, label="L1")
-    plt.scatter(ds_res.ssp_std, -ds_res.msr_L2, label="L2")
-    plt.scatter(ds_res.ssp_std, -ds_res.msr_theta, label="theta")
-    plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
-    plt.legend()
+                # Fig3: error vs ssp_std
+                plt.figure()
+                plt.scatter(ds_res.ssp_std, err_theta, marker=".", label="theta")
+                plt.scatter(ds_res.ssp_std, err_L2, marker="x", label="L2")
+                plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
+                fpath = os.path.join(ROOT_DIAG_IMG, "err_vs_.png")
+                plt.savefig(fpath)
 
-    # Plot theta sorted by ascending ssp std and compare to baseline distance
-    idx_sort = np.argsort(ds_res.ssp_std)
-    fig, axs = plt.subplots(2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8))
-    # Sort by ascending ssp_std
-    axs[0].pcolormesh(
-        ds_res.r,
-        ds_res.ssp_std.values[idx_sort],
-        ds_res.dist_theta.values[:, idx_sort].T,
-    )
-    ds_res.baseline_dist_theta.plot(ax=axs[1])
+                # Fig4: MSR vs ssp_std
+                plt.figure()
+                plt.scatter(ds_res.ssp_std, -ds_res.msr_L1, label="L1")
+                plt.scatter(ds_res.ssp_std, -ds_res.msr_L2, label="L2")
+                plt.scatter(ds_res.ssp_std, -ds_res.msr_theta, label="theta")
+                plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
+                plt.legend()
 
-    # Plot theta sorted by ascending ssp rmse and compare to baseline distance
-    idx_sort = np.argsort(ds_res.ssp_rmse)
-    fig, axs = plt.subplots(2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8))
-    # Sort by ascending ssp_std
-    axs[0].pcolormesh(
-        ds_res.r,
-        ds_res.ssp_std.values[idx_sort],
-        ds_res.dist_theta.values[:, idx_sort].T,
-    )
-    ds_res.baseline_dist_theta.plot(ax=axs[1])
+                # Plot theta sorted by ascending ssp std and compare to baseline distance
+                idx_sort = np.argsort(ds_res.ssp_std)
+                fig, axs = plt.subplots(
+                    2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8)
+                )
+                # Sort by ascending ssp_std
+                axs[0].pcolormesh(
+                    ds_res.r,
+                    ds_res.ssp_std.values[idx_sort],
+                    ds_res.dist_theta.values[:, idx_sort].T,
+                )
+                ds_res.baseline_dist_theta.plot(ax=axs[1])
+
+                # Plot theta sorted by ascending ssp rmse and compare to baseline distance
+                idx_sort = np.argsort(ds_res.ssp_rmse)
+                fig, axs = plt.subplots(
+                    2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8)
+                )
+                # Sort by ascending ssp_std
+                axs[0].pcolormesh(
+                    ds_res.r,
+                    ds_res.ssp_std.values[idx_sort],
+                    ds_res.dist_theta.values[:, idx_sort].T,
+                )
+                ds_res.baseline_dist_theta.plot(ax=axs[1])
 
     plt.show()

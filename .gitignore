@@ -200,3 +200,10 @@ cython_debug/
 
 # requirements files 
 requirements*
+
+# Data files 
+*.pkl
+*.npy
+
+# Images 
+*.png

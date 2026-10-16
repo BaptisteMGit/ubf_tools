@@ -446,60 +446,71 @@ if __name__ == "__main__":
         ROOT_RTF_RESILIENCE_DATA_DIR, run_name
     )
 
-    env_type = "dw"
-    situation = "winter"
-    generate_celerity_diag_loc_performance(
-        distance=["theta"],
-        celerity_env_types=[env_type],
-        celerity_situations=[situation],
-        process_sensi=True,
-        build_baseline=False,
-    )
-    env_type = "dw"
-    situation = "summer"
-    generate_celerity_diag_loc_performance(
-        distance=["theta"],
-        celerity_env_types=[env_type],
-        celerity_situations=[situation],
-        process_sensi=True,
-        build_baseline=False,
-    )
+    # env_type = "dw"
+    # situation = "winter"
+    # generate_celerity_diag_loc_performance(
+    #     distance=["theta"],
+    #     celerity_env_types=[env_type],
+    #     celerity_situations=[situation],
+    #     process_sensi=True,
+    #     build_baseline=False,
+    # )
+    # env_type = "dw"
+    # situation = "summer"
+    # generate_celerity_diag_loc_performance(
+    #     distance=["theta"],
+    #     celerity_env_types=[env_type],
+    #     celerity_situations=[situation],
+    #     process_sensi=True,
+    #     build_baseline=False,
+    # )
+
+    # env_type = "sw"
+    # situation = "winter"
+    # generate_celerity_diag_loc_performance(
+    #     distance=["theta"],
+    #     celerity_env_types=[env_type],
+    #     celerity_situations=[situation],
+    #     process_sensi=True,
+    #     build_baseline=False,
+    # )
+    # env_type = "sw"
+    # situation = "summer"
+    # generate_celerity_diag_loc_performance(
+    #     distance=["theta"],
+    #     celerity_env_types=[env_type],
+    #     celerity_situations=[situation],
+    #     process_sensi=True,
+    #     build_baseline=False,
+    # )
 
     env_type = "sw"
     situation = "winter"
-    generate_celerity_diag_loc_performance(
-        distance=["theta"],
-        celerity_env_types=[env_type],
-        celerity_situations=[situation],
-        process_sensi=True,
-        build_baseline=False,
-    )
-    env_type = "sw"
-    situation = "summer"
-    generate_celerity_diag_loc_performance(
-        distance=["theta"],
-        celerity_env_types=[env_type],
-        celerity_situations=[situation],
-        process_sensi=True,
-        build_baseline=False,
-    )
-
     output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
     output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
     ds_res = xr.open_dataset(output_fpath)
 
     # Compute pos rmse
-    r0 = 15000
+    r0 = ds_res.r0
     rmse_pos_theta = np.sqrt(np.mean((ds_res.r_hat_theta - r0) ** 2))
-
-    # plt.figure()
-    # ds_res.r_hat_theta.plot.hist(bins=50)
-
     err_theta = ds_res.r_hat_theta - r0
+    abs_err_theta = np.abs(err_theta)
     err_L2 = ds_res.r_hat_L2 - r0
-    # plt.figure()
-    # plt.scatter(ds_res.ssp_std, err_theta, marker=".")
-    # plt.scatter(ds_res.ssp_std, err_L2, marker="x")
+    abs_err_L2 = np.abs(err_L2)
+
+    # Fig1:  Histogram of estimated position
+    plt.figure()
+    ds_res.r_hat_theta.plot.hist(bins=50)
+
+    # Fig2: Histogram of err
+    plt.figure()
+    err_theta.plot.hist(bins=200)
+    plt.xlabel(r"$\lvert r - \hat{r} \rvert$")
+
+    # Fig3: error vs ssp_std
+    plt.figure()
+    plt.scatter(ds_res.ssp_std, err_theta, marker=".")
+    plt.scatter(ds_res.ssp_std, err_L2, marker="x")
 
     # plt.figure()
     # plt.scatter(ds_res.ssp_std, -ds_res.msr_L1, label="L1")

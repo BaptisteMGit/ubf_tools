@@ -46,9 +46,6 @@ else:  # Linux
     IMG_DIR = os.path.join(ROOT_PROGRAM, "illustration_rtf", "img")
     OUTPUT_DATA_DIR = os.path.join(ROOT_PROGRAM, "illustration_rtf", "data")
 
-run_name = "resilience_12102026"
-RTF_CELERITY_RESILIENCE_DATA_DIR = os.path.join(ROOT_RTF_RESILIENCE_DATA_DIR, run_name)
-
 
 def dist_from_baseline_loc_performance(ds_baseline, ds_test, d12, r0):
     """Compute the RTF distance (L1/L2/theta/wasserstein) between the
@@ -343,7 +340,7 @@ def process_celerity_sensitivity_loc_performance(
         ds_res["msr_theta"] = (["profile"], msr_theta)
 
         # Save results
-        output_fname = f"resilience_loc_performance_{situation}.nc"
+        output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
         output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
         ds_res.to_netcdf(output_fpath)
 
@@ -444,18 +441,50 @@ def generate_celerity_diag_loc_performance(
 
 if __name__ == "__main__":
 
-    # run_all_celerity(env_type="sw", n_profiles=1000, celerity_profile_source="real")
-    # run_all_celerity(env_type="dw", n_profiles=1000, celerity_profile_source="real")
+    run_name = "resilience_12102026"
+    RTF_CELERITY_RESILIENCE_DATA_DIR = os.path.join(
+        ROOT_RTF_RESILIENCE_DATA_DIR, run_name
+    )
 
+    env_type = "dw"
+    situation = "winter"
     generate_celerity_diag_loc_performance(
         distance=["theta"],
-        celerity_env_types=["sw"],
-        celerity_situations=["all"],
+        celerity_env_types=[env_type],
+        celerity_situations=[situation],
+        process_sensi=True,
+        build_baseline=False,
+    )
+    env_type = "dw"
+    situation = "summer"
+    generate_celerity_diag_loc_performance(
+        distance=["theta"],
+        celerity_env_types=[env_type],
+        celerity_situations=[situation],
         process_sensi=True,
         build_baseline=False,
     )
 
-    output_fname = f"resilience_loc_performance_all.nc"
+    env_type = "sw"
+    situation = "winter"
+    generate_celerity_diag_loc_performance(
+        distance=["theta"],
+        celerity_env_types=[env_type],
+        celerity_situations=[situation],
+        process_sensi=True,
+        build_baseline=False,
+    )
+    env_type = "sw"
+    situation = "summer"
+    generate_celerity_diag_loc_performance(
+        distance=["theta"],
+        celerity_env_types=[env_type],
+        celerity_situations=[situation],
+        process_sensi=True,
+        build_baseline=False,
+    )
+
+    output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
     output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
     ds_res = xr.open_dataset(output_fpath)
 

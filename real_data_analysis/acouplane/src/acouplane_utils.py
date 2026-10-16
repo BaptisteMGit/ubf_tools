@@ -467,9 +467,53 @@ def plot_obs_pos(ds_pos, ax=None, add_legend=True, add_title=True):
     if add_title:
         ax.set_title("OBS positions")
     if add_legend:
-        ax.legend()
+        _, labels = ax.get_legend_handles_labels()
+        ncols = min(len(labels), 4)
+        ax.legend(ncols=ncols)
 
     return ax
+
+
+def plot_obs_pos_enu(ds_pos, ax=None, add_legend=True, add_title=True):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
+
+    for id in ds_pos.rcv_id.values:
+        rcv = ds_pos.sel(rcv_id=id)
+        ax.scatter(rcv.rcv_e, rcv.rcv_n, marker="d", label=f"{id.upper()}", s=200)
+
+    ax.set_xlabel("E [m]")
+    ax.set_ylabel("N [m]")
+
+    if add_title:
+        ax.set_title("OBS positions")
+    if add_legend:
+        _, labels = ax.get_legend_handles_labels()
+        ncols = min(len(labels), 4)
+        ax.legend(ncols=ncols)
+
+    return ax
+
+
+def plot_portion_tir_pos_enu(portion_tree, ax=None):
+    if ax is None:
+        fig, ax = plt.subplots()
+    else:
+        fig = plt.gcf()
+
+    # i = 0
+    for name, node in portion_tree.position.children.items():
+        ds_pos_section = node.to_dataset()
+        sc = ax.scatter(
+            ds_pos_section.tir_src_e,
+            ds_pos_section.tir_src_n,
+            color=color(ds_pos_section.section_id),
+            label=f"{ds_pos_section.section_orientation} {ds_pos_section.section_id}",
+        )
+
+    plot_obs_pos_enu(ds_pos_section, ax=ax)
+
+    return fig, ax
 
 
 def plot_pressure_section(ds_pressure_section, single_fig=False):

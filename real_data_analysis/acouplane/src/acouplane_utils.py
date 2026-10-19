@@ -447,6 +447,243 @@ def build_and_save_portion_tree(
     return portion_tree
 
 
+def get_portion_tir_mean_pos(portion_tree):
+    mean_lon = []
+    mean_lat = []
+    for name, node in portion_tree.position.children.items():
+        ds_pos_section = node.to_dataset()
+        mean_lon.append(ds_pos_section.tir_src_lon.mean().values)
+        mean_lat.append(ds_pos_section.tir_src_lat.mean().values)
+
+    return np.mean(mean_lon), np.mean(mean_lat)
+
+
+def get_portion_tir_arr_dt(portion_tree, offset1=200, offset2=1500, obs_ids=None):
+    # if obs_ids is None:
+    #     obs_ids = ds_pressure_section.obs_id.values
+
+    # tps_propa_measured_s_ = []
+    for name, node in portion_tree.position.children.items():
+        ds_pos_section = node.to_dataset()
+        # Associated ds_pos
+        ds_pressure_section = portion_tree.pressure[name].to_dataset()
+
+        tps_propa_measured_s = []
+        # iterate over tirs
+        for i_tir in range(ds_pos_section.sizes["src_datetime"]):
+            # Theoretical arrival datetime
+            arr_dt_th = ds_pos_section["tir_reception_datetime"].isel(
+                src_datetime=slice(i_tir, i_tir + 1)
+            )
+            # Emission datetime
+            emission_dt = ds_pos_section["src_datetime"].isel(
+                src_datetime=slice(i_tir, i_tir + 1)
+            )
+
+            tps_propa_measured_s_rcv = []
+            # fig, axs = plt.subplots(nrows=obs_ids.size, ncols=1, figsize=(16, 14), sharex=False)
+            # axs = axs.flatten()
+            for i, rcv_id in enumerate(ds_pos_section.rcv_id.values):
+
+                if not rcv_id in obs_ids:
+                    propagation_time_measured_s = np.nan
+
+                else:
+
+                    arr_dt_th_rcv = arr_dt_th.sel(rcv_id=rcv_id)
+
+                    # Select associated data window
+                    press_rcv = ds_pressure_section[f"pressure_{rcv_id}"].sel(
+                        {
+                            f"time_{rcv_id}": slice(
+                                arr_dt_th_rcv.values[0] - np.timedelta64(offset1, "ms"),
+                                arr_dt_th_rcv.values[0] + np.timedelta64(offset2, "ms"),
+                            )
+                        }
+                    )
+
+                    # We might fall at the border -> skip to avoid issues
+                    if press_rcv.size == 0:
+                        propagation_time_measured_s = np.nan
+
+                    else:
+
+                        # Normalize and center
+                        press_rcv = press_rcv / press_rcv.max()  # Useless here
+                        press_rcv = (
+                            press_rcv - press_rcv.mean()
+                        )  # Should be done globally
+
+                        # press_rcv.plot(label=rcv_id.upper(), color=color(i), ax=axs[i])
+                        # Plot arrivals time
+                        # axs[i].vlines(x=tir_dt_rcv, ymin=-1, ymax=1, color="k", linestyle="--")
+
+                        # Find peak
+                        peak_height = 5 * np.std(
+                            press_rcv.values[-100:]
+                        )  # 5 times noise std seems like a reasonable choice
+                        # axs[i].axhline(peak_height, color="k", linestyle="--")
+                        peaks_idx, peaks_prop = sp.find_peaks(
+                            press_rcv, height=peak_height
+                        )
+                        if peaks_idx.size > 0:
+                            # Get arrival datetime
+                            arr_dt_measured = press_rcv[f"time_{rcv_id}"].values[
+                                peaks_idx[0]
+                            ]
+                            # Associated propagation time
+                            propagation_time_measured_ns = arr_dt_measured - emission_dt
+                            propagation_time_measured_s = (
+                                propagation_time_measured_ns.values[0]
+                                / np.timedelta64(1, "s")
+                            )
+                        else:
+                            propagation_time_measured_s = np.nan
+
+                tps_propa_measured_s_rcv.append(propagation_time_measured_s)
+
+            tps_propa_measured_s.append(np.array(tps_propa_measured_s_rcv))
+
+        # Add to portion
+        ds_pos_section["tps_propagation_measured_s"] = (
+            ["rcv_id", "src_datetime"],
+            np.vstack(tps_propa_measured_s).T,
+        )
+
+        # Update attribute
+        ds_pos_section.tps_propagation_measured_s.attrs = {
+            "units": "s",
+            "long_name": "Estimated propagation time",
+        }
+
+        # Update tree
+        node.ds = ds_pos_section
+
+        # tps_propa_measured_s_.append(tps_propa_measured_s)
+
+    # return np.vstack(tps_propa_measured_s_)
+
+
+# ======================================================================================================================
+# ENU <-> WGS84 conversion
+# ======================================================================================================================
+from source.utils.utils_geo import geodetic_to_ecef, ecef_to_enu
+
+
+def transform_pos_wgs84_enu(
+    lon, lat, local_frame_origin, N_geoid_undulation, zeta=0, sensor_h_above_sea_level=5
+):
+    lon = np.deg2rad(lon)
+    lat = np.deg2rad(lat)
+    # GPS h above WGS84 ellipsoid
+    h = N_geoid_undulation + zeta + sensor_h_above_sea_level
+    # WGS84 -> ECEF
+    x, y, z = geodetic_to_ecef(lat, lon, h)
+    # ECEF -> ENU
+    lat0, lon0, h0 = (
+        np.deg2rad(local_frame_origin["lat"]),
+        np.deg2rad(local_frame_origin["lon"]),
+        local_frame_origin["h"],
+    )
+    e, n, u = ecef_to_enu(x, y, z, lat0, lon0, h0)
+
+    return e, n, u
+
+
+def get_enu_tir_pos(portion_tree, local_frame_origin, N_geoid_undulation=48.5):
+
+    for name, node in portion_tree.position.children.items():
+        ds_pos_section = node.to_dataset()
+        # Convert source position from WGS84 to ecef
+        tir_src_e, tir_src_n, tir_src_u = transform_pos_wgs84_enu(
+            lon=ds_pos_section.tir_src_lon,
+            lat=ds_pos_section.tir_src_lat,
+            local_frame_origin=local_frame_origin,
+            N_geoid_undulation=N_geoid_undulation,
+            zeta=0,
+            sensor_h_above_sea_level=-5,  # Source is approximately 5 meter below sea surface = MSL
+        )
+        # Add to portion
+        ds_pos_section["tir_src_e"] = (["src_datetime"], tir_src_e)
+        ds_pos_section["tir_src_n"] = (["src_datetime"], tir_src_n)
+        ds_pos_section["tir_src_u"] = (["src_datetime"], tir_src_u)
+        # Update attribute
+        ds_pos_section.tir_src_e.attrs = {
+            "units": "m",
+            "long_name": "E",
+        }
+        ds_pos_section.tir_src_n.attrs = {
+            "units": "m",
+            "long_name": "N",
+        }
+        ds_pos_section.tir_src_u.attrs = {
+            "units": "m",
+            "long_name": "U",
+        }
+
+        # Update tree
+        node.ds = ds_pos_section
+
+
+def get_enu_rcv_pos(portion_tree, local_frame_origin, N_geoid_undulation=48.5):
+
+    for name, node in portion_tree.position.children.items():
+        ds_pos_section = node.to_dataset()
+        # Convert OBS position from WGS84 to ecef
+        rcv_e, rcv_n, rcv_u = transform_pos_wgs84_enu(
+            lon=ds_pos_section.rcv_lon,
+            lat=ds_pos_section.rcv_lat,
+            local_frame_origin=local_frame_origin,
+            N_geoid_undulation=N_geoid_undulation,
+            zeta=0,
+            sensor_h_above_sea_level=-ds_pos_section.rcv_immersion,
+        )
+        # Add to portion
+        ds_pos_section["rcv_e"] = (["rcv_id"], rcv_e)
+        ds_pos_section["rcv_n"] = (["rcv_id"], rcv_n)
+        ds_pos_section["rcv_u"] = (["rcv_id"], rcv_u)
+        # Update attribute
+        ds_pos_section.rcv_e.attrs = {
+            "units": "m",
+            "long_name": "E",
+        }
+        ds_pos_section.rcv_n.attrs = {
+            "units": "m",
+            "long_name": "N",
+        }
+        ds_pos_section.rcv_u.attrs = {
+            "units": "m",
+            "long_name": "U",
+        }
+
+        # Update tree
+        node.ds = ds_pos_section
+
+
+def get_vertical_dist(portion_tree, z_src=5):
+    # Derive vertical distance between source and receiver
+    v_dist_wgs84 = []
+    v_dist_enu = []
+    for name, node in portion_tree.position.children.items():
+        ds_pos_section = node.to_dataset()
+        source_z_below_surface = np.ones_like(ds_pos_section.tir_src_u) * z_src
+        vd_wgs84 = (
+            ds_pos_section.rcv_immersion.values[:, np.newaxis]
+            - source_z_below_surface[np.newaxis, :]
+        )  # (nrcv, npos)
+        v_dist_wgs84.append(vd_wgs84)
+        vd_enu = (
+            ds_pos_section.rcv_u.values[:, np.newaxis]
+            - ds_pos_section.tir_src_u.values[np.newaxis, :]
+        )  # (nrcv, npos)
+        v_dist_enu.append(vd_enu)
+
+    v_dist_wgs84 = np.hstack(v_dist_wgs84)
+    v_dist_enu = -np.hstack(v_dist_enu)
+
+    return v_dist_wgs84, v_dist_enu
+
+
 # ======================================================================================================================
 # Plot functions
 # ======================================================================================================================

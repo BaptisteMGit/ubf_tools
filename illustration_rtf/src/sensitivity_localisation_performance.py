@@ -38,13 +38,21 @@ from illustration_rtf.src.sensitivity import (
 # OF CELERITY PROFILES
 
 if os.name == "nt":  # Windows
-    raise ValueError("CODE IS INTENDED TO BE RUN ON THE PLATEFORM !")
+    # raise ValueError("CODE IS INTENDED TO BE RUN ON THE PLATEFORM !")
+    # print("OK")
+    OUTPUT_DATA_DIR = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\illustration_rtf\data\result_plateform_tim\resilience_loc_perf_17102026"
+    # OUTPUT_DATA_DIR = os.path.join(ROOT_PROGRAM, "illustration_rtf", "data")
+    ROOT_DIAG_IMG = os.path.join(
+        ROOT_PROGRAM, "illustration_rtf", "img", "resilience_loc_performance"
+    )
+
 
 else:  # Linux
     # Input data
     ROOT_RTF_RESILIENCE_DATA_DIR = os.path.join(ROOT_DATA, "RTF_RESILIENCE")
     IMG_DIR = os.path.join(ROOT_PROGRAM, "illustration_rtf", "img")
     OUTPUT_DATA_DIR = os.path.join(ROOT_PROGRAM, "illustration_rtf", "data")
+    ROOT_DIAG_IMG = r"/home/program/ubf_tools/illustration_rtf/img"
 
 
 def dist_from_baseline_loc_performance(ds_baseline, ds_test, d12, r0):
@@ -439,12 +447,404 @@ def generate_celerity_diag_loc_performance(
         # plt.close("all")
 
 
+def plot_diags(situations, env_types):
+    for env_type in env_types:
+        for situation in situations:
+
+            output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
+            output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
+            ds_res = xr.open_dataset(output_fpath)
+
+            root_img = os.path.join(ROOT_DIAG_IMG, env_type, situation)
+            os.makedirs(root_img, exist_ok=True)
+
+            # Compute pos rmse
+            r0 = ds_res.r0
+            rmse_pos_theta = np.sqrt(np.mean((ds_res.r_hat_theta - r0) ** 2))
+            err_theta = ds_res.r_hat_theta - r0
+            abs_err_theta = np.abs(err_theta)
+            err_L1 = ds_res.r_hat_L1 - r0
+            abs_err_L1 = np.abs(err_L1)
+            err_L2 = ds_res.r_hat_L2 - r0
+            abs_err_L2 = np.abs(err_L2)
+
+            # Hist params
+            nbins = 50
+            # Fig1:  Histogram of estimated position
+            plt.figure()
+            ds_res.r_hat_theta.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(0), label=r"$\theta$"
+            )
+            ds_res.r_hat_L1.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(1), label=r"$L_1$"
+            )
+            ds_res.r_hat_L2.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(2), label=r"$L_2$"
+            )
+            plt.xlabel(r"$\hat{r}$ [m]")
+            plt.ylabel("Density")
+            plt.legend()
+            fpath = os.path.join(root_img, f"hist_r_{env_type}_{situation}.png")
+            plt.savefig(fpath)
+
+            # Fig2: Histogram of err
+            plt.figure()
+            err_theta.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(0), label=r"$\theta$"
+            )
+            err_L1.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(1), label=r"$L_1$"
+            )
+            err_L2.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(2), label=r"$L_2$"
+            )
+            plt.xlabel(r"$r - \hat{r}$ [m]")
+            plt.ylabel("Density")
+            plt.legend()
+
+            fpath = os.path.join(root_img, f"hist_err_r_{env_type}_{situation}.png")
+            plt.savefig(fpath)
+
+            # Fig2.1: Histogram of err
+            plt.figure()
+            abs_err_theta.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(0), label=r"$\theta$"
+            )
+            abs_err_L1.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(1), label=r"$L_1$"
+            )
+            abs_err_L2.plot.hist(
+                bins=nbins, density=True, alpha=0.4, color=color(2), label=r"$L_2$"
+            )
+            plt.xlabel(r"$\lvert r - \hat{r} \rvert$ [m]")
+            plt.ylabel("Density")
+            plt.legend()
+            fpath = os.path.join(root_img, f"hist_abs_err_r_{env_type}_{situation}.png")
+            plt.savefig(fpath)
+
+            # Fig3: error vs ssp_std
+            plt.figure()
+            plt.scatter(
+                ds_res.ssp_std, err_theta, marker="x", color=color(0), label=r"$\theta$"
+            )
+            plt.scatter(
+                ds_res.ssp_std, err_L1, marker="x", color=color(1), label=r"$L_1$"
+            )
+            plt.scatter(
+                ds_res.ssp_std, err_L2, marker="x", color=color(2), label=r"$L_2$"
+            )
+            plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
+            plt.ylabel(r"$r - \hat{r}$ [m]")
+            plt.legend()
+            fpath = os.path.join(root_img, f"err_vs_ssp_std_{env_type}_{situation}.png")
+            plt.savefig(fpath)
+
+            # Fig4: MSR vs ssp_std
+            plt.figure()
+            plt.scatter(
+                ds_res.ssp_std,
+                -ds_res.msr_theta,
+                marker="x",
+                color=color(0),
+                label=r"$\theta$",
+            )
+            plt.scatter(
+                ds_res.ssp_std,
+                -ds_res.msr_L1,
+                marker="x",
+                color=color(1),
+                label=r"$L_1$",
+            )
+            plt.scatter(
+                ds_res.ssp_std,
+                -ds_res.msr_L2,
+                marker="x",
+                color=color(2),
+                label=r"$L_2$",
+            )
+            plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
+            plt.ylabel(r"MSR [dB]")
+            plt.legend()
+            fpath = os.path.join(root_img, f"msr_vs_ssp_std_{env_type}_{situation}.png")
+            plt.savefig(fpath)
+
+            # Plot theta sorted by ascending ssp std and compare to baseline distance
+            idx_sort = np.argsort(ds_res.ssp_std)
+            fig, axs = plt.subplots(
+                2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8)
+            )
+            # Sort by ascending ssp_std
+            im = axs[0].pcolormesh(
+                ds_res.r,
+                ds_res.ssp_std.values[idx_sort],
+                ds_res.dist_theta.values[:, idx_sort].T,
+                # cmap="Grays_r",
+                cmap="jet_r",
+            )
+            axs[0].set_ylabel(r"$\sigma_c$ [m~s$^{-1}$]")
+
+            ds_res.baseline_dist_theta.plot(
+                ax=axs[1],
+            )
+            axs[1].set_ylim(0, 1)
+            axs[1].set_ylabel(r"$\theta$")
+            plt.colorbar(im, ax=axs[0], label=r"$\theta$")
+            axs[0].set_xlabel("")
+            # axs[1].set_xlabel("")
+            axs[1].set_xlabel("Range [m]")
+            # fig.supxlabel("Range [m]")
+
+            fpath = os.path.join(
+                root_img, f"theta_map_sorted_by_ssp_std_{env_type}_{situation}.png"
+            )
+            plt.savefig(fpath)
+
+            # Plot theta sorted by ascending ssp rmse and compare to baseline distance
+            idx_sort = np.argsort(ds_res.ssp_rmse)
+            fig, axs = plt.subplots(
+                2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8)
+            )
+            # Sort by ascending ssp_rmse
+            im = axs[0].pcolormesh(
+                ds_res.r,
+                ds_res.ssp_std.values[idx_sort],
+                ds_res.dist_theta.values[:, idx_sort].T,
+                # cmap="Grays_r",
+                cmap="jet_r",
+            )
+            axs[0].set_ylabel("SSP RMSE [m~s$^{-1}$]")
+            ds_res.baseline_dist_theta.plot(
+                ax=axs[1],
+            )
+            axs[1].set_ylim(0, 1)
+            axs[1].set_ylabel(r"$\theta$")
+            plt.colorbar(im, ax=axs[0], label=r"$\theta$")
+            axs[0].set_xlabel("")
+            # axs[1].set_xlabel("")
+            axs[1].set_xlabel("Range [m]")
+
+            fpath = os.path.join(
+                root_img, f"theta_map_sorted_by_ssp_rmse_{env_type}_{situation}.png"
+            )
+            plt.savefig(fpath)
+
+            plt.close("all")
+
+
+def plot_loc_error(situations, env_types, ssp_std_th=[0, 1, 2, 3, 4]):
+
+    ssp_std_th = np.asarray(ssp_std_th)
+    plt.figure()
+    j = 0
+    for env_type in env_types:
+        for situation in situations:
+
+            output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
+            output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
+            ds_res = xr.open_dataset(output_fpath)
+
+            root_img = os.path.join(ROOT_DIAG_IMG, env_type, situation)
+            os.makedirs(root_img, exist_ok=True)
+
+            # Compute pos rmse
+            r0 = ds_res.r0
+            rmse_pos_theta = np.sqrt(np.mean((ds_res.r_hat_theta - r0) ** 2))
+            err_theta = ds_res.r_hat_theta - r0
+            abs_err_theta = np.abs(err_theta)
+            err_L1 = ds_res.r_hat_L1 - r0
+            abs_err_L1 = np.abs(err_L1)
+            err_L2 = ds_res.r_hat_L2 - r0
+            abs_err_L2 = np.abs(err_L2)
+
+            # Sort estimated error by ssp_std
+            std_idx = [
+                (ssp_std_th[i] < ds_res.ssp_std) & (ds_res.ssp_std <= ssp_std_th[i + 1])
+                for i in range(ssp_std_th.size - 1)
+            ]
+            # Last element
+            std_idx.append(ssp_std_th[-1] < ds_res.ssp_std)
+
+            err = abs_err_theta
+            err_list = [err[std_idx_i] for std_idx_i in std_idx]
+
+            err_min_size = np.nanmin(
+                [err.size if err.size != 0 else np.nan for err in err_list]
+            )
+            err_selected_size = err_min_size.astype(int) // 2
+
+            ssp_std = ssp_std_th + np.diff(ssp_std_th)[0] / 2
+
+            mean_err = []
+            std_err = []
+            iqr_err = []
+            for i in range(len(err_list)):
+                mean_err.append(err_list[i].mean())
+                std_err.append(err_list[i].std())
+
+                if err_list[i].size == 0:
+                    iqr_err.append(np.nan)
+                    continue
+                q1 = np.quantile(err_list[i], 0.25)
+                q3 = np.quantile(err_list[i], 0.75)
+                iqr_err.append(q3 - q1)
+
+            plt.errorbar(
+                ssp_std,
+                mean_err,
+                # yerr=std_err,
+                yerr=iqr_err,
+                fmt="-o",
+                capsize=10,
+                color=color(j),
+                label=f"{situation} ({env_type.upper()})",
+            )
+
+            j += 1
+
+    plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
+    plt.ylabel("Position error " + r"$\langle \lvert r - \hat{r} \rvert \rangle$ [m]")
+    plt.legend()
+    # plt.ylim(0, 1.1)
+    plt.xlim(0, ssp_std[-1] + np.diff(ssp_std_th)[0] / 2)
+
+    fpath = os.path.join(ROOT_DIAG_IMG, f"pos_error_vs_ssp_std_category.png")
+    plt.savefig(fpath)
+    # plt.show()
+    plt.close("all")
+
+
+def plot_good_loc_probability(
+    situations, env_types, err_th=100, ssp_std_th=[0, 1, 2, 3, 4]
+):
+
+    ssp_std_th = np.asarray(ssp_std_th)
+    plt.figure()
+    j = 0
+    for env_type in env_types:
+        for situation in situations:
+
+            output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
+            output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
+            ds_res = xr.open_dataset(output_fpath)
+
+            root_img = os.path.join(ROOT_DIAG_IMG, env_type, situation)
+            os.makedirs(root_img, exist_ok=True)
+
+            # Compute pos rmse
+            r0 = ds_res.r0
+            rmse_pos_theta = np.sqrt(np.mean((ds_res.r_hat_theta - r0) ** 2))
+            err_theta = ds_res.r_hat_theta - r0
+            abs_err_theta = np.abs(err_theta)
+            err_L1 = ds_res.r_hat_L1 - r0
+            abs_err_L1 = np.abs(err_L1)
+            err_L2 = ds_res.r_hat_L2 - r0
+            abs_err_L2 = np.abs(err_L2)
+
+            # Sort estimated error by ssp_std
+            std_idx = [
+                (ssp_std_th[i] < ds_res.ssp_std) & (ds_res.ssp_std <= ssp_std_th[i + 1])
+                for i in range(ssp_std_th.size - 1)
+            ]
+            # Last element
+            std_idx.append(ssp_std_th[-1] < ds_res.ssp_std)
+
+            # std1_idx = (ssp_std_th[0] < ds_res.ssp_std) & (ds_res.ssp_std <= ssp_std_th[0 + 1])
+            # std2_idx = (ssp_std_th[1] < ds_res.ssp_std) & (ds_res.ssp_std <= ssp_std_th[1 + 1])
+            # std3_idx = (ssp_std_th[2] < ds_res.ssp_std) & (ds_res.ssp_std <= ssp_std_th[2 + 1])
+            # std4_idx = (ssp_std_th[3] < ds_res.ssp_std) & (ds_res.ssp_std <= ssp_std_th[3 + 1])
+            # std5_idx = ssp_std_th[4] < ds_res.ssp_std
+
+            err = abs_err_theta
+            err_list = [err[std_idx_i] for std_idx_i in std_idx]
+            # err1 = err[std1_idx]
+            # err2 = err[std2_idx]
+            # err3 = err[std3_idx]
+            # err4 = err[std4_idx]
+            # err5 = err[std5_idx]
+            # err_list = [err1, err2, err3, err4, err5]
+
+            err_min_size = np.nanmin(
+                [err.size if err.size != 0 else np.nan for err in err_list]
+            )
+            err_selected_size = err_min_size.astype(int) // 2
+
+            # ssp_std_th = np.array(
+            #     [ssp_std0_th, ssp_std1_th, ssp_std2_th, ssp_std3_th, ssp_std4_th]
+            # )
+            ssp_std = ssp_std_th + np.diff(ssp_std_th)[0] / 2
+
+            proba_good_loc = []
+            for i in range(len(err_list)):
+                proba_good_loc.append((err_list[i] <= err_th).sum() / err_list[i].size)
+
+            plt.plot(
+                ssp_std,
+                proba_good_loc,
+                "-o",
+                color=color(j),
+                label=f"{situation} ({env_type.upper()})",
+            )
+
+            # M_monte_carlo = 10000
+            # proba_good_loc_arr = []
+            # for m in range(M_monte_carlo):
+
+            #     # Random choice
+            #     erri = []
+            #     for i in range(len(err_list)):
+            #         erri.append(
+            #             np.random.choice(err_list[i], size=err_selected_size)
+            #             if err_list[i].size > 0
+            #             else np.ones((err_selected_size)) * np.nan
+            #         )
+
+            #     proba_good_loc = []
+            #     for i in range(len(erri)):
+            #         proba_good_loc.append((erri[i] <= err_th).sum() / erri[i].size)
+            #     proba_good_loc_arr.append(proba_good_loc)
+
+            # proba_good_loc_arr = np.array(proba_good_loc_arr)
+            # # plt.plot(
+            # #     ssp_std,
+            # #     proba_good_loc,
+            # #     "-o",
+            # #     color=color(j),
+            # #     label=f"{situation} ({env_type.upper()})",
+            # # )
+            # plt.errorbar(
+            #     ssp_std,
+            #     np.mean(proba_good_loc_arr, axis=0),
+            #     yerr=np.std(proba_good_loc_arr, axis=0),
+            #     # "-o",
+            #     color=color(j),
+            #     label=f"{situation} ({env_type.upper()})",
+            # )
+            j += 1
+
+    plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
+    plt.ylabel(
+        "Probability of good localisation\n "
+        + r"($\lvert r - \hat{r} \rvert \leq $"
+        + f"{err_th} m)"
+    )
+    plt.legend()
+    plt.ylim(0, 1.1)
+    plt.xlim(0, ssp_std[-1] + np.diff(ssp_std_th)[0] / 2)
+
+    fpath = os.path.join(
+        ROOT_DIAG_IMG, f"probability_of_good_localisation_errth_{err_th}m.png"
+    )
+    plt.savefig(fpath)
+    # plt.show()
+    plt.close("all")
+
+
 if __name__ == "__main__":
 
-    run_name = "resilience_12102026"
-    RTF_CELERITY_RESILIENCE_DATA_DIR = os.path.join(
-        ROOT_RTF_RESILIENCE_DATA_DIR, run_name
-    )
+    # run_name = "resilience_12102026"
+    # RTF_CELERITY_RESILIENCE_DATA_DIR = os.path.join(
+    #     ROOT_RTF_RESILIENCE_DATA_DIR, run_name
+    # )
 
     # env_type = "dw"
     # situation = "winter"
@@ -483,88 +883,22 @@ if __name__ == "__main__":
     #     process_sensi=True,
     #     build_baseline=False,
     # )
-
-    ROOT_DIAG_IMG = r"/home/program/ubf_tools/illustration_rtf/img"
 
     env_type = "sw"
     situation = "winter"
     env_types = ["sw", "dw"]
     situations = ["summer", "winter"]
 
-    def plot_diags(situations, env_types):
-        for env_type in env_types:
-            for situation in situations:
+    plot_diags(situations, env_types)
 
-                output_fname = f"resilience_loc_performance__{env_type}_{situation}.nc"
-                output_fpath = os.path.join(OUTPUT_DATA_DIR, output_fname)
-                ds_res = xr.open_dataset(output_fpath)
+    # ssp_std_th = [0, 0.5, 1, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5]
+    ssp_std_th = [0, 1, 2.0, 3.0, 4.0]
 
-                # Compute pos rmse
-                r0 = ds_res.r0
-                rmse_pos_theta = np.sqrt(np.mean((ds_res.r_hat_theta - r0) ** 2))
-                err_theta = ds_res.r_hat_theta - r0
-                abs_err_theta = np.abs(err_theta)
-                err_L2 = ds_res.r_hat_L2 - r0
-                abs_err_L2 = np.abs(err_L2)
+    # plot_good_loc_probability(situations, env_types, err_th=50, ssp_std_th=ssp_std_th)
+    # plot_good_loc_probability(situations, env_types, err_th=100, ssp_std_th=ssp_std_th)
+    # plot_good_loc_probability(situations, env_types, err_th=150, ssp_std_th=ssp_std_th)
+    # plot_good_loc_probability(situations, env_types, err_th=200, ssp_std_th=ssp_std_th)
 
-                # Hist params
-                nbins = 100
-                # Fig1:  Histogram of estimated position
-                plt.figure()
-                ds_res.r_hat_theta.plot.hist(bins=nbins)
-                plt.xlabel(r"$\hat{r}$")
-                plt.ylabel("Population")
-                fpath = os.path.join(ROOT_DIAG_IMG, "hist_r.png")
-                plt.savefig(fpath)
-
-                # Fig2: Histogram of err
-                plt.figure()
-                err_theta.plot.hist(bins=nbins)
-                plt.xlabel(r"$\lvert r - \hat{r} \rvert$")
-                plt.ylabel("Population")
-                fpath = os.path.join(ROOT_DIAG_IMG, "hist_err_r.png")
-                plt.savefig(fpath)
-
-                # Fig3: error vs ssp_std
-                plt.figure()
-                plt.scatter(ds_res.ssp_std, err_theta, marker=".", label="theta")
-                plt.scatter(ds_res.ssp_std, err_L2, marker="x", label="L2")
-                plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
-                fpath = os.path.join(ROOT_DIAG_IMG, "err_vs_.png")
-                plt.savefig(fpath)
-
-                # Fig4: MSR vs ssp_std
-                plt.figure()
-                plt.scatter(ds_res.ssp_std, -ds_res.msr_L1, label="L1")
-                plt.scatter(ds_res.ssp_std, -ds_res.msr_L2, label="L2")
-                plt.scatter(ds_res.ssp_std, -ds_res.msr_theta, label="theta")
-                plt.xlabel(r"$\sigma_c$ [m~s$^{-1}$]")
-                plt.legend()
-
-                # Plot theta sorted by ascending ssp std and compare to baseline distance
-                idx_sort = np.argsort(ds_res.ssp_std)
-                fig, axs = plt.subplots(
-                    2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8)
-                )
-                # Sort by ascending ssp_std
-                axs[0].pcolormesh(
-                    ds_res.r,
-                    ds_res.ssp_std.values[idx_sort],
-                    ds_res.dist_theta.values[:, idx_sort].T,
-                )
-                ds_res.baseline_dist_theta.plot(ax=axs[1])
-
-                # Plot theta sorted by ascending ssp rmse and compare to baseline distance
-                idx_sort = np.argsort(ds_res.ssp_rmse)
-                fig, axs = plt.subplots(
-                    2, 1, sharex=True, height_ratios=[4, 1], figsize=(16, 8)
-                )
-                # Sort by ascending ssp_std
-                axs[0].pcolormesh(
-                    ds_res.r,
-                    ds_res.ssp_std.values[idx_sort],
-                    ds_res.dist_theta.values[:, idx_sort].T,
-                )
-                ds_res.baseline_dist_theta.plot(ax=axs[1])
+    plot_loc_error(situations, env_types, ssp_std_th=ssp_std_th)
 
     plt.show()

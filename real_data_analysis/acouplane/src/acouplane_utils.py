@@ -564,6 +564,34 @@ def get_portion_tir_arr_dt(portion_tree, offset1=200, offset2=1500, obs_ids=None
     # return np.vstack(tps_propa_measured_s_)
 
 
+def apply_rcv_position_correction_to_portion(
+    portion_tree, rcv_pos_corr_fname="rcv_position_corrected.csv"
+):
+    rcv_pos_fpath = os.path.join(ROOT_ACOUPLANE_PROCESSED_DATA_DIR, rcv_pos_corr_fname)
+    df_rcv_pos_corr = pd.read_csv(rcv_pos_fpath)
+
+    # Update tree
+    for name, node in portion_tree.position.children.items():
+        ds_pos_section = node.to_dataset()
+
+        # Update ds_pos_section
+        ds_pos_section.update(
+            {
+                "rcv_lon": ("rcv_id", df_rcv_pos_corr["lon"]),
+                "rcv_lat": ("rcv_id", df_rcv_pos_corr["lat"]),
+            }
+        )
+        # No need to update immersion as it is not changed (2D LMS estimation)
+
+        # Update geodetic distance between source and receiver
+        ds_pos_section = compute_src_rcv_geodesic_dist(
+            ds_pos_sections=[ds_pos_section]
+        )[0]
+
+        # Update tree
+        node.ds = ds_pos_section
+
+
 # ======================================================================================================================
 # ENU <-> WGS84 conversion
 # ======================================================================================================================

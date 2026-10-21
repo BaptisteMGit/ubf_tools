@@ -618,74 +618,148 @@ def transform_pos_wgs84_enu(
     return e, n, u
 
 
+def _enu_tir_pos(ds, local_frame_origin, N_geoid_undulation=48.5):
+    # Convert source position from WGS84 to ecef
+    tir_src_e, tir_src_n, tir_src_u = transform_pos_wgs84_enu(
+        lon=ds.tir_src_lon,
+        lat=ds.tir_src_lat,
+        local_frame_origin=local_frame_origin,
+        N_geoid_undulation=N_geoid_undulation,
+        zeta=0,
+        sensor_h_above_sea_level=-5,  # Source is approximately 5 meter below sea surface = MSL
+    )
+    # Add to portion
+    ds["tir_src_e"] = (["src_datetime"], tir_src_e)
+    ds["tir_src_n"] = (["src_datetime"], tir_src_n)
+    ds["tir_src_u"] = (["src_datetime"], tir_src_u)
+    # Update attribute
+    ds.tir_src_e.attrs = {
+        "units": "m",
+        "long_name": "E",
+    }
+    ds.tir_src_n.attrs = {
+        "units": "m",
+        "long_name": "N",
+    }
+    ds.tir_src_u.attrs = {
+        "units": "m",
+        "long_name": "U",
+    }
+
+
 def get_enu_tir_pos(portion_tree, local_frame_origin, N_geoid_undulation=48.5):
 
-    for name, node in portion_tree.position.children.items():
-        ds_pos_section = node.to_dataset()
-        # Convert source position from WGS84 to ecef
-        tir_src_e, tir_src_n, tir_src_u = transform_pos_wgs84_enu(
-            lon=ds_pos_section.tir_src_lon,
-            lat=ds_pos_section.tir_src_lat,
-            local_frame_origin=local_frame_origin,
-            N_geoid_undulation=N_geoid_undulation,
-            zeta=0,
-            sensor_h_above_sea_level=-5,  # Source is approximately 5 meter below sea surface = MSL
-        )
-        # Add to portion
-        ds_pos_section["tir_src_e"] = (["src_datetime"], tir_src_e)
-        ds_pos_section["tir_src_n"] = (["src_datetime"], tir_src_n)
-        ds_pos_section["tir_src_u"] = (["src_datetime"], tir_src_u)
-        # Update attribute
-        ds_pos_section.tir_src_e.attrs = {
-            "units": "m",
-            "long_name": "E",
-        }
-        ds_pos_section.tir_src_n.attrs = {
-            "units": "m",
-            "long_name": "N",
-        }
-        ds_pos_section.tir_src_u.attrs = {
-            "units": "m",
-            "long_name": "U",
-        }
+    for group in list(portion_tree.children):
+        if group == "position":
+            for name, node in portion_tree.position.children.items():
+                ds_pos_section = node.to_dataset()
+                _enu_tir_pos(
+                    ds_pos_section, local_frame_origin, N_geoid_undulation=48.5
+                )
 
-        # Update tree
-        node.ds = ds_pos_section
+                # Update tree
+                node.ds = ds_pos_section
+
+        elif group == "feature":
+            for name, node in portion_tree.feature.children.items():
+                ds_feature_section = node.to_dataset()
+                _enu_tir_pos(
+                    ds_feature_section, local_frame_origin, N_geoid_undulation=48.5
+                )
+
+                # Update tree
+                node.ds = ds_feature_section
+
+        else:
+            pass
+
+
+def _enu_rcv_pos(ds, local_frame_origin, N_geoid_undulation=48.5):
+    # Convert OBS position from WGS84 to ecef
+    rcv_e, rcv_n, rcv_u = transform_pos_wgs84_enu(
+        lon=ds.rcv_lon,
+        lat=ds.rcv_lat,
+        local_frame_origin=local_frame_origin,
+        N_geoid_undulation=N_geoid_undulation,
+        zeta=0,
+        sensor_h_above_sea_level=-ds.rcv_immersion,
+    )
+    # Add to portion
+    ds["rcv_e"] = (["rcv_id"], rcv_e)
+    ds["rcv_n"] = (["rcv_id"], rcv_n)
+    ds["rcv_u"] = (["rcv_id"], rcv_u)
+    # Update attribute
+    ds.rcv_e.attrs = {
+        "units": "m",
+        "long_name": "E",
+    }
+    ds.rcv_n.attrs = {
+        "units": "m",
+        "long_name": "N",
+    }
+    ds.rcv_u.attrs = {
+        "units": "m",
+        "long_name": "U",
+    }
 
 
 def get_enu_rcv_pos(portion_tree, local_frame_origin, N_geoid_undulation=48.5):
 
-    for name, node in portion_tree.position.children.items():
-        ds_pos_section = node.to_dataset()
-        # Convert OBS position from WGS84 to ecef
-        rcv_e, rcv_n, rcv_u = transform_pos_wgs84_enu(
-            lon=ds_pos_section.rcv_lon,
-            lat=ds_pos_section.rcv_lat,
-            local_frame_origin=local_frame_origin,
-            N_geoid_undulation=N_geoid_undulation,
-            zeta=0,
-            sensor_h_above_sea_level=-ds_pos_section.rcv_immersion,
-        )
-        # Add to portion
-        ds_pos_section["rcv_e"] = (["rcv_id"], rcv_e)
-        ds_pos_section["rcv_n"] = (["rcv_id"], rcv_n)
-        ds_pos_section["rcv_u"] = (["rcv_id"], rcv_u)
-        # Update attribute
-        ds_pos_section.rcv_e.attrs = {
-            "units": "m",
-            "long_name": "E",
-        }
-        ds_pos_section.rcv_n.attrs = {
-            "units": "m",
-            "long_name": "N",
-        }
-        ds_pos_section.rcv_u.attrs = {
-            "units": "m",
-            "long_name": "U",
-        }
+    for group in list(portion_tree.children):
+        if group == "position":
+            for name, node in portion_tree.position.children.items():
+                ds_pos_section = node.to_dataset()
+                _enu_rcv_pos(
+                    ds_pos_section, local_frame_origin, N_geoid_undulation=48.5
+                )
 
-        # Update tree
-        node.ds = ds_pos_section
+                # Update tree
+                node.ds = ds_pos_section
+
+        elif group == "feature":
+            for name, node in portion_tree.feature.children.items():
+                ds_feature_section = node.to_dataset()
+                _enu_rcv_pos(
+                    ds_feature_section, local_frame_origin, N_geoid_undulation=48.5
+                )
+
+                # Update tree
+                node.ds = ds_feature_section
+
+        else:
+            pass
+
+    # for name, node in portion_tree.position.children.items():
+    #     ds_pos_section = node.to_dataset()
+    #     # Convert OBS position from WGS84 to ecef
+    #     rcv_e, rcv_n, rcv_u = transform_pos_wgs84_enu(
+    #         lon=ds_pos_section.rcv_lon,
+    #         lat=ds_pos_section.rcv_lat,
+    #         local_frame_origin=local_frame_origin,
+    #         N_geoid_undulation=N_geoid_undulation,
+    #         zeta=0,
+    #         sensor_h_above_sea_level=-ds_pos_section.rcv_immersion,
+    #     )
+    #     # Add to portion
+    #     ds_pos_section["rcv_e"] = (["rcv_id"], rcv_e)
+    #     ds_pos_section["rcv_n"] = (["rcv_id"], rcv_n)
+    #     ds_pos_section["rcv_u"] = (["rcv_id"], rcv_u)
+    #     # Update attribute
+    #     ds_pos_section.rcv_e.attrs = {
+    #         "units": "m",
+    #         "long_name": "E",
+    #     }
+    #     ds_pos_section.rcv_n.attrs = {
+    #         "units": "m",
+    #         "long_name": "N",
+    #     }
+    #     ds_pos_section.rcv_u.attrs = {
+    #         "units": "m",
+    #         "long_name": "U",
+    #     }
+
+    #     # Update tree
+    #     node.ds = ds_pos_section
 
 
 def get_vertical_dist(portion_tree, z_src=5):
@@ -915,6 +989,314 @@ def plot_portion_tir_pos(portion_tree, ax=None):
     plot_obs_pos(ds_pos_section, ax=ax)
 
     return fig, ax
+
+
+# ======================================================================================================================
+# Feature estimation (for RTF / DCF estimation)
+# ======================================================================================================================
+
+
+def derive_portion_cpsd(
+    portion_tree, offset_ms=100, signal_duration_s=3, nfft=None, obs_ids=None
+):
+
+    signal_duration_ms = int(signal_duration_s * 1000)
+
+    if obs_ids is None:
+        obs_ids = (
+            list(portion_tree.pressure.children.items())[0][1]
+            .to_dataset()
+            .obs_id.values
+        )
+
+    # 1) Iterate over portion's sections
+    for name, node in portion_tree.pressure.children.items():
+        ds_pressure_section = node.to_dataset()
+        # Associated ds_pos
+        ds_pos_section = portion_tree.position[name].to_dataset()
+
+        Sxy_data = []
+        valid_emission_dt = []
+        # 2) Iterate over emissions
+        for i_tir, tir_emission_dt in enumerate(ds_pos_section.src_datetime.values):
+            ds_pos_section_current_tir = ds_pos_section.sel(
+                src_datetime=tir_emission_dt
+            )
+
+            # Reception datetime
+            tir_reception_dt = ds_pos_section_current_tir["tir_reception_datetime"]
+
+            # 3) Build list of signal_i
+            signal_arr = []
+            for i in range(obs_ids.size):
+                rcv_id_i = obs_ids[i]
+                # Reception datetime for current rcv i
+                tir_reception_dt_rcvi = tir_reception_dt.sel(rcv_id=rcv_id_i)
+
+                # Select associated data window
+                signal_i = ds_pressure_section[f"pressure_{rcv_id_i}"].sel(
+                    {
+                        f"time_{rcv_id_i}": slice(
+                            tir_reception_dt_rcvi.data
+                            - np.timedelta64(offset_ms, "ms"),
+                            tir_reception_dt_rcvi.data
+                            + np.timedelta64(signal_duration_ms - offset_ms, "ms"),
+                        )
+                    }
+                )
+
+                # Ensure signal is centered
+                signal_i = signal_i - np.nanmean(signal_i)
+
+                # Store in array
+                signal_arr.append(signal_i.values)
+
+            # Check all rcv have complete signal
+            signal_is_complete = np.all(
+                [
+                    signal_arr[k].size
+                    == int(signal_duration_s * ds_pressure_section.fs)
+                    for k in range(len(signal_arr))
+                ]
+            )
+            # print(signal_is_complete)
+            if signal_is_complete:
+                valid_emission_dt.append(tir_emission_dt)
+                signal_arr = np.asarray(signal_arr)  # (nrcv, nt)
+            else:
+                continue
+
+            # a) Compute PSD Sxx
+            rfft = np.fft.rfft(signal_arr, n=nfft, axis=1)  # (nrcv, nfft)
+            Sxx_arr = rfft * np.conj(rfft)  # (nrcv, nfft)
+
+            # a) Compute CPSD Sxy
+            # Ugly double loop to vectorized
+            nr, nf = rfft.shape
+            Sxy_arr = np.empty(shape=(nr, nr, nf), dtype=np.complex64) * np.nan
+            for i in range(obs_ids.size):
+                Sxy_arr[i, i, :] = Sxx_arr[i, :]  # Diagonal = PSD
+                x_fft_i = rfft[i, :]
+                for j in range(i, obs_ids.size):
+                    rcv_id_j = obs_ids[j]
+                    y_fft_j = rfft[j, :]
+                    Sxy = x_fft_i * np.conj(y_fft_j)
+                    # Upper triangle Sij
+                    Sxy_arr[i, j] = Sxy
+                    # Lower triangle Sji = conj(Sij)
+                    Sxy_arr[j, i] = np.conj(Sxy)
+
+            # Store for current tir
+            Sxy_data.append(Sxy_arr)
+        Sxy_data = np.array(Sxy_data)  # (ntir, nr, nr, nf)
+
+        # Store in ds_pressure_section
+        ds_feature = ds_pos_section.copy()
+        ds_feature = ds_feature.drop_vars(
+            [
+                "atl_lon",
+                "atl_lat",
+                "atl_datetime",
+                "ais_lon",
+                "ais_lat",
+                "ais_datetime",
+                "tir_SEGD",
+                "tir_ECOS",
+                "tir_vessel_lon",
+                "tir_vessel_lat",
+            ]
+        )
+        attrs = ds_feature.attrs
+        attrs.pop("interpolation_time_step")
+        attrs["description"] = "Localisation features"
+
+        # Sel only valid tir
+        ds_feature = ds_feature.sel(src_datetime=valid_emission_dt)
+
+        # Add coords rcv_i, rcv_j and freq
+        freq = np.fft.rfftfreq(nfft, d=1 / ds_pressure_section.fs)
+
+        ds_feature = ds_feature.assign_coords(
+            dict(rcv_i=obs_ids, rcv_j=obs_ids, freq=freq)
+        )  # NOTE we need to declare new coords because we can use duplicated coords
+
+        ds_feature["Sxy"] = (["src_datetime", "rcv_i", "rcv_j", "freq"], Sxy_data)
+
+        # Update tree
+        portion_tree[f"/feature/{name}"] = ds_feature
+
+
+def get_distance_between_sections(ds_feature_section1, ds_feature_section2):
+    from pyproj import Geod
+
+    geod = Geod(ellps="WGS84")
+
+    src_lon1, src_lat1 = (
+        ds_feature_section1.tir_src_lon,
+        ds_feature_section1.tir_src_lat,
+    )
+    src_lon2, srcv_lat2 = (
+        ds_feature_section2.tir_src_lon,
+        ds_feature_section2.tir_src_lat,
+    )
+
+    dist_12 = []
+    for i in range(src_lon2.sizes["src_datetime"]):
+
+        # Cast to src pos shape
+        lon2 = np.ones(src_lon1.size) * src_lon2.isel(src_datetime=i).values
+        lat2 = np.ones(src_lon1.size) * srcv_lat2.isel(src_datetime=i).values
+
+        # Compute geodesic distance
+        fwd_az, back_az, horiz_d = geod.inv(
+            lons1=src_lon1.values, lats1=src_lat1.values, lons2=lon2, lats2=lat2
+        )
+
+        dist_12.append(horiz_d)
+
+    dist_12 = np.asarray(dist_12)
+
+    return dist_12
+
+
+def derive_feature_distance_between_sections(features_section1, features_section2):
+    # Extract features
+    pi_ij_a, gamma_a, sij_scot_a = (
+        features_section1["pi_ij"],
+        features_section1["gamma_ij"],
+        features_section1["sij_scot"],
+    )
+
+    pi_ij_b, gamma_b, sij_scot_b = (
+        features_section2["pi_ij"],
+        features_section2["gamma_ij"],
+        features_section2["sij_scot"],
+    )
+
+    # Reshape for broadcasting
+    pi_a = pi_ij_a[:, np.newaxis, :]  # (nt1, 1, nf)
+    gamma_a = gamma_a[:, np.newaxis, :]  # (nt1, 1, nf)
+    sij_scot_a = sij_scot_a[:, np.newaxis, :]  # (nt1, 1, nf)
+
+    pi_b = pi_ij_b[np.newaxis, :, :]  # (1, nt2, nf)
+    gamma_b = gamma_b[np.newaxis, :, :]  # (1, nt2, nf)
+    sij_scot_b = sij_scot_b[np.newaxis, :, :]  # (1, nt2, nf)
+
+    # Compute theta with pi
+    inner_prod = np.nansum(pi_a * np.conj(pi_b), axis=-1)
+    norm_a = np.sqrt(np.nansum(pi_a * np.conj(pi_a), axis=-1))
+    norm_b = np.sqrt(np.nansum(pi_b * np.conj(pi_b), axis=-1))
+    # Clip to [0, 1] for stability
+    cos_angle = np.clip(np.abs(inner_prod) / np.abs(norm_a * norm_b), 0, 1.0)
+    dist_theta = 1 - cos_angle  #  to [0, 1]
+
+    # Compute L2 with gamma
+    dist_L2_gamma = np.sqrt(np.nansum(np.abs(gamma_a - gamma_b) ** 2, axis=-1))
+    dist_L2_gamma = dist_L2_gamma / np.nanmax(dist_L2_gamma)  # Normalize to [0, 1]
+
+    # Compute theta with gamma
+    inner_prod = np.nansum(gamma_a * gamma_b, axis=-1)
+    norm_a = np.sqrt(np.nansum(gamma_a**2, axis=-1))
+    norm_b = np.sqrt(np.nansum(gamma_b**2, axis=-1))
+    # Clip to [-1, 1] for stability
+    cos_angle = np.clip(inner_prod / (norm_a * norm_b), -1.0, 1.0)
+    dist_theta_gamma = (1 - cos_angle) / 2  #  [-1, 1] to [0, 1]
+
+    # DCF
+    dist_dcf = np.abs(
+        np.nansum(
+            sij_scot_a * np.conj(sij_scot_b),
+            axis=-1,
+        )
+    )
+    dist_dcf = 1 - dist_dcf / (
+        np.sqrt(np.nansum(np.abs(sij_scot_a) ** 2, axis=-1))
+        * np.sqrt(np.nansum(np.abs(sij_scot_b) ** 2, axis=-1))
+    )
+
+    return dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf
+
+
+def derive_section_features(
+    ds_feature_section, fmin=5, fmax=50, rcv_ref="obs1", rcv_i="obs2"
+):
+
+    ref_rcv_id = rcv_ref
+    rcv_id_i = rcv_i
+    ########################################
+    # RTF
+    ########################################
+
+    sjj = ds_feature_section.sel(
+        rcv_i=ref_rcv_id, rcv_j=ref_rcv_id, freq=slice(fmin, fmax)
+    ).Sxy
+    # Sij
+    sij = ds_feature_section.sel(
+        rcv_i=rcv_id_i, rcv_j=ref_rcv_id, freq=slice(fmin, fmax)
+    ).Sxy
+    pi_ij_a = sij.values / sjj.values
+    gamma_ij_a = 20 * np.log10(np.abs(pi_ij_a))  # (nt1, nf)
+
+    ########################################
+    # DCF
+    ########################################
+
+    ### Section 1 ###
+    # Sii
+    sii = ds_feature_section.sel(
+        rcv_i=rcv_id_i, rcv_j=rcv_id_i, freq=slice(fmin, fmax)
+    ).Sxy
+    # Sjj
+    sjj = ds_feature_section.sel(
+        rcv_i=ref_rcv_id, rcv_j=ref_rcv_id, freq=slice(fmin, fmax)
+    ).Sxy
+    # Sij
+    sij = ds_feature_section.sel(
+        rcv_i=rcv_id_i, rcv_j=ref_rcv_id, freq=slice(fmin, fmax)
+    ).Sxy
+    sij_scot_a = sij.values / np.sqrt(sii.values * sjj.values)
+
+    return pi_ij_a, gamma_ij_a, sij_scot_a
+
+
+def find_min_distance_position(dt1, dt2, dist):
+    ind_min_dist = np.argmin(dist)
+    xx, yy = np.meshgrid(dt1, dt2)
+    xmin, ymin = xx.flatten()[ind_min_dist], yy.flatten()[ind_min_dist]
+    return xmin, ymin
+
+
+def derive_features_array(portion, fmin=5, fmax=50, rcv_ref="obs1", rcv_i="obs2"):
+    pi_ij_arr = []
+    gamma_arr = []
+    sij_scot_arr = []
+    for _, feature_node in portion.feature.children.items():
+        ds_feature_section = feature_node.to_dataset()
+
+        # Derive feature for current section
+        pi_ij_a, gamma_a, sij_scot_a = derive_section_features(
+            ds_feature_section=ds_feature_section,
+            fmin=fmin,
+            fmax=fmax,
+            rcv_ref=ref_rcv_id,
+            rcv_i=rcv_id_i,
+        )
+        pi_ij_arr.append(pi_ij_a)
+        gamma_arr.append(gamma_a)
+        sij_scot_arr.append(sij_scot_a)
+
+    # Build data
+    data_pi = np.concatenate(
+        pi_ij_arr, axis=0
+    )  # (n_sample, n_features) = (sum(nti), nfreq)
+    data_gamma = np.concatenate(
+        gamma_arr, axis=0
+    )  # (n_sample, n_features) = (sum(nti), nfreq)
+    data_sij_scot = np.concatenate(
+        sij_scot_arr, axis=0
+    )  # (n_sample, n_features) = (sum(nti), nfreq)
+
+    return data_pi, data_gamma, data_sij_scot
 
 
 if __name__ == "__main__":

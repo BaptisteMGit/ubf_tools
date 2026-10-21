@@ -87,6 +87,17 @@ def convert_raw_pressure_to_physical_units(ds_pressure):
     return ds_pressure
 
 
+def build_section_orientation(sections_orientation_code):
+    sections_orientation = [
+        "South/North" if code == "sn" else "West/East"
+        for code in sections_orientation_code
+    ]
+    sections_orientation_label = [
+        f"{code}{i}" for i, code in enumerate(sections_orientation_code)
+    ]
+    return sections_orientation, sections_orientation_label
+
+
 # ======================================================================================================================
 # Celerity data preprocessing
 # ======================================================================================================================

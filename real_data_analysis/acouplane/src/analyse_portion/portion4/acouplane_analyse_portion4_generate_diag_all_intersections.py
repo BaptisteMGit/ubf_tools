@@ -69,6 +69,8 @@ roots = [
 for root in roots:
     os.makedirs(root, exist_ok=True)
 
+c0 = 1508  # Equivalent celerity derived from real profile
+
 # ======================================================================================================================
 # Load data
 # ======================================================================================================================
@@ -103,6 +105,115 @@ for name, node in portion.pressure.children.items():
     )
     fig.savefig(fpath)
     plt.close(fig)
+
+
+# ======================================================================================================================
+# Plot spectrograms
+# ======================================================================================================================
+for name, node in portion.pressure.children.items():
+    ds_pressure_section = node.to_dataset()
+    fig, axs = plot_spectrogram_section(
+        ds_pressure_section, nperseg=2**8, noverlap=2**7, cmap="magma"
+    )
+    fig.suptitle(
+        f"{ds_pressure_section.section_orientation} {ds_pressure_section.section_id}"
+    )
+    fpath = os.path.join(
+        ROOT_IMG_PORTION_INPUT_SIGNAL_SPECTROGRAM,
+        f"pressure_spectrogram_{name}.png",
+    )
+    fig.savefig(fpath)
+    plt.close(fig)
+
+# ======================================================================================================================
+# Derive propagation time
+# ======================================================================================================================
+
+for name, node in portion.position.children.items():
+    ds_pos_section = node.to_dataset()
+    # Propagation distance assuming strait line propagation path
+    dpropa_direct = np.sqrt(
+        ds_pos_section.src_rcv_geodesic_dist**2 + ds_pos_section.rcv_immersion**2
+    )
+    # Compute propagation time
+    tps_propagation_s = dpropa_direct / c0
+    # tps_propagation_s = ds_pos_section.src_rcv_geodesic_dist / c0
+    ds_pos_section["tps_propagation_s"] = tps_propagation_s
+
+    # Derive associated arrival dt
+    tps_propagation_ns = (tps_propagation_s * 1e9).round()
+    tps_propagation_td = tps_propagation_ns.astype("timedelta64[ns]")
+    ds_pos_section["tir_reception_datetime"] = (
+        tps_propagation_td + ds_pos_section.src_datetime
+    )
+
+    # Update tree
+    node.ds = ds_pos_section
+
+
+# ======================================================================================================================
+# Plot single arrival and arrrival time
+# ======================================================================================================================
+
+nb_tir = 1
+offset1 = 50
+offset2 = 3000
+
+obs_ids = list(portion.pressure.children.items())[0][1].to_dataset().obs_id.values
+# obs_ids = obs_ids[[0, 3, 5]]
+for name, node in portion.pressure.children.items():
+    ds_pressure_section = node.to_dataset()
+    # Associated ds_pos
+    ds_pos_section = portion.position[name].to_dataset()
+    tir_dt = ds_pos_section["tir_reception_datetime"].isel(
+        src_datetime=slice(0, 0 + nb_tir)
+    )
+
+    fig, axs = plt.subplots(nrows=obs_ids.size, ncols=1, figsize=(16, 14), sharex=False)
+    axs = axs.flatten()
+    for i, rcv_id in enumerate(obs_ids):
+        tir_dt_rcv = tir_dt.sel(rcv_id=rcv_id)
+        # Select associated data window
+        press_rcv = ds_pressure_section[f"pressure_{rcv_id}"].sel(
+            {
+                f"time_{rcv_id}": slice(
+                    tir_dt_rcv.values[0] - np.timedelta64(offset1, "ms"),
+                    tir_dt_rcv.values[-1] + np.timedelta64(offset2 - offset1, "ms"),
+                )
+            }
+        )
+        # Plot pressure signal
+        # Normalize
+        press_rcv = press_rcv / press_rcv.max()
+        press_rcv.plot(label=rcv_id.upper(), color=color(i), ax=axs[i])
+        # Plot arrivals time
+        axs[i].vlines(x=tir_dt_rcv, ymin=-1, ymax=1, color="k", linestyle="--")
+        # Add legend
+        axs[i].legend(loc="upper right")
+
+    xlab = axs[0].get_xlabel()
+    ylab = axs[0].get_ylabel()
+
+    for ax in axs:
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_title("")
+
+    fig.suptitle(
+        f"{ds_pressure_section.section_orientation} {ds_pressure_section.section_id}"
+    )
+    fig.supxlabel(xlab)
+    fig.supylabel(ylab)
+
+    plt.show()
+
+# ======================================================================================================================
+# Plot single arrival and arrrival time
+# ======================================================================================================================
+
+derive_portion_cpsd(
+    portion_tree=portion, offset_ms=100, signal_duration_s=3, nfft=2**15, obs_ids=None
+)
 
 # ======================================================================================================================
 # Plot features (RTF, DCF)

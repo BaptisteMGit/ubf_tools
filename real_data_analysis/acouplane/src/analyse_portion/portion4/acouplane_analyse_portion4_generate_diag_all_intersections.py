@@ -88,10 +88,13 @@ obs_ids = [
 fmin = 10
 fmax = 20
 
-# Booleans
+# ======================================================================================================================
+# Booleans to control behavior
+# ======================================================================================================================
 save_modification_to_portion = False
-apply_obs_pos_correction = True
+apply_obs_pos_correction = False
 compute_cpsds = True
+apply_mfp_strategy_intersections = True
 
 plot_portion_position = False
 plot_signal = False
@@ -99,6 +102,7 @@ plot_spectrogram = False
 plot_signal_single_emission = False
 plot_features = False
 verbose = True
+
 # ======================================================================================================================
 # Load data
 # ======================================================================================================================
@@ -575,7 +579,9 @@ def build_mfp_intersection_dataset(
     return ds_mfp
 
 
-def derive_portion_features(portion, rcv_ref="obs1", fmin=5, fmax=50):
+def apply_mfp_strategy_to_portion_intersections(
+    portion, rcv_ref="obs1", fmin=5, fmax=50
+):
     assert "feature" in list(
         portion.children
     ), "No feature in portion dataset, use compute_cpsds = True !"
@@ -649,15 +655,15 @@ def derive_portion_features(portion, rcv_ref="obs1", fmin=5, fmax=50):
             portion[new_path] = ds_mfp
 
 
-if verbose:
-    print("Apply MFP strategy to each intersection...")
+if apply_mfp_strategy_intersections:
+    if verbose:
+        print("Apply MFP strategy to each intersection...")
+    apply_mfp_strategy_to_portion_intersections(portion)
 
-derive_portion_features(portion)
-
-print("Done")
-print(portion)
 
 if save_modification_to_portion:
+    if verbose:
+        print("Saving results...")
     portion.to_netcdf(portion_fpath)
 
 

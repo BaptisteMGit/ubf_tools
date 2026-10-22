@@ -603,6 +603,29 @@ def apply_rcv_position_correction_to_portion(
         node.ds = ds_pos_section
 
 
+def derive_portion_propagation_time(portion_tree, c0=1508):
+    for name, node in portion_tree.position.children.items():
+        ds_pos_section = node.to_dataset()
+        # Propagation distance assuming strait line propagation path
+        dpropa_direct = np.sqrt(
+            ds_pos_section.src_rcv_geodesic_dist**2 + ds_pos_section.rcv_immersion**2
+        )
+        # Compute propagation time
+        tps_propagation_s = dpropa_direct / c0
+        # tps_propagation_s = ds_pos_section.src_rcv_geodesic_dist / c0
+        ds_pos_section["tps_propagation_s"] = tps_propagation_s
+
+        # Derive associated arrival dt
+        tps_propagation_ns = (tps_propagation_s * 1e9).round()
+        tps_propagation_td = tps_propagation_ns.astype("timedelta64[ns]")
+        ds_pos_section["tir_reception_datetime"] = (
+            tps_propagation_td + ds_pos_section.src_datetime
+        )
+
+        # Update tree
+        node.ds = ds_pos_section
+
+
 # ======================================================================================================================
 # ENU <-> WGS84 conversion
 # ======================================================================================================================
@@ -1008,7 +1031,13 @@ def plot_portion_tir_pos(portion_tree, ax=None):
 
 
 def derive_portion_cpsd(
-    portion_tree, offset_ms=100, signal_duration_s=3, nfft=None, obs_ids=None
+    portion_tree,
+    offset_ms=100,
+    signal_duration_s=3,
+    nfft=None,
+    obs_ids=None,
+    fmin=None,
+    fmax=None,
 ):
 
     signal_duration_ms = int(signal_duration_s * 1000)
@@ -1019,6 +1048,22 @@ def derive_portion_cpsd(
             .to_dataset()
             .obs_id.values
         )
+
+    fs = portion_tree.pressure[list(portion_tree.pressure.children)[0]].fs
+
+    if nfft is None:
+        nfft = int(signal_duration_s * fs)
+    # Init freq vector
+    freq = np.fft.rfftfreq(nfft, d=1 / fs)
+
+    if fmin is None:
+        fmin = np.min(freq)
+    if fmax is None:
+        fmax = np.max(freq)
+
+    # Slice required frequency band
+    freq_band_mask = np.logical_and(freq >= fmin, freq <= fmax)
+    freq = freq[freq_band_mask]
 
     # 1) Iterate over portion's sections
     for name, node in portion_tree.pressure.children.items():
@@ -1079,6 +1124,9 @@ def derive_portion_cpsd(
 
             # a) Compute PSD Sxx
             rfft = np.fft.rfft(signal_arr, n=nfft, axis=1)  # (nrcv, nfft)
+            # Slice required frequency band
+            rfft = rfft[:, freq_band_mask]
+            # Compuse PSD
             Sxx_arr = rfft * np.conj(rfft)  # (nrcv, nfft)
 
             # a) Compute CPSD Sxy
@@ -1125,8 +1173,6 @@ def derive_portion_cpsd(
         ds_feature = ds_feature.sel(src_datetime=valid_emission_dt)
 
         # Add coords rcv_i, rcv_j and freq
-        freq = np.fft.rfftfreq(nfft, d=1 / ds_pressure_section.fs)
-
         ds_feature = ds_feature.assign_coords(
             dict(rcv_i=obs_ids, rcv_j=obs_ids, freq=freq)
         )  # NOTE we need to declare new coords because we can use duplicated coords

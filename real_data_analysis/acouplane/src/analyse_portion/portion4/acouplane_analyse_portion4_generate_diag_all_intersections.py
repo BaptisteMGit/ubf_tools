@@ -15,6 +15,7 @@
 import os
 import sys
 import glob
+import shutil
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -86,12 +87,13 @@ obs_ids = [
 ]
 # Frequency band
 fmin = 10
-fmax = 20
+fmax = 11
 
 # ======================================================================================================================
 # Booleans to control behavior
 # ======================================================================================================================
-save_modification_to_portion = True
+save_modification_to_portion = False
+save_mfp_intersection_result = True
 apply_obs_pos_correction = True
 compute_cpsds = True
 apply_mfp_strategy_intersections = True
@@ -278,11 +280,24 @@ if apply_mfp_strategy_intersections:
         print("Apply MFP strategy to each intersection...")
     apply_mfp_strategy_to_portion_intersections(portion)
 
-
 if save_modification_to_portion:
     if verbose:
         print("Saving results...")
-    portion.to_netcdf(portion_fpath)
+    portion.load()
+    # Save to tmp file
+    tmp_portion_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_tmp.nc"
+    portion.to_netcdf(
+        tmp_portion_fpath,
+        auto_complex=True,
+    )
+
+    portion.close()
+
+    # Remove old file
+    os.remove(portion_fpath)
+    # Copy file
+    os.rename(tmp_portion_fpath, portion_fpath)
+
 
 # ======================================================================================================================
 # Plot features (RTF, DCF)

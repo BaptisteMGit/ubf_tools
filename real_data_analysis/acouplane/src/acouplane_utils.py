@@ -625,12 +625,18 @@ def derive_portion_propagation_time(portion_tree, c0=1508):
         tps_propagation_s = dpropa_direct / c0
         # tps_propagation_s = ds_pos_section.src_rcv_geodesic_dist / c0
         ds_pos_section["tps_propagation_s"] = tps_propagation_s
+        ds_pos_section["tps_propagation_s"].attrs = dict(
+            units="s", long_name="Propagation time"
+        )
 
         # Derive associated arrival dt
         tps_propagation_ns = (tps_propagation_s * 1e9).round()
         tps_propagation_td = tps_propagation_ns.astype("timedelta64[ns]")
         ds_pos_section["tir_reception_datetime"] = (
             tps_propagation_td + ds_pos_section.src_datetime
+        )
+        ds_pos_section["tir_reception_datetime"].attrs = dict(
+            long_name="Reception datetime"
         )
 
         # Update tree
@@ -1479,6 +1485,25 @@ def build_mfp_intersection_dataset(
 ):
     ds_mfp = xr.Dataset(
         data_vars=dict(
+            rcv_lon=ds_feature_section1.rcv_lon,
+            rcv_lat=ds_feature_section1.rcv_lat,
+            rcv_immersion=ds_feature_section1.rcv_immersion,
+            tir_src_lon_section1=(
+                ["src_datetime_section1"],
+                ds_feature_section1.tir_src_lon.values,
+            ),
+            tir_src_lat_section1=(
+                ["src_datetime_section1"],
+                ds_feature_section1.tir_src_lat.values,
+            ),
+            tir_src_lon_section2=(
+                ["src_datetime_section2"],
+                ds_feature_section2.tir_src_lon.values,
+            ),
+            tir_src_lat_section2=(
+                ["src_datetime_section2"],
+                ds_feature_section2.tir_src_lat.values,
+            ),
             d_real=(
                 [
                     "src_datetime_section1",
@@ -1525,7 +1550,7 @@ def build_mfp_intersection_dataset(
             src_datetime_section2=ds_feature_section2.src_datetime.values,
         ),
         attrs=dict(
-            description="MFP result for a single intersection.",
+            description="MFP result for a single intersection",
             campagne=ds_feature_section1.campagne,
             section1=ds_feature_section1.section_label,
             section2=ds_feature_section2.section_label,

@@ -1379,5 +1379,272 @@ def derive_features_array(portion, fmin=5, fmax=50, rcv_ref="obs1", rcv_i="obs2"
     return data_pi, data_gamma, data_sij_scot
 
 
+# ======================================================================================================================
+# Derive features
+# ======================================================================================================================
+
+
+def distances_single_intersection(ds_feature_section1, ds_feature_section2):
+
+    # Compute real distance in meters between emissions from section 1 to emission from section 2
+    dist_in_real_space_12 = get_distance_between_sections(
+        ds_feature_section1, ds_feature_section2
+    )
+
+    # Section 1 vs 2
+    dist_theta_arr = []
+    dist_theta_gamma_arr = []
+    dist_L2_gamma_arr = []
+    dist_dcf_arr = []
+
+    for i, rcv_id_i in enumerate(ds_feature_section1.rcv_id_feature.values):
+
+        ds_feature_section1_rcv_i = ds_feature_section1.sel(rcv_id_feature=rcv_id_i)
+        ds_feature_section2_rcv_i = ds_feature_section2.sel(rcv_id_feature=rcv_id_i)
+        # Extract features
+        features_section1 = dict(
+            pi_ij=ds_feature_section1_rcv_i.pi_ij.values,
+            gamma_ij=ds_feature_section1_rcv_i.gamma_ij.values,
+            sij_scot=ds_feature_section1_rcv_i.sij_scot.values,
+        )
+        features_section2 = dict(
+            pi_ij=ds_feature_section2_rcv_i.pi_ij.values,
+            gamma_ij=ds_feature_section2_rcv_i.gamma_ij.values,
+            sij_scot=ds_feature_section2_rcv_i.sij_scot.values,
+        )
+        # Compute distances between section 1 and 2
+        dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf = (
+            derive_feature_distance_between_sections(
+                features_section1, features_section2
+            )
+        )
+
+        # Store
+        dist_theta_arr.append(dist_theta)
+        dist_theta_gamma_arr.append(dist_theta_gamma)
+        dist_L2_gamma_arr.append(dist_L2_gamma)
+        dist_dcf_arr.append(dist_dcf)
+
+    # Convert to arrays and group
+    distance_section12 = dict(
+        dist_in_real_space=dist_in_real_space_12,
+        dist_theta=np.asarray(dist_theta_arr),
+        dist_theta_gamma=np.asarray(dist_theta_gamma_arr),
+        dist_L2_gamma=np.asarray(dist_L2_gamma_arr),
+        dist_dcf=np.asarray(dist_dcf_arr),
+    )  # General shape -> (nrcv, n_emission1, n_emission2)
+
+    return distance_section12
+
+
+def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50):
+
+    rcv_i_arr = list(ds_feature_section.rcv_i.values)
+    rcv_i_arr.remove(rcv_ref)
+
+    # Section
+    pi_1_arr = []
+    gamma_1_arr = []
+    sij_scot_1_arr = []
+
+    for i, rcv_id_i in enumerate(rcv_i_arr):
+        # Compute features (RTF, DCF) of the section
+        pi_ij_a, gamma_a, sij_scot_a = derive_section_features(
+            ds_feature_section=ds_feature_section,
+            fmin=fmin,
+            fmax=fmax,
+            rcv_ref=rcv_ref,
+            rcv_i=rcv_id_i,
+        )
+        # Store
+        pi_1_arr.append(pi_ij_a)
+        gamma_1_arr.append(gamma_a)
+        sij_scot_1_arr.append(sij_scot_a)
+
+    # Convert to arrays and group
+    features_section = dict(
+        rcv_id=rcv_i_arr,
+        pi_ij=np.asarray(pi_1_arr),
+        gamma_ij=np.asarray(gamma_1_arr),
+        sij_scot=np.asarray(sij_scot_1_arr),
+    )  # General shape -> (nrcv, n_emission, nfreq)
+
+    return features_section
+
+
+def build_mfp_intersection_dataset(
+    distance_section12,
+    ds_feature_section1,
+    ds_feature_section2,
+):
+    ds_mfp = xr.Dataset(
+        data_vars=dict(
+            d_real=(
+                [
+                    "src_datetime_section1",
+                    "src_datetime_section2",
+                ],
+                distance_section12["dist_in_real_space"],
+            ),
+            d_theta=(
+                [
+                    "rcv_id_feature",
+                    "src_datetime_section1",
+                    "src_datetime_section2",
+                ],
+                distance_section12["dist_theta"],
+            ),
+            d_theta_gamma=(
+                [
+                    "rcv_id_feature",
+                    "src_datetime_section1",
+                    "src_datetime_section2",
+                ],
+                distance_section12["dist_theta_gamma"],
+            ),
+            d_L2_gamma=(
+                [
+                    "rcv_id_feature",
+                    "src_datetime_section1",
+                    "src_datetime_section2",
+                ],
+                distance_section12["dist_L2_gamma"],
+            ),
+            d_dcf=(
+                [
+                    "rcv_id_feature",
+                    "src_datetime_section1",
+                    "src_datetime_section2",
+                ],
+                distance_section12["dist_dcf"],
+            ),
+        ),
+        coords=dict(
+            rcv_id_feature=ds_feature_section1.rcv_id_feature.values,
+            src_datetime_section1=ds_feature_section1.src_datetime.values,
+            src_datetime_section2=ds_feature_section2.src_datetime.values,
+        ),
+        attrs=dict(
+            description="MFP result for a single intersection.",
+            campagne=ds_feature_section1.campagne,
+            section1=ds_feature_section1.section_label,
+            section2=ds_feature_section2.section_label,
+            reference_receiver=ds_feature_section1.reference_receiver,
+            obs_position=ds_feature_section1.obs_position,
+            obs_position_filepath=ds_feature_section1.obs_position_filepath,
+        ),
+    )
+
+    # Add attrs to variables
+    ds_mfp.d_real.attrs = dict(
+        units="m",
+        long_name="Distance",
+    )
+    ds_mfp.d_theta.attrs = dict(
+        # units="",
+        long_name=r"$\theta_{\Pi}$",
+        description="Hermitian angle between RTF vectors",
+        minval=0,
+        maxval=1,
+    )
+    ds_mfp.d_theta_gamma.attrs = dict(
+        # units="",
+        long_name=r"$\theta_{\gamma}$",
+        description="Euclidean angle between RTF gamma vectors",
+        minval=0,
+        maxval=1,
+    )
+    ds_mfp.d_L2_gamma.attrs = dict(
+        # units="",
+        long_name=r"$L_{2_{\gamma}}$",
+        description="Normalized euclidean distance (L2) between RTF gamma vectors",
+        minval=0,
+        maxval=1,
+    )
+    ds_mfp.d_dcf.attrs = dict(
+        # units="",
+        long_name=r"C_{el}",
+        description="Normalized intercorrelation between intercorrelation vectors (DCF)",
+        minval=0,
+        maxval=1,
+    )
+
+    return ds_mfp
+
+
+def apply_mfp_strategy_to_portion_intersections(
+    portion, rcv_ref="obs1", fmin=5, fmax=50
+):
+    assert "feature" in list(
+        portion.children
+    ), "No feature in portion dataset, use compute_cpsds = True !"
+
+    # Step 1 : list available sections
+    sections = list(portion.feature.children)
+
+    # Step 2 : derive all features to avoid duplicated call to derive_section_features
+    for _, feature_node in portion.feature.children.items():
+        ds_feature_section = feature_node.to_dataset()
+
+        # Derive features
+        features_section = all_features_single_section(
+            ds_feature_section=ds_feature_section,
+            rcv_ref=rcv_ref,
+            fmin=fmin,
+            fmax=fmax,
+        )  # (nrcv, n_emission, nfreq)
+
+        # Add coords
+        ds_feature_section["rcv_id_feature"] = features_section["rcv_id"]
+
+        # Store in dataset
+        ds_feature_section["pi_ij"] = (
+            ["rcv_id_feature", "src_datetime", "freq"],
+            features_section["pi_ij"],
+        )
+        ds_feature_section["gamma_ij"] = (
+            ["rcv_id_feature", "src_datetime", "freq"],
+            features_section["gamma_ij"],
+        )
+        ds_feature_section["sij_scot"] = (
+            ["rcv_id_feature", "src_datetime", "freq"],
+            features_section["sij_scot"],
+        )
+
+        # Add attributes
+        ds_feature_section.attrs["reference_receiver"] = rcv_ref
+
+        # Update portion
+        feature_node.ds = ds_feature_section
+
+    # Step 3
+    meridional_sections = [sec for sec in sections if sec.startswith("sn")]
+    zonal_sections = [sec for sec in sections if sec.startswith("oe")]
+
+    # Intersection are between zonal and meridional sections
+    for section_name1 in meridional_sections:
+        ds_feature_section1 = portion.feature[section_name1].to_dataset()
+
+        for section_name2 in zonal_sections:
+            ds_feature_section2 = portion.feature[section_name2].to_dataset()
+
+            # Compute distance (in real space and in features space)
+            distance_section12 = distances_single_intersection(
+                ds_feature_section1=ds_feature_section1,
+                ds_feature_section2=ds_feature_section2,
+            )
+
+            # Build dataset to save
+            ds_mfp = build_mfp_intersection_dataset(
+                distance_section12=distance_section12,
+                ds_feature_section1=ds_feature_section1,
+                ds_feature_section2=ds_feature_section2,
+            )
+
+            # Add to portion
+            new_path = f"/mfp_intersection/{section_name1}/{section_name2}"
+            portion[new_path] = ds_mfp
+
+
 if __name__ == "__main__":
     pass

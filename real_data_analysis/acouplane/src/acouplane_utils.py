@@ -426,10 +426,12 @@ def build_and_save_portion_tree(
         ds_pos_sections[i].attrs["portion_id"] = portion_id
         ds_pos_sections[i].attrs["section_orientation"] = sections_orientation[i]
         ds_pos_sections[i].attrs["section_id"] = i
+        ds_pos_sections[i].attrs["section_label"] = sections_label[i]
 
         ds_pressure_sections[i].attrs["portion_id"] = portion_id
         ds_pressure_sections[i].attrs["section_orientation"] = sections_orientation[i]
         ds_pressure_sections[i].attrs["section_id"] = i
+        ds_pressure_sections[i].attrs["section_label"] = sections_label[i]
 
         # print(
         #     sections_label[i],
@@ -453,6 +455,9 @@ def build_and_save_portion_tree(
 
     # Save as netcdf
     fpath = f"{root_fpath}_{portion_id}.nc"
+    # Add attrs
+    portion_tree.attrs["portion_filepath"] = fpath
+    # Save
     portion_tree.to_netcdf(fpath)
 
     return portion_tree
@@ -598,6 +603,12 @@ def apply_rcv_position_correction_to_portion(
         ds_pos_section = compute_src_rcv_geodesic_dist(
             ds_pos_sections=[ds_pos_section]
         )[0]
+
+        # Add attributes to track modifications
+        ds_pos_section.attrs["obs_position"] = (
+            "OBS position corrected using LMS inversion."
+        )
+        ds_pos_section.attrs["obs_position_filepath"] = rcv_pos_fpath
 
         # Update tree
         node.ds = ds_pos_section
@@ -1084,6 +1095,7 @@ def derive_portion_cpsd(
 
             # 3) Build list of signal_i
             signal_arr = []
+            cropped_signal = False
             for i in range(obs_ids.size):
                 rcv_id_i = obs_ids[i]
                 # Reception datetime for current rcv i
@@ -1101,26 +1113,36 @@ def derive_portion_cpsd(
                     }
                 )
 
+                if signal_i.size != int(signal_duration_s * ds_pressure_section.fs):
+                    cropped_signal = True
+                    break
+
                 # Ensure signal is centered
                 signal_i = signal_i - np.nanmean(signal_i)
 
                 # Store in array
                 signal_arr.append(signal_i.values)
 
-            # Check all rcv have complete signal
-            signal_is_complete = np.all(
-                [
-                    signal_arr[k].size
-                    == int(signal_duration_s * ds_pressure_section.fs)
-                    for k in range(len(signal_arr))
-                ]
-            )
-            # print(signal_is_complete)
-            if signal_is_complete:
-                valid_emission_dt.append(tir_emission_dt)
-                signal_arr = np.asarray(signal_arr)  # (nrcv, nt)
-            else:
+            if cropped_signal:
                 continue
+
+            # # Check all rcv have complete signal
+            # signal_is_complete = np.all(
+            #     [
+            #         signal_arr[k].size
+            #         == int(signal_duration_s * ds_pressure_section.fs)
+            #         for k in range(len(signal_arr))
+            #     ]
+            # )
+            # # print(signal_is_complete)
+            # if signal_is_complete:
+            #     valid_emission_dt.append(tir_emission_dt)
+            #     signal_arr = np.asarray(signal_arr)  # (nrcv, nt)
+            # else:
+            #     continue
+
+            valid_emission_dt.append(tir_emission_dt)
+            signal_arr = np.asarray(signal_arr)  # (nrcv, nt)
 
             # a) Compute PSD Sxx
             rfft = np.fft.rfft(signal_arr, n=nfft, axis=1)  # (nrcv, nfft)
@@ -1132,7 +1154,7 @@ def derive_portion_cpsd(
             # a) Compute CPSD Sxy
             # Ugly double loop to vectorized
             nr, nf = rfft.shape
-            Sxy_arr = np.empty(shape=(nr, nr, nf), dtype=np.complex64) * np.nan
+            Sxy_arr = np.empty(shape=(nr, nr, nf), dtype=np.complex64)
             for i in range(obs_ids.size):
                 Sxy_arr[i, i, :] = Sxx_arr[i, :]  # Diagonal = PSD
                 x_fft_i = rfft[i, :]
@@ -1211,7 +1233,8 @@ def get_distance_between_sections(ds_feature_section1, ds_feature_section2):
 
         dist_12.append(horiz_d)
 
-    dist_12 = np.asarray(dist_12)
+    dist_12 = np.asarray(dist_12)  # (n_emission2, n_emission1)
+    dist_12 = dist_12.T  # (n_emission1, n_emission2)
 
     return dist_12
 
@@ -1335,8 +1358,8 @@ def derive_features_array(portion, fmin=5, fmax=50, rcv_ref="obs1", rcv_i="obs2"
             ds_feature_section=ds_feature_section,
             fmin=fmin,
             fmax=fmax,
-            rcv_ref=ref_rcv_id,
-            rcv_i=rcv_id_i,
+            rcv_ref=rcv_ref,
+            rcv_i=rcv_i,
         )
         pi_ij_arr.append(pi_ij_a)
         gamma_arr.append(gamma_a)

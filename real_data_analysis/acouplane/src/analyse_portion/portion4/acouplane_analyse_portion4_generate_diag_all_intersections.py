@@ -39,7 +39,7 @@ from real_data_analysis.acouplane.src.acouplane_utils import *
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
-portion_id = 4
+portion_id = 5
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
@@ -87,13 +87,13 @@ obs_ids = [
 ]
 # Frequency band
 fmin = 10
-fmax = 11
+fmax = 200
 
 # ======================================================================================================================
 # Booleans to control behavior
 # ======================================================================================================================
-save_modification_to_portion = False
-save_mfp_intersection_result = True
+save_modification_to_portion = True
+# save_mfp_intersection_result = True
 apply_obs_pos_correction = True
 compute_cpsds = True
 apply_mfp_strategy_intersections = True

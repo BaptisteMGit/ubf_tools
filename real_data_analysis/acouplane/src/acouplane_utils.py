@@ -83,7 +83,7 @@ def save_portion_inplace(portion_tree, portion_fpath):
     data is NOT loaded in memory beforehand: variables still backed by the
     original file are streamed from it to the temporary file. Once the
     temporary file is completely written, the tree is closed and the original
-    file is automically replaced.
+    file is atomically replaced.
 
     Parameters
     ----------
@@ -741,7 +741,9 @@ def build_and_save_portion_tree(
         "sections_label": len(sections_label),
     }
     if len(set(lengths.values())) != 1:
-        raise ValueError(f"Inconsistent number of sections between inputs: {lengths}.")
+        raise ValueError(
+            f"Inconsistent number of sections between inputs: {lengths}."
+        )
 
     # Copy to avoid muting the same object
     ds_pos_sections = [ds.copy() for ds in ds_pos_sections]
@@ -760,7 +762,8 @@ def build_and_save_portion_tree(
 
     # Build tree dict
     tree_dict_positions = {
-        f"/position/{sections_label[i]}": ds_pos_sections[i] for i in range(n_sections)
+        f"/position/{sections_label[i]}": ds_pos_sections[i]
+        for i in range(n_sections)
     }
     tree_dict_pressure = {
         f"/pressure/{sections_label[i]}": ds_pressure_sections[i]
@@ -1516,8 +1519,7 @@ def plot_spectrogram_section(
             noverlap=noverlap,
             scaling="psd",  # V^2 / Hz
         )
-        # Power in dB re V**2 / Hz (power = |stft|**2, hence 10 * log10)
-        sxx = 10 * np.log10(np.abs(stft) ** 2 + 1e-12)
+        sxx = 10 * np.log10(np.abs(stft) + 1e-6)  # dB re V**2 / Hz
         sxx_plot.append(sxx)
 
         # Datetime vector of the first OBS is used for the shared time axis
@@ -1778,8 +1780,7 @@ def derive_portion_cpsd(
                 signal_i = ds_pressure_section[f"pressure_{rcv_id_i}"].sel(
                     {
                         f"time_{rcv_id_i}": slice(
-                            tir_reception_dt_rcvi.data
-                            - np.timedelta64(offset_ms, "ms"),
+                            tir_reception_dt_rcvi.data - np.timedelta64(offset_ms, "ms"),
                             tir_reception_dt_rcvi.data
                             + np.timedelta64(signal_duration_ms - offset_ms, "ms"),
                         )
@@ -1895,6 +1896,40 @@ def get_distance_between_sections(ds_feature_section1, ds_feature_section2):
     return dist_12
 
 
+def _gamma_distances_block(gamma_a, gamma_b):
+    """Compute the unnormalized distances between gamma (RTF level) vectors.
+
+    Inputs are already broadcastable: ``gamma_a`` has shape ``(nt1, 1, nf)`` and
+    ``gamma_b`` has shape ``(1, nt2, nf)``. NaN values are ignored (``nansum``).
+
+    Parameters
+    ----------
+    gamma_a, gamma_b : numpy.ndarray
+        RTF level in dB (real).
+
+    Returns
+    -------
+    dist_theta_gamma : numpy.ndarray
+        Euclidean angle between the gamma vectors, rescaled to [0, 1], shape
+        ``(nt1, nt2)``.
+    dist_L2_gamma_raw : numpy.ndarray
+        L2 distance between the gamma vectors, shape ``(nt1, nt2)``. Not yet
+        normalized to [0, 1].
+    """
+    # L2 distance (normalized by the caller)
+    dist_L2_gamma = np.sqrt(np.nansum(np.abs(gamma_a - gamma_b) ** 2, axis=-1))
+
+    # Theta
+    inner_prod = np.nansum(gamma_a * gamma_b, axis=-1)
+    norm_a = np.sqrt(np.nansum(gamma_a**2, axis=-1))
+    norm_b = np.sqrt(np.nansum(gamma_b**2, axis=-1))
+    # Clip to [-1, 1] for stability
+    cos_angle = np.clip(inner_prod / (norm_a * norm_b), -1.0, 1.0)
+    dist_theta_gamma = (1 - cos_angle) / 2  # [-1, 1] to [0, 1]
+
+    return dist_theta_gamma, dist_L2_gamma
+
+
 def _feature_distances_block(pi_a, gamma_a, sij_scot_a, pi_b, gamma_b, sij_scot_b):
     """Compute the unnormalized feature distances between two sets of shots.
 
@@ -1924,16 +1959,8 @@ def _feature_distances_block(pi_a, gamma_a, sij_scot_a, pi_b, gamma_b, sij_scot_
     cos_angle = np.clip(np.abs(inner_prod) / np.abs(norm_a * norm_b), 0, 1.0)
     dist_theta = 1 - cos_angle  # to [0, 1]
 
-    # Compute L2 with gamma (normalized by the caller)
-    dist_L2_gamma = np.sqrt(np.nansum(np.abs(gamma_a - gamma_b) ** 2, axis=-1))
-
-    # Compute theta with gamma
-    inner_prod = np.nansum(gamma_a * gamma_b, axis=-1)
-    norm_a = np.sqrt(np.nansum(gamma_a**2, axis=-1))
-    norm_b = np.sqrt(np.nansum(gamma_b**2, axis=-1))
-    # Clip to [-1, 1] for stability
-    cos_angle = np.clip(inner_prod / (norm_a * norm_b), -1.0, 1.0)
-    dist_theta_gamma = (1 - cos_angle) / 2  # [-1, 1] to [0, 1]
+    # Distances on gamma (L2 is normalized by the caller)
+    dist_theta_gamma, dist_L2_gamma = _gamma_distances_block(gamma_a, gamma_b)
 
     # DCF
     dist_dcf = np.abs(np.nansum(sij_scot_a * np.conj(sij_scot_b), axis=-1))
@@ -2031,6 +2058,51 @@ def derive_feature_distance_between_sections(features_section1, features_section
     dist_L2_gamma = dist_L2_gamma / np.nanmax(dist_L2_gamma)
 
     return dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf
+
+
+def derive_gamma_distance_between_sections(gamma_section1, gamma_section2):
+    """Compute the gamma distances (theta_gamma and L2) between all shots of two sections.
+
+    Same computation as in ``derive_feature_distance_between_sections`` but
+    restricted to the gamma (RTF level) vectors, which allows comparing variants
+    of gamma (e.g. centered along frequency) without storing them. Processed by
+    blocks of rows to bound the memory usage.
+
+    Parameters
+    ----------
+    gamma_section1, gamma_section2 : numpy.ndarray
+        RTF level in dB of each section, shape ``(n_emission, n_freq)``.
+
+    Returns
+    -------
+    dist_theta_gamma, dist_L2_gamma : numpy.ndarray
+        Distance matrices of shape ``(n_emission1, n_emission2)``;
+        ``dist_L2_gamma`` is normalized by its maximum.
+
+    Raises
+    ------
+    ValueError
+        If the two sections do not have the same number of frequency bins.
+    """
+    if gamma_section1.shape[-1] != gamma_section2.shape[-1]:
+        raise ValueError(
+            "The two sections do not have the same number of frequency bins "
+            f"({gamma_section1.shape[-1]} vs {gamma_section2.shape[-1]})."
+        )
+    nt1, nf = gamma_section1.shape
+    nt2 = gamma_section2.shape[0]
+    gamma_b = gamma_section2[np.newaxis, :, :]
+    block = max(1, _MAX_BROADCAST_ELEMENTS // max(1, nt2 * nf))
+
+    dist_theta_gamma = np.empty((nt1, nt2))
+    dist_L2_gamma = np.empty((nt1, nt2))
+    for start in range(0, nt1, block):
+        sl = slice(start, min(start + block, nt1))
+        dist_theta_gamma[sl], dist_L2_gamma[sl] = _gamma_distances_block(
+            gamma_section1[sl, np.newaxis, :], gamma_b
+        )
+
+    return dist_theta_gamma, dist_L2_gamma / np.nanmax(dist_L2_gamma)
 
 
 def derive_section_features(
@@ -2179,12 +2251,21 @@ def derive_features_array(portion, fmin=5, fmax=50, rcv_ref="obs1", rcv_i="obs2"
 # ======================================================================================================================
 
 
-def distances_single_intersection(ds_feature_section1, ds_feature_section2):
+def distances_single_intersection(
+    ds_feature_section1, ds_feature_section2, compare_centered_gamma=False
+):
     """Compute all distances between the shots of two intersecting sections.
 
     The geodesic distance between shots ("real space") and, for each receiver
     pair ``(rcv_id_feature, reference receiver)``, the four feature distances of
     ``derive_feature_distance_between_sections`` are computed.
+
+    Optionally, the gamma distances are also computed with a ``gamma`` centered
+    along frequency (mean of each shot removed, ``np.mean`` so that a shot
+    containing a NaN stays entirely NaN, as in the former implementation). The
+    centered gamma is computed on the fly and is never stored. ``theta``
+    (complex RTF) and ``dcf`` do not depend on ``gamma`` and are therefore
+    unchanged by the centering.
 
     Parameters
     ----------
@@ -2193,13 +2274,18 @@ def distances_single_intersection(ds_feature_section1, ds_feature_section2):
         ``gamma_ij`` and ``sij_scot`` of dimensions
         ``(rcv_id_feature, src_datetime, freq)`` (see
         ``apply_mfp_strategy_to_portion_intersections``).
+    compare_centered_gamma : bool, optional
+        If True, also compute ``dist_theta_gamma_centered`` and
+        ``dist_L2_gamma_centered``.
 
     Returns
     -------
     dict
         Keys ``dist_in_real_space`` (shape ``(n_emission1, n_emission2)``, m)
         and ``dist_theta``, ``dist_theta_gamma``, ``dist_L2_gamma``,
-        ``dist_dcf`` (shape ``(n_rcv, n_emission1, n_emission2)``).
+        ``dist_dcf`` (shape ``(n_rcv, n_emission1, n_emission2)``). If
+        ``compare_centered_gamma`` is True, also ``dist_theta_gamma_centered``
+        and ``dist_L2_gamma_centered`` (same shape).
     """
     # Compute real distance in meters between emissions from section 1 to emission from section 2
     dist_in_real_space_12 = get_distance_between_sections(
@@ -2210,6 +2296,8 @@ def distances_single_intersection(ds_feature_section1, ds_feature_section2):
     dist_theta_gamma_arr = []
     dist_L2_gamma_arr = []
     dist_dcf_arr = []
+    dist_theta_gamma_c_arr = []
+    dist_L2_gamma_c_arr = []
 
     for rcv_id_i in ds_feature_section1.rcv_id_feature.values:
 
@@ -2239,6 +2327,20 @@ def distances_single_intersection(ds_feature_section1, ds_feature_section2):
         dist_L2_gamma_arr.append(dist_L2_gamma)
         dist_dcf_arr.append(dist_dcf)
 
+        # Same gamma distances with gamma centered along frequency (not stored)
+        if compare_centered_gamma:
+            gamma1_c = features_section1["gamma_ij"] - np.mean(
+                features_section1["gamma_ij"], axis=1, keepdims=True
+            )
+            gamma2_c = features_section2["gamma_ij"] - np.mean(
+                features_section2["gamma_ij"], axis=1, keepdims=True
+            )
+            d_theta_gamma_c, d_L2_gamma_c = derive_gamma_distance_between_sections(
+                gamma1_c, gamma2_c
+            )
+            dist_theta_gamma_c_arr.append(d_theta_gamma_c)
+            dist_L2_gamma_c_arr.append(d_L2_gamma_c)
+
     # Convert to arrays and group (nrcv, n_emission1, n_emission2)
     distance_section12 = dict(
         dist_in_real_space=dist_in_real_space_12,
@@ -2247,6 +2349,11 @@ def distances_single_intersection(ds_feature_section1, ds_feature_section2):
         dist_L2_gamma=np.asarray(dist_L2_gamma_arr),
         dist_dcf=np.asarray(dist_dcf_arr),
     )
+    if compare_centered_gamma:
+        distance_section12["dist_theta_gamma_centered"] = np.asarray(
+            dist_theta_gamma_c_arr
+        )
+        distance_section12["dist_L2_gamma_centered"] = np.asarray(dist_L2_gamma_c_arr)
 
     return distance_section12
 
@@ -2254,8 +2361,8 @@ def distances_single_intersection(ds_feature_section1, ds_feature_section2):
 def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50):
     """Derive the RTF and DCF features of a section for all receivers but the reference.
 
-    The RTF level ``gamma`` is centered along the frequency axis (mean removed
-    for each shot).
+    The RTF level ``gamma`` is NOT centered along the frequency axis (see
+    ``distances_single_intersection`` to compare with a centered ``gamma``).
 
     Parameters
     ----------
@@ -2299,11 +2406,6 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
             rcv_ref=rcv_ref,
             rcv_i=rcv_id_i,
         )
-
-        # Center gamma
-        gamma_a = gamma_a - np.mean(
-            gamma_a, axis=1, keepdims=True
-        )  # TODO remove if not ok
 
         # Store
         pi_1_arr.append(pi_ij_a)
@@ -2407,6 +2509,30 @@ def build_mfp_intersection_dataset(
         ),
     )
 
+    # Optional comparison with gamma centered along frequency
+    for var, key, long_name, description in (
+        (
+            "d_theta_gamma_centered",
+            "dist_theta_gamma_centered",
+            r"$\theta_{\gamma}$ (centered)",
+            "Euclidean angle between RTF gamma vectors centered along frequency",
+        ),
+        (
+            "d_L2_gamma_centered",
+            "dist_L2_gamma_centered",
+            r"$L_{2_{\gamma}}$ (centered)",
+            "Normalized euclidean distance (L2) between RTF gamma vectors centered along frequency",
+        ),
+    ):
+        if key in distance_section12:
+            ds_mfp[var] = (
+                ["rcv_id_feature", "src_datetime_section1", "src_datetime_section2"],
+                distance_section12[key],
+            )
+            ds_mfp[var].attrs = dict(
+                long_name=long_name, description=description, minval=0, maxval=1
+            )
+
     # Add attrs to variables
     ds_mfp.d_real.attrs = dict(
         units="m",
@@ -2441,7 +2567,12 @@ def build_mfp_intersection_dataset(
 
 
 def apply_mfp_strategy_to_portion_intersections(
-    portion, rcv_ref="obs1", fmin=5, fmax=50, verbose=False
+    portion,
+    rcv_ref="obs1",
+    fmin=5,
+    fmax=50,
+    verbose=False,
+    compare_centered_gamma=False,
 ):
     """Compute the MFP ambiguity surfaces for every meridional / zonal intersection.
 
@@ -2463,6 +2594,10 @@ def apply_mfp_strategy_to_portion_intersections(
         Frequency band kept, in Hz.
     verbose : bool, optional
         If True, print the progress.
+    compare_centered_gamma : bool, optional
+        If True, the intersection datasets also contain ``d_theta_gamma_centered``
+        and ``d_L2_gamma_centered`` (distances with ``gamma`` centered along
+        frequency). The centered gamma itself is not stored.
 
     Returns
     -------
@@ -2538,6 +2673,7 @@ def apply_mfp_strategy_to_portion_intersections(
             distance_section12 = distances_single_intersection(
                 ds_feature_section1=ds_feature_section1,
                 ds_feature_section2=ds_feature_section2,
+                compare_centered_gamma=compare_centered_gamma,
             )
 
             # Build dataset to save

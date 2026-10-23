@@ -37,7 +37,7 @@ from real_data_analysis.acouplane.src.acouplane_utils import (
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
-portion_id = 5
+portion_id = 1
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
@@ -90,17 +90,19 @@ fmax = 50
 # ======================================================================================================================
 # Booleans to control behavior
 # ======================================================================================================================
-save_modification_to_portion = False
-apply_obs_pos_correction = False
-compute_cpsds = False
+save_modification_to_portion = True
+apply_obs_pos_correction = True
+compute_cpsds = True
 apply_mfp_strategy_intersections = True
 
 plot_portion_position = False
 plot_signal = False
 plot_spectrogram = False
 plot_signal_single_emission = False
-plot_features = False
+plot_features = True
 plot_intersections = True
+# Also compute (and plot) the gamma distances with gamma centered along frequency
+compare_centered_gamma = True
 verbose = True
 
 
@@ -182,8 +184,9 @@ def get_intersection_guess_positions(ds_mfp_intersection):
     """Find the estimated intersection for each feature-space distance.
 
     For each distance (``d_theta``, ``d_theta_gamma``, ``d_L2_gamma`` and
-    ``d_dcf``) and each receiver pair, the pair of shots minimizing the distance
-    is the estimated (guessed) intersection.
+    ``d_dcf``, plus ``d_theta_gamma_centered`` and ``d_L2_gamma_centered`` when
+    they are present in the dataset) and each receiver pair, the pair of shots
+    minimizing the distance is the estimated (guessed) intersection.
 
     Parameters
     ----------
@@ -195,9 +198,11 @@ def get_intersection_guess_positions(ds_mfp_intersection):
     -------
     dict
         One entry per distance: ``"theta"``, ``"theta_gamma"``, ``"L2_gamma"``
-        and ``"dcf"``. Each entry is a dict with the keys ``dt1`` and ``dt2``
-        (xarray.DataArray of dimension ``rcv_id_feature``): emission datetimes of
-        the estimated intersection along section 1 and section 2.
+        and ``"dcf"``, plus ``"theta_gamma_centered"`` and
+        ``"L2_gamma_centered"`` if available. Each entry is a dict with the keys
+        ``dt1`` and ``dt2`` (xarray.DataArray of dimension ``rcv_id_feature``):
+        emission datetimes of the estimated intersection along section 1 and
+        section 2.
     """
     dims = ["src_datetime_section1", "src_datetime_section2"]
     metrics = dict(
@@ -205,10 +210,14 @@ def get_intersection_guess_positions(ds_mfp_intersection):
         theta_gamma="d_theta_gamma",
         L2_gamma="d_L2_gamma",
         dcf="d_dcf",
+        theta_gamma_centered="d_theta_gamma_centered",
+        L2_gamma_centered="d_L2_gamma_centered",
     )
 
     intersections = {}
     for key, var in metrics.items():
+        if var not in ds_mfp_intersection:
+            continue
         idx_guess_pos = ds_mfp_intersection[var].argmin(dim=dims)
         ds_guess = ds_mfp_intersection.isel(idx_guess_pos)
         intersections[key] = dict(
@@ -256,7 +265,9 @@ def plot_intersection_ambiguity(
     matplotlib.figure.Figure
         The figure (not closed).
     """
-    fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True)
+    fig, axs = plt.subplots(
+        nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
+    )
 
     # Plot ambiguity surfaces
     ds_mfp_intersection_rcv.d_real.plot(
@@ -302,6 +313,106 @@ def plot_intersection_ambiguity(
             label="Guess",
             linewidth=3,
         )
+
+    for ax in axs.flatten():
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_title("")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    fig.supxlabel(f"Time along {section1_name} trajectory")
+    fig.supylabel(f"Time along {section2_name} trajectory")
+
+    return fig
+
+
+def plot_intersection_gamma_comparison(
+    ds_mfp_intersection_rcv,
+    target_dt,
+    guess_dt,
+    section1_name,
+    section2_name,
+    cmap="Grays_r",
+    max_quantile=0.95,
+):
+    """Compare the gamma distances with and without centering of gamma.
+
+    The figure is a 2x2 grid: ``theta_gamma`` (a) and ``theta_gamma`` with
+    centered gamma (b) on the first row, ``L2_gamma`` (c) and ``L2_gamma`` with
+    centered gamma (d) on the second row. The true intersection is marked by a
+    red square and the estimated one by a magenta circle. For each row, both
+    panels share the same color scale (minimum of the two, upper quantile of the
+    two) so that they can be compared directly.
+
+    Parameters
+    ----------
+    ds_mfp_intersection_rcv : xarray.Dataset
+        MFP dataset of one intersection, selected for a single receiver pair,
+        containing the centered distances (``compare_centered_gamma = True``).
+    target_dt : tuple of numpy.datetime64
+        True intersection ``(dt1, dt2)``, see ``get_intersection_target_position``.
+    guess_dt : dict
+        Estimated intersections for this receiver pair, with the keys
+        ``theta_gamma``, ``theta_gamma_centered``, ``L2_gamma`` and
+        ``L2_gamma_centered``, each a tuple ``(dt1, dt2)``.
+    section1_name, section2_name : str
+        Display names of the two sections, used in the axis labels.
+    cmap : str, optional
+        Matplotlib colormap name.
+    max_quantile : float, optional
+        Quantile used as upper bound of the color scale.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure (not closed).
+    """
+    fig, axs = plt.subplots(
+        nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
+    )
+
+    rows = [
+        (
+            axs[0],
+            [
+                ("d_theta_gamma", "theta_gamma"),
+                ("d_theta_gamma_centered", "theta_gamma_centered"),
+            ],
+        ),
+        (
+            axs[1],
+            [("d_L2_gamma", "L2_gamma"), ("d_L2_gamma_centered", "L2_gamma_centered")],
+        ),
+    ]
+    for row_axs, panels in rows:
+        das = [ds_mfp_intersection_rcv[var] for var, _ in panels]
+        vmin = min(float(da.min()) for da in das)
+        vmax = max(float(da.quantile(q=max_quantile)) for da in das)
+        for ax, da, (_, guess_key) in zip(row_axs, das, panels):
+            da.plot(x="src_datetime_section1", cmap=cmap, ax=ax, vmin=vmin, vmax=vmax)
+            ax.scatter(
+                target_dt[0],
+                target_dt[1],
+                marker="s",
+                s=400,
+                facecolors="none",
+                edgecolors="r",
+                label="Target",
+                linewidth=3,
+            )
+            ax.scatter(
+                guess_dt[guess_key][0],
+                guess_dt[guess_key][1],
+                marker="o",
+                s=200,
+                facecolors="none",
+                edgecolors="m",
+                label="Guess",
+                linewidth=3,
+            )
 
     for ax in axs.flatten():
         ax.set_xlabel("")
@@ -480,7 +591,12 @@ else:
 if apply_mfp_strategy_intersections:
     log("Step 4 - Applying the MFP strategy to each intersection")
     apply_mfp_strategy_to_portion_intersections(
-        portion, rcv_ref=reference_rcv, fmin=fmin, fmax=fmax, verbose=verbose
+        portion,
+        rcv_ref=reference_rcv,
+        fmin=fmin,
+        fmax=fmax,
+        verbose=verbose,
+        compare_centered_gamma=compare_centered_gamma,
     )
 else:
     log("Step 4 - MFP strategy: skipped (apply_mfp_strategy_intersections = False)")
@@ -491,7 +607,8 @@ else:
 if plot_features:
     log("Step 5 - Plotting features (RTF, DCF)")
 
-    alpha_max = 0.5
+    # Quantile of |centered gamma| used as symmetric bound of the gamma color scale
+    gamma_max_quantile = 0.98
 
     for name, node in portion.feature.children.items():
         log(f"Section '{name}'", level=1)
@@ -543,14 +660,21 @@ if plot_features:
 
             ds_feat_rcv = ds_feature_section.sel(rcv_id_feature=rcv_id_i)
 
-            # RTF Gamma
-            gamma_max = np.nanmax(ds_feat_rcv.gamma_ij.values)
-            ds_feat_rcv.gamma_ij.plot(
+            # RTF Gamma, centered along frequency (computed on the fly, not stored)
+            gamma_centered = ds_feat_rcv.gamma_ij - ds_feat_rcv.gamma_ij.mean(
+                dim="freq", skipna=True
+            )
+            # Symmetric color scale based on a high quantile of |gamma|, so that a few
+            # outliers do not wash out the map
+            gamma_lim = np.nanquantile(
+                np.abs(gamma_centered.values), gamma_max_quantile
+            )
+            gamma_centered.plot(
                 x="freq",
                 ax=axs_gamma[iplot],
                 cmap="magma",
-                vmin=-alpha_max * gamma_max,
-                vmax=+alpha_max * gamma_max,
+                vmin=-gamma_lim,
+                vmax=+gamma_lim,
             )
             axs_gamma[iplot].set_xlabel("")
             axs_gamma[iplot].set_ylabel("")
@@ -573,7 +697,7 @@ if plot_features:
                 axs_dcf[iplot, icol].set_title(rcv_id_i.upper(), fontsize=12)
 
         fig_gamma.supxlabel("Frequency [Hz]")
-        fig_gamma.suptitle(section_name_of(node))
+        fig_gamma.suptitle(f"{section_name_of(node)} (centered gamma)")
 
         fpath = os.path.join(
             ROOT_IMG_PORTION_FEATURES_RTF,
@@ -667,6 +791,30 @@ if plot_intersections:
                 )
                 fig.savefig(fpath)
                 plt.close(fig)
+
+                # Comparison of gamma distances with / without centering of gamma
+                if "d_theta_gamma_centered" in ds_mfp_intersection:
+                    fig = plot_intersection_gamma_comparison(
+                        ds_mfp_intersection_rcv=ds_mfp_intersection_rcv,
+                        target_dt=target_dt,
+                        guess_dt=guess_dt,
+                        section1_name=section1_name,
+                        section2_name=section2_name,
+                        cmap=cmap,
+                        max_quantile=max_quantile,
+                    )
+                    fpath = os.path.join(
+                        root_img_intersection,
+                        f"mfp_ambiguity_gamma_centered_comparison_{rcv_id}.png",
+                    )
+                    fig.savefig(fpath)
+                    plt.close(fig)
+                elif compare_centered_gamma:
+                    print(
+                        "    WARNING: compare_centered_gamma = True but the intersections stored in "
+                        "the portion do not contain the centered distances: set "
+                        "apply_mfp_strategy_intersections = True to compute them."
+                    )
 
 # ======================================================================================================================
 # Save results (last step: the portion is closed by the save)

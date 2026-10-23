@@ -741,7 +741,9 @@ def build_and_save_portion_tree(
         "sections_label": len(sections_label),
     }
     if len(set(lengths.values())) != 1:
-        raise ValueError(f"Inconsistent number of sections between inputs: {lengths}.")
+        raise ValueError(
+            f"Inconsistent number of sections between inputs: {lengths}."
+        )
 
     # Copy to avoid muting the same object
     ds_pos_sections = [ds.copy() for ds in ds_pos_sections]
@@ -760,7 +762,8 @@ def build_and_save_portion_tree(
 
     # Build tree dict
     tree_dict_positions = {
-        f"/position/{sections_label[i]}": ds_pos_sections[i] for i in range(n_sections)
+        f"/position/{sections_label[i]}": ds_pos_sections[i]
+        for i in range(n_sections)
     }
     tree_dict_pressure = {
         f"/pressure/{sections_label[i]}": ds_pressure_sections[i]
@@ -1516,7 +1519,8 @@ def plot_spectrogram_section(
             noverlap=noverlap,
             scaling="psd",  # V^2 / Hz
         )
-        sxx = 10 * np.log10(np.abs(stft) + 1e-12)
+        # Power in dB re V**2 / Hz (power = |stft|**2, hence 10 * log10)
+        sxx = 10 * np.log10(np.abs(stft) ** 2 + 1e-12)
         sxx_plot.append(sxx)
 
         # Datetime vector of the first OBS is used for the shared time axis
@@ -1777,8 +1781,7 @@ def derive_portion_cpsd(
                 signal_i = ds_pressure_section[f"pressure_{rcv_id_i}"].sel(
                     {
                         f"time_{rcv_id_i}": slice(
-                            tir_reception_dt_rcvi.data
-                            - np.timedelta64(offset_ms, "ms"),
+                            tir_reception_dt_rcvi.data - np.timedelta64(offset_ms, "ms"),
                             tir_reception_dt_rcvi.data
                             + np.timedelta64(signal_duration_ms - offset_ms, "ms"),
                         )

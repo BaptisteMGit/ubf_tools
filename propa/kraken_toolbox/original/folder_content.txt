@@ -1,0 +1,333 @@
+Structure du dossier pour le volume Système
+Le numéro de série du volume est 00000026 54BD:F9EE
+C:.
+¦   folder_content.txt
+¦   plot_utils.py
+¦   read_modes.py
+¦   read_shd.py
+¦   run_kraken.py
+¦   utils.py
+¦   
++---tests
+    +---calibrationSynthesis
+    ¦       calib_fourier_synthesis.env
+    ¦       calib_fourier_synthesis.flp
+    ¦       calib_fourier_synthesis.prt
+    ¦       calib_fourier_synthesis_AC198EBFF716.env
+    ¦       calib_fourier_synthesis_AC198EBFF716.flp
+    ¦       calib_fourier_synthesis_AC198EBFF716.prt
+    ¦       calib_fourier_synthesis_bis_AC198EBFF716.env
+    ¦       calib_fourier_synthesis_bis_AC198EBFF716.flp
+    ¦       calib_fourier_synthesis_bis_AC198EBFF716.prt
+    ¦       calib_medium.png
+    ¦       field.prt
+    ¦       modes.png
+    ¦       pf.nc
+    ¦       rcv_sig.nc
+    ¦       rcv_sig_r30000m copy.png
+    ¦       rcv_sig_r30000m.png
+    ¦       runtest.py
+    ¦       
+    +---calib_case
+    ¦       calibK.env
+    ¦       calibK.flp
+    ¦       calibK.mod
+    ¦       calibK.prt
+    ¦       calibK.shd
+    ¦       cyg_kraken_field_mod.png
+    ¦       cyg_kraken_field_mod_depth.png
+    ¦       field.prt
+    ¦       field_cyg_kraken_win.png
+    ¦       field_cyg_kraken_win_mod.png
+    ¦       field_cyg_kraken_win_mod_depth.png
+    ¦       runtest.py
+    ¦       
+    +---downslope
+    ¦   ¦   runtest.py
+    ¦   ¦   
+    ¦   +---data
+    ¦   ¦       bathy_data.csv
+    ¦   ¦       ssp_data.csv
+    ¦   ¦       
+    ¦   +---env_kraken
+    ¦   ¦       field.prt
+    ¦   ¦       test_kraken_downslope.env
+    ¦   ¦       test_kraken_downslope.flp
+    ¦   ¦       test_kraken_downslope.mod
+    ¦   ¦       test_kraken_downslope.prt
+    ¦   ¦       test_kraken_downslope.shd
+    ¦   ¦       
+    ¦   +---result
+    ¦           bathy.png
+    ¦           kraken_downslope.png
+    ¦           medium.png
+    ¦           
+    +---kraken_env
+    ¦       bathy_data.csv
+    ¦       test_kraken_rd.env
+    ¦       test_kraken_rd.flp
+    ¦       
+    +---parallel
+    ¦   +---frequency_bins
+    ¦           cpu_time.csv
+    ¦           cpu_time_polyfit.csv
+    ¦           freq_bands_repartition_parallel.png
+    ¦           runtest.py
+    ¦           
+    +---ray_modes
+    ¦   +---compare_ray_modes
+    ¦   ¦   ¦   field.prt
+    ¦   ¦   ¦   runtest.py
+    ¦   ¦   ¦   
+    ¦   ¦   +---env_bellhop
+    ¦   ¦   ¦       calib_ray_mode_bellhop.env
+    ¦   ¦   ¦       calib_ray_mode_bellhop.prt
+    ¦   ¦   ¦       calib_ray_mode_bellhop.shd
+    ¦   ¦   ¦       calib_ray_mode_bellhop_template.env
+    ¦   ¦   ¦       
+    ¦   ¦   +---env_kraken
+    ¦   ¦   ¦       calib_ray_mode_kraken.env
+    ¦   ¦   ¦       calib_ray_mode_kraken.flp
+    ¦   ¦   ¦       calib_ray_mode_kraken.mod
+    ¦   ¦   ¦       calib_ray_mode_kraken.prt
+    ¦   ¦   ¦       calib_ray_mode_kraken.shd
+    ¦   ¦   ¦       field.prt
+    ¦   ¦   ¦       
+    ¦   ¦   +---env_kraken_rd
+    ¦   ¦           bathy.csv
+    ¦   ¦           calib_ray_mode_kraken_rd_broadband.env
+    ¦   ¦           calib_ray_mode_kraken_rd_broadband.flp
+    ¦   ¦           calib_ray_mode_kraken_rd_broadband.mod
+    ¦   ¦           calib_ray_mode_kraken_rd_broadband.prt
+    ¦   ¦           calib_ray_mode_kraken_rd_broadband.shd
+    ¦   ¦           calib_ray_mode_kraken_rd_broadband_template.env
+    ¦   ¦           field.prt
+    ¦   ¦           ssp_data.csv
+    ¦   ¦           
+    ¦   +---ray_vs_modes_rts
+    ¦       ¦   runtest.py
+    ¦       ¦   
+    ¦       +---env_bellhop
+    ¦       ¦       calib_ray_mode_bellhop.env
+    ¦       ¦       calib_ray_mode_bellhop.prt
+    ¦       ¦       calib_ray_mode_bellhop.shd
+    ¦       ¦       
+    ¦       +---env_kraken
+    ¦       ¦       calib_rts_modes.env
+    ¦       ¦       calib_rts_modes.flp
+    ¦       ¦       calib_rts_modes.prt
+    ¦       ¦       field.prt
+    ¦       ¦       modes_rts_r30000.nc
+    ¦       ¦       modes_rts_r50.nc
+    ¦       ¦       ssp_data.csv
+    ¦       ¦       
+    ¦       +---result
+    ¦               modes.png
+    ¦               modes_r30000m.png
+    ¦               modes_r50m.png
+    ¦               src.png
+    ¦               
+    +---rd
+    ¦       cpu_time_vs_dr.csv
+    ¦       cpu_time_vs_dr.png
+    ¦       cpu_time_vs_ndr.png
+    ¦       field.prt
+    ¦       runtest.py
+    ¦       ssp_data.csv
+    ¦       test_kraken_rd.env
+    ¦       test_kraken_rd.flp
+    ¦       test_kraken_rd.mod
+    ¦       test_kraken_rd.prt
+    ¦       test_kraken_rd.shd
+    ¦       
+    +---rd_broadband
+    ¦   ¦   bathy_data.csv
+    ¦   ¦   broadband_pressure_field.nc
+    ¦   ¦   field.prt
+    ¦   ¦   propagated_signal_dr_1.csv
+    ¦   ¦   runtest.py
+    ¦   ¦   ssp_data.csv
+    ¦   ¦   test_kraken_rd_broadband.env
+    ¦   ¦   test_kraken_rd_broadband.flp
+    ¦   ¦   test_kraken_rd_broadband.prt
+    ¦   ¦   test_kraken_rd_broadband.shd
+    ¦   ¦   
+    ¦   +---parallel_working_dir
+    ¦   ¦   +---child_process_12728
+    ¦   ¦   ¦   ¦   field.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.env
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.flp
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.mod
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.shd
+    ¦   ¦   ¦   ¦   
+    ¦   ¦   ¦   +---bin
+    ¦   ¦   ¦           cyggcc_s-seh-1.dll
+    ¦   ¦   ¦           cyggfortran-5.dll
+    ¦   ¦   ¦           cygquadmath-0.dll
+    ¦   ¦   ¦           cygwin1.dll
+    ¦   ¦   ¦           field.exe
+    ¦   ¦   ¦           kraken.exe
+    ¦   ¦   ¦           
+    ¦   ¦   +---child_process_15840
+    ¦   ¦   ¦   ¦   field.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.env
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.flp
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.mod
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.shd
+    ¦   ¦   ¦   ¦   
+    ¦   ¦   ¦   +---bin
+    ¦   ¦   ¦           cyggcc_s-seh-1.dll
+    ¦   ¦   ¦           cyggfortran-5.dll
+    ¦   ¦   ¦           cygquadmath-0.dll
+    ¦   ¦   ¦           cygwin1.dll
+    ¦   ¦   ¦           field.exe
+    ¦   ¦   ¦           kraken.exe
+    ¦   ¦   ¦           
+    ¦   ¦   +---child_process_18824
+    ¦   ¦   ¦   ¦   field.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.env
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.flp
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.mod
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.shd
+    ¦   ¦   ¦   ¦   
+    ¦   ¦   ¦   +---bin
+    ¦   ¦   ¦           cyggcc_s-seh-1.dll
+    ¦   ¦   ¦           cyggfortran-5.dll
+    ¦   ¦   ¦           cygquadmath-0.dll
+    ¦   ¦   ¦           cygwin1.dll
+    ¦   ¦   ¦           field.exe
+    ¦   ¦   ¦           kraken.exe
+    ¦   ¦   ¦           
+    ¦   ¦   +---child_process_19388
+    ¦   ¦   ¦   ¦   field.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.env
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.flp
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.mod
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.shd
+    ¦   ¦   ¦   ¦   
+    ¦   ¦   ¦   +---bin
+    ¦   ¦   ¦           cyggcc_s-seh-1.dll
+    ¦   ¦   ¦           cyggfortran-5.dll
+    ¦   ¦   ¦           cygquadmath-0.dll
+    ¦   ¦   ¦           cygwin1.dll
+    ¦   ¦   ¦           field.exe
+    ¦   ¦   ¦           kraken.exe
+    ¦   ¦   ¦           
+    ¦   ¦   +---child_process_20816
+    ¦   ¦   ¦   ¦   field.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.env
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.flp
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.mod
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.prt
+    ¦   ¦   ¦   ¦   test_kraken_rd_broadband.shd
+    ¦   ¦   ¦   ¦   
+    ¦   ¦   ¦   +---bin
+    ¦   ¦   ¦           cyggcc_s-seh-1.dll
+    ¦   ¦   ¦           cyggfortran-5.dll
+    ¦   ¦   ¦           cygquadmath-0.dll
+    ¦   ¦   ¦           cygwin1.dll
+    ¦   ¦   ¦           field.exe
+    ¦   ¦   ¦           kraken.exe
+    ¦   ¦   ¦           
+    ¦   ¦   +---child_process_8064
+    ¦   ¦       ¦   field.prt
+    ¦   ¦       ¦   test_kraken_rd_broadband.env
+    ¦   ¦       ¦   test_kraken_rd_broadband.flp
+    ¦   ¦       ¦   test_kraken_rd_broadband.mod
+    ¦   ¦       ¦   test_kraken_rd_broadband.prt
+    ¦   ¦       ¦   test_kraken_rd_broadband.shd
+    ¦   ¦       ¦   
+    ¦   ¦       +---bin
+    ¦   ¦               cyggcc_s-seh-1.dll
+    ¦   ¦               cyggfortran-5.dll
+    ¦   ¦               cygquadmath-0.dll
+    ¦   ¦               cygwin1.dll
+    ¦   ¦               field.exe
+    ¦   ¦               kraken.exe
+    ¦   ¦               
+    ¦   +---received_signals
+    ¦   ¦       received_signal_r30000m_z2000m.png
+    ¦   ¦       received_signal_r30000m_z20m.png
+    ¦   ¦       received_signal_r30000m_z600m.png
+    ¦   ¦       received_signal_r5000m_z2000m.png
+    ¦   ¦       received_signal_r5000m_z20m.png
+    ¦   ¦       received_signal_r5000m_z600m.png
+    ¦   ¦       
+    ¦   +---tl_profiles
+    ¦           stepK_f0.78125.png
+    ¦           stepK_f16.40625.png
+    ¦           stepK_f24.21875.png
+    ¦           stepK_f32.03125.png
+    ¦           stepK_f39.84375.png
+    ¦           stepK_f47.65625.png
+    ¦           stepK_f8.59375.png
+    ¦           
+    +---saclantcen
+    ¦       bathy_data.csv
+    ¦       field.prt
+    ¦       readme.txt
+    ¦       runtest.py
+    ¦       saclantcen_testcase2.nc
+    ¦       saclantcen_testcase_1.env
+    ¦       saclantcen_testcase_1.flp
+    ¦       saclantcen_testcase_1.prt
+    ¦       saclantcen_testcase_2.env
+    ¦       saclantcen_testcase_2.flp
+    ¦       saclantcen_testcase_2.prt
+    ¦       ssp_data.csv
+    ¦       
+    +---step
+    ¦       field.prt
+    ¦       runtest.py
+    ¦       stepK.prt
+    ¦       stepK_rd.env
+    ¦       stepK_rd.flp
+    ¦       stepK_rd.mod
+    ¦       stepK_rd.prt
+    ¦       stepK_rd.shd
+    ¦       tl_stepK_rd.png
+    ¦       
+    +---sturm
+    ¦   ¦   bathy.csv
+    ¦   ¦   bathy.png
+    ¦   ¦   field.prt
+    ¦   ¦   runtest.py
+    ¦   ¦   signal.png
+    ¦   ¦   source.png
+    ¦   ¦   ssp_data.csv
+    ¦   ¦   sturm_testcase.env
+    ¦   ¦   sturm_testcase.flp
+    ¦   ¦   sturm_testcase.mod
+    ¦   ¦   sturm_testcase.nc
+    ¦   ¦   sturm_testcase.prt
+    ¦   ¦   sturm_testcase.shd
+    ¦   ¦   sturm_testcase_f25.00Hz.png
+    ¦   ¦   testcase.py
+    ¦   ¦   
+    ¦   +---img
+    ¦   ¦       sturm_testcase_f25.00Hz.png
+    ¦   ¦       sturm_testcase_r20000m.png
+    ¦   ¦       
+    ¦   +---__pycache__
+    ¦           testcase.cpython-311.pyc
+    ¦           
+    +---testcase_env
+    ¦       runtest.py
+    ¦       tc31_adiabatic.png
+    ¦       tc31_coupled.png
+    ¦       
+    +---test_RI
+            pressure.nc
+            ri_subplots.png
+            ri_z_t.png
+            ri_z_t_r10000.0.png
+            ri_z_t_r20000.0.png
+            ri_z_t_r30000.0.png
+            ri_z_t_r40000.0.png
+            ri_z_t_r50000.0.png
+            runtest.py
+            

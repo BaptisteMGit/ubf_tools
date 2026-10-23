@@ -39,7 +39,7 @@ from real_data_analysis.acouplane.src.acouplane_utils import *
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
-portion_id = 1
+portion_id = 5
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
@@ -95,13 +95,13 @@ fmax = 50
 save_modification_to_portion = False
 apply_obs_pos_correction = False
 compute_cpsds = False
-apply_mfp_strategy_intersections = False
+apply_mfp_strategy_intersections = True
 
 plot_portion_position = False
 plot_signal = False
 plot_spectrogram = False
 plot_signal_single_emission = False
-plot_features = True
+plot_features = False
 verbose = True
 
 # ======================================================================================================================
@@ -320,7 +320,7 @@ if plot_features:
             and (fmax >= ds_feature_section.freq.max())
         ):
             print(
-                f"Required frequency can not be matched, using default [{ds_feature_section.freq.min()}, {ds_feature_section.freq.max()}]"
+                f"Required frequency can not be matched, using default [{ds_feature_section.freq.min().values}, {ds_feature_section.freq.max().values}]"
             )
         # Slice frequency band
         ds_feature_section = ds_feature_section.sel(freq=slice(fmin, fmax))
@@ -408,6 +408,314 @@ if plot_features:
         )
         fig_dcf.savefig(fpath)
         plt.close(fig_dcf)
+
+# ======================================================================================================================
+# Plot MFP results for each intersections
+# ======================================================================================================================
+
+
+def get_intersection_target_position(ds_mfp_intersection):
+    idx_target_pos = ds_mfp_intersection.d_real.argmin(
+        dim=["src_datetime_section1", "src_datetime_section2"]
+    )
+    intersection_dt1, intersection_dt2 = (
+        ds_mfp_intersection.isel(idx_target_pos).src_datetime_section1.values,
+        ds_mfp_intersection.isel(idx_target_pos).src_datetime_section2.values,
+    )
+
+    return intersection_dt1, intersection_dt2
+
+
+def get_intersection_guess_positions(ds_mfp_intersection):
+
+    # Theta
+    idx_guess_pos_theta = ds_mfp_intersection.d_theta.argmin(
+        dim=["src_datetime_section1", "src_datetime_section2"]
+    )
+    intersection_theta_dt1, intersection_theta_dt2 = (
+        ds_mfp_intersection.isel(idx_guess_pos_theta).src_datetime_section1,
+        ds_mfp_intersection.isel(idx_guess_pos_theta).src_datetime_section2,
+    )
+
+    # Theta gamma
+    idx_guess_pos_theta_gamma = ds_mfp_intersection.d_theta_gamma.argmin(
+        dim=["src_datetime_section1", "src_datetime_section2"]
+    )
+    intersection_theta_gamma_dt1, intersection_theta_gamma_dt2 = (
+        ds_mfp_intersection.isel(idx_guess_pos_theta_gamma).src_datetime_section1,
+        ds_mfp_intersection.isel(idx_guess_pos_theta_gamma).src_datetime_section2,
+    )
+
+    # L2 gamma
+    idx_guess_pos_L2_gamma = ds_mfp_intersection.d_L2_gamma.argmin(
+        dim=["src_datetime_section1", "src_datetime_section2"]
+    )
+    intersection_L2_gamma_dt1, intersection_L2_gamma_dt2 = (
+        ds_mfp_intersection.isel(idx_guess_pos_L2_gamma).src_datetime_section1,
+        ds_mfp_intersection.isel(idx_guess_pos_L2_gamma).src_datetime_section2,
+    )
+
+    # DCF
+    idx_guess_pos_dcf = ds_mfp_intersection.d_dcf.argmin(
+        dim=["src_datetime_section1", "src_datetime_section2"]
+    )
+    intersection_dcf_dt1, intersection_dcf_dt2 = (
+        ds_mfp_intersection.isel(idx_guess_pos_dcf).src_datetime_section1,
+        ds_mfp_intersection.isel(idx_guess_pos_dcf).src_datetime_section2,
+    )
+
+    # Build dictionnary to group intersections
+    intersections = dict(
+        theta=dict(dt1=intersection_theta_dt1, dt2=intersection_theta_dt2),
+        theta_gamma=dict(
+            dt1=intersection_theta_gamma_dt1, dt2=intersection_theta_gamma_dt2
+        ),
+        L2_gamma=dict(dt1=intersection_L2_gamma_dt1, dt2=intersection_L2_gamma_dt2),
+        dcf=dict(dt1=intersection_dcf_dt1, dt2=intersection_dcf_dt2),
+    )
+    return intersections
+
+
+print()
+
+cmap = "Grays_r"
+max_quantile = 0.95
+
+# Iterate over meridional sections
+for section1_label, meridional_node in portion.mfp_intersection.children.items():
+    # Iterate over zonal sections
+    for section2_label, node in meridional_node.children.items():
+        # Get intersection dataset
+        ds_mfp_intersection = node.to_dataset()
+
+        # Build sections names
+        section1_name = f"{portion.feature[section1_label].section_orientation} {portion.feature[section1_label].section_id}"
+        section2_name = f"{portion.feature[section2_label].section_orientation} {portion.feature[section2_label].section_id}"
+
+        # Define root to save img for current intersections
+        root_img_intersection = os.path.join(
+            ROOT_IMG_PORTION_INTERSECTION, f"{section1_label}_{section2_label}"
+        )
+        os.makedirs(root_img_intersection, exist_ok=True)
+
+        # Extract intersection target position
+        target_intersection_dt1, target_intersection_dt2 = (
+            get_intersection_target_position(ds_mfp_intersection=ds_mfp_intersection)
+        )
+
+        # Extract intersection estimated pos
+        intersection_guess = get_intersection_guess_positions(
+            ds_mfp_intersection=ds_mfp_intersection
+        )
+
+        for rcv_id in ds_mfp_intersection.rcv_id_feature.values:
+
+            # Extract result for current rcv couple (rcv_i, rcv_ref)
+            ds_mfp_intersection_rcv = ds_mfp_intersection.sel(rcv_id_feature=rcv_id)
+
+            # Extract intersection position estimation
+
+            ########################################################################
+            # Figure 1
+            # Square plot with r(i, j), theta_gamma(i, j), theta(i, j), dcf(i,j)
+            ########################################################################
+            fig, axs = plt.subplots(
+                nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
+            )
+            # Plot ambiguity surfaces
+            ds_mfp_intersection_rcv.d_real.plot(
+                x="src_datetime_section1", cmap=cmap, ax=axs[0, 0], vmin=0, vmax=500
+            )
+            ds_mfp_intersection_rcv.d_theta_gamma.plot(
+                x="src_datetime_section1",
+                cmap=cmap,
+                ax=axs[0, 1],
+                vmin=ds_mfp_intersection_rcv.d_theta_gamma.min(),
+                vmax=ds_mfp_intersection_rcv.d_theta_gamma.quantile(q=max_quantile),
+            )
+            ds_mfp_intersection_rcv.d_theta.plot(
+                x="src_datetime_section1",
+                cmap=cmap,
+                ax=axs[1, 0],
+                vmin=ds_mfp_intersection_rcv.d_theta.min(),
+                vmax=ds_mfp_intersection_rcv.d_theta.quantile(q=max_quantile),
+            )
+            ds_mfp_intersection_rcv.d_dcf.plot(
+                x="src_datetime_section1",
+                cmap=cmap,
+                ax=axs[1, 1],
+                vmin=ds_mfp_intersection_rcv.d_dcf.min(),
+                vmax=ds_mfp_intersection_rcv.d_dcf.quantile(q=max_quantile),
+            )
+            # Add target position
+            for ax in axs.flatten():
+                ax.scatter(
+                    target_intersection_dt1,
+                    target_intersection_dt2,
+                    marker="s",
+                    s=400,
+                    facecolors="none",
+                    edgecolors="r",
+                    label="Target",
+                    linewidth=3,
+                )
+
+            # Add guess position
+            axs[0, 1].scatter(
+                intersection_guess["theta_gamma"]["dt1"]
+                .sel(rcv_id_feature=rcv_id)
+                .values,
+                intersection_guess["theta_gamma"]["dt2"]
+                .sel(rcv_id_feature=rcv_id)
+                .values,
+                marker="o",
+                s=200,
+                facecolors="none",
+                edgecolors="m",
+                label="Guess",
+                linewidth=3,
+            )
+            axs[1, 0].scatter(
+                intersection_guess["theta"]["dt1"].sel(rcv_id_feature=rcv_id).values,
+                intersection_guess["theta"]["dt2"].sel(rcv_id_feature=rcv_id).values,
+                marker="o",
+                s=200,
+                facecolors="none",
+                edgecolors="m",
+                label="Guess",
+                linewidth=3,
+            )
+
+            axs[1, 1].scatter(
+                intersection_guess["dcf"]["dt1"].sel(rcv_id_feature=rcv_id).values,
+                intersection_guess["dcf"]["dt2"].sel(rcv_id_feature=rcv_id).values,
+                marker="o",
+                s=200,
+                facecolors="none",
+                edgecolors="m",
+                label="Guess",
+                linewidth=3,
+            )
+
+            for ax in axs.flatten():
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+                ax.set_title("")
+
+            set_subfigures_abc_labels(
+                axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+            )
+
+            fig.supxlabel(f"Time along {section1_name} trajectory")
+            fig.supylabel(f"Time along {section2_name} trajectory")
+
+            fpath = os.path.join(
+                root_img_intersection,
+                f"mfp_ambiguity_4_metrics_{rcv_id}.png",
+            )
+            fig.savefig(fpath)
+            plt.close(fig)
+
+            # ########################################################################
+            # # Figure 2
+            # # theta_gamma(i, j), theta(i, j), dcf(i,j) with common colorbar
+            # ########################################################################
+            # fig, axs = plt.subplots(
+            #     nrows=3, ncols=1, figsize=(16, 16), sharex=True, sharey=True
+            # )
+            # # Plot ambiguity surfaces
+            # ds_mfp_intersection_rcv.d_real.plot(
+            #     x="src_datetime_section1", cmap=cmap, ax=axs[0, 0], vmin=0, vmax=500
+            # )
+            # ds_mfp_intersection_rcv.d_theta_gamma.plot(
+            #     x="src_datetime_section1",
+            #     cmap=cmap,
+            #     ax=axs[0, 1],
+            #     vmin=ds_mfp_intersection_rcv.d_theta_gamma.min(),
+            #     vmax=ds_mfp_intersection_rcv.d_theta_gamma.quantile(q=max_quantile),
+            # )
+            # ds_mfp_intersection_rcv.d_theta.plot(
+            #     x="src_datetime_section1",
+            #     cmap=cmap,
+            #     ax=axs[1, 0],
+            #     vmin=ds_mfp_intersection_rcv.d_theta.min(),
+            #     vmax=ds_mfp_intersection_rcv.d_theta.quantile(q=max_quantile),
+            # )
+            # ds_mfp_intersection_rcv.d_dcf.plot(
+            #     x="src_datetime_section1",
+            #     cmap=cmap,
+            #     ax=axs[1, 1],
+            #     vmin=ds_mfp_intersection_rcv.d_dcf.min(),
+            #     vmax=ds_mfp_intersection_rcv.d_dcf.quantile(q=max_quantile),
+            # )
+            # # Add target position
+            # for ax in axs.flatten():
+            #     ax.scatter(
+            #         target_intersection_dt1,
+            #         target_intersection_dt2,
+            #         marker="s",
+            #         s=400,
+            #         facecolors="none",
+            #         edgecolors="r",
+            #         label="Target",
+            #         linewidth=3,
+            #     )
+
+            # # Add guess position
+            # axs[0, 1].scatter(
+            #     intersection_guess["theta_gamma"]["dt1"]
+            #     .sel(rcv_id_feature=rcv_id)
+            #     .values,
+            #     intersection_guess["theta_gamma"]["dt2"]
+            #     .sel(rcv_id_feature=rcv_id)
+            #     .values,
+            #     marker="o",
+            #     s=200,
+            #     facecolors="none",
+            #     edgecolors="m",
+            #     label="Guess",
+            #     linewidth=3,
+            # )
+            # axs[1, 0].scatter(
+            #     intersection_guess["theta"]["dt1"].sel(rcv_id_feature=rcv_id).values,
+            #     intersection_guess["theta"]["dt2"].sel(rcv_id_feature=rcv_id).values,
+            #     marker="o",
+            #     s=200,
+            #     facecolors="none",
+            #     edgecolors="m",
+            #     label="Guess",
+            #     linewidth=3,
+            # )
+
+            # axs[1, 1].scatter(
+            #     intersection_guess["dcf"]["dt1"].sel(rcv_id_feature=rcv_id).values,
+            #     intersection_guess["dcf"]["dt2"].sel(rcv_id_feature=rcv_id).values,
+            #     marker="o",
+            #     s=200,
+            #     facecolors="none",
+            #     edgecolors="m",
+            #     label="Guess",
+            #     linewidth=3,
+            # )
+
+            # for ax in axs.flatten():
+            #     ax.set_xlabel("")
+            #     ax.set_ylabel("")
+            #     ax.set_title("")
+
+            # set_subfigures_abc_labels(
+            #     axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+            # )
+
+            # fig.supxlabel(f"Time along {section1_name} trajectory")
+            # fig.supylabel(f"Time along {section2_name} trajectory")
+
+            # fpath = os.path.join(
+            #     root_img_intersection,
+            #     f"mfp_ambiguity_4_metrics_{rcv_id}.png",
+            # )
+            # fig.savefig(fpath)
+            # plt.close(fig)
 
 
 # def combine_rcv(rcv_ref="obs1", rcv_i_arr=["obs2"], fmin=5, fmax=50):

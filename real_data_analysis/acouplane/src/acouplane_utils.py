@@ -1203,7 +1203,7 @@ def derive_portion_cpsd(
         # Add coords rcv_i, rcv_j and freq
         ds_feature = ds_feature.assign_coords(
             dict(rcv_i=obs_ids, rcv_j=obs_ids, freq=freq)
-        )  # NOTE we need to declare new coords because we can use duplicated coords
+        )  # NOTE we need to declare new coords because we cant use duplicated coords
 
         ds_feature["Sxy"] = (["src_datetime", "rcv_i", "rcv_j", "freq"], Sxy_data)
 
@@ -1462,6 +1462,12 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
             rcv_ref=rcv_ref,
             rcv_i=rcv_id_i,
         )
+
+        # Center gamma
+        gamma_a = gamma_a - np.mean(
+            gamma_a, axis=1, keepdims=True
+        )  # TODO remove if not ok
+
         # Store
         pi_1_arr.append(pi_ij_a)
         gamma_1_arr.append(gamma_a)
@@ -1552,8 +1558,8 @@ def build_mfp_intersection_dataset(
         attrs=dict(
             description="MFP result for a single intersection",
             campagne=ds_feature_section1.campagne,
-            # section1=ds_feature_section1.section_label,
-            # section2=ds_feature_section2.section_label,
+            section1=ds_feature_section1.section_label,
+            section2=ds_feature_section2.section_label,
             reference_receiver=ds_feature_section1.reference_receiver,
             obs_position=ds_feature_section1.obs_position,
             obs_position_filepath=ds_feature_section1.obs_position_filepath,
@@ -1588,7 +1594,7 @@ def build_mfp_intersection_dataset(
     )
     ds_mfp.d_dcf.attrs = dict(
         # units="",
-        long_name=r"C_{el}",
+        long_name=r"$C_{el}$",
         description="Normalized intercorrelation between intercorrelation vectors (DCF)",
         minval=0,
         maxval=1,
@@ -1610,6 +1616,9 @@ def apply_mfp_strategy_to_portion_intersections(
     # Step 2 : derive all features to avoid duplicated call to derive_section_features
     for _, feature_node in portion.feature.children.items():
         ds_feature_section = feature_node.to_dataset()
+
+        # Slice frequency band
+        ds_feature_section = ds_feature_section.sel(freq=slice(fmin, fmax))
 
         # Derive features
         features_section = all_features_single_section(

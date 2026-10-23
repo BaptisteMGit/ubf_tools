@@ -37,7 +37,7 @@ from real_data_analysis.acouplane.src.acouplane_utils import (
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
-portion_id = 5
+portion_id = 1
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
@@ -84,22 +84,22 @@ obs_ids = [
     "obs7",
 ]
 # Frequency band
-fmin = 10
-fmax = 50
+fmin = 0
+fmax = 200
 
 # ======================================================================================================================
 # Booleans to control behavior
 # ======================================================================================================================
-save_modification_to_portion = False
-apply_obs_pos_correction = False
-compute_cpsds = False
+save_modification_to_portion = True
+apply_obs_pos_correction = True
+compute_cpsds = True
 apply_mfp_strategy_intersections = True
 
-plot_portion_position = False
+plot_portion_position = True
 plot_signal = False
 plot_spectrogram = False
-plot_signal_single_emission = False
-plot_features = False
+plot_signal_single_emission = True
+plot_features = True
 plot_intersections = True
 verbose = True
 
@@ -256,7 +256,9 @@ def plot_intersection_ambiguity(
     matplotlib.figure.Figure
         The figure (not closed).
     """
-    fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True)
+    fig, axs = plt.subplots(
+        nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
+    )
 
     # Plot ambiguity surfaces
     ds_mfp_intersection_rcv.d_real.plot(

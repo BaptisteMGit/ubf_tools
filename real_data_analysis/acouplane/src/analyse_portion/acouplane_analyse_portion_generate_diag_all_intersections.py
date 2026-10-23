@@ -39,7 +39,7 @@ from real_data_analysis.acouplane.src.acouplane_utils import *
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
-portion_id = 5
+portion_id = 1
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
@@ -87,22 +87,21 @@ obs_ids = [
 ]
 # Frequency band
 fmin = 10
-fmax = 200
+fmax = 50
 
 # ======================================================================================================================
 # Booleans to control behavior
 # ======================================================================================================================
-save_modification_to_portion = True
-# save_mfp_intersection_result = True
-apply_obs_pos_correction = True
-compute_cpsds = True
-apply_mfp_strategy_intersections = True
+save_modification_to_portion = False
+apply_obs_pos_correction = False
+compute_cpsds = False
+apply_mfp_strategy_intersections = False
 
 plot_portion_position = False
 plot_signal = False
 plot_spectrogram = False
 plot_signal_single_emission = False
-plot_features = False
+plot_features = True
 verbose = True
 
 # ======================================================================================================================
@@ -111,7 +110,7 @@ verbose = True
 if verbose:
     print(f"Loading data from portion {portion_id}...")
 portion_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}.nc"
-portion = xr.open_datatree(portion_fpath)
+portion = xr.open_datatree(portion_fpath, auto_complex=True)
 print(portion)
 
 obs_ids = np.asarray(obs_ids)
@@ -293,7 +292,7 @@ if save_modification_to_portion:
         auto_complex=True,
     )
 
-    portion.close()
+    portion.close()  # NOTE should we keep this ?
 
     # Remove old file
     os.remove(portion_fpath)
@@ -304,101 +303,97 @@ if save_modification_to_portion:
 # ======================================================================================================================
 # Plot features (RTF, DCF)
 # ======================================================================================================================
+
 if plot_features:
 
     if verbose:
         print("Plotting features (DCF, RTF)...")
 
     alpha_max = 0.5
-    ref_rcv_id = reference_rcv
 
-    # print(axs.shape)
     for name, node in portion.feature.children.items():
         ds_feature_section = node.to_dataset()
 
+        # Check if freqeuncy band match required one (in case of previous computation)
+        if not (
+            (fmin <= ds_feature_section.freq.min())
+            and (fmax >= ds_feature_section.freq.max())
+        ):
+            print(
+                f"Required frequency can not be matched, using default [{ds_feature_section.freq.min()}, {ds_feature_section.freq.max()}]"
+            )
         # Slice frequency band
         ds_feature_section = ds_feature_section.sel(freq=slice(fmin, fmax))
 
-        sjj = ds_feature_section.sel(rcv_i=ref_rcv_id, rcv_j=ref_rcv_id).Sxy
-        # Per convention : 2nd index = ref
+        # Check reference receiver
+        if ds_feature_section.reference_receiver != reference_rcv:
+            print(
+                f"Reference receiver {reference_rcv} differs from the one store in dataset (ref = {ds_feature_section.reference_receiver})"
+            )
 
         # RTF
-        fig_rtf, axs_rtf = plt.subplots(
+        fig_gamma, axs_gamma = plt.subplots(
             nrows=obs_ids.size - 1, ncols=1, figsize=(16, 16), sharex=True, sharey=True
         )
-        axs_rtf = axs_rtf.flatten()
+        axs_gamma = axs_gamma.flatten()
         # RTF
         fig_dcf, axs_dcf = plt.subplots(
             nrows=obs_ids.size - 1, ncols=2, figsize=(16, 16), sharex=True, sharey=True
         )
 
-        iplot = 0
-        for i_rcv, rcv_id_i in enumerate(obs_ids):
+        for iplot, rcv_id_i in enumerate(ds_feature_section.rcv_id_feature.values):
 
-            if rcv_id_i == ref_rcv_id:
-                continue
-            # Sii
-            sii = ds_feature_section.sel(rcv_i=rcv_id_i, rcv_j=rcv_id_i).Sxy
-            # Sij
-            sij = ds_feature_section.sel(rcv_i=rcv_id_i, rcv_j=ref_rcv_id).Sxy
+            ds_feat_rcv = ds_feature_section.sel(rcv_id_feature=rcv_id_i)
 
-            # RTF
-            denom = sjj.values
-            denom[denom == 0] = np.nan  # Replace 0 by nan to avoid warnings
-            pi_ij = sij.values / denom
-
-            # pi_ij = sij.values / sjj.values
-            gamma_ij = 20 * np.log10(np.abs(pi_ij))
-
-            axs_rtf[iplot].pcolormesh(
-                sij.freq,
-                sij.src_datetime,
-                gamma_ij,
+            # RTF Gamma
+            ds_feat_rcv.gamma_ij.plot(
+                x="freq",
+                ax=axs_gamma[iplot],
                 cmap="magma",
-                vmin=-alpha_max * np.nanmax(gamma_ij),
-                vmax=+alpha_max * np.nanmax(gamma_ij),
+                vmin=-alpha_max * np.nanmax(ds_feat_rcv.gamma_ij.values),
+                vmax=+alpha_max * np.nanmax(ds_feat_rcv.gamma_ij.values),
             )
-
-            axs_rtf[iplot].set_xlabel("")
-            axs_rtf[iplot].set_ylabel("")
-            axs_rtf[iplot].set_title(rcv_id_i.upper(), fontsize=12)
+            axs_gamma[iplot].set_xlabel("")
+            axs_gamma[iplot].set_ylabel("")
+            axs_gamma[iplot].set_title(rcv_id_i.upper(), fontsize=12)
 
             # DCF (sxy SCOT)
-            denom = sii.values * sjj.values
-            denom[denom == 0] = np.nan
-            dcf_ij = sij.values / np.sqrt(denom)
+            re_sij = np.real(ds_feat_rcv.sij_scot)
+            im_sij = np.imag(ds_feat_rcv.sij_scot)
 
-            # dcf_ij = sij.values / np.sqrt(sii.values * sjj.values)
-            axs_dcf[iplot, 0].pcolormesh(
-                sij.freq,
-                sij.src_datetime,
-                np.real(dcf_ij),
+            re_sij.plot(
+                x="freq",
+                ax=axs_dcf[iplot, 0],
                 cmap="magma",
                 vmin=-1.2,
-                vmax=1.2,
+                vmax=+1.2,
             )
-            axs_dcf[iplot, 1].pcolormesh(
-                sij.freq,
-                sij.src_datetime,
-                np.imag(dcf_ij),
+            im_sij.plot(
+                x="freq",
+                ax=axs_dcf[iplot, 1],
                 cmap="magma",
                 vmin=-1.2,
-                vmax=1.2,
+                vmax=+1.2,
             )
 
-            iplot += 1
+            axs_dcf[iplot, 0].set_xlabel("")
+            axs_dcf[iplot, 0].set_ylabel("")
+            axs_dcf[iplot, 0].set_title(rcv_id_i.upper(), fontsize=12)
+            axs_dcf[iplot, 1].set_xlabel("")
+            axs_dcf[iplot, 1].set_ylabel("")
+            axs_dcf[iplot, 1].set_title(rcv_id_i.upper(), fontsize=12)
 
-        fig_rtf.supxlabel("Frequency [Hz]")
-        fig_rtf.suptitle(
+        fig_gamma.supxlabel("Frequency [Hz]")
+        fig_gamma.suptitle(
             f"{ds_feature_section.section_orientation} {ds_feature_section.section_id}"
         )
 
         fpath = os.path.join(
             ROOT_IMG_PORTION_FEATURES_RTF,
-            f"rtf_map_{name}.png",
+            f"rtf_gamma_map_{name}.png",
         )
-        fig_rtf.savefig(fpath)
-        plt.close(fig_rtf)
+        fig_gamma.savefig(fpath)
+        plt.close(fig_gamma)
 
         fig_dcf.supxlabel("Frequency [Hz]")
         fig_dcf.suptitle(

@@ -1552,8 +1552,8 @@ def build_mfp_intersection_dataset(
         attrs=dict(
             description="MFP result for a single intersection",
             campagne=ds_feature_section1.campagne,
-            section1=ds_feature_section1.section_label,
-            section2=ds_feature_section2.section_label,
+            # section1=ds_feature_section1.section_label,
+            # section2=ds_feature_section2.section_label,
             reference_receiver=ds_feature_section1.reference_receiver,
             obs_position=ds_feature_section1.obs_position,
             obs_position_filepath=ds_feature_section1.obs_position_filepath,

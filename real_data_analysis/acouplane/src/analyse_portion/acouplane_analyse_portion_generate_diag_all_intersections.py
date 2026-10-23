@@ -37,7 +37,7 @@ from real_data_analysis.acouplane.src.acouplane_utils import (
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
-portion_id = 1
+portion_id = 5
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
@@ -90,7 +90,7 @@ fmax = 50
 # ======================================================================================================================
 # Booleans to control behavior
 # ======================================================================================================================
-save_modification_to_portion = False
+save_modification_to_portion = True
 apply_obs_pos_correction = True
 compute_cpsds = True
 apply_mfp_strategy_intersections = True
@@ -99,7 +99,7 @@ plot_portion_position = True
 plot_signal = False
 plot_spectrogram = False
 plot_signal_single_emission = False
-plot_features = False
+plot_features = True
 plot_intersections = True
 # Also compute (and plot) the gamma distances with gamma centered along frequency
 compare_centered_gamma = True

@@ -2083,11 +2083,15 @@ def derive_section_features(
     sij = ds_feature_section.sel(rcv_i=rcv_i, rcv_j=rcv_ref, freq=freq_slice).Sxy
 
     # RTF
-    pi_ij = sij.values / sjj.values
+    sjj_ = sjj.values
+    sjj_[sjj_ == 0] = np.nan  # Avoid dividing by 0
+    pi_ij = sij.values / sjj_
     gamma_ij = 20 * np.log10(np.abs(pi_ij))  # (nt, nf)
 
     # DCF
-    sij_scot = sij.values / np.sqrt(sii.values * sjj.values)
+    sii_sjj_ = sii.values * sjj.values
+    sii_sjj_[sii_sjj_ == 0] = np.nan
+    sij_scot = sij.values / np.sqrt(sii_sjj_)
 
     return pi_ij, gamma_ij, sij_scot
 
@@ -2299,10 +2303,10 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
             rcv_i=rcv_id_i,
         )
 
-        # Center gamma
-        gamma_a = gamma_a - np.mean(
-            gamma_a, axis=1, keepdims=True
-        )  # TODO remove if not ok
+        # # Center gamma
+        # gamma_a = gamma_a - np.mean(
+        #     gamma_a, axis=1, keepdims=True
+        # )  # TODO remove if not ok
 
         # Store
         pi_1_arr.append(pi_ij_a)

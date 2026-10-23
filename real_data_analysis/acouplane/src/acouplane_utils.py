@@ -741,9 +741,7 @@ def build_and_save_portion_tree(
         "sections_label": len(sections_label),
     }
     if len(set(lengths.values())) != 1:
-        raise ValueError(
-            f"Inconsistent number of sections between inputs: {lengths}."
-        )
+        raise ValueError(f"Inconsistent number of sections between inputs: {lengths}.")
 
     # Copy to avoid muting the same object
     ds_pos_sections = [ds.copy() for ds in ds_pos_sections]
@@ -762,8 +760,7 @@ def build_and_save_portion_tree(
 
     # Build tree dict
     tree_dict_positions = {
-        f"/position/{sections_label[i]}": ds_pos_sections[i]
-        for i in range(n_sections)
+        f"/position/{sections_label[i]}": ds_pos_sections[i] for i in range(n_sections)
     }
     tree_dict_pressure = {
         f"/pressure/{sections_label[i]}": ds_pressure_sections[i]
@@ -1780,7 +1777,8 @@ def derive_portion_cpsd(
                 signal_i = ds_pressure_section[f"pressure_{rcv_id_i}"].sel(
                     {
                         f"time_{rcv_id_i}": slice(
-                            tir_reception_dt_rcvi.data - np.timedelta64(offset_ms, "ms"),
+                            tir_reception_dt_rcvi.data
+                            - np.timedelta64(offset_ms, "ms"),
                             tir_reception_dt_rcvi.data
                             + np.timedelta64(signal_duration_ms - offset_ms, "ms"),
                         )
@@ -2329,10 +2327,10 @@ def distances_single_intersection(
 
         # Same gamma distances with gamma centered along frequency (not stored)
         if compare_centered_gamma:
-            gamma1_c = features_section1["gamma_ij"] - np.mean(
+            gamma1_c = features_section1["gamma_ij"] - np.nanmean(
                 features_section1["gamma_ij"], axis=1, keepdims=True
             )
-            gamma2_c = features_section2["gamma_ij"] - np.mean(
+            gamma2_c = features_section2["gamma_ij"] - np.nanmean(
                 features_section2["gamma_ij"], axis=1, keepdims=True
             )
             d_theta_gamma_c, d_L2_gamma_c = derive_gamma_distance_between_sections(

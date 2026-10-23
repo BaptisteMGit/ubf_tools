@@ -37,7 +37,7 @@ from real_data_analysis.acouplane.src.acouplane_utils import (
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
-portion_id = 5
+portion_id = 1
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )

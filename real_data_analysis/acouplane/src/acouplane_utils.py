@@ -14,6 +14,7 @@
 # ======================================================================================================================
 import os
 import re
+import warnings
 import numpy as np
 import xarray as xr
 import pandas as pd
@@ -2037,25 +2038,88 @@ def derive_feature_distance_between_sections(features_section1, features_section
     dist_theta_gamma = np.empty((nt1, nt2))
     dist_dcf = np.empty((nt1, nt2))
 
-    for start in range(0, nt1, block):
-        sl = slice(start, min(start + block, nt1))
-        d_theta, d_l2, d_theta_gamma, d_dcf = _feature_distances_block(
-            pi_ij_a[sl, np.newaxis, :],  # (block, 1, nf)
-            gamma_a[sl, np.newaxis, :],
-            sij_scot_a[sl, np.newaxis, :],
-            pi_b,
-            gamma_b,
-            sij_scot_b,
-        )
-        dist_theta[sl] = d_theta
-        dist_L2_gamma[sl] = d_l2
-        dist_theta_gamma[sl] = d_theta_gamma
-        dist_dcf[sl] = d_dcf
+    # 0/0 occurs for shots with no valid frequency (all NaN): the distance is then NaN
+    with np.errstate(invalid="ignore", divide="ignore"):
+        for start in range(0, nt1, block):
+            sl = slice(start, min(start + block, nt1))
+            d_theta, d_l2, d_theta_gamma, d_dcf = _feature_distances_block(
+                pi_ij_a[sl, np.newaxis, :],  # (block, 1, nf)
+                gamma_a[sl, np.newaxis, :],
+                sij_scot_a[sl, np.newaxis, :],
+                pi_b,
+                gamma_b,
+                sij_scot_b,
+            )
+            dist_theta[sl] = d_theta
+            dist_L2_gamma[sl] = d_l2
+            dist_theta_gamma[sl] = d_theta_gamma
+            dist_dcf[sl] = d_dcf
 
     # Normalize L2 to [0, 1]
-    dist_L2_gamma = dist_L2_gamma / np.nanmax(dist_L2_gamma)
+    dist_L2_gamma = _normalize_by_max(dist_L2_gamma)
 
     return dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf
+
+
+def _non_finite_to_nan(arr):
+    """Replace the non finite values (inf, -inf, NaN) of an array by NaN.
+
+    Parameters
+    ----------
+    arr : numpy.ndarray
+        Real or complex array.
+
+    Returns
+    -------
+    numpy.ndarray
+        Copy of ``arr`` where every non finite element (for a complex array, an
+        element with a non finite real or imaginary part) is NaN.
+    """
+    arr = np.array(arr, copy=True)
+    arr[~np.isfinite(arr)] = np.nan
+    return arr
+
+
+def _normalize_by_max(dist):
+    """Divide a distance matrix by its maximum, ignoring NaN values.
+
+    Parameters
+    ----------
+    dist : numpy.ndarray
+        Distance matrix, possibly containing NaN.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``dist / nanmax(dist)``. If ``dist`` has no valid value, the result is
+        all NaN. No warning is emitted.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)  # all-NaN matrix
+        dmax = np.nanmax(dist)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return dist / dmax
+
+
+def _center_along_freq(gamma):
+    """Remove from each shot the mean of its gamma over the frequencies.
+
+    NaN values are ignored in the mean (``np.nanmean``) and stay NaN in the
+    result. A shot with only NaN stays entirely NaN.
+
+    Parameters
+    ----------
+    gamma : numpy.ndarray
+        RTF level in dB, shape ``(n_emission, n_freq)``.
+
+    Returns
+    -------
+    numpy.ndarray
+        Centered gamma, same shape.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)  # all-NaN rows
+        return gamma - np.nanmean(gamma, axis=1, keepdims=True)
 
 
 def derive_gamma_distance_between_sections(gamma_section1, gamma_section2):
@@ -2094,13 +2158,15 @@ def derive_gamma_distance_between_sections(gamma_section1, gamma_section2):
 
     dist_theta_gamma = np.empty((nt1, nt2))
     dist_L2_gamma = np.empty((nt1, nt2))
-    for start in range(0, nt1, block):
-        sl = slice(start, min(start + block, nt1))
-        dist_theta_gamma[sl], dist_L2_gamma[sl] = _gamma_distances_block(
-            gamma_section1[sl, np.newaxis, :], gamma_b
-        )
+    # 0/0 occurs for shots with no valid frequency (all NaN): the distance is then NaN
+    with np.errstate(invalid="ignore", divide="ignore"):
+        for start in range(0, nt1, block):
+            sl = slice(start, min(start + block, nt1))
+            dist_theta_gamma[sl], dist_L2_gamma[sl] = _gamma_distances_block(
+                gamma_section1[sl, np.newaxis, :], gamma_b
+            )
 
-    return dist_theta_gamma, dist_L2_gamma / np.nanmax(dist_L2_gamma)
+    return dist_theta_gamma, _normalize_by_max(dist_L2_gamma)
 
 
 def derive_section_features(
@@ -2134,6 +2200,13 @@ def derive_section_features(
     sij_scot : numpy.ndarray
         Complex SCOT-weighted cross spectrum, same shape.
 
+    Notes
+    -----
+    Non finite values (``inf`` / ``-inf`` / ``NaN``), which appear at frequency
+    bins where a spectrum is exactly zero (division by zero, ``log10(0)``), are
+    all replaced by NaN in the three outputs, so that they are consistently
+    ignored by the distance computations.
+
     Raises
     ------
     ValueError
@@ -2153,14 +2226,21 @@ def derive_section_features(
     sjj = ds_feature_section.sel(rcv_i=rcv_ref, rcv_j=rcv_ref, freq=freq_slice).Sxy
     sij = ds_feature_section.sel(rcv_i=rcv_i, rcv_j=rcv_ref, freq=freq_slice).Sxy
 
-    # RTF
-    pi_ij = sij.values / sjj.values
-    gamma_ij = 20 * np.log10(np.abs(pi_ij))  # (nt, nf)
+    # Frequency bins where a spectrum is exactly zero give 0/0 or log10(0): these
+    # invalid values are expected and are replaced by NaN below
+    with np.errstate(divide="ignore", invalid="ignore"):
+        # RTF
+        pi_ij = sij.values / sjj.values
+        gamma_ij = 20 * np.log10(np.abs(pi_ij))  # (nt, nf)
 
-    # DCF
-    sij_scot = sij.values / np.sqrt(sii.values * sjj.values)
+        # DCF
+        sij_scot = sij.values / np.sqrt(sii.values * sjj.values)
 
-    return pi_ij, gamma_ij, sij_scot
+    return (
+        _non_finite_to_nan(pi_ij),
+        _non_finite_to_nan(gamma_ij),
+        _non_finite_to_nan(sij_scot),
+    )
 
 
 def find_min_distance_position(dt1, dt2, dist):
@@ -2259,9 +2339,9 @@ def distances_single_intersection(
     ``derive_feature_distance_between_sections`` are computed.
 
     Optionally, the gamma distances are also computed with a ``gamma`` centered
-    along frequency (mean of each shot removed, ``np.mean`` so that a shot
-    containing a NaN stays entirely NaN, as in the former implementation). The
-    centered gamma is computed on the fly and is never stored. ``theta``
+    along frequency (mean of each shot removed, NaN values ignored in the mean,
+    see ``_center_along_freq``). The centered gamma is computed on the fly and
+    is never stored. ``theta``
     (complex RTF) and ``dcf`` do not depend on ``gamma`` and are therefore
     unchanged by the centering.
 
@@ -2327,12 +2407,8 @@ def distances_single_intersection(
 
         # Same gamma distances with gamma centered along frequency (not stored)
         if compare_centered_gamma:
-            gamma1_c = features_section1["gamma_ij"] - np.mean(
-                features_section1["gamma_ij"], axis=1, keepdims=True
-            )
-            gamma2_c = features_section2["gamma_ij"] - np.mean(
-                features_section2["gamma_ij"], axis=1, keepdims=True
-            )
+            gamma1_c = _center_along_freq(features_section1["gamma_ij"])
+            gamma2_c = _center_along_freq(features_section2["gamma_ij"])
             d_theta_gamma_c, d_L2_gamma_c = derive_gamma_distance_between_sections(
                 gamma1_c, gamma2_c
             )

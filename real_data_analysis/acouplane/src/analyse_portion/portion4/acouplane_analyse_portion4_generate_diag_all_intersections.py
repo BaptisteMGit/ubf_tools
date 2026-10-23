@@ -278,7 +278,9 @@ else:
 if apply_mfp_strategy_intersections:
     if verbose:
         print("Apply MFP strategy to each intersection...")
-    apply_mfp_strategy_to_portion_intersections(portion)
+    apply_mfp_strategy_to_portion_intersections(
+        portion, rcv_ref=reference_rcv, fmin=fmin, fmax=fmax
+    )
 
 if save_modification_to_portion:
     if verbose:

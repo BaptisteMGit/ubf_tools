@@ -376,6 +376,13 @@ if plot_features:
                 vmax=+1.2,
             )
 
+            axs_dcf[iplot, 0].set_xlabel("")
+            axs_dcf[iplot, 0].set_ylabel("")
+            axs_dcf[iplot, 0].set_title(rcv_id_i.upper(), fontsize=12)
+            axs_dcf[iplot, 1].set_xlabel("")
+            axs_dcf[iplot, 1].set_ylabel("")
+            axs_dcf[iplot, 1].set_title(rcv_id_i.upper(), fontsize=12)
+
         fig_gamma.supxlabel("Frequency [Hz]")
         fig_gamma.suptitle(
             f"{ds_feature_section.section_orientation} {ds_feature_section.section_id}"
@@ -401,123 +408,6 @@ if plot_features:
         )
         fig_dcf.savefig(fpath)
         plt.close(fig_dcf)
-
-
-# if plot_features:
-
-#     if verbose:
-#         print("Plotting features (DCF, RTF)...")
-
-#     alpha_max = 0.5
-
-#     for name, node in portion.feature.children.items():
-#         ds_feature_section = node.to_dataset()
-
-#         # Slice frequency band
-#         # Check if freqeuncy band match required one (in case of previous computation)
-#         if not (
-#             (fmin <= ds_feature_section.freq.min())
-#             and (fmax >= ds_feature_section.freq.max())
-#         ):
-#             print(
-#                 f"Required frequency can not be matched, using default [{ds_feature_section.freq.min()}, {ds_feature_section.freq.max()}]"
-#             )
-#         ds_feature_section = ds_feature_section.sel(freq=slice(fmin, fmax))
-
-#         sjj = ds_feature_section.sel(rcv_i=ref_rcv_id, rcv_j=ref_rcv_id).Sxy
-#         # Per convention : 2nd index = ref
-
-#         # RTF
-#         fig_rtf, axs_rtf = plt.subplots(
-#             nrows=obs_ids.size - 1, ncols=1, figsize=(16, 16), sharex=True, sharey=True
-#         )
-#         axs_rtf = axs_rtf.flatten()
-#         # RTF
-#         fig_dcf, axs_dcf = plt.subplots(
-#             nrows=obs_ids.size - 1, ncols=2, figsize=(16, 16), sharex=True, sharey=True
-#         )
-
-#         iplot = 0
-#         for i_rcv, rcv_id_i in enumerate(obs_ids):
-
-#             if rcv_id_i == ref_rcv_id:
-#                 continue
-#             # Sii
-#             sii = ds_feature_section.sel(rcv_i=rcv_id_i, rcv_j=rcv_id_i).Sxy
-#             # Sij
-#             sij = ds_feature_section.sel(rcv_i=rcv_id_i, rcv_j=ref_rcv_id).Sxy
-
-#             # RTF
-#             denom = sjj.values
-#             denom[denom == 0] = np.nan  # Replace 0 by nan to avoid warnings
-#             pi_ij = sij.values / denom
-
-#             # pi_ij = sij.values / sjj.values
-#             gamma_ij = 20 * np.log10(np.abs(pi_ij))
-
-#             axs_rtf[iplot].pcolormesh(
-#                 sij.freq,
-#                 sij.src_datetime,
-#                 gamma_ij,
-#                 cmap="magma",
-#                 vmin=-alpha_max * np.nanmax(gamma_ij),
-#                 vmax=+alpha_max * np.nanmax(gamma_ij),
-#             )
-
-#             axs_rtf[iplot].set_xlabel("")
-#             axs_rtf[iplot].set_ylabel("")
-#             axs_rtf[iplot].set_title(rcv_id_i.upper(), fontsize=12)
-
-#             # DCF (sxy SCOT)
-#             denom = sii.values * sjj.values
-#             denom[denom == 0] = np.nan
-#             dcf_ij = sij.values / np.sqrt(denom)
-
-#             # dcf_ij = sij.values / np.sqrt(sii.values * sjj.values)
-#             axs_dcf[iplot, 0].pcolormesh(
-#                 sij.freq,
-#                 sij.src_datetime,
-#                 np.real(dcf_ij),
-#                 cmap="magma",
-#                 vmin=-1.2,
-#                 vmax=1.2,
-#             )
-#             axs_dcf[iplot, 1].pcolormesh(
-#                 sij.freq,
-#                 sij.src_datetime,
-#                 np.imag(dcf_ij),
-#                 cmap="magma",
-#                 vmin=-1.2,
-#                 vmax=1.2,
-#             )
-
-#             iplot += 1
-
-#         fig_rtf.supxlabel("Frequency [Hz]")
-#         fig_rtf.suptitle(
-#             f"{ds_feature_section.section_orientation} {ds_feature_section.section_id}"
-#         )
-
-#         fpath = os.path.join(
-#             ROOT_IMG_PORTION_FEATURES_RTF,
-#             f"rtf_map_{name}.png",
-#         )
-#         fig_rtf.savefig(fpath)
-#         plt.close(fig_rtf)
-
-#         fig_dcf.supxlabel("Frequency [Hz]")
-#         fig_dcf.suptitle(
-#             f"{ds_feature_section.section_orientation} {ds_feature_section.section_id}"
-#         )
-#         axs_dcf[0, 0].set_title("Real part")
-#         axs_dcf[0, 1].set_title("Imaginary part")
-
-#         fpath = os.path.join(
-#             ROOT_IMG_PORTION_FEATURES_DCF,
-#             f"dcf_map_{name}.png",
-#         )
-#         fig_dcf.savefig(fpath)
-#         plt.close(fig_dcf)
 
 
 # def combine_rcv(rcv_ref="obs1", rcv_i_arr=["obs2"], fmin=5, fmax=50):

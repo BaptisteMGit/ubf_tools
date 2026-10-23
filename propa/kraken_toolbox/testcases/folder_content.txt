@@ -1,0 +1,360 @@
+Structure du dossier pour le volume Système
+Le numéro de série du volume est 000000A6 54BD:F9EE
+C:.
+¦   folder_content.txt
+¦   test_nmedia.py
+¦   
++---default
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   ¦           modes.png
+¦   ¦           tl.png
+¦   ¦           
+¦   +---io_files
+¦           bathy.csv
+¦           default.env
+¦           default.flp
+¦           default.mod
+¦           default.prt
+¦           default.shd
+¦           field.prt
+¦           
++---perekis_short_ir_waveguide
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   +---io_files
+¦           bathy.csv
+¦           field.prt
+¦           perekis_short_ir_waveguide.env
+¦           perekis_short_ir_waveguide.flp
+¦           perekis_short_ir_waveguide.mod
+¦           perekis_short_ir_waveguide.prt
+¦           perekis_short_ir_waveguide.shd
+¦           
++---test_calibK
+¦       test_calibK.env
+¦       test_calibK.mod
+¦       test_calibK.prt
+¦       
++---test_kraken_cpu_time
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   ¦           modes.png
+¦   ¦           tl.png
+¦   ¦           
+¦   +---io_files
+¦           bathy.csv
+¦           field.prt
+¦           test.env
+¦           test.flp
+¦           test.mod
+¦           test.prt
+¦           test.shd
+¦           test_kraken_cpu_time.env
+¦           test_kraken_cpu_time.flp
+¦           test_kraken_cpu_time.mod
+¦           test_kraken_cpu_time.prt
+¦           test_kraken_cpu_time.shd
+¦           
++---test_nmedia_1
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   +---io_files
+¦           bathy.csv
+¦           field.prt
+¦           test_nmedia_1.env
+¦           test_nmedia_1.flp
+¦           test_nmedia_1.mod
+¦           test_nmedia_1.prt
+¦           test_nmedia_1.shd
+¦           test_nmedia_1_bis.env
+¦           test_nmedia_1_bis.mod
+¦           test_nmedia_1_bis.prt
+¦           
++---test_nmedia_2
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   +---io_files
+¦           bathy.csv
+¦           field.prt
+¦           test_nmedia_2.env
+¦           test_nmedia_2.flp
+¦           test_nmedia_2.mod
+¦           test_nmedia_2.prt
+¦           test_nmedia_2.shd
+¦           
++---xp_fiberscope_groix_144
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   +---io_files
+¦       ¦   bathy.csv
+¦       ¦   
+¦       +---parallel_working_dir
+¦           +---child_process_12872
+¦           ¦   ¦   field.prt
+¦           ¦   ¦   xp_fiberscope_groix_p4.env
+¦           ¦   ¦   xp_fiberscope_groix_p4.flp
+¦           ¦   ¦   xp_fiberscope_groix_p4.mod
+¦           ¦   ¦   xp_fiberscope_groix_p4.prt
+¦           ¦   ¦   xp_fiberscope_groix_p4.shd
+¦           ¦   ¦   
+¦           ¦   +---bin
+¦           ¦           cyggcc_s-seh-1.dll
+¦           ¦           cyggfortran-5.dll
+¦           ¦           cygquadmath-0.dll
+¦           ¦           cygwin1.dll
+¦           ¦           field.exe
+¦           ¦           kraken.exe
+¦           ¦           
+¦           +---child_process_46868
+¦               ¦   field.prt
+¦               ¦   xp_fiberscope_groix_p4.env
+¦               ¦   xp_fiberscope_groix_p4.flp
+¦               ¦   xp_fiberscope_groix_p4.mod
+¦               ¦   
+¦               +---bin
+¦                       cyggcc_s-seh-1.dll
+¦                       cyggfortran-5.dll
+¦                       cygquadmath-0.dll
+¦                       cygwin1.dll
+¦                       field.exe
+¦                       kraken.exe
+¦                       
++---xp_fiberscope_groix_p4
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   +---io_files
+¦       ¦   bathy.csv
+¦       ¦   xp_fiberscope_groix_p4.env
+¦       ¦   xp_fiberscope_groix_p4.flp
+¦       ¦   
+¦       +---parallel_working_dir
+¦           +---child_process_19280
+¦           ¦   ¦   field.prt
+¦           ¦   ¦   xp_fiberscope_groix_p4.env
+¦           ¦   ¦   xp_fiberscope_groix_p4.flp
+¦           ¦   ¦   xp_fiberscope_groix_p4.mod
+¦           ¦   ¦   xp_fiberscope_groix_p4.prt
+¦           ¦   ¦   xp_fiberscope_groix_p4.shd
+¦           ¦   ¦   
+¦           ¦   +---bin
+¦           ¦           cyggcc_s-seh-1.dll
+¦           ¦           cyggfortran-5.dll
+¦           ¦           cygquadmath-0.dll
+¦           ¦           cygwin1.dll
+¦           ¦           field.exe
+¦           ¦           kraken.exe
+¦           ¦           
+¦           +---child_process_2608
+¦           ¦   ¦   field.prt
+¦           ¦   ¦   xp_fiberscope_groix_p4.env
+¦           ¦   ¦   xp_fiberscope_groix_p4.flp
+¦           ¦   ¦   xp_fiberscope_groix_p4.mod
+¦           ¦   ¦   xp_fiberscope_groix_p4.prt
+¦           ¦   ¦   xp_fiberscope_groix_p4.shd
+¦           ¦   ¦   
+¦           ¦   +---bin
+¦           ¦           cyggcc_s-seh-1.dll
+¦           ¦           cyggfortran-5.dll
+¦           ¦           cygquadmath-0.dll
+¦           ¦           cygwin1.dll
+¦           ¦           field.exe
+¦           ¦           kraken.exe
+¦           ¦           
+¦           +---child_process_4352
+¦               ¦   field.prt
+¦               ¦   xp_fiberscope_groix_p4.env
+¦               ¦   xp_fiberscope_groix_p4.flp
+¦               ¦   xp_fiberscope_groix_p4.mod
+¦               ¦   xp_fiberscope_groix_p4.prt
+¦               ¦   xp_fiberscope_groix_p4.shd
+¦               ¦   
+¦               +---bin
+¦                       cyggcc_s-seh-1.dll
+¦                       cyggfortran-5.dll
+¦                       cygquadmath-0.dll
+¦                       cygwin1.dll
+¦                       field.exe
+¦                       kraken.exe
+¦                       
++---xp_fiberscope_groix_seq_144
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   +---io_files
+¦       ¦   bathy.csv
+¦       ¦   xp_fiberscope_groix_seq_144.env
+¦       ¦   xp_fiberscope_groix_seq_144.flp
+¦       ¦   
+¦       +---parallel_working_dir
+¦           +---child_process_13036
+¦           ¦   ¦   field.prt
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.env
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.flp
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.mod
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.prt
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.shd
+¦           ¦   ¦   
+¦           ¦   +---bin
+¦           ¦           cyggcc_s-seh-1.dll
+¦           ¦           cyggfortran-5.dll
+¦           ¦           cygquadmath-0.dll
+¦           ¦           cygwin1.dll
+¦           ¦           field.exe
+¦           ¦           kraken.exe
+¦           ¦           
+¦           +---child_process_15636
+¦           ¦   ¦   field.prt
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.env
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.flp
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.mod
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.prt
+¦           ¦   ¦   xp_fiberscope_groix_seq_144.shd
+¦           ¦   ¦   
+¦           ¦   +---bin
+¦           ¦           cyggcc_s-seh-1.dll
+¦           ¦           cyggfortran-5.dll
+¦           ¦           cygquadmath-0.dll
+¦           ¦           cygwin1.dll
+¦           ¦           field.exe
+¦           ¦           kraken.exe
+¦           ¦           
+¦           +---child_process_18040
+¦               ¦   field.prt
+¦               ¦   xp_fiberscope_groix_seq_144.env
+¦               ¦   xp_fiberscope_groix_seq_144.flp
+¦               ¦   xp_fiberscope_groix_seq_144.mod
+¦               ¦   xp_fiberscope_groix_seq_144.prt
+¦               ¦   xp_fiberscope_groix_seq_144.shd
+¦               ¦   
+¦               +---bin
+¦                       cyggcc_s-seh-1.dll
+¦                       cyggfortran-5.dll
+¦                       cygquadmath-0.dll
+¦                       cygwin1.dll
+¦                       field.exe
+¦                       kraken.exe
+¦                       
++---xp_fiberscope_groix_seq_144_obs1
+¦   +---imgs
+¦   ¦   +---env
+¦   ¦   +---outputs
+¦   +---io_files
+¦       ¦   bathy.csv
+¦       ¦   xp_fiberscope_groix_seq_144_obs1.env
+¦       ¦   xp_fiberscope_groix_seq_144_obs1.flp
+¦       ¦   
+¦       +---parallel_working_dir
+¦           +---child_process_10856
+¦           ¦   ¦   field.prt
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.env
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.flp
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.mod
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.prt
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.shd
+¦           ¦   ¦   
+¦           ¦   +---bin
+¦           ¦           cyggcc_s-seh-1.dll
+¦           ¦           cyggfortran-5.dll
+¦           ¦           cygquadmath-0.dll
+¦           ¦           cygwin1.dll
+¦           ¦           field.exe
+¦           ¦           kraken.exe
+¦           ¦           
+¦           +---child_process_24456
+¦           ¦   ¦   field.prt
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.env
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.flp
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.mod
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.prt
+¦           ¦   ¦   xp_fiberscope_groix_seq_144_obs1.shd
+¦           ¦   ¦   
+¦           ¦   +---bin
+¦           ¦           cyggcc_s-seh-1.dll
+¦           ¦           cyggfortran-5.dll
+¦           ¦           cygquadmath-0.dll
+¦           ¦           cygwin1.dll
+¦           ¦           field.exe
+¦           ¦           kraken.exe
+¦           ¦           
+¦           +---child_process_28756
+¦               ¦   field.prt
+¦               ¦   xp_fiberscope_groix_seq_144_obs1.env
+¦               ¦   xp_fiberscope_groix_seq_144_obs1.flp
+¦               ¦   xp_fiberscope_groix_seq_144_obs1.mod
+¦               ¦   xp_fiberscope_groix_seq_144_obs1.prt
+¦               ¦   xp_fiberscope_groix_seq_144_obs1.shd
+¦               ¦   
+¦               +---bin
+¦                       cyggcc_s-seh-1.dll
+¦                       cyggfortran-5.dll
+¦                       cygquadmath-0.dll
+¦                       cygwin1.dll
+¦                       field.exe
+¦                       kraken.exe
+¦                       
++---xp_fiberscope_groix_seq_144_obs2
+    +---imgs
+    ¦   +---env
+    ¦   +---outputs
+    +---io_files
+        ¦   bathy.csv
+        ¦   xp_fiberscope_groix_seq_144_obs2.env
+        ¦   xp_fiberscope_groix_seq_144_obs2.flp
+        ¦   
+        +---parallel_working_dir
+            +---child_process_19132
+            ¦   ¦   field.prt
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.env
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.flp
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.mod
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.prt
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.shd
+            ¦   ¦   
+            ¦   +---bin
+            ¦           cyggcc_s-seh-1.dll
+            ¦           cyggfortran-5.dll
+            ¦           cygquadmath-0.dll
+            ¦           cygwin1.dll
+            ¦           field.exe
+            ¦           kraken.exe
+            ¦           
+            +---child_process_34184
+            ¦   ¦   field.prt
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.env
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.flp
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.mod
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.prt
+            ¦   ¦   xp_fiberscope_groix_seq_144_obs2.shd
+            ¦   ¦   
+            ¦   +---bin
+            ¦           cyggcc_s-seh-1.dll
+            ¦           cyggfortran-5.dll
+            ¦           cygquadmath-0.dll
+            ¦           cygwin1.dll
+            ¦           field.exe
+            ¦           kraken.exe
+            ¦           
+            +---child_process_6292
+                ¦   field.prt
+                ¦   xp_fiberscope_groix_seq_144_obs2.env
+                ¦   xp_fiberscope_groix_seq_144_obs2.flp
+                ¦   xp_fiberscope_groix_seq_144_obs2.mod
+                ¦   xp_fiberscope_groix_seq_144_obs2.prt
+                ¦   xp_fiberscope_groix_seq_144_obs2.shd
+                ¦   
+                +---bin
+                        cyggcc_s-seh-1.dll
+                        cyggfortran-5.dll
+                        cygquadmath-0.dll
+                        cygwin1.dll
+                        field.exe
+                        kraken.exe
+                        

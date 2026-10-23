@@ -102,7 +102,7 @@ plot_signal_single_emission = False
 plot_features = False
 plot_intersections = True
 # Also compute (and plot) the gamma distances with gamma centered along frequency
-compare_centered_gamma = True
+compare_centered_gamma = False
 verbose = True
 
 

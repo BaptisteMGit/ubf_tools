@@ -1,0 +1,1171 @@
+#!/usr/bin/env python
+# -*-coding:utf-8 -*-
+"""
+@File    :   acouplane_analyse_portion_generate_diag_all_intersections.py
+@Time    :   2026/09/29 08:57:41
+@Author  :   Menetrier Baptiste
+@Version :   1.1
+@Contact :   baptiste.menetrier@ecole-navale.fr
+@Desc    :   Analyse of an ACOUPLANE portion: signals, features (RTF, DCF) and MFP
+             ambiguity surfaces for every intersection of meridional / zonal sections.
+"""
+
+# ======================================================================================================================
+# Import
+# ======================================================================================================================
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+from publication.publication_figure import set_subfigures_abc_labels, color
+from real_data_analysis.acouplane.src.acouplane_cst import (
+    ACOUPLANE_PORTION_NC_ROOT_FPATH,
+    ROOT_ACOUPLANE_PROCESSED_IMG_DIR,
+)
+from real_data_analysis.acouplane.src.acouplane_utils import (
+    open_portion,
+    save_portion_inplace,
+    apply_rcv_position_correction_to_portion,
+    apply_mfp_strategy_to_portion_intersections,
+    select_intersections,
+    derive_portion_cpsd,
+    derive_portion_propagation_time,
+    plot_portion_tir_pos,
+    plot_pressure_section,
+    plot_spectrogram_section,
+    distances_single_intersection,
+    build_mfp_intersection_dataset,
+)
+
+# ======================================================================================================================
+# Constants
+# ======================================================================================================================
+portion_id = 5
+ROOT_IMG_PORTION = os.path.join(
+    ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
+)
+ROOT_IMG_PORTION_INTERSECTION = os.path.join(ROOT_IMG_PORTION, "intersections")
+ROOT_IMG_PORTION_RESULTS_SYNTHESIS = os.path.join(ROOT_IMG_PORTION, "results_synthesis")
+
+ROOT_IMG_PORTION_FEATURES = os.path.join(ROOT_IMG_PORTION, "features")
+ROOT_IMG_PORTION_FEATURES_RTF = os.path.join(ROOT_IMG_PORTION_FEATURES, "rtf")
+ROOT_IMG_PORTION_FEATURES_DCF = os.path.join(ROOT_IMG_PORTION_FEATURES, "dcf")
+
+ROOT_IMG_PORTION_INPUT_SIGNAL = os.path.join(ROOT_IMG_PORTION, "signal")
+ROOT_IMG_PORTION_INPUT_SIGNAL_PRESSURE = os.path.join(
+    ROOT_IMG_PORTION_INPUT_SIGNAL, "pressure"
+)
+ROOT_IMG_PORTION_INPUT_SIGNAL_SPECTROGRAM = os.path.join(
+    ROOT_IMG_PORTION_INPUT_SIGNAL, "spectrogram"
+)
+
+roots = [
+    ROOT_IMG_PORTION,
+    ROOT_IMG_PORTION_INTERSECTION,
+    ROOT_IMG_PORTION_RESULTS_SYNTHESIS,
+    ROOT_IMG_PORTION_FEATURES,
+    ROOT_IMG_PORTION_FEATURES_RTF,
+    ROOT_IMG_PORTION_FEATURES_DCF,
+    ROOT_IMG_PORTION_INPUT_SIGNAL,
+    ROOT_IMG_PORTION_INPUT_SIGNAL_PRESSURE,
+    ROOT_IMG_PORTION_INPUT_SIGNAL_SPECTROGRAM,
+]
+for root in roots:
+    os.makedirs(root, exist_ok=True)
+
+c0 = 1508  # Equivalent celerity derived from real profile
+
+nfft = 2**13
+offset_ms = 100
+signal_duration_ms = 3000
+
+reference_rcv = "obs1"
+obs_ids = [
+    "obs1",
+    "obs2",
+    "obs4",
+    "obs5",
+    "obs6",
+    "obs7",
+]
+# Frequency band
+fmin = 10
+fmax = 800
+
+# Intersections to process (MFP computation and ambiguity figures).
+# None -> all intersections. Otherwise a list of (meridional, zonal) section labels, e.g.
+intersections_to_process = [("sn2", "oe6")]
+# , ("sn2", "oe7"), ("sn2", "oe8")
+# intersections_to_process = None
+
+# ======================================================================================================================
+# Booleans to control behavior
+# ======================================================================================================================
+save_modification_to_portion = False
+apply_obs_pos_correction = False
+compute_cpsds = False
+apply_mfp_strategy_intersections = False
+
+plot_portion_position = False
+plot_signal = False
+plot_spectrogram = False
+plot_signal_single_emission = False
+plot_features = False
+plot_intersections = False
+# Also compute (and plot) the gamma distances with gamma centered along frequency
+compare_centered_gamma = True
+verbose = True
+
+
+# ======================================================================================================================
+# Helper functions
+# ======================================================================================================================
+def log(message, level=0):
+    """Print a progress message when ``verbose`` is True.
+
+    Parameters
+    ----------
+    message : str
+        Message to print.
+    level : int, optional
+        Indentation level: 0 for a main step (prefixed by ``[Portion <id>]``),
+        1 or more for a detail of the current step.
+
+    Returns
+    -------
+    None
+    """
+    if not verbose:
+        return
+    if level == 0:
+        print(f"[Portion {portion_id}] {message}")
+    else:
+        print("    " * level + f"- {message}")
+
+
+def section_name_of(node):
+    """Build the display name of a section, e.g. ``"South/North 0"``.
+
+    Parameters
+    ----------
+    node : xarray.DataTree
+        Node of a section (in the ``position``, ``pressure`` or ``feature`` group).
+
+    Returns
+    -------
+    str
+        ``"<orientation> <id>"``.
+    """
+    return f"{node.attrs['section_orientation']} {node.attrs['section_id']}"
+
+
+def get_intersection_target_position(ds_mfp_intersection):
+    """Find the true intersection of two sections from the real-space distance.
+
+    The "target" is the pair of shots (one on each section) which are the
+    closest to each other in real space, i.e. the position where the two
+    trajectories actually cross.
+
+    Parameters
+    ----------
+    ds_mfp_intersection : xarray.Dataset
+        MFP dataset of one intersection (see ``build_mfp_intersection_dataset``),
+        with the variable ``d_real`` of dimensions
+        ``(src_datetime_section1, src_datetime_section2)``.
+
+    Returns
+    -------
+    intersection_dt1 : numpy.datetime64
+        Emission datetime, along section 1, of the closest shot pair.
+    intersection_dt2 : numpy.datetime64
+        Emission datetime, along section 2, of the closest shot pair.
+    """
+    idx_target_pos = ds_mfp_intersection.d_real.argmin(
+        dim=["src_datetime_section1", "src_datetime_section2"]
+    )
+    intersection_dt1, intersection_dt2 = (
+        ds_mfp_intersection.isel(idx_target_pos).src_datetime_section1.values,
+        ds_mfp_intersection.isel(idx_target_pos).src_datetime_section2.values,
+    )
+
+    return intersection_dt1, intersection_dt2
+
+
+def get_intersection_guess_positions(ds_mfp_intersection):
+    """Find the estimated intersection for each feature-space distance.
+
+    For each distance (``d_theta``, ``d_theta_gamma``, ``d_L2_gamma`` and
+    ``d_dcf``, plus ``d_theta_gamma_centered`` and ``d_L2_gamma_centered`` when
+    they are present in the dataset) and each receiver pair, the pair of shots
+    minimizing the distance is the estimated (guessed) intersection.
+
+    Parameters
+    ----------
+    ds_mfp_intersection : xarray.Dataset
+        MFP dataset of one intersection, with the distances of dimensions
+        ``(rcv_id_feature, src_datetime_section1, src_datetime_section2)``.
+
+    Returns
+    -------
+    dict
+        One entry per distance: ``"theta"``, ``"theta_gamma"``, ``"L2_gamma"``
+        and ``"dcf"``, plus ``"theta_gamma_centered"`` and
+        ``"L2_gamma_centered"`` if available. Each entry is a dict with the keys
+        ``dt1`` and ``dt2`` (xarray.DataArray of dimension ``rcv_id_feature``):
+        emission datetimes of the estimated intersection along section 1 and
+        section 2.
+    """
+    dims = ["src_datetime_section1", "src_datetime_section2"]
+    metrics = dict(
+        theta="d_theta",
+        theta_gamma="d_theta_gamma",
+        L2_gamma="d_L2_gamma",
+        dcf="d_dcf",
+        theta_gamma_centered="d_theta_gamma_centered",
+        L2_gamma_centered="d_L2_gamma_centered",
+    )
+
+    intersections = {}
+    for key, var in metrics.items():
+        if var not in ds_mfp_intersection:
+            continue
+        idx_guess_pos = ds_mfp_intersection[var].argmin(dim=dims)
+        ds_guess = ds_mfp_intersection.isel(idx_guess_pos)
+        intersections[key] = dict(
+            dt1=ds_guess.src_datetime_section1,
+            dt2=ds_guess.src_datetime_section2,
+        )
+
+    return intersections
+
+
+def plot_intersection_ambiguity(
+    ds_mfp_intersection_rcv,
+    target_dt,
+    guess_dt,
+    section1_name,
+    section2_name,
+    cmap="Grays_r",
+    max_quantile=0.95,
+):
+    """Plot the 4 ambiguity surfaces of one intersection for one receiver pair.
+
+    The figure is a 2x2 grid: real distance (a), ``theta_gamma`` (b), ``theta``
+    (c) and DCF (d). The true intersection is marked by a red square on every
+    panel and the estimated one by a magenta circle on the feature panels. The
+    L2 distance on gamma is computed but not displayed.
+
+    Parameters
+    ----------
+    ds_mfp_intersection_rcv : xarray.Dataset
+        MFP dataset of one intersection, selected for a single receiver pair.
+    target_dt : tuple of numpy.datetime64
+        True intersection ``(dt1, dt2)``, see ``get_intersection_target_position``.
+    guess_dt : dict
+        Estimated intersections for this receiver pair, with the keys ``theta``,
+        ``theta_gamma`` and ``dcf``, each a tuple ``(dt1, dt2)``.
+    section1_name, section2_name : str
+        Display names of the two sections, used in the axis labels.
+    cmap : str, optional
+        Matplotlib colormap name.
+    max_quantile : float, optional
+        Quantile of each feature distance used as upper bound of its color scale.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure (not closed).
+    """
+    fig, axs = plt.subplots(
+        nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
+    )
+
+    # Plot ambiguity surfaces
+    ds_mfp_intersection_rcv.d_real.plot(
+        x="src_datetime_section1", cmap=cmap, ax=axs[0, 0], vmin=0, vmax=500
+    )
+    panels = [
+        ("d_theta_gamma", axs[0, 1], "theta_gamma"),
+        ("d_theta", axs[1, 0], "theta"),
+        ("d_dcf", axs[1, 1], "dcf"),
+    ]
+    for var, ax, guess_key in panels:
+        da = ds_mfp_intersection_rcv[var]
+        da.plot(
+            x="src_datetime_section1",
+            cmap=cmap,
+            ax=ax,
+            vmin=da.min(),
+            vmax=da.quantile(q=max_quantile),
+        )
+
+    # Add target position
+    for ax in axs.flatten():
+        ax.scatter(
+            target_dt[0],
+            target_dt[1],
+            marker="s",
+            s=400,
+            facecolors="none",
+            edgecolors="r",
+            label="Target",
+            linewidth=3,
+        )
+
+    # Add guess position
+    for _, ax, guess_key in panels:
+        ax.scatter(
+            guess_dt[guess_key][0],
+            guess_dt[guess_key][1],
+            marker="o",
+            s=200,
+            facecolors="none",
+            edgecolors="m",
+            label="Guess",
+            linewidth=3,
+        )
+
+    for ax in axs.flatten():
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_title("")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    fig.supxlabel(f"Time along {section1_name} trajectory")
+    fig.supylabel(f"Time along {section2_name} trajectory")
+
+    return fig
+
+
+def plot_intersection_gamma_comparison(
+    ds_mfp_intersection_rcv,
+    target_dt,
+    guess_dt,
+    section1_name,
+    section2_name,
+    cmap="Grays_r",
+    max_quantile=0.95,
+):
+    """Compare the gamma distances with and without centering of gamma.
+
+    The figure is a 2x2 grid: ``theta_gamma`` (a) and ``theta_gamma`` with
+    centered gamma (b) on the first row, ``L2_gamma`` (c) and ``L2_gamma`` with
+    centered gamma (d) on the second row. The true intersection is marked by a
+    red square and the estimated one by a magenta circle. For each row, both
+    panels share the same color scale (minimum of the two, upper quantile of the
+    two) so that they can be compared directly.
+
+    Parameters
+    ----------
+    ds_mfp_intersection_rcv : xarray.Dataset
+        MFP dataset of one intersection, selected for a single receiver pair,
+        containing the centered distances (``compare_centered_gamma = True``).
+    target_dt : tuple of numpy.datetime64
+        True intersection ``(dt1, dt2)``, see ``get_intersection_target_position``.
+    guess_dt : dict
+        Estimated intersections for this receiver pair, with the keys
+        ``theta_gamma``, ``theta_gamma_centered``, ``L2_gamma`` and
+        ``L2_gamma_centered``, each a tuple ``(dt1, dt2)``.
+    section1_name, section2_name : str
+        Display names of the two sections, used in the axis labels.
+    cmap : str, optional
+        Matplotlib colormap name.
+    max_quantile : float, optional
+        Quantile used as upper bound of the color scale.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure (not closed).
+    """
+    fig, axs = plt.subplots(
+        nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
+    )
+
+    rows = [
+        (
+            axs[0],
+            [
+                ("d_theta_gamma", "theta_gamma"),
+                ("d_theta_gamma_centered", "theta_gamma_centered"),
+            ],
+        ),
+        (
+            axs[1],
+            [("d_L2_gamma", "L2_gamma"), ("d_L2_gamma_centered", "L2_gamma_centered")],
+        ),
+    ]
+    for row_axs, panels in rows:
+        das = [ds_mfp_intersection_rcv[var] for var, _ in panels]
+        vmin = min(float(da.min()) for da in das)
+        vmax = max(float(da.quantile(q=max_quantile)) for da in das)
+        for ax, da, (_, guess_key) in zip(row_axs, das, panels):
+            da.plot(x="src_datetime_section1", cmap=cmap, ax=ax, vmin=vmin, vmax=vmax)
+            ax.scatter(
+                target_dt[0],
+                target_dt[1],
+                marker="s",
+                s=400,
+                facecolors="none",
+                edgecolors="r",
+                label="Target",
+                linewidth=3,
+            )
+            ax.scatter(
+                guess_dt[guess_key][0],
+                guess_dt[guess_key][1],
+                marker="o",
+                s=200,
+                facecolors="none",
+                edgecolors="m",
+                label="Guess",
+                linewidth=3,
+            )
+
+    for ax in axs.flatten():
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_title("")
+
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
+    )
+
+    fig.supxlabel(f"Time along {section1_name} trajectory")
+    fig.supylabel(f"Time along {section2_name} trajectory")
+
+    return fig
+
+
+# ======================================================================================================================
+# Load data (lazy: nothing is read in memory until values are actually used)
+# ======================================================================================================================
+log(f"Step 1 - Opening file for portion {portion_id} (lazy, not loaded in memory)")
+portion_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}.nc"
+portion = open_portion(portion_fpath)
+# if verbose:
+#     print(portion)
+
+obs_ids = np.asarray(obs_ids)
+
+# Check the requested intersections right away (before any heavy computation)
+selected_intersections = select_intersections(
+    list(portion.position.children), intersections_to_process
+)
+log(
+    f"{len(selected_intersections)} intersection(s) selected"
+    + (" (all)" if intersections_to_process is None else f": {selected_intersections}"),
+    level=1,
+)
+
+# NOTE : use corrected position (LMS estimation)
+if apply_obs_pos_correction:
+    log("Correcting OBS positions with the LMS estimation")
+    apply_rcv_position_correction_to_portion(portion_tree=portion)
+
+# ======================================================================================================================
+# Plot portion positions
+# ======================================================================================================================
+if plot_portion_position:
+    log("Plotting portion positions")
+    fig, ax = plot_portion_tir_pos(portion_tree=portion)
+    fpath = os.path.join(ROOT_IMG_PORTION, f"portion_{portion_id}_position.png")
+    fig.savefig(fpath)
+    plt.close(fig)
+    log(f"Saved {fpath}", level=1)
+
+# ======================================================================================================================
+# Plot signals
+# ======================================================================================================================
+single_fig = False
+if plot_signal:
+    log("Plotting pressure signals of each section")
+    for name, node in portion.pressure.children.items():
+        log(f"Section '{name}'", level=1)
+        ds_pressure_section = node.to_dataset()
+        fig, axs = plot_pressure_section(
+            ds_pressure_section=ds_pressure_section, single_fig=single_fig
+        )
+        fig.suptitle(section_name_of(node))
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_INPUT_SIGNAL_PRESSURE,
+            f"pressure_signal_{name}.png",
+        )
+        fig.savefig(fpath)
+        plt.close(fig)
+
+# ======================================================================================================================
+# Plot spectrograms
+# ======================================================================================================================
+if plot_spectrogram:
+    log("Plotting spectrograms of each section")
+    for name, node in portion.pressure.children.items():
+        log(f"Section '{name}'", level=1)
+        ds_pressure_section = node.to_dataset()
+        fig, axs = plot_spectrogram_section(
+            ds_pressure_section, nperseg=2**8, noverlap=2**7, cmap="magma"
+        )
+        fig.suptitle(section_name_of(node))
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_INPUT_SIGNAL_SPECTROGRAM,
+            f"pressure_spectrogram_{name}.png",
+        )
+        fig.savefig(fpath)
+        plt.close(fig)
+
+# ======================================================================================================================
+# Derive propagation time
+# ======================================================================================================================
+log(f"Step 2 - Estimating theoretical propagation times (c0 = {c0} m/s)")
+derive_portion_propagation_time(portion_tree=portion, c0=c0)
+
+# ======================================================================================================================
+# Plot single emission and associated arrival time
+# ======================================================================================================================
+if plot_signal_single_emission:
+    log("Plotting the first emission of each section with its theoretical arrival time")
+
+    for name, node in portion.pressure.children.items():
+        log(f"Section '{name}'", level=1)
+        ds_pressure_section = node.to_dataset()
+        # Associated ds_pos
+        ds_pos_section = portion.position[name].to_dataset()
+        tir_dt = ds_pos_section["tir_reception_datetime"].isel(src_datetime=slice(0, 1))
+
+        fig, axs = plt.subplots(
+            nrows=obs_ids.size, ncols=1, figsize=(16, 14), sharex=False, squeeze=False
+        )
+        axs = axs.flatten()
+        for i, rcv_id in enumerate(obs_ids):
+            tir_dt_rcv = tir_dt.sel(rcv_id=rcv_id)
+            # Select associated data window
+            press_rcv = ds_pressure_section[f"pressure_{rcv_id}"].sel(
+                {
+                    f"time_{rcv_id}": slice(
+                        tir_dt_rcv.values[0] - np.timedelta64(offset_ms, "ms"),
+                        tir_dt_rcv.values[0]
+                        + np.timedelta64(signal_duration_ms - offset_ms, "ms"),
+                    )
+                }
+            )
+
+            # Normalize
+            press_rcv = press_rcv / press_rcv.max()
+            press_rcv.plot(label=rcv_id.upper(), color=color(i), ax=axs[i])
+            # Plot arrivals time
+            axs[i].vlines(x=tir_dt_rcv, ymin=-1, ymax=1, color="k", linestyle="--")
+            # Add legend
+            axs[i].legend(loc="upper right")
+
+        xlab = axs[0].get_xlabel()
+        ylab = axs[0].get_ylabel()
+
+        for ax in axs:
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            ax.set_title("")
+
+        fig.suptitle(section_name_of(node))
+        fig.supxlabel(xlab)
+        fig.supylabel(ylab)
+
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_INPUT_SIGNAL_PRESSURE,
+            f"pressure_signal_single_emission_{name}.png",
+        )
+        fig.savefig(fpath)
+        plt.close(fig)
+
+# ======================================================================================================================
+# CPSD
+# ======================================================================================================================
+if compute_cpsds:
+    log(
+        f"Step 3 - Computing CPSD (band {fmin}-{fmax} Hz, nfft = {nfft}, "
+        f"window = {signal_duration_ms} ms, offset = {offset_ms} ms)"
+    )
+    derive_portion_cpsd(
+        portion_tree=portion,
+        offset_ms=offset_ms,
+        signal_duration_s=signal_duration_ms / 1000,
+        nfft=nfft,
+        obs_ids=None,
+        fmin=fmin,
+        fmax=fmax,
+    )
+else:
+    log("Step 3 - Computing CPSD: skipped (compute_cpsds = False), using stored CPSD")
+    # Check that the CPSD has already been computed
+    if "feature" not in portion.children:
+        raise RuntimeError(
+            f"No 'feature' group in '{portion_fpath}': the CPSD has never been computed "
+            "for this portion. Set compute_cpsds = True (and save_modification_to_portion = True "
+            "to keep the result)."
+        )
+
+# ======================================================================================================================
+# Derive features and apply MFP to each intersection
+# ======================================================================================================================
+if apply_mfp_strategy_intersections:
+    log("Step 4 - Applying the MFP strategy to each intersection")
+    apply_mfp_strategy_to_portion_intersections(
+        portion,
+        rcv_ref=reference_rcv,
+        fmin=fmin,
+        fmax=fmax,
+        verbose=verbose,
+        compare_centered_gamma=compare_centered_gamma,
+        intersections=selected_intersections,
+    )
+else:
+    log("Step 4 - MFP strategy: skipped (apply_mfp_strategy_intersections = False)")
+
+# ======================================================================================================================
+# Plot features (RTF, DCF)
+# ======================================================================================================================
+if plot_features:
+    log("Step 5 - Plotting features (RTF, DCF)")
+
+    alpha_max = 0.5
+
+    for name, node in portion.feature.children.items():
+        ds_feature_section = node.to_dataset()
+        if "gamma_ij" not in ds_feature_section:
+            log(
+                f"Section '{name}' skipped: features not derived "
+                "(section not involved in the processed intersections)",
+                level=1,
+            )
+            continue
+        log(f"Section '{name}'", level=1)
+
+        # Check if frequency band match required one (in case of previous computation)
+        if not (
+            (fmin <= ds_feature_section.freq.min())
+            and (fmax >= ds_feature_section.freq.max())
+        ):
+            print(
+                f"    WARNING: stored frequency band [{ds_feature_section.freq.min().values:.2f}, "
+                f"{ds_feature_section.freq.max().values:.2f}] Hz is not included in the requested "
+                f"band [{fmin}, {fmax}] Hz: the stored band is used."
+            )
+        # Slice frequency band
+        ds_feature_section = ds_feature_section.sel(freq=slice(fmin, fmax))
+
+        # Check reference receiver
+        stored_ref = ds_feature_section.attrs.get("reference_receiver")
+        if stored_ref != reference_rcv:
+            print(
+                f"    WARNING: requested reference receiver '{reference_rcv}' differs from the "
+                f"one stored in the portion ('{stored_ref}'): the stored one is used."
+            )
+
+        n_pairs = ds_feature_section.sizes["rcv_id_feature"]
+        # RTF
+        fig_gamma, axs_gamma = plt.subplots(
+            nrows=n_pairs,
+            ncols=1,
+            figsize=(16, 16),
+            sharex=True,
+            sharey=True,
+            squeeze=False,
+        )
+        axs_gamma = axs_gamma.flatten()
+        # DCF
+        fig_dcf, axs_dcf = plt.subplots(
+            nrows=n_pairs,
+            ncols=2,
+            figsize=(16, 16),
+            sharex=True,
+            sharey=True,
+            squeeze=False,
+        )
+
+        for iplot, rcv_id_i in enumerate(ds_feature_section.rcv_id_feature.values):
+
+            ds_feat_rcv = ds_feature_section.sel(rcv_id_feature=rcv_id_i)
+
+            # RTF Gamma
+            gamma_max = np.nanmax(ds_feat_rcv.gamma_ij.values)
+            ds_feat_rcv.gamma_ij.plot(
+                x="freq",
+                ax=axs_gamma[iplot],
+                cmap="magma",
+                vmin=-alpha_max * gamma_max,
+                vmax=+alpha_max * gamma_max,
+            )
+            axs_gamma[iplot].set_xlabel("")
+            axs_gamma[iplot].set_ylabel("")
+            axs_gamma[iplot].set_title(rcv_id_i.upper(), fontsize=12)
+
+            # DCF (sxy SCOT)
+            re_sij = np.real(ds_feat_rcv.sij_scot)
+            im_sij = np.imag(ds_feat_rcv.sij_scot)
+
+            re_sij.plot(
+                x="freq", ax=axs_dcf[iplot, 0], cmap="magma", vmin=-1.2, vmax=+1.2
+            )
+            im_sij.plot(
+                x="freq", ax=axs_dcf[iplot, 1], cmap="magma", vmin=-1.2, vmax=+1.2
+            )
+
+            for icol in range(2):
+                axs_dcf[iplot, icol].set_xlabel("")
+                axs_dcf[iplot, icol].set_ylabel("")
+                axs_dcf[iplot, icol].set_title(rcv_id_i.upper(), fontsize=12)
+
+        fig_gamma.supxlabel("Frequency [Hz]")
+        fig_gamma.suptitle(section_name_of(node))
+
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_FEATURES_RTF,
+            f"rtf_gamma_map_{name}.png",
+        )
+        fig_gamma.savefig(fpath)
+        plt.close(fig_gamma)
+
+        fig_dcf.supxlabel("Frequency [Hz]")
+        fig_dcf.suptitle(section_name_of(node))
+        axs_dcf[0, 0].set_title("Real part")
+        axs_dcf[0, 1].set_title("Imaginary part")
+
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_FEATURES_DCF,
+            f"dcf_map_{name}.png",
+        )
+        fig_dcf.savefig(fpath)
+        plt.close(fig_dcf)
+
+# ======================================================================================================================
+# Plot MFP results for each intersection
+# ======================================================================================================================
+if plot_intersections:
+    if "mfp_intersection" not in portion.children:
+        raise RuntimeError(
+            "No 'mfp_intersection' group in the portion: nothing to plot. "
+            "Set apply_mfp_strategy_intersections = True to compute the intersections."
+        )
+
+    log("Step 6 - Plotting the MFP ambiguity surfaces of each intersection")
+
+    cmap = "Grays_r"
+    max_quantile = 0.95
+
+    # Selected intersections that are not in the portion (not computed yet)
+    stored_intersections = [
+        (s1, s2)
+        for s1, meridional_node in portion.mfp_intersection.children.items()
+        for s2 in meridional_node.children
+    ]
+    missing = [
+        pair for pair in selected_intersections if pair not in stored_intersections
+    ]
+    if missing:
+        print(
+            f"    WARNING: intersections {missing} are not stored in the portion and "
+            "will not be plotted: set apply_mfp_strategy_intersections = True to compute them."
+        )
+
+    # Iterate over meridional sections
+    for section1_label, meridional_node in portion.mfp_intersection.children.items():
+        # Iterate over zonal sections
+        for section2_label, node in meridional_node.children.items():
+            if (section1_label, section2_label) not in selected_intersections:
+                continue
+            log(f"Intersection '{section1_label}' x '{section2_label}'", level=1)
+
+            # Get intersection dataset
+            ds_mfp_intersection = node.to_dataset()
+
+            # Build sections names
+            section1_name = section_name_of(portion.feature[section1_label])
+            section2_name = section_name_of(portion.feature[section2_label])
+
+            # Define root to save img for current intersections
+            root_img_intersection = os.path.join(
+                ROOT_IMG_PORTION_INTERSECTION, f"{section1_label}_{section2_label}"
+            )
+            os.makedirs(root_img_intersection, exist_ok=True)
+
+            # Extract intersection target position (true intersection)
+            target_dt = get_intersection_target_position(
+                ds_mfp_intersection=ds_mfp_intersection
+            )
+
+            # Extract intersection estimated pos
+            intersection_guess = get_intersection_guess_positions(
+                ds_mfp_intersection=ds_mfp_intersection
+            )
+
+            for rcv_id in ds_mfp_intersection.rcv_id_feature.values:
+                log(f"Receiver pair ({rcv_id}, {reference_rcv})", level=2)
+
+                # Result for current rcv couple (rcv_i, rcv_ref)
+                ds_mfp_intersection_rcv = ds_mfp_intersection.sel(rcv_id_feature=rcv_id)
+                guess_dt = {
+                    key: (
+                        val["dt1"].sel(rcv_id_feature=rcv_id).values,
+                        val["dt2"].sel(rcv_id_feature=rcv_id).values,
+                    )
+                    for key, val in intersection_guess.items()
+                }
+
+                fig = plot_intersection_ambiguity(
+                    ds_mfp_intersection_rcv=ds_mfp_intersection_rcv,
+                    target_dt=target_dt,
+                    guess_dt=guess_dt,
+                    section1_name=section1_name,
+                    section2_name=section2_name,
+                    cmap=cmap,
+                    max_quantile=max_quantile,
+                )
+
+                fpath = os.path.join(
+                    root_img_intersection,
+                    f"mfp_ambiguity_4_metrics_{rcv_id}.png",
+                )
+                fig.savefig(fpath)
+                plt.close(fig)
+
+                # Comparison of gamma distances with / without centering of gamma
+                if "d_theta_gamma_centered" in ds_mfp_intersection:
+                    fig = plot_intersection_gamma_comparison(
+                        ds_mfp_intersection_rcv=ds_mfp_intersection_rcv,
+                        target_dt=target_dt,
+                        guess_dt=guess_dt,
+                        section1_name=section1_name,
+                        section2_name=section2_name,
+                        cmap=cmap,
+                        max_quantile=max_quantile,
+                    )
+                    fpath = os.path.join(
+                        root_img_intersection,
+                        f"mfp_ambiguity_gamma_centered_comparison_{rcv_id}.png",
+                    )
+                    fig.savefig(fpath)
+                    plt.close(fig)
+                elif compare_centered_gamma:
+                    print(
+                        "    WARNING: compare_centered_gamma = True but the intersections stored in "
+                        "the portion do not contain the centered distances: set "
+                        "apply_mfp_strategy_intersections = True to compute them."
+                    )
+
+# ======================================================================================================================
+# Study results : comparison of distances
+# ======================================================================================================================
+from pyproj import Geod
+
+geod = Geod(ellps="WGS84")
+
+init = True
+# Iterate over meridional sections
+for section1_label, meridional_node in portion.mfp_intersection.children.items():
+    # Iterate over zonal sections
+    for section2_label, node in meridional_node.children.items():
+        if (section1_label, section2_label) not in selected_intersections:
+            continue
+        log(f"Intersection '{section1_label}' x '{section2_label}'", level=1)
+
+        # Get intersection dataset
+        ds_mfp_intersection = node.to_dataset()
+
+        # Build sections names
+        section1_name = section_name_of(portion.feature[section1_label])
+        section2_name = section_name_of(portion.feature[section2_label])
+
+        # Intersections are between a meridional and a zonal section
+        ds_feature_section1 = portion.feature[section1_label].to_dataset()
+        ds_feature_section2 = portion.feature[section2_label].to_dataset()
+
+        # Extract intersection target position (true intersection)
+        target_dt = get_intersection_target_position(
+            ds_mfp_intersection=ds_mfp_intersection
+        )
+        target_pos = {
+            "lat": ds_feature_section1.sel(
+                src_datetime=target_dt[0]
+            ).tir_src_lat.values,
+            "lon": ds_feature_section1.sel(
+                src_datetime=target_dt[0]
+            ).tir_src_lon.values,
+        }
+
+        # Extract intersection estimated pos
+        intersection_guess = get_intersection_guess_positions(
+            ds_mfp_intersection=ds_mfp_intersection
+        )
+
+        for i_rcv, rcv_id in enumerate(ds_mfp_intersection.rcv_id_feature.values):
+            log(f"Receiver pair ({rcv_id}, {reference_rcv})", level=2)
+
+            # Result for current rcv couple (rcv_i, rcv_ref)
+            ds_mfp_intersection_rcv = ds_mfp_intersection.sel(rcv_id_feature=rcv_id)
+            guess_dt = {
+                key: (
+                    val["dt1"].sel(rcv_id_feature=rcv_id).values,
+                    val["dt2"].sel(rcv_id_feature=rcv_id).values,
+                )
+                for key, val in intersection_guess.items()
+            }
+
+            guess_pos = {
+                key: {
+                    "lat": ds_feature_section1.sel(
+                        src_datetime=guess_dt[key][0]
+                    ).tir_src_lat.values,
+                    "lon": ds_feature_section1.sel(
+                        src_datetime=guess_dt[key][0]
+                    ).tir_src_lon.values,
+                }
+                for key, val in guess_dt.items()
+            }
+
+            if init:
+                pos_err_dict = {
+                    key: {
+                        rcv_: [] for rcv_ in ds_mfp_intersection.rcv_id_feature.values
+                    }
+                    for key in list(guess_pos.keys())
+                }
+                init = False
+
+            for key in list(pos_err_dict.keys()):
+                # Compute geodesic distance (only the distance is kept)
+                _, _, pos_error = geod.inv(
+                    lons1=target_pos["lon"],
+                    lats1=target_pos["lat"],
+                    lons2=guess_pos[key]["lon"],
+                    lats2=guess_pos[key]["lat"],
+                )
+                # Store
+                pos_err_dict[key][rcv_id].append(pos_error)
+
+# Plot
+fig, axs = plt.subplots(
+    nrows=1, ncols=ds_mfp_intersection.rcv_id_feature.size, figsize=(16, 8), sharey=True
+)
+for i_rcv, rcv_id in enumerate(ds_mfp_intersection.rcv_id_feature.values):
+    error_vs_dist = []
+    for i_dist, key in enumerate(list(pos_err_dict.keys())):
+        error_vs_dist.append(pos_err_dict[key][rcv_id])
+
+    # error_vs_dist = np.array(error_vs_dist)
+    # mean_error_vs_dist = np.mean(error_vs_dist, axis=1)
+    # std_error_vs_dist = np.std(error_vs_dist, axis=1)
+    # axs[i_rcv].errorbar(
+    #     x=np.arange(len(error_vs_dist)),
+    #     y=mean_error_vs_dist,
+    #     yerr=std_error_vs_dist,
+    #     label=f"({rcv_id}, {reference_rcv})",
+    #     color=color(i_rcv),
+    # )
+
+    axs[i_rcv].boxplot(
+        x=error_vs_dist,
+        # label=f"({rcv_id}, {reference_rcv})",
+        color=color(i_rcv),
+    )
+
+    axs[i_rcv].set_title(f"({rcv_id}, {reference_rcv})")
+
+# TODO set ticks label with distance names
+fig.supxlabel("Distance type")
+fig.supylabel("Error [m]")
+fpath = os.path.join(
+    ROOT_IMG_PORTION_RESULTS_SYNTHESIS,
+    f"mfp_loc_error_vs_distance_type.png",
+)
+fig = plt.gcf()
+fig.savefig(fpath)
+plt.close(fig)
+
+
+# ======================================================================================================================
+# Study results versus frequency band
+# ======================================================================================================================
+freq_bandwidth = 400
+# Build frequency bands
+freq_band_min = [fmin]
+freq_band_max = [freq_bandwidth]
+f_band_min = 0
+f_band_max = freq_bandwidth
+
+while f_band_max + freq_bandwidth <= fmax:
+    # Update
+    f_band_min += freq_bandwidth
+    f_band_max += freq_bandwidth
+    # Store
+    freq_band_min.append(f_band_min)
+    freq_band_max.append(f_band_max)
+
+# Selected intersections that are not in the portion (not computed yet)
+stored_intersections = [
+    (s1, s2)
+    for s1, meridional_node in portion.mfp_intersection.children.items()
+    for s2 in meridional_node.children
+]
+missing = [pair for pair in selected_intersections if pair not in stored_intersections]
+if missing:
+    print(
+        f"    WARNING: intersections {missing} are not stored in the portion and "
+        "will not be plotted: set apply_mfp_strategy_intersections = True to compute them."
+    )
+
+from pyproj import Geod
+
+geod = Geod(ellps="WGS84")
+
+init = True
+i_section_intersection = -1
+# Iterate over meridional sections
+for section1_label, meridional_node in portion.mfp_intersection.children.items():
+    # Iterate over zonal sections
+    for section2_label, node in meridional_node.children.items():
+        if (section1_label, section2_label) not in selected_intersections:
+            continue
+        log(f"Intersection '{section1_label}' x '{section2_label}'", level=1)
+
+        i_section_intersection += 1
+
+        # # Build sections names
+        section1_name = section_name_of(portion.feature[section1_label])
+        section2_name = section_name_of(portion.feature[section2_label])
+
+        # Intersections are between a meridional and a zonal section
+        ds_feature_section1 = portion.feature[section1_label].to_dataset()
+        ds_feature_section2 = portion.feature[section2_label].to_dataset()
+
+        for i_freq_band in range(len(freq_band_min)):
+
+            # Slice frequency band of intereset and recompute distance
+            ds_feature_section1_ = ds_feature_section1.sel(
+                freq=slice(freq_band_min[i_freq_band], freq_band_max[i_freq_band])
+            )
+            ds_feature_section2_ = ds_feature_section2.sel(
+                freq=slice(freq_band_min[i_freq_band], freq_band_max[i_freq_band])
+            )
+
+            # Compute distance (in real space and in features space)
+            distance_section12 = distances_single_intersection(
+                ds_feature_section1=ds_feature_section1_,
+                ds_feature_section2=ds_feature_section2_,
+                compare_centered_gamma=compare_centered_gamma,
+            )
+
+            # Build dataset to save
+            ds_mfp_intersection = build_mfp_intersection_dataset(
+                distance_section12=distance_section12,
+                ds_feature_section1=ds_feature_section1_,
+                ds_feature_section2=ds_feature_section2_,
+            )
+
+            # Extract intersection target position (true intersection)
+            target_dt = get_intersection_target_position(
+                ds_mfp_intersection=ds_mfp_intersection
+            )
+            target_pos = {
+                "lat": ds_feature_section1.sel(
+                    src_datetime=target_dt[0]
+                ).tir_src_lat.values,
+                "lon": ds_feature_section1.sel(
+                    src_datetime=target_dt[0]
+                ).tir_src_lon.values,
+            }
+
+            # Extract intersection estimated pos
+            intersection_guess = get_intersection_guess_positions(
+                ds_mfp_intersection=ds_mfp_intersection
+            )
+
+            for i_rcv, rcv_id in enumerate(ds_mfp_intersection.rcv_id_feature.values):
+                log(f"Receiver pair ({rcv_id}, {reference_rcv})", level=2)
+
+                # Result for current rcv couple (rcv_i, rcv_ref)
+                ds_mfp_intersection_rcv = ds_mfp_intersection.sel(rcv_id_feature=rcv_id)
+                guess_dt = {
+                    key: (
+                        val["dt1"].sel(rcv_id_feature=rcv_id).values,
+                        val["dt2"].sel(rcv_id_feature=rcv_id).values,
+                    )
+                    for key, val in intersection_guess.items()
+                }
+
+                guess_pos = {
+                    key: {
+                        "lat": ds_feature_section1.sel(
+                            src_datetime=guess_dt[key][0]
+                        ).tir_src_lat.values,
+                        "lon": ds_feature_section1.sel(
+                            src_datetime=guess_dt[key][0]
+                        ).tir_src_lon.values,
+                    }
+                    for key, val in guess_dt.items()
+                }
+
+                # Compute geodesic distance (only the distance is kept)
+                _, _, pos_error = geod.inv(
+                    lons1=target_pos["lon"],
+                    lats1=target_pos["lat"],
+                    lons2=guess_pos["theta"]["lon"],
+                    lats2=guess_pos["theta"]["lat"],
+                )
+
+                if init:
+                    shape = (
+                        len(selected_intersections),
+                        len(freq_band_min),
+                        ds_mfp_intersection.rcv_id_feature.size,
+                    )
+                    pos_err_arr = np.empty(shape)
+                    init = False
+
+                # Store
+                pos_err_arr[i_section_intersection, i_freq_band, i_rcv] = pos_error
+
+
+# Plot
+
+freq_band_center = [
+    (freq_band_max[i] - freq_band_min[i]) / 2 + freq_band_min[i]
+    for i in range(len(freq_band_min))
+]
+fig, axs = plt.subplots(figsize=(16, 8))
+for i_rcv, rcv_id in enumerate(ds_mfp_intersection.rcv_id_feature.values):
+    log(f"Receiver pair ({rcv_id}, {reference_rcv})", level=2)
+    pos_err_arr_rcv = pos_err_arr[..., i_rcv]
+    pos_err_mean_per_freq_band = np.mean(pos_err_arr_rcv, axis=0)
+    pos_err_std_per_freq_banb = np.std(pos_err_arr_rcv, axis=0)
+
+    plt.errorbar(
+        x=freq_band_center,
+        y=pos_err_mean_per_freq_band,
+        yerr=pos_err_std_per_freq_banb,
+        color=color(i_rcv),
+        label=f"({rcv_id}, {reference_rcv})",
+    )
+plt.xlabel("Frequency band [Hz]")
+plt.ylabel("Position error [m]")
+plt.legend()
+
+# TODO set xticks label with frequency band ranges [fmin, fmax]
+
+fpath = os.path.join(
+    ROOT_IMG_PORTION_RESULTS_SYNTHESIS,
+    f"mfp_loc_error_vs_frequency_band.png",
+)
+fig.savefig(fpath)
+plt.close(fig)
+
+# ======================================================================================================================
+# Save results (last step: the portion is closed by the save)
+# ======================================================================================================================
+if save_modification_to_portion:
+    log(f"Step 7 - Saving results to '{portion_fpath}'")
+    save_portion_inplace(portion, portion_fpath)
+else:
+    portion.close()
+    log("Done (no modification saved to the portion file)")

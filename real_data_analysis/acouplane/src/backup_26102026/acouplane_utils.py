@@ -14,6 +14,7 @@
 # ======================================================================================================================
 import os
 import re
+import functools
 import warnings
 import numpy as np
 import xarray as xr
@@ -742,9 +743,7 @@ def build_and_save_portion_tree(
         "sections_label": len(sections_label),
     }
     if len(set(lengths.values())) != 1:
-        raise ValueError(
-            f"Inconsistent number of sections between inputs: {lengths}."
-        )
+        raise ValueError(f"Inconsistent number of sections between inputs: {lengths}.")
 
     # Copy to avoid muting the same object
     ds_pos_sections = [ds.copy() for ds in ds_pos_sections]
@@ -763,8 +762,7 @@ def build_and_save_portion_tree(
 
     # Build tree dict
     tree_dict_positions = {
-        f"/position/{sections_label[i]}": ds_pos_sections[i]
-        for i in range(n_sections)
+        f"/position/{sections_label[i]}": ds_pos_sections[i] for i in range(n_sections)
     }
     tree_dict_pressure = {
         f"/pressure/{sections_label[i]}": ds_pressure_sections[i]
@@ -1781,7 +1779,8 @@ def derive_portion_cpsd(
                 signal_i = ds_pressure_section[f"pressure_{rcv_id_i}"].sel(
                     {
                         f"time_{rcv_id_i}": slice(
-                            tir_reception_dt_rcvi.data - np.timedelta64(offset_ms, "ms"),
+                            tir_reception_dt_rcvi.data
+                            - np.timedelta64(offset_ms, "ms"),
                             tir_reception_dt_rcvi.data
                             + np.timedelta64(signal_duration_ms - offset_ms, "ms"),
                         )
@@ -2832,6 +2831,941 @@ def apply_mfp_strategy_to_portion_intersections(
         # Add to portion
         new_path = f"/mfp_intersection/{section_name1}/{section_name2}"
         portion[new_path] = ds_mfp
+
+
+# ======================================================================================================================
+# Analysis of the results (position error of the estimated intersections)
+# ======================================================================================================================
+
+# Distance types compared in the results analysis, in display order
+DISTANCE_TYPES = (
+    "theta",
+    "theta_gamma",
+    "L2_gamma",
+    "dcf",
+    "theta_gamma_centered",
+    "L2_gamma_centered",
+)
+DISTANCE_TYPE_LABELS = {
+    "theta": r"$\theta_{\Pi}$",
+    "theta_gamma": r"$\theta_{\gamma}$",
+    "L2_gamma": r"$L_{2_{\gamma}}$",
+    "dcf": r"$C_{el}$",
+    "theta_gamma_centered": r"$\theta_{\gamma}$ (centered)",
+    "L2_gamma_centered": r"$L_{2_{\gamma}}$ (centered)",
+}
+# Ways of computing the position error of an estimated intersection
+POSITION_ERROR_MODES = ("section1", "section2", "both")
+
+
+def get_distance_type_label(distance_type):
+    """Return the display label of a distance type.
+
+    Parameters
+    ----------
+    distance_type : str
+        One of ``DISTANCE_TYPES`` (e.g. ``"theta"``, ``"dcf"``).
+
+    Returns
+    -------
+    str
+        Label (mathtext) used in the figures, or ``distance_type`` itself if it
+        is unknown.
+    """
+    return DISTANCE_TYPE_LABELS.get(distance_type, distance_type)
+
+
+def select_distance_types(available, requested=None):
+    """Choose the distance types to analyse among the available ones.
+
+    Parameters
+    ----------
+    available : iterable of str
+        Distance types present in the results.
+    requested : list of str or None, optional
+        Distance types wished by the user. If None, all the available ones are
+        returned.
+
+    Returns
+    -------
+    list of str
+        Selected distance types: in the order of ``requested`` (duplicates
+        removed) or, if ``requested`` is None, in the canonical order of
+        ``DISTANCE_TYPES``.
+
+    Raises
+    ------
+    ValueError
+        If a requested type is not available, or if the selection is empty.
+    """
+    ordered = [key for key in DISTANCE_TYPES if key in set(available)]
+    if requested is None:
+        selected = ordered
+    else:
+        selected = list(dict.fromkeys(requested))
+        unknown = [key for key in selected if key not in ordered]
+        if unknown:
+            raise ValueError(
+                f"Distance type(s) {unknown} not available in the results. "
+                f"Available distance types: {ordered}."
+            )
+    if not selected:
+        raise ValueError(
+            f"No distance type to analyse (available distance types: {ordered})."
+        )
+    return selected
+
+
+def list_stored_intersections(portion):
+    """List the intersections stored in the ``mfp_intersection`` group of a portion.
+
+    Parameters
+    ----------
+    portion : xarray.DataTree
+        Portion tree.
+
+    Returns
+    -------
+    list of tuple of str
+        ``(meridional_label, zonal_label)`` of each stored intersection; empty
+        if the portion has no ``mfp_intersection`` group.
+    """
+    if "mfp_intersection" not in portion.children:
+        return []
+    return [
+        (section1, section2)
+        for section1, node in portion.mfp_intersection.children.items()
+        for section2 in node.children
+    ]
+
+
+@functools.lru_cache(maxsize=None)
+def _get_wgs84_geod():
+    """Return a (cached) pyproj ``Geod`` object on the WGS84 ellipsoid."""
+    from pyproj import Geod
+
+    return Geod(ellps="WGS84")
+
+
+def _geodesic_distance_m(lon1, lat1, lon2, lat2):
+    """Geodesic distance between two points of the WGS84 ellipsoid.
+
+    Parameters
+    ----------
+    lon1, lat1, lon2, lat2 : float
+        Longitudes and latitudes in degrees.
+
+    Returns
+    -------
+    float
+        Distance in meters, NaN if it cannot be computed (invalid coordinates).
+    """
+    _, _, dist = _get_wgs84_geod().inv(lon1, lat1, lon2, lat2)
+    dist = float(dist)
+    return dist if np.isfinite(dist) else np.nan
+
+
+def _argmin_2d(dist):
+    """Index of the minimum of a 2D array, ignoring NaN and infinite values.
+
+    Parameters
+    ----------
+    dist : numpy.ndarray
+        2D distance matrix.
+
+    Returns
+    -------
+    tuple of int or None
+        ``(row, column)`` of the first minimum, or None if the matrix has no
+        finite value.
+    """
+    valid = np.isfinite(dist)
+    if not valid.any():
+        return None
+    flat_idx = np.argmin(np.where(valid, dist, np.inf))
+    return np.unravel_index(flat_idx, dist.shape)
+
+
+def localization_errors_from_distances(
+    distance_section12, lon1, lat1, lon2, lat2, error_mode="section1"
+):
+    """Position error of the estimated intersection, for each distance type and receiver pair.
+
+    The true intersection is the pair of shots ``(i1, i2)`` minimizing the
+    real-space distance. For each distance type and receiver pair, the estimated
+    intersection is the pair of shots ``(j1, j2)`` minimizing the feature
+    distance (NaN values are ignored). The position error is the geodesic
+    distance, on the WGS84 ellipsoid, between the true and the estimated shots:
+
+    - ``"section1"``: shots ``i1`` and ``j1`` on section 1 (meridional section);
+    - ``"section2"``: shots ``i2`` and ``j2`` on section 2 (zonal section);
+    - ``"both"``: ``sqrt(error_section1**2 + error_section2**2)``.
+
+    Section 1 being meridional, its error is essentially along the North-South
+    axis, and the error of the zonal section 2 along the East-West axis: the
+    ``"both"`` mode is thus the only one accounting for both directions.
+
+    Parameters
+    ----------
+    distance_section12 : dict
+        Distances as returned by ``distances_single_intersection``: key
+        ``dist_in_real_space`` (shape ``(n_emission1, n_emission2)``) and, for
+        each available distance type, ``dist_<type>`` (shape
+        ``(n_rcv, n_emission1, n_emission2)``).
+    lon1, lat1 : array_like
+        Shot positions of section 1, in degrees, shape ``(n_emission1,)``.
+    lon2, lat2 : array_like
+        Shot positions of section 2, in degrees, shape ``(n_emission2,)``.
+    error_mode : {"section1", "section2", "both"}, optional
+        How the position error is computed (see above).
+
+    Returns
+    -------
+    dict of numpy.ndarray
+        One array of shape ``(n_rcv,)`` per available distance type (keys of
+        ``DISTANCE_TYPES``), position errors in meters. NaN when the feature
+        distance has no valid value for the receiver pair.
+
+    Raises
+    ------
+    ValueError
+        If ``error_mode`` is unknown, if the shapes are inconsistent, or if the
+        real-space distance has no valid value.
+    """
+    if error_mode not in POSITION_ERROR_MODES:
+        raise ValueError(
+            f"Unknown error_mode '{error_mode}'. Valid modes: {list(POSITION_ERROR_MODES)}."
+        )
+
+    d_real = np.asarray(distance_section12["dist_in_real_space"], dtype=float)
+    lon1, lat1, lon2, lat2 = (
+        np.asarray(arr, dtype=float) for arr in (lon1, lat1, lon2, lat2)
+    )
+    if (
+        d_real.ndim != 2
+        or lon1.shape != (d_real.shape[0],)
+        or lat1.shape != (d_real.shape[0],)
+        or lon2.shape != (d_real.shape[1],)
+        or lat2.shape != (d_real.shape[1],)
+    ):
+        raise ValueError(
+            f"Inconsistent shapes: real-space distance {d_real.shape}, section 1 positions "
+            f"{lon1.shape}/{lat1.shape}, section 2 positions {lon2.shape}/{lat2.shape}."
+        )
+
+    target = _argmin_2d(d_real)
+    if target is None:
+        raise ValueError(
+            "The real-space distance has no valid value: the true intersection "
+            "cannot be determined."
+        )
+    i1_t, i2_t = target
+
+    errors = {}
+    for key in DISTANCE_TYPES:
+        dist = distance_section12.get(f"dist_{key}")
+        if dist is None:
+            continue
+        dist = np.asarray(dist, dtype=float)
+        if dist.ndim != 3 or dist.shape[1:] != d_real.shape:
+            raise ValueError(
+                f"Distance 'dist_{key}' has shape {dist.shape}, expected "
+                f"(n_rcv, {d_real.shape[0]}, {d_real.shape[1]})."
+            )
+
+        err = np.full(dist.shape[0], np.nan)
+        for i_rcv in range(dist.shape[0]):
+            guess = _argmin_2d(dist[i_rcv])
+            if guess is None:
+                continue
+            j1, j2 = guess
+
+            err1 = err2 = np.nan
+            if error_mode in ("section1", "both"):
+                err1 = _geodesic_distance_m(lon1[i1_t], lat1[i1_t], lon1[j1], lat1[j1])
+            if error_mode in ("section2", "both"):
+                err2 = _geodesic_distance_m(lon2[i2_t], lat2[i2_t], lon2[j2], lat2[j2])
+
+            if error_mode == "section1":
+                err[i_rcv] = err1
+            elif error_mode == "section2":
+                err[i_rcv] = err2
+            else:
+                err[i_rcv] = np.hypot(err1, err2)
+        errors[key] = err
+
+    return errors
+
+
+def localization_errors_from_mfp_dataset(ds_mfp_intersection, error_mode="section1"):
+    """Position errors of a stored intersection (dataset built by ``build_mfp_intersection_dataset``).
+
+    Parameters
+    ----------
+    ds_mfp_intersection : xarray.Dataset
+        MFP dataset of one intersection, with the variables ``d_real`` and
+        ``d_<type>``, and the shot positions ``tir_src_lon_section1``,
+        ``tir_src_lat_section1``, ``tir_src_lon_section2``,
+        ``tir_src_lat_section2``.
+    error_mode : {"section1", "section2", "both"}, optional
+        How the position error is computed, see
+        ``localization_errors_from_distances``.
+
+    Returns
+    -------
+    errors : dict of numpy.ndarray
+        Position errors in meters, one array of shape ``(n_rcv,)`` per
+        distance type present in the dataset.
+    rcv_ids : list of str
+        Receiver of each error (``rcv_id_feature`` coordinate).
+    """
+    rcv_dim = "rcv_id_feature"
+    dim1, dim2 = "src_datetime_section1", "src_datetime_section2"
+
+    distance_section12 = {
+        "dist_in_real_space": ds_mfp_intersection["d_real"].transpose(dim1, dim2).values
+    }
+    for key in DISTANCE_TYPES:
+        var = f"d_{key}"
+        if var in ds_mfp_intersection:
+            distance_section12[f"dist_{key}"] = (
+                ds_mfp_intersection[var].transpose(rcv_dim, dim1, dim2).values
+            )
+
+    errors = localization_errors_from_distances(
+        distance_section12,
+        lon1=ds_mfp_intersection["tir_src_lon_section1"].values,
+        lat1=ds_mfp_intersection["tir_src_lat_section1"].values,
+        lon2=ds_mfp_intersection["tir_src_lon_section2"].values,
+        lat2=ds_mfp_intersection["tir_src_lat_section2"].values,
+        error_mode=error_mode,
+    )
+    rcv_ids = [str(rcv_id) for rcv_id in ds_mfp_intersection[rcv_dim].values]
+
+    return errors, rcv_ids
+
+
+def errors_to_records(errors, rcv_ids, reference_rcv, **extra):
+    """Convert position errors to a list of records (one per distance type and receiver pair).
+
+    Parameters
+    ----------
+    errors : dict of numpy.ndarray
+        Position errors per distance type, as returned by
+        ``localization_errors_from_distances``.
+    rcv_ids : sequence of str
+        Receiver of each error.
+    reference_rcv : str
+        Reference receiver of the pairs ``(rcv_id, reference_rcv)``.
+    **extra
+        Additional fields copied in each record (e.g. ``intersection="sn2 x oe6"``).
+
+    Returns
+    -------
+    list of dict
+        Records with the keys of ``extra`` and ``distance_type``, ``rcv_id``,
+        ``rcv_pair`` (``"(<rcv_id>, <reference_rcv>)"``) and ``error_m``. They
+        can be concatenated and given to ``pandas.DataFrame``.
+
+    Raises
+    ------
+    ValueError
+        If the number of errors does not match the number of receivers.
+    """
+    records = []
+    for key, err in errors.items():
+        if len(err) != len(rcv_ids):
+            raise ValueError(
+                f"{len(err)} errors for distance type '{key}' but {len(rcv_ids)} receivers."
+            )
+        for rcv_id, error in zip(rcv_ids, err):
+            records.append(
+                dict(
+                    **extra,
+                    distance_type=key,
+                    rcv_id=str(rcv_id),
+                    rcv_pair=f"({rcv_id}, {reference_rcv})",
+                    error_m=float(error),
+                )
+            )
+    return records
+
+
+def build_frequency_bands(fmin, fmax, bandwidth):
+    """Split ``[fmin, fmax]`` in frequency bands aligned on multiples of ``bandwidth``.
+
+    The band limits are ``fmin``, the multiples of ``bandwidth`` strictly
+    between ``fmin`` and ``fmax``, and ``fmax``. The first and last bands can
+    therefore be narrower than ``bandwidth`` (e.g. ``[10, 400]`` and
+    ``[400, 800]`` for ``fmin=10``, ``fmax=800`` and ``bandwidth=400``). Bands
+    are contiguous and cover the whole interval.
+
+    Parameters
+    ----------
+    fmin, fmax : float
+        Limits of the interval, in Hz.
+    bandwidth : float
+        Nominal width of the bands, in Hz.
+
+    Returns
+    -------
+    list of tuple of float
+        ``(f_low, f_high)`` of each band, in increasing order.
+
+    Raises
+    ------
+    ValueError
+        If ``bandwidth`` is not positive or if ``fmax <= fmin``.
+    """
+    if bandwidth <= 0:
+        raise ValueError(f"The frequency bandwidth must be positive (got {bandwidth}).")
+    if fmax <= fmin:
+        raise ValueError(f"fmax ({fmax}) must be greater than fmin ({fmin}).")
+
+    k_first = int(np.floor(fmin / bandwidth)) + 1
+    k_last = int(np.ceil(fmax / bandwidth))
+    inner = [
+        k * bandwidth for k in range(k_first, k_last) if fmin < k * bandwidth < fmax
+    ]
+    edges = [fmin, *inner, fmax]
+
+    return [(float(lo), float(hi)) for lo, hi in zip(edges[:-1], edges[1:])]
+
+
+def frequency_band_label(f_low, f_high):
+    """Label of a frequency band, e.g. ``"10-400"`` (Hz)."""
+    return f"{f_low:g}-{f_high:g}"
+
+
+def slice_frequency_band(ds_feature_section, f_low, f_high, include_upper=False):
+    """Select the frequency bins of a band, without counting a bin in two adjacent bands.
+
+    ``xarray`` label slicing (``sel(freq=slice(a, b))``) includes both limits,
+    so a bin lying exactly on a limit would belong to two adjacent bands. Here
+    the band is ``[f_low, f_high[`` unless ``include_upper`` is True.
+
+    Parameters
+    ----------
+    ds_feature_section : xarray.Dataset
+        Dataset with a ``freq`` dimension.
+    f_low, f_high : float
+        Limits of the band, in Hz.
+    include_upper : bool, optional
+        If True, the bins equal to ``f_high`` are kept (use it for the last band
+        of a series).
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset restricted to the band; its ``freq`` dimension can be empty.
+    """
+    freq = np.asarray(ds_feature_section["freq"].values)
+    mask = freq >= f_low
+    mask &= (freq <= f_high) if include_upper else (freq < f_high)
+    return ds_feature_section.isel(freq=np.flatnonzero(mask))
+
+
+def summarize_localization_errors(df_errors, success_threshold_m=100.0):
+    """Statistics of the position errors, per distance type and receiver pair.
+
+    Parameters
+    ----------
+    df_errors : pandas.DataFrame
+        Records with the columns ``distance_type``, ``rcv_pair`` and
+        ``error_m`` (one row per intersection), see ``errors_to_records``.
+    success_threshold_m : float, optional
+        An intersection is successfully localized if its error is not larger
+        than this threshold, in meters.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per ``(distance_type, rcv_pair)``, in order of appearance, with
+        the columns ``n_intersections``, ``n_valid`` (errors that could be
+        computed), ``mean_error_m``, ``median_error_m``, ``std_error_m`` (not
+        corrected for the degrees of freedom), ``rms_error_m``, ``p90_error_m``
+        and ``success_rate``. The statistics ignore the invalid errors (NaN),
+        except ``success_rate`` where they count as failures
+        (``success_rate = n_success / n_intersections``).
+
+    Raises
+    ------
+    ValueError
+        If ``df_errors`` is empty.
+    """
+    if len(df_errors) == 0:
+        raise ValueError("No position error to summarize.")
+
+    def _rms(x):
+        x = x.dropna()
+        return float(np.sqrt(np.mean(x**2))) if len(x) else np.nan
+
+    def _std(x):
+        return x.std(ddof=0)
+
+    def _p90(x):
+        return x.quantile(0.9)
+
+    def _success_rate(x):
+        return float((x <= success_threshold_m).sum()) / len(x)
+
+    summary = (
+        df_errors.groupby(["distance_type", "rcv_pair"], sort=False)["error_m"]
+        .agg(
+            n_intersections="size",
+            n_valid="count",
+            mean_error_m="mean",
+            median_error_m="median",
+            std_error_m=_std,
+            rms_error_m=_rms,
+            p90_error_m=_p90,
+            success_rate=_success_rate,
+        )
+        .reset_index()
+    )
+    return summary
+
+
+def pivot_error_summary(summary, value="median_error_m"):
+    """Table of one statistic: receiver pairs in rows, distance types in columns.
+
+    Parameters
+    ----------
+    summary : pandas.DataFrame
+        Output of ``summarize_localization_errors``.
+    value : str, optional
+        Column of ``summary`` to tabulate (e.g. ``"median_error_m"`` or
+        ``"success_rate"``).
+
+    Returns
+    -------
+    pandas.DataFrame
+        Pivot table, rows and columns in order of appearance in ``summary``.
+    """
+    rows = list(summary["rcv_pair"].drop_duplicates())
+    cols = list(summary["distance_type"].drop_duplicates())
+    table = summary.pivot(index="rcv_pair", columns="distance_type", values=value)
+    return table.reindex(index=rows, columns=cols)
+
+
+def best_rcv_pair_per_distance(summary, value="median_error_m", minimize=True):
+    """Best receiver pair of each distance type.
+
+    Parameters
+    ----------
+    summary : pandas.DataFrame
+        Output of ``summarize_localization_errors``.
+    value : str, optional
+        Statistic used to rank the pairs.
+    minimize : bool, optional
+        True if a lower value is better (errors), False otherwise (success rate).
+
+    Returns
+    -------
+    dict
+        ``{distance_type: (rcv_pair, value)}``; ``(None, nan)`` if the statistic
+        is not available for any pair.
+    """
+    table = pivot_error_summary(summary, value)
+    best = {}
+    for distance_type in table.columns:
+        col = table[distance_type].to_numpy(dtype=float)
+        if not np.isfinite(col).any():
+            best[distance_type] = (None, np.nan)
+            continue
+        idx = np.nanargmin(col) if minimize else np.nanargmax(col)
+        best[distance_type] = (table.index[idx], float(col[idx]))
+    return best
+
+
+def select_and_order_distance_types(df_errors, requested=None):
+    """Keep, and order, the distance types to analyse in a table of position errors.
+
+    Parameters
+    ----------
+    df_errors : pandas.DataFrame
+        Records with a ``distance_type`` column.
+    requested : list of str or None, optional
+        Distance types wished by the user (None: all the available ones), see
+        ``select_distance_types``.
+
+    Returns
+    -------
+    df_selected : pandas.DataFrame
+        Records of the selected distance types, sorted by distance type in the
+        order of ``distance_types`` (the order of the other rows is preserved).
+    distance_types : list of str
+        Selected distance types.
+
+    Raises
+    ------
+    ValueError
+        If a requested type is not available, or if the selection is empty.
+    """
+    distance_types = select_distance_types(
+        df_errors["distance_type"].unique(), requested
+    )
+    order = {key: i for i, key in enumerate(distance_types)}
+    df_selected = df_errors[df_errors["distance_type"].isin(distance_types)]
+    df_selected = df_selected.sort_values(
+        "distance_type", key=lambda col: col.map(order), kind="stable"
+    ).reset_index(drop=True)
+    return df_selected, distance_types
+
+
+def _finalize_figure(fig, title=None):
+    """Set the title of a figure (if any) and adjust its layout.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Figure to finalize.
+    title : str or None, optional
+        Title of the figure.
+    """
+    if title:
+        fig.suptitle(title)
+    # A layout engine already set (e.g. constrained layout enabled in the
+    # matplotlib rcParams) is kept: switching engine fails when a colorbar exists.
+    if fig.get_layout_engine() is not None:
+        return
+    if title:
+        fig.tight_layout(rect=(0, 0, 1, 0.95))
+    else:
+        fig.tight_layout()
+
+
+def _make_panel_grid(n_panels, max_cols=3, panel_size=(5.5, 4.5), **subplots_kwargs):
+    """Create a grid of subplots with at least ``n_panels`` axes; the extra ones are hidden.
+
+    Parameters
+    ----------
+    n_panels : int
+        Number of panels needed.
+    max_cols : int, optional
+        Maximum number of columns.
+    panel_size : tuple of float, optional
+        Size of one panel ``(width, height)`` in inches.
+    **subplots_kwargs
+        Passed to ``matplotlib.pyplot.subplots`` (e.g. ``sharey=True``).
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    axs : numpy.ndarray of matplotlib.axes.Axes
+        Flat array of ``n_panels`` visible axes (followed by hidden ones).
+    """
+    ncols = min(max_cols, n_panels)
+    nrows = int(np.ceil(n_panels / ncols))
+    fig, axs = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(panel_size[0] * ncols, panel_size[1] * nrows),
+        squeeze=False,
+        **subplots_kwargs,
+    )
+    axs = axs.flatten()
+    for ax in axs[n_panels:]:
+        ax.set_visible(False)
+    return fig, axs
+
+
+def plot_error_boxplots_per_rcv_pair(df_errors, distance_types, title=None):
+    """Boxplots of the position error versus the distance type, one panel per receiver pair.
+
+    Each box summarizes the errors of all the analysed intersections; the
+    individual errors are drawn on top as points. Invalid errors (NaN) are not
+    drawn.
+
+    Parameters
+    ----------
+    df_errors : pandas.DataFrame
+        Records with the columns ``distance_type``, ``rcv_pair`` and ``error_m``.
+    distance_types : list of str
+        Distance types to display, in the order of the x axis.
+    title : str or None, optional
+        Title of the figure.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure (not closed).
+    """
+    rcv_pairs = list(df_errors["rcv_pair"].drop_duplicates())
+    fig, axs = plt.subplots(
+        nrows=1,
+        ncols=len(rcv_pairs),
+        figsize=(16, 8),
+        sharey=True,
+        squeeze=False,
+    )
+    axs = axs[0]
+    # rng = np.random.default_rng(0)  # reproducible jitter
+
+    for i_rcv, rcv_pair in enumerate(rcv_pairs):
+        ax = axs[i_rcv]
+        df_pair = df_errors[df_errors["rcv_pair"] == rcv_pair]
+        for i_dist, distance_type in enumerate(distance_types, start=1):
+            values = (
+                df_pair.loc[df_pair["distance_type"] == distance_type, "error_m"]
+                .dropna()
+                .to_numpy()
+            )
+            if values.size == 0:
+                continue
+            bp = ax.boxplot(
+                [values],
+                positions=[i_dist],
+                widths=0.6,
+                patch_artist=True,
+                showfliers=False,
+                medianprops=dict(color="k"),
+            )
+            for patch in bp["boxes"]:
+                patch.set_facecolor(color(i_rcv))
+                patch.set_alpha(0.6)
+            # ax.scatter(
+            #     i_dist + rng.uniform(-0.15, 0.15, values.size),
+            #     values,
+            #     color="k",
+            #     s=15,
+            #     zorder=3,
+            # )
+
+        ax.set_xlim(0.5, len(distance_types) + 0.5)
+        ax.set_xticks(range(1, len(distance_types) + 1))
+        ax.set_xticklabels(
+            [get_distance_type_label(key) for key in distance_types],
+            rotation=45,
+            ha="right",
+        )
+        ax.set_title(rcv_pair, fontsize=16)
+
+    fig.supxlabel("Distance type")
+    fig.supylabel("Position error [m]")
+    _finalize_figure(fig, title)
+
+    return fig
+
+
+def plot_rcv_pair_performance_heatmaps(summary, success_threshold_m, title=None):
+    """Compare the receiver pairs: median error and success rate for each distance type.
+
+    Two heatmaps (receiver pairs in rows, distance types in columns), annotated
+    with the values. The best pair(s) of each distance type are framed in red
+    (no frame if all the pairs have the same value).
+
+    Parameters
+    ----------
+    summary : pandas.DataFrame
+        Output of ``summarize_localization_errors``.
+    success_threshold_m : float
+        Threshold used to compute the success rate, only used in the title.
+    title : str or None, optional
+        Title of the figure.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure (not closed).
+    """
+    n_pairs = summary["rcv_pair"].nunique()
+    fig, axs = plt.subplots(
+        nrows=1,
+        ncols=2,
+        figsize=(16, max(5, 0.7 * n_pairs + 3.5)),
+        squeeze=False,
+    )
+    panels = [
+        ("median_error_m", "Median position error [m]", "viridis_r", "{:.0f}", True),
+        (
+            "success_rate",
+            f"Success rate (error <= {success_threshold_m:g} m)",
+            "viridis",
+            "{:.0%}",
+            False,
+        ),
+    ]
+
+    for ax, (value, title, cmap, fmt, minimize) in zip(axs[0], panels):
+        table = pivot_error_summary(summary, value)
+        data = table.to_numpy(dtype=float)
+        im = ax.imshow(data, cmap=cmap, aspect="auto")
+        fig.colorbar(im, ax=ax)
+
+        for (i, j), val in np.ndenumerate(data):
+            if not np.isfinite(val):
+                text, text_color = "-", "k"
+            else:
+                r, g, b, _ = im.cmap(im.norm(val))
+                luminance = 0.299 * r + 0.587 * g + 0.114 * b
+                text, text_color = fmt.format(val), ("k" if luminance > 0.5 else "w")
+            ax.text(j, i, text, ha="center", va="center", color=text_color)
+
+        # Frame the best pair(s) of each distance type; nothing if all the pairs are tied
+        for j in range(data.shape[1]):
+            col = data[:, j]
+            finite = np.isfinite(col)
+            if not finite.any():
+                continue
+            best_value = np.nanmin(col) if minimize else np.nanmax(col)
+            is_best = finite & (col == best_value)
+            if is_best.sum() == finite.sum():
+                continue
+            for i_best in np.flatnonzero(is_best):
+                ax.add_patch(
+                    plt.Rectangle(
+                        (j - 0.5, i_best - 0.5),
+                        1,
+                        1,
+                        fill=False,
+                        edgecolor="r",
+                        linewidth=3,
+                    )
+                )
+
+        ax.set_xticks(range(data.shape[1]))
+        ax.set_xticklabels(
+            [get_distance_type_label(key) for key in table.columns],
+            rotation=45,
+            ha="right",
+        )
+        ax.set_yticks(range(data.shape[0]))
+        ax.set_yticklabels(list(table.index))
+        ax.set_title(title, fontsize=16)
+
+    _finalize_figure(fig, title)
+
+    return fig
+
+
+def plot_error_cdf(df_errors, distance_types, success_threshold_m, title=None):
+    """Cumulative distribution of the position error, one panel per distance type.
+
+    One curve per receiver pair. The fraction is computed over all the analysed
+    intersections, so a curve that does not reach 1 means that some errors are
+    larger than the x axis or invalid (NaN). The success threshold is drawn as a
+    dashed vertical line.
+
+    Parameters
+    ----------
+    df_errors : pandas.DataFrame
+        Records with the columns ``distance_type``, ``rcv_pair`` and ``error_m``.
+    distance_types : list of str
+        Distance types to display (one panel each).
+    success_threshold_m : float
+        Success threshold, in meters.
+    title : str or None, optional
+        Title of the figure.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure (not closed).
+    """
+    rcv_pairs = list(df_errors["rcv_pair"].drop_duplicates())
+    all_errors = df_errors["error_m"].to_numpy(dtype=float)
+    all_errors = all_errors[np.isfinite(all_errors)]
+    x_max = 1.05 * all_errors.max() if all_errors.size else 1.0
+
+    fig, axs = _make_panel_grid(len(distance_types), sharex=True, sharey=True)
+
+    for ax, distance_type in zip(axs, distance_types):
+        df_dist = df_errors[df_errors["distance_type"] == distance_type]
+        for i_rcv, rcv_pair in enumerate(rcv_pairs):
+            errors = df_dist.loc[df_dist["rcv_pair"] == rcv_pair, "error_m"].to_numpy(
+                dtype=float
+            )
+            valid = np.sort(errors[np.isfinite(errors)])
+            if valid.size == 0:
+                continue
+            fraction = np.arange(1, valid.size + 1) / errors.size
+            ax.step(
+                np.r_[0.0, valid, x_max],
+                np.r_[0.0, fraction, fraction[-1]],
+                where="post",
+                color=color(i_rcv),
+                label=rcv_pair,
+            )
+        ax.axvline(success_threshold_m, color="k", linestyle="--", linewidth=1)
+        ax.set_title(get_distance_type_label(distance_type), fontsize=16)
+        ax.set_ylim(0, 1.02)
+
+    axs[0].legend(loc="lower right", fontsize=9)
+    fig.supxlabel("Position error [m]")
+    fig.supylabel("Fraction of intersections")
+    _finalize_figure(fig, title)
+
+    return fig
+
+
+def plot_error_vs_frequency_band(df_band_errors, distance_types, title=None):
+    """Position error versus frequency band, one panel per distance type.
+
+    One curve per receiver pair: mean of the position error over the analysed
+    intersections, with the standard deviation as error bar. The bands are
+    labelled by their limits.
+
+    Parameters
+    ----------
+    df_band_errors : pandas.DataFrame
+        Records with the columns ``distance_type``, ``rcv_pair``, ``error_m``,
+        ``band_index``, ``band_label`` and ``band_center``.
+    distance_types : list of str
+        Distance types to display (one panel each).
+    title : str or None, optional
+        Title of the figure.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure (not closed).
+    """
+    bands = (
+        df_band_errors[["band_index", "band_label", "band_center"]]
+        .drop_duplicates()
+        .sort_values("band_index")
+    )
+    stats = (
+        df_band_errors.groupby(["distance_type", "rcv_pair", "band_index"], sort=False)
+        .agg(
+            band_center=("band_center", "first"),
+            mean_error=("error_m", "mean"),
+            std_error=("error_m", lambda x: x.std(ddof=0)),
+        )
+        .reset_index()
+    )
+    rcv_pairs = list(df_band_errors["rcv_pair"].drop_duplicates())
+
+    fig, axs = _make_panel_grid(len(distance_types), sharey=True)
+
+    for ax, distance_type in zip(axs, distance_types):
+        for i_rcv, rcv_pair in enumerate(rcv_pairs):
+            sub = stats[
+                (stats["distance_type"] == distance_type)
+                & (stats["rcv_pair"] == rcv_pair)
+            ].sort_values("band_index")
+            if sub.empty:
+                continue
+            ax.errorbar(
+                x=sub["band_center"],
+                y=sub["mean_error"],
+                yerr=sub["std_error"],
+                color=color(i_rcv),
+                marker="o",
+                capsize=3,
+                label=rcv_pair,
+            )
+        ax.set_xticks(bands["band_center"])
+        ax.set_xticklabels(bands["band_label"], rotation=45, ha="right")
+        ax.set_title(get_distance_type_label(distance_type), fontsize=16)
+
+    axs[0].legend(loc="best", fontsize=9)
+    fig.supxlabel("Frequency band [Hz]")
+    fig.supylabel("Position error [m]")
+    _finalize_figure(fig, title)
+
+    return fig
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 @File    :   acouplane_analyse_portion_generate_diag_all_intersections.py
 @Time    :   2026/09/29 08:57:41
 @Author  :   Menetrier Baptiste
-@Version :   1.5
+@Version :   2.0
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Analyse of an ACOUPLANE portion: signals, features (RTF, DCF) and MFP
              ambiguity surfaces for every intersection of meridional / zonal sections.
@@ -18,39 +18,66 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from publication.publication_figure import set_subfigures_abc_labels, color
+from publication.publication_figure import color
 from real_data_analysis.acouplane.src.acouplane_cst import (
     ACOUPLANE_PORTION_NC_ROOT_FPATH,
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR,
 )
-from real_data_analysis.acouplane.src.acouplane_utils import (
-    open_portion,
-    save_portion_inplace,
-    apply_rcv_position_correction_to_portion,
+from real_data_analysis.acouplane.src.acouplane_console import (
+    make_figure_saver,
+    make_logger,
+)
+from real_data_analysis.acouplane.src.acouplane_frequency_bands import (
+    build_cumulative_frequency_bands,
+    build_frequency_bands,
+    collect_errors_over_frequency_ranges,
+    frequency_band_label,
+)
+from real_data_analysis.acouplane.src.acouplane_localization import (
+    POSITION_ERROR_MODES,
+    add_validity_column,
+    ambiguity_contrast_from_mfp_dataset,
+    best_rcv_pair_per_distance,
+    errors_to_records,
+    localization_errors_from_mfp_dataset,
+    pivot_error_summary,
+    select_and_order_distance_types,
+    summarize_localization_errors,
+)
+from real_data_analysis.acouplane.src.acouplane_mfp import (
     apply_mfp_strategy_to_portion_intersections,
-    select_intersections,
-    derive_portion_cpsd,
-    derive_portion_propagation_time,
+    get_intersection_guess_positions,
+    get_intersection_target_position,
+)
+from real_data_analysis.acouplane.src.acouplane_plot_analysis import (
+    plot_contrast_vs_validity,
+    plot_error_boxplots_per_rcv_pair,
+    plot_error_cdf,
+    plot_error_vs_bandwidth,
+    plot_error_vs_frequency_band,
+    plot_rcv_pair_performance_heatmaps,
+)
+from real_data_analysis.acouplane.src.acouplane_plot_mfp import (
+    plot_intersection_ambiguity,
+    plot_intersection_gamma_comparison,
+)
+from real_data_analysis.acouplane.src.acouplane_plot_portion import (
     plot_portion_tir_pos,
     plot_pressure_section,
     plot_spectrogram_section,
-    distances_single_intersection,
+)
+from real_data_analysis.acouplane.src.acouplane_portion_io import (
     list_stored_intersections,
-    localization_errors_from_distances,
-    localization_errors_from_mfp_dataset,
-    errors_to_records,
-    build_frequency_bands,
-    frequency_band_label,
-    slice_frequency_band,
-    select_and_order_distance_types,
-    summarize_localization_errors,
-    pivot_error_summary,
-    best_rcv_pair_per_distance,
-    plot_error_boxplots_per_rcv_pair,
-    plot_rcv_pair_performance_heatmaps,
-    plot_error_cdf,
-    plot_error_vs_frequency_band,
-    POSITION_ERROR_MODES,
+    open_portion,
+    restrict_dataset_to_receivers,
+    save_portion_inplace,
+    section_name_of,
+    select_intersections,
+)
+from real_data_analysis.acouplane.src.acouplane_preprocessing import (
+    apply_rcv_position_correction_to_portion,
+    derive_portion_cpsd,
+    derive_portion_propagation_time,
 )
 
 # ======================================================================================================================
@@ -96,6 +123,8 @@ offset_ms = 100
 signal_duration_ms = 3000
 
 reference_rcv = "obs1"
+# Receivers used by the CPSD computation, the signal figures and the analysis of the results (the analysis only keeps
+# the pairs (rcv_i, reference_rcv) with rcv_i in this list, even if more receivers are stored in the portion)
 obs_ids = [
     "obs1",
     "obs2",
@@ -110,7 +139,8 @@ fmax = 800
 
 # Intersections to process (MFP computation and ambiguity figures).
 # None -> all intersections. Otherwise a list of (meridional, zonal) section labels, e.g.
-# intersections_to_process = [("sn2", "oe6"), ("sn2", "oe7"), ("sn2", "oe8")]
+# intersections_to_process = [("sn2", "oe6")]
+# , ("sn2", "oe7"), ("sn2", "oe8")
 intersections_to_process = None
 
 # Analysis of the results: position error of the estimated intersection with respect to the true one.
@@ -118,14 +148,24 @@ intersections_to_process = None
 #   "section1" -> shots of the meridional section (error mostly along North-South)
 #   "section2" -> shots of the zonal section (error mostly along East-West)
 #   "both"     -> sqrt(error_section1**2 + error_section2**2)
-error_mode = "section2"
+error_mode = "both"
 success_threshold_m = (
-    100  # an intersection is successfully localized if its error <= threshold [m]
+    50  # an intersection is successfully localized if its error <= threshold [m]
 )
 freq_bandwidth = 50  # width of the frequency bands of the band study [Hz]
 # Distance types to analyse: None -> all those available, otherwise a list among "theta", "theta_gamma",
 # "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered" (the centered ones need compare_centered_gamma = True)
+# It applies to all the analysis figures (position error, receiver pair comparison, frequency study, contrast).
 distance_types_to_analyse = None
+# Error versus width of the frequency range: ranges [fmin, f] with f = bandwidth_step, 2 * bandwidth_step, ... up to
+# bandwidth_study_fmax (None -> fmax). The distances are recomputed for each range: the cost grows with the number of ranges.
+bandwidth_step = 50  # [Hz]
+bandwidth_study_fmax = None  # [Hz]
+# Contrast of the ambiguity surface = (P - min) / P, P being the percentile `contrast_percentile` of the surface.
+contrast_percentile = 50
+# True -> the contrast figure only shows the valid localizations (error <= success_threshold_m); False -> valid and invalid
+# localizations are shown side by side (recommended: it tells whether the contrast predicts the success of the localization)
+contrast_only_valid = False
 
 # ======================================================================================================================
 # Booleans to control behavior
@@ -144,353 +184,68 @@ plot_intersections = False
 # Analysis of the results (position error of the estimated intersections)
 analyse_error_vs_distance_type = True
 analyse_error_vs_frequency_band = True
+analyse_error_vs_bandwidth = True
+analyse_ambiguity_contrast = True
 analyse_rcv_pair_performance = True
 # Also compute (and plot) the gamma distances with gamma centered along frequency
 compare_centered_gamma = True
 verbose = True
 
-
 # ======================================================================================================================
-# Helper functions
+# Console messages and figure saving
 # ======================================================================================================================
-def log(message, level=0):
-    """Print a progress message when ``verbose`` is True.
+log = make_logger(portion_id, verbose)
+save_synthesis_figure = make_figure_saver(ROOT_IMG_PORTION_RESULTS_SYNTHESIS, log)
+
+# Receivers listed in obs_ids that are missing from the stored results (warned only once)
+warned_missing_receivers = set()
+
+
+def restrict_to_selected_receivers(ds, reference):
+    """Keep, in a dataset of features or MFP results, the receivers listed in ``obs_ids``.
+
+    The portion can store more receivers than those selected by ``obs_ids`` (e.g. features computed
+    earlier with other receivers), and the reference receiver has no pair with itself.
 
     Parameters
     ----------
-    message : str
-        Message to print.
-    level : int, optional
-        Indentation level: 0 for a main step (prefixed by ``[Portion <id>]``),
-        1 or more for a detail of the current step.
+    ds : xarray.Dataset
+        Dataset with the dimension ``rcv_id_feature``.
+    reference : str
+        Reference receiver of the pairs ``(rcv_id_feature, reference)``, never kept.
 
     Returns
     -------
-    None
+    xarray.Dataset
+        Dataset restricted to the selected receivers.
+
+    Raises
+    ------
+    RuntimeError
+        If none of the selected receivers is available in the dataset.
     """
-    if not verbose:
-        return
-    if level == 0:
-        print(f"[Portion {portion_id}] {message}")
-    else:
-        print("    " * level + f"- {message}")
+    stored = [str(rcv_id) for rcv_id in ds["rcv_id_feature"].values]
+    selected = [str(rcv_id) for rcv_id in obs_ids if str(rcv_id) != str(reference)]
 
-
-def section_name_of(node):
-    """Build the display name of a section, e.g. ``"South/North 0"``.
-
-    Parameters
-    ----------
-    node : xarray.DataTree
-        Node of a section (in the ``position``, ``pressure`` or ``feature`` group).
-
-    Returns
-    -------
-    str
-        ``"<orientation> <id>"``.
-    """
-    return f"{node.attrs['section_orientation']} {node.attrs['section_id']}"
-
-
-def save_synthesis_figure(fig, filename):
-    """Save a figure in the results synthesis directory, then close it.
-
-    Parameters
-    ----------
-    fig : matplotlib.figure.Figure
-        Figure to save.
-    filename : str
-        Name of the image file, saved in ``ROOT_IMG_PORTION_RESULTS_SYNTHESIS``.
-
-    Returns
-    -------
-    None
-    """
-    fpath = os.path.join(ROOT_IMG_PORTION_RESULTS_SYNTHESIS, filename)
-    fig.savefig(fpath)
-    plt.close(fig)
-    log(f"Saved {fpath}", level=2)
-
-
-def get_intersection_target_position(ds_mfp_intersection):
-    """Find the true intersection of two sections from the real-space distance.
-
-    The "target" is the pair of shots (one on each section) which are the
-    closest to each other in real space, i.e. the position where the two
-    trajectories actually cross.
-
-    Parameters
-    ----------
-    ds_mfp_intersection : xarray.Dataset
-        MFP dataset of one intersection (see ``build_mfp_intersection_dataset``),
-        with the variable ``d_real`` of dimensions
-        ``(src_datetime_section1, src_datetime_section2)``.
-
-    Returns
-    -------
-    intersection_dt1 : numpy.datetime64
-        Emission datetime, along section 1, of the closest shot pair.
-    intersection_dt2 : numpy.datetime64
-        Emission datetime, along section 2, of the closest shot pair.
-    """
-    idx_target_pos = ds_mfp_intersection.d_real.argmin(
-        dim=["src_datetime_section1", "src_datetime_section2"]
-    )
-    intersection_dt1, intersection_dt2 = (
-        ds_mfp_intersection.isel(idx_target_pos).src_datetime_section1.values,
-        ds_mfp_intersection.isel(idx_target_pos).src_datetime_section2.values,
-    )
-
-    return intersection_dt1, intersection_dt2
-
-
-def get_intersection_guess_positions(ds_mfp_intersection):
-    """Find the estimated intersection for each feature-space distance.
-
-    For each distance (``d_theta``, ``d_theta_gamma``, ``d_L2_gamma`` and
-    ``d_dcf``, plus ``d_theta_gamma_centered`` and ``d_L2_gamma_centered`` when
-    they are present in the dataset) and each receiver pair, the pair of shots
-    minimizing the distance is the estimated (guessed) intersection.
-
-    Parameters
-    ----------
-    ds_mfp_intersection : xarray.Dataset
-        MFP dataset of one intersection, with the distances of dimensions
-        ``(rcv_id_feature, src_datetime_section1, src_datetime_section2)``.
-
-    Returns
-    -------
-    dict
-        One entry per distance: ``"theta"``, ``"theta_gamma"``, ``"L2_gamma"``
-        and ``"dcf"``, plus ``"theta_gamma_centered"`` and
-        ``"L2_gamma_centered"`` if available. Each entry is a dict with the keys
-        ``dt1`` and ``dt2`` (xarray.DataArray of dimension ``rcv_id_feature``):
-        emission datetimes of the estimated intersection along section 1 and
-        section 2.
-    """
-    dims = ["src_datetime_section1", "src_datetime_section2"]
-    metrics = dict(
-        theta="d_theta",
-        theta_gamma="d_theta_gamma",
-        L2_gamma="d_L2_gamma",
-        dcf="d_dcf",
-        theta_gamma_centered="d_theta_gamma_centered",
-        L2_gamma_centered="d_L2_gamma_centered",
-    )
-
-    intersections = {}
-    for key, var in metrics.items():
-        if var not in ds_mfp_intersection:
-            continue
-        idx_guess_pos = ds_mfp_intersection[var].argmin(dim=dims)
-        ds_guess = ds_mfp_intersection.isel(idx_guess_pos)
-        intersections[key] = dict(
-            dt1=ds_guess.src_datetime_section1,
-            dt2=ds_guess.src_datetime_section2,
+    # Warn once about the receivers of obs_ids that are not stored
+    missing = [rcv_id for rcv_id in selected if rcv_id not in stored]
+    if missing and tuple(missing) not in warned_missing_receivers:
+        warned_missing_receivers.add(tuple(missing))
+        print(
+            f"    WARNING: receivers {missing} are listed in obs_ids but are not stored in the "
+            f"results (stored receivers: {stored}): they are not analysed."
         )
 
-    return intersections
-
-
-def plot_intersection_ambiguity(
-    ds_mfp_intersection_rcv,
-    target_dt,
-    guess_dt,
-    section1_name,
-    section2_name,
-    cmap="Grays_r",
-    max_quantile=0.95,
-):
-    """Plot the 4 ambiguity surfaces of one intersection for one receiver pair.
-
-    The figure is a 2x2 grid: real distance (a), ``theta_gamma`` (b), ``theta``
-    (c) and DCF (d). The true intersection is marked by a red square on every
-    panel and the estimated one by a magenta circle on the feature panels. The
-    L2 distance on gamma is computed but not displayed.
-
-    Parameters
-    ----------
-    ds_mfp_intersection_rcv : xarray.Dataset
-        MFP dataset of one intersection, selected for a single receiver pair.
-    target_dt : tuple of numpy.datetime64
-        True intersection ``(dt1, dt2)``, see ``get_intersection_target_position``.
-    guess_dt : dict
-        Estimated intersections for this receiver pair, with the keys ``theta``,
-        ``theta_gamma`` and ``dcf``, each a tuple ``(dt1, dt2)``.
-    section1_name, section2_name : str
-        Display names of the two sections, used in the axis labels.
-    cmap : str, optional
-        Matplotlib colormap name.
-    max_quantile : float, optional
-        Quantile of each feature distance used as upper bound of its color scale.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The figure (not closed).
-    """
-    fig, axs = plt.subplots(
-        nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
-    )
-
-    # Plot ambiguity surfaces
-    ds_mfp_intersection_rcv.d_real.plot(
-        x="src_datetime_section1", cmap=cmap, ax=axs[0, 0], vmin=0, vmax=500
-    )
-    panels = [
-        ("d_theta_gamma", axs[0, 1], "theta_gamma"),
-        ("d_theta", axs[1, 0], "theta"),
-        ("d_dcf", axs[1, 1], "dcf"),
-    ]
-    for var, ax, guess_key in panels:
-        da = ds_mfp_intersection_rcv[var]
-        da.plot(
-            x="src_datetime_section1",
-            cmap=cmap,
-            ax=ax,
-            vmin=da.min(),
-            vmax=da.quantile(q=max_quantile),
+    # Keep the stored receivers selected by obs_ids
+    try:
+        ds_selected, _ = restrict_dataset_to_receivers(ds, obs_ids, reference=reference)
+    except ValueError:
+        raise RuntimeError(
+            f"None of the receivers of obs_ids {selected} is stored in the results "
+            f"(stored receivers: {stored}): nothing to analyse."
         )
 
-    # Add target position
-    for ax in axs.flatten():
-        ax.scatter(
-            target_dt[0],
-            target_dt[1],
-            marker="s",
-            s=400,
-            facecolors="none",
-            edgecolors="r",
-            label="Target",
-            linewidth=3,
-        )
-
-    # Add guess position
-    for _, ax, guess_key in panels:
-        ax.scatter(
-            guess_dt[guess_key][0],
-            guess_dt[guess_key][1],
-            marker="o",
-            s=200,
-            facecolors="none",
-            edgecolors="m",
-            label="Guess",
-            linewidth=3,
-        )
-
-    for ax in axs.flatten():
-        ax.set_xlabel("")
-        ax.set_ylabel("")
-        ax.set_title("")
-
-    set_subfigures_abc_labels(
-        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
-    )
-
-    fig.supxlabel(f"Time along {section1_name} trajectory")
-    fig.supylabel(f"Time along {section2_name} trajectory")
-
-    return fig
-
-
-def plot_intersection_gamma_comparison(
-    ds_mfp_intersection_rcv,
-    target_dt,
-    guess_dt,
-    section1_name,
-    section2_name,
-    cmap="Grays_r",
-    max_quantile=0.95,
-):
-    """Compare the gamma distances with and without centering of gamma.
-
-    The figure is a 2x2 grid: ``theta_gamma`` (a) and ``theta_gamma`` with
-    centered gamma (b) on the first row, ``L2_gamma`` (c) and ``L2_gamma`` with
-    centered gamma (d) on the second row. The true intersection is marked by a
-    red square and the estimated one by a magenta circle. For each row, both
-    panels share the same color scale (minimum of the two, upper quantile of the
-    two) so that they can be compared directly.
-
-    Parameters
-    ----------
-    ds_mfp_intersection_rcv : xarray.Dataset
-        MFP dataset of one intersection, selected for a single receiver pair,
-        containing the centered distances (``compare_centered_gamma = True``).
-    target_dt : tuple of numpy.datetime64
-        True intersection ``(dt1, dt2)``, see ``get_intersection_target_position``.
-    guess_dt : dict
-        Estimated intersections for this receiver pair, with the keys
-        ``theta_gamma``, ``theta_gamma_centered``, ``L2_gamma`` and
-        ``L2_gamma_centered``, each a tuple ``(dt1, dt2)``.
-    section1_name, section2_name : str
-        Display names of the two sections, used in the axis labels.
-    cmap : str, optional
-        Matplotlib colormap name.
-    max_quantile : float, optional
-        Quantile used as upper bound of the color scale.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The figure (not closed).
-    """
-    fig, axs = plt.subplots(
-        nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
-    )
-
-    rows = [
-        (
-            axs[0],
-            [
-                ("d_theta_gamma", "theta_gamma"),
-                ("d_theta_gamma_centered", "theta_gamma_centered"),
-            ],
-        ),
-        (
-            axs[1],
-            [("d_L2_gamma", "L2_gamma"), ("d_L2_gamma_centered", "L2_gamma_centered")],
-        ),
-    ]
-    for row_axs, panels in rows:
-        das = [ds_mfp_intersection_rcv[var] for var, _ in panels]
-        vmin = min(float(da.min()) for da in das)
-        vmax = max(float(da.quantile(q=max_quantile)) for da in das)
-        for ax, da, (_, guess_key) in zip(row_axs, das, panels):
-            da.plot(x="src_datetime_section1", cmap=cmap, ax=ax, vmin=vmin, vmax=vmax)
-            ax.scatter(
-                target_dt[0],
-                target_dt[1],
-                marker="s",
-                s=400,
-                facecolors="none",
-                edgecolors="r",
-                label="Target",
-                linewidth=3,
-            )
-            ax.scatter(
-                guess_dt[guess_key][0],
-                guess_dt[guess_key][1],
-                marker="o",
-                s=200,
-                facecolors="none",
-                edgecolors="m",
-                label="Guess",
-                linewidth=3,
-            )
-
-    for ax in axs.flatten():
-        ax.set_xlabel("")
-        ax.set_ylabel("")
-        ax.set_title("")
-
-    set_subfigures_abc_labels(
-        axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"
-    )
-
-    fig.supxlabel(f"Time along {section1_name} trajectory")
-    fig.supylabel(f"Time along {section2_name} trajectory")
-
-    return fig
+    return ds_selected
 
 
 # ======================================================================================================================
@@ -521,6 +276,21 @@ if error_mode not in POSITION_ERROR_MODES:
     )
 if analyse_error_vs_frequency_band:
     freq_bands = build_frequency_bands(fmin, fmax, freq_bandwidth)
+if analyse_error_vs_bandwidth:
+    if bandwidth_study_fmax is not None and bandwidth_study_fmax > fmax:
+        raise ValueError(
+            f"bandwidth_study_fmax ({bandwidth_study_fmax} Hz) is greater than fmax ({fmax} Hz): "
+            "there is no stored frequency bin above fmax."
+        )
+    bandwidth_ranges = build_cumulative_frequency_bands(
+        fmin,
+        fmax if bandwidth_study_fmax is None else bandwidth_study_fmax,
+        bandwidth_step,
+    )
+if analyse_ambiguity_contrast and not 0 < contrast_percentile < 100:
+    raise ValueError(
+        f"contrast_percentile must be in ]0, 100[ (got {contrast_percentile})."
+    )
 
 # NOTE : use corrected position (LMS estimation)
 if apply_obs_pos_correction:
@@ -911,6 +681,7 @@ if plot_intersections:
                         "apply_mfp_strategy_intersections = True to compute them."
                     )
 
+
 # ======================================================================================================================
 # Analysis of the results : position error of the estimated intersections
 # ======================================================================================================================
@@ -918,6 +689,8 @@ run_analysis = (
     analyse_error_vs_distance_type
     or analyse_error_vs_frequency_band
     or analyse_rcv_pair_performance
+    or analyse_error_vs_bandwidth
+    or analyse_ambiguity_contrast
 )
 if run_analysis:
     log(
@@ -937,11 +710,15 @@ if run_analysis:
             f"    WARNING: intersections {missing} are not stored in the portion and "
             "will not be analysed: set apply_mfp_strategy_intersections = True to compute them."
         )
+
+    # Nothing to analyse if no selected intersection is stored
     if not analysed_intersections:
         raise RuntimeError(
             "None of the selected intersections is stored in the portion: nothing to analyse. "
             "Set apply_mfp_strategy_intersections = True to compute them."
         )
+
+    # Statistics need several intersections to be meaningful
     if len(analysed_intersections) < 3:
         print(
             f"    WARNING: only {len(analysed_intersections)} intersection(s) analysed: "
@@ -959,28 +736,59 @@ if run_analysis:
     # ==================================================================================================================
     # Position errors from the stored ambiguity surfaces (frequency band used for the MFP computation)
     # ==================================================================================================================
-    if analyse_error_vs_distance_type or analyse_rcv_pair_performance:
+    if (
+        analyse_error_vs_distance_type
+        or analyse_rcv_pair_performance
+        or analyse_ambiguity_contrast
+    ):
         log("Position errors from the stored ambiguity surfaces", level=1)
 
+        # Iterate over the stored intersections (one record per distance type and receiver pair)
         records = []
         for section1_label, section2_label in analysed_intersections:
             log(f"Intersection '{section1_label}' x '{section2_label}'", level=2)
+
+            # Lazy access to the stored ambiguity surfaces of the intersection
             ds_mfp_intersection = portion[
                 f"/mfp_intersection/{section1_label}/{section2_label}"
             ].to_dataset()
+
+            # Keep the receivers selected by obs_ids
+            ds_mfp_intersection = restrict_to_selected_receivers(
+                ds_mfp_intersection,
+                ds_mfp_intersection.attrs.get("reference_receiver", reference_rcv),
+            )
+
+            # Position error of the estimated intersection, for each distance type and receiver pair
             errors, rcv_ids = localization_errors_from_mfp_dataset(
                 ds_mfp_intersection, error_mode=error_mode
             )
+
+            # Contrast of the ambiguity surfaces (only if requested)
+            contrasts = (
+                ambiguity_contrast_from_mfp_dataset(
+                    ds_mfp_intersection, percentile=contrast_percentile
+                )
+                if analyse_ambiguity_contrast
+                else None
+            )
+
+            # Store
             records += errors_to_records(
                 errors,
                 rcv_ids,
                 ds_mfp_intersection.attrs.get("reference_receiver", reference_rcv),
+                contrasts=contrasts,
                 intersection=f"{section1_label} x {section2_label}",
             )
 
+        # Keep the requested distance types and flag the valid localizations (error <= threshold)
         df_errors, distance_types = select_and_order_distance_types(
             pd.DataFrame(records), distance_types_to_analyse
         )
+        df_errors = add_validity_column(df_errors, success_threshold_m)
+
+        # Save the records
         fpath = os.path.join(
             ROOT_IMG_PORTION_RESULTS_SYNTHESIS, "mfp_loc_error_records.csv"
         )
@@ -992,6 +800,7 @@ if run_analysis:
         # --------------------------------------------------------------------------------------------------------------
         if analyse_error_vs_distance_type:
             log("Position error versus distance type", level=1)
+
             fig = plot_error_boxplots_per_rcv_pair(
                 df_errors, distance_types, title=figure_title
             )
@@ -1005,13 +814,18 @@ if run_analysis:
                 f"Comparison of the receiver pairs (success: error <= {success_threshold_m:g} m)",
                 level=1,
             )
+
+            # Statistics per distance type and receiver pair
             summary = summarize_localization_errors(df_errors, success_threshold_m)
+
+            # Save
             fpath = os.path.join(
                 ROOT_IMG_PORTION_RESULTS_SYNTHESIS, "mfp_rcv_pair_performance.csv"
             )
             summary.to_csv(fpath, index=False)
             log(f"Saved {fpath}", level=2)
 
+            # Console summary: median error table and best receiver pair of each distance type
             if verbose:
                 print(
                     "    Median position error [m] (rows: receiver pairs, columns: distance types)"
@@ -1029,15 +843,65 @@ if run_analysis:
                             f"{rcv_pair} ({value:.0f} m)"
                         )
 
+            # Heatmaps of the median error and of the success rate
             fig = plot_rcv_pair_performance_heatmaps(
                 summary, success_threshold_m, title=figure_title
             )
             save_synthesis_figure(fig, "mfp_rcv_pair_performance_heatmaps.png")
 
+            # Cumulative distribution of the position error
             fig = plot_error_cdf(
                 df_errors, distance_types, success_threshold_m, title=figure_title
             )
             save_synthesis_figure(fig, "mfp_rcv_pair_error_cdf.png")
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Contrast of the ambiguity surfaces
+        # --------------------------------------------------------------------------------------------------------------
+        if analyse_ambiguity_contrast:
+            log(
+                f"Contrast of the ambiguity surfaces (P{contrast_percentile:g}; valid: "
+                f"error <= {success_threshold_m:g} m)",
+                level=1,
+            )
+
+            n_valid = int(df_errors["valid"].sum())
+            log(f"{n_valid} valid localization(s) out of {len(df_errors)}", level=2)
+
+            # Console summary: median contrast of the valid and invalid localizations
+            if verbose:
+                table = (
+                    df_errors.groupby(["distance_type", "valid"])["contrast"]
+                    .median()
+                    .unstack("valid")
+                    .reindex(distance_types)
+                    .rename(columns={True: "valid", False: "invalid"})
+                    .rename_axis(columns=None)
+                    .round(3)
+                )
+                print("    Median contrast (rows: distance types)")
+                print(
+                    "\n".join("    " + line for line in table.to_string().splitlines())
+                )
+
+            # Figure (skipped if only the valid localizations are wanted and there is none)
+            if contrast_only_valid and n_valid == 0:
+                print(
+                    "    WARNING: contrast_only_valid = True but no localization is valid: "
+                    "contrast figure skipped."
+                )
+            else:
+                fig = plot_contrast_vs_validity(
+                    df_errors,
+                    distance_types,
+                    percentile=contrast_percentile,
+                    only_valid=contrast_only_valid,
+                    title=(
+                        f"Ambiguity contrast (P{contrast_percentile:g}, error mode '{error_mode}'), "
+                        f"{len(analysed_intersections)} intersection(s)"
+                    ),
+                )
+                save_synthesis_figure(fig, "mfp_ambiguity_contrast.png")
 
     # ==================================================================================================================
     # Position error versus frequency band (distances are recomputed on each band)
@@ -1049,89 +913,25 @@ if run_analysis:
             level=1,
         )
 
-        band_records = []
-        for section1_label, section2_label in analysed_intersections:
-            log(f"Intersection '{section1_label}' x '{section2_label}'", level=2)
-
-            # Intersections are between a meridional and a zonal section
-            ds_feature_section1 = portion.feature[section1_label].to_dataset()
-            ds_feature_section2 = portion.feature[section2_label].to_dataset()
-            for label, ds_feature in (
-                (section1_label, ds_feature_section1),
-                (section2_label, ds_feature_section2),
-            ):
-                if "pi_ij" not in ds_feature:
-                    raise RuntimeError(
-                        f"The features (RTF, DCF) of section '{label}' are not available in the "
-                        "portion: derive them (apply_mfp_strategy_intersections = True, and "
-                        "save_modification_to_portion = True to keep them) before analysing "
-                        "the frequency bands."
-                    )
-
-            # Shot positions
-            lon1, lat1 = (
-                ds_feature_section1.tir_src_lon.values,
-                ds_feature_section1.tir_src_lat.values,
-            )
-            lon2, lat2 = (
-                ds_feature_section2.tir_src_lon.values,
-                ds_feature_section2.tir_src_lat.values,
-            )
-            reference_stored = ds_feature_section1.attrs.get(
-                "reference_receiver", reference_rcv
-            )
-
-            for i_band, (f_low, f_high) in enumerate(freq_bands):
-                band_label = frequency_band_label(f_low, f_high)
-                is_last_band = i_band == len(freq_bands) - 1
-
-                # Slice the frequency band of interest and recompute the distances
-                ds_feature_band1 = slice_frequency_band(
-                    ds_feature_section1, f_low, f_high, include_upper=is_last_band
-                )
-                ds_feature_band2 = slice_frequency_band(
-                    ds_feature_section2, f_low, f_high, include_upper=is_last_band
-                )
-                if (
-                    ds_feature_band1.sizes["freq"] == 0
-                    or ds_feature_band2.sizes["freq"] == 0
-                ):
-                    print(
-                        f"    WARNING: no stored frequency bin in the band {band_label} Hz "
-                        f"for the intersection '{section1_label}' x '{section2_label}': "
-                        "band skipped."
-                    )
-                    continue
-                log(f"Band {band_label} Hz", level=3)
-
-                distance_section12 = distances_single_intersection(
-                    ds_feature_section1=ds_feature_band1,
-                    ds_feature_section2=ds_feature_band2,
-                    compare_centered_gamma=compare_centered_gamma,
-                )
-                errors = localization_errors_from_distances(
-                    distance_section12,
-                    lon1=lon1,
-                    lat1=lat1,
-                    lon2=lon2,
-                    lat2=lat2,
-                    error_mode=error_mode,
-                )
-                band_records += errors_to_records(
-                    errors,
-                    ds_feature_band1.rcv_id_feature.values,
-                    reference_stored,
-                    intersection=f"{section1_label} x {section2_label}",
-                    band_index=i_band,
-                    band_label=band_label,
-                    band_center=(f_low + f_high) / 2,
-                )
-
+        # Distances recomputed on each frequency band (contiguous bands)
+        band_records = collect_errors_over_frequency_ranges(
+            portion,
+            freq_bands,
+            analysed_intersections,
+            close_all_ranges=False,
+            reference_rcv=reference_rcv,
+            error_mode=error_mode,
+            compare_centered_gamma=compare_centered_gamma,
+            rcv_filter=restrict_to_selected_receivers,
+            log=log,
+        )
         if not band_records:
             raise RuntimeError(
                 "No frequency band contains stored frequency bins: check fmin, fmax and "
                 "freq_bandwidth."
             )
+
+        # Keep the requested distance types and save the records
         df_band_errors, band_distance_types = select_and_order_distance_types(
             pd.DataFrame(band_records), distance_types_to_analyse
         )
@@ -1142,10 +942,56 @@ if run_analysis:
         df_band_errors.to_csv(fpath, index=False)
         log(f"Saved {fpath}", level=2)
 
+        # Mean and standard deviation of the error versus frequency band
         fig = plot_error_vs_frequency_band(
             df_band_errors, band_distance_types, title=figure_title
         )
         save_synthesis_figure(fig, "mfp_loc_error_vs_frequency_band.png")
+
+    # ==================================================================================================================
+    # Position error versus width of the frequency range ([fmin, f] with increasing f)
+    # ==================================================================================================================
+    if analyse_error_vs_bandwidth:
+        log(
+            f"Position error versus width of the frequency range: {len(bandwidth_ranges)} ranges from "
+            f"{frequency_band_label(*bandwidth_ranges[0])} to {frequency_band_label(*bandwidth_ranges[-1])} Hz "
+            f"(step {bandwidth_step} Hz)",
+            level=1,
+        )
+        # Distances recomputed on each range [fmin, f] (nested ranges)
+        bandwidth_records = collect_errors_over_frequency_ranges(
+            portion,
+            bandwidth_ranges,
+            analysed_intersections,
+            close_all_ranges=True,
+            reference_rcv=reference_rcv,
+            error_mode=error_mode,
+            compare_centered_gamma=compare_centered_gamma,
+            rcv_filter=restrict_to_selected_receivers,
+            log=log,
+        )
+        if not bandwidth_records:
+            raise RuntimeError(
+                "No frequency range contains stored frequency bins: check fmin, fmax, "
+                "bandwidth_step and bandwidth_study_fmax."
+            )
+
+        # Keep the requested distance types and save the records
+        df_bandwidth_errors, bandwidth_distance_types = select_and_order_distance_types(
+            pd.DataFrame(bandwidth_records), distance_types_to_analyse
+        )
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_RESULTS_SYNTHESIS,
+            "mfp_loc_error_vs_bandwidth_records.csv",
+        )
+        df_bandwidth_errors.to_csv(fpath, index=False)
+        log(f"Saved {fpath}", level=2)
+
+        # Mean and standard deviation of the error versus width of the frequency range
+        fig = plot_error_vs_bandwidth(
+            df_bandwidth_errors, bandwidth_distance_types, title=figure_title
+        )
+        save_synthesis_figure(fig, "mfp_loc_error_vs_bandwidth.png")
 
 # ======================================================================================================================
 # Save results (last step: the portion is closed by the save)

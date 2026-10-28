@@ -4,7 +4,7 @@
 @File    :   acouplane_analyse_portion_generate_diag_all_intersections.py
 @Time    :   2026/09/29 08:57:41
 @Author  :   Menetrier Baptiste
-@Version :   1.1
+@Version :   1.5
 @Contact :   baptiste.menetrier@ecole-navale.fr
 @Desc    :   Analyse of an ACOUPLANE portion: signals, features (RTF, DCF) and MFP
              ambiguity surfaces for every intersection of meridional / zonal sections.
@@ -15,6 +15,7 @@
 # ======================================================================================================================
 import os
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 
 from publication.publication_figure import set_subfigures_abc_labels, color
@@ -34,7 +35,22 @@ from real_data_analysis.acouplane.src.acouplane_utils import (
     plot_pressure_section,
     plot_spectrogram_section,
     distances_single_intersection,
-    build_mfp_intersection_dataset,
+    list_stored_intersections,
+    localization_errors_from_distances,
+    localization_errors_from_mfp_dataset,
+    errors_to_records,
+    build_frequency_bands,
+    frequency_band_label,
+    slice_frequency_band,
+    select_and_order_distance_types,
+    summarize_localization_errors,
+    pivot_error_summary,
+    best_rcv_pair_per_distance,
+    plot_error_boxplots_per_rcv_pair,
+    plot_rcv_pair_performance_heatmaps,
+    plot_error_cdf,
+    plot_error_vs_frequency_band,
+    POSITION_ERROR_MODES,
 )
 
 # ======================================================================================================================
@@ -94,9 +110,22 @@ fmax = 800
 
 # Intersections to process (MFP computation and ambiguity figures).
 # None -> all intersections. Otherwise a list of (meridional, zonal) section labels, e.g.
-intersections_to_process = [("sn2", "oe6")]
-# , ("sn2", "oe7"), ("sn2", "oe8")
-# intersections_to_process = None
+# intersections_to_process = [("sn2", "oe6"), ("sn2", "oe7"), ("sn2", "oe8")]
+intersections_to_process = None
+
+# Analysis of the results: position error of the estimated intersection with respect to the true one.
+# error_mode : shots used to measure the position error
+#   "section1" -> shots of the meridional section (error mostly along North-South)
+#   "section2" -> shots of the zonal section (error mostly along East-West)
+#   "both"     -> sqrt(error_section1**2 + error_section2**2)
+error_mode = "section2"
+success_threshold_m = (
+    100  # an intersection is successfully localized if its error <= threshold [m]
+)
+freq_bandwidth = 50  # width of the frequency bands of the band study [Hz]
+# Distance types to analyse: None -> all those available, otherwise a list among "theta", "theta_gamma",
+# "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered" (the centered ones need compare_centered_gamma = True)
+distance_types_to_analyse = None
 
 # ======================================================================================================================
 # Booleans to control behavior
@@ -112,6 +141,10 @@ plot_spectrogram = False
 plot_signal_single_emission = False
 plot_features = False
 plot_intersections = False
+# Analysis of the results (position error of the estimated intersections)
+analyse_error_vs_distance_type = True
+analyse_error_vs_frequency_band = True
+analyse_rcv_pair_performance = True
 # Also compute (and plot) the gamma distances with gamma centered along frequency
 compare_centered_gamma = True
 verbose = True
@@ -157,6 +190,26 @@ def section_name_of(node):
         ``"<orientation> <id>"``.
     """
     return f"{node.attrs['section_orientation']} {node.attrs['section_id']}"
+
+
+def save_synthesis_figure(fig, filename):
+    """Save a figure in the results synthesis directory, then close it.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Figure to save.
+    filename : str
+        Name of the image file, saved in ``ROOT_IMG_PORTION_RESULTS_SYNTHESIS``.
+
+    Returns
+    -------
+    None
+    """
+    fpath = os.path.join(ROOT_IMG_PORTION_RESULTS_SYNTHESIS, filename)
+    fig.savefig(fpath)
+    plt.close(fig)
+    log(f"Saved {fpath}", level=2)
 
 
 def get_intersection_target_position(ds_mfp_intersection):
@@ -461,6 +514,14 @@ log(
     level=1,
 )
 
+# Check the analysis settings right away (before any heavy computation)
+if error_mode not in POSITION_ERROR_MODES:
+    raise ValueError(
+        f"Unknown error_mode '{error_mode}'. Valid modes: {list(POSITION_ERROR_MODES)}."
+    )
+if analyse_error_vs_frequency_band:
+    freq_bands = build_frequency_bands(fmin, fmax, freq_bandwidth)
+
 # NOTE : use corrected position (LMS estimation)
 if apply_obs_pos_correction:
     log("Correcting OBS positions with the LMS estimation")
@@ -755,11 +816,7 @@ if plot_intersections:
     max_quantile = 0.95
 
     # Selected intersections that are not in the portion (not computed yet)
-    stored_intersections = [
-        (s1, s2)
-        for s1, meridional_node in portion.mfp_intersection.children.items()
-        for s2 in meridional_node.children
-    ]
+    stored_intersections = list_stored_intersections(portion)
     missing = [
         pair for pair in selected_intersections if pair not in stored_intersections
     ]
@@ -855,316 +912,246 @@ if plot_intersections:
                     )
 
 # ======================================================================================================================
-# Study results : comparison of distances
+# Analysis of the results : position error of the estimated intersections
 # ======================================================================================================================
-from pyproj import Geod
+run_analysis = (
+    analyse_error_vs_distance_type
+    or analyse_error_vs_frequency_band
+    or analyse_rcv_pair_performance
+)
+if run_analysis:
+    log(
+        "Step 7 - Analysing the results (position error of the estimated intersections)"
+    )
 
-geod = Geod(ellps="WGS84")
-
-init = True
-# Iterate over meridional sections
-for section1_label, meridional_node in portion.mfp_intersection.children.items():
-    # Iterate over zonal sections
-    for section2_label, node in meridional_node.children.items():
-        if (section1_label, section2_label) not in selected_intersections:
-            continue
-        log(f"Intersection '{section1_label}' x '{section2_label}'", level=1)
-
-        # Get intersection dataset
-        ds_mfp_intersection = node.to_dataset()
-
-        # Build sections names
-        section1_name = section_name_of(portion.feature[section1_label])
-        section2_name = section_name_of(portion.feature[section2_label])
-
-        # Intersections are between a meridional and a zonal section
-        ds_feature_section1 = portion.feature[section1_label].to_dataset()
-        ds_feature_section2 = portion.feature[section2_label].to_dataset()
-
-        # Extract intersection target position (true intersection)
-        target_dt = get_intersection_target_position(
-            ds_mfp_intersection=ds_mfp_intersection
+    # Intersections of the selection that are stored in the portion
+    stored_intersections = list_stored_intersections(portion)
+    analysed_intersections = [
+        pair for pair in selected_intersections if pair in stored_intersections
+    ]
+    missing = [
+        pair for pair in selected_intersections if pair not in stored_intersections
+    ]
+    if missing:
+        print(
+            f"    WARNING: intersections {missing} are not stored in the portion and "
+            "will not be analysed: set apply_mfp_strategy_intersections = True to compute them."
         )
-        target_pos = {
-            "lat": ds_feature_section1.sel(
-                src_datetime=target_dt[0]
-            ).tir_src_lat.values,
-            "lon": ds_feature_section1.sel(
-                src_datetime=target_dt[0]
-            ).tir_src_lon.values,
-        }
+    if not analysed_intersections:
+        raise RuntimeError(
+            "None of the selected intersections is stored in the portion: nothing to analyse. "
+            "Set apply_mfp_strategy_intersections = True to compute them."
+        )
+    if len(analysed_intersections) < 3:
+        print(
+            f"    WARNING: only {len(analysed_intersections)} intersection(s) analysed: "
+            "the statistics (mean, std, boxplots, CDF) are not significant."
+        )
+    log(
+        f"{len(analysed_intersections)} intersection(s) analysed, "
+        f"position error computed on '{error_mode}'",
+        level=1,
+    )
+    figure_title = (
+        f"Position error ({error_mode}), {len(analysed_intersections)} intersection(s)"
+    )
 
-        # Extract intersection estimated pos
-        intersection_guess = get_intersection_guess_positions(
-            ds_mfp_intersection=ds_mfp_intersection
+    # ==================================================================================================================
+    # Position errors from the stored ambiguity surfaces (frequency band used for the MFP computation)
+    # ==================================================================================================================
+    if analyse_error_vs_distance_type or analyse_rcv_pair_performance:
+        log("Position errors from the stored ambiguity surfaces", level=1)
+
+        records = []
+        for section1_label, section2_label in analysed_intersections:
+            log(f"Intersection '{section1_label}' x '{section2_label}'", level=2)
+            ds_mfp_intersection = portion[
+                f"/mfp_intersection/{section1_label}/{section2_label}"
+            ].to_dataset()
+            errors, rcv_ids = localization_errors_from_mfp_dataset(
+                ds_mfp_intersection, error_mode=error_mode
+            )
+            records += errors_to_records(
+                errors,
+                rcv_ids,
+                ds_mfp_intersection.attrs.get("reference_receiver", reference_rcv),
+                intersection=f"{section1_label} x {section2_label}",
+            )
+
+        df_errors, distance_types = select_and_order_distance_types(
+            pd.DataFrame(records), distance_types_to_analyse
+        )
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_RESULTS_SYNTHESIS, "mfp_loc_error_records.csv"
+        )
+        df_errors.to_csv(fpath, index=False)
+        log(f"Saved {fpath}", level=2)
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Position error versus distance type, for each receiver pair
+        # --------------------------------------------------------------------------------------------------------------
+        if analyse_error_vs_distance_type:
+            log("Position error versus distance type", level=1)
+            fig = plot_error_boxplots_per_rcv_pair(
+                df_errors, distance_types, title=figure_title
+            )
+            save_synthesis_figure(fig, "mfp_loc_error_vs_distance_type.png")
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Comparison of the receiver pairs
+        # --------------------------------------------------------------------------------------------------------------
+        if analyse_rcv_pair_performance:
+            log(
+                f"Comparison of the receiver pairs (success: error <= {success_threshold_m:g} m)",
+                level=1,
+            )
+            summary = summarize_localization_errors(df_errors, success_threshold_m)
+            fpath = os.path.join(
+                ROOT_IMG_PORTION_RESULTS_SYNTHESIS, "mfp_rcv_pair_performance.csv"
+            )
+            summary.to_csv(fpath, index=False)
+            log(f"Saved {fpath}", level=2)
+
+            if verbose:
+                print(
+                    "    Median position error [m] (rows: receiver pairs, columns: distance types)"
+                )
+                table = pivot_error_summary(summary, "median_error_m").round(0)
+                print(
+                    "\n".join("    " + line for line in table.to_string().splitlines())
+                )
+                for distance_type, (rcv_pair, value) in best_rcv_pair_per_distance(
+                    summary
+                ).items():
+                    if rcv_pair is not None:
+                        print(
+                            f"    Lowest median error for '{distance_type}': "
+                            f"{rcv_pair} ({value:.0f} m)"
+                        )
+
+            fig = plot_rcv_pair_performance_heatmaps(
+                summary, success_threshold_m, title=figure_title
+            )
+            save_synthesis_figure(fig, "mfp_rcv_pair_performance_heatmaps.png")
+
+            fig = plot_error_cdf(
+                df_errors, distance_types, success_threshold_m, title=figure_title
+            )
+            save_synthesis_figure(fig, "mfp_rcv_pair_error_cdf.png")
+
+    # ==================================================================================================================
+    # Position error versus frequency band (distances are recomputed on each band)
+    # ==================================================================================================================
+    if analyse_error_vs_frequency_band:
+        log(
+            f"Position error versus frequency band (bandwidth {freq_bandwidth} Hz): "
+            f"{[frequency_band_label(lo, hi) for lo, hi in freq_bands]} Hz",
+            level=1,
         )
 
-        for i_rcv, rcv_id in enumerate(ds_mfp_intersection.rcv_id_feature.values):
-            log(f"Receiver pair ({rcv_id}, {reference_rcv})", level=2)
+        band_records = []
+        for section1_label, section2_label in analysed_intersections:
+            log(f"Intersection '{section1_label}' x '{section2_label}'", level=2)
 
-            # Result for current rcv couple (rcv_i, rcv_ref)
-            ds_mfp_intersection_rcv = ds_mfp_intersection.sel(rcv_id_feature=rcv_id)
-            guess_dt = {
-                key: (
-                    val["dt1"].sel(rcv_id_feature=rcv_id).values,
-                    val["dt2"].sel(rcv_id_feature=rcv_id).values,
-                )
-                for key, val in intersection_guess.items()
-            }
-
-            guess_pos = {
-                key: {
-                    "lat": ds_feature_section1.sel(
-                        src_datetime=guess_dt[key][0]
-                    ).tir_src_lat.values,
-                    "lon": ds_feature_section1.sel(
-                        src_datetime=guess_dt[key][0]
-                    ).tir_src_lon.values,
-                }
-                for key, val in guess_dt.items()
-            }
-
-            if init:
-                pos_err_dict = {
-                    key: {
-                        rcv_: [] for rcv_ in ds_mfp_intersection.rcv_id_feature.values
-                    }
-                    for key in list(guess_pos.keys())
-                }
-                init = False
-
-            for key in list(pos_err_dict.keys()):
-                # Compute geodesic distance (only the distance is kept)
-                _, _, pos_error = geod.inv(
-                    lons1=target_pos["lon"],
-                    lats1=target_pos["lat"],
-                    lons2=guess_pos[key]["lon"],
-                    lats2=guess_pos[key]["lat"],
-                )
-                # Store
-                pos_err_dict[key][rcv_id].append(pos_error)
-
-# Plot
-fig, axs = plt.subplots(
-    nrows=1, ncols=ds_mfp_intersection.rcv_id_feature.size, figsize=(16, 8), sharey=True
-)
-for i_rcv, rcv_id in enumerate(ds_mfp_intersection.rcv_id_feature.values):
-    error_vs_dist = []
-    for i_dist, key in enumerate(list(pos_err_dict.keys())):
-        error_vs_dist.append(pos_err_dict[key][rcv_id])
-
-    # error_vs_dist = np.array(error_vs_dist)
-    # mean_error_vs_dist = np.mean(error_vs_dist, axis=1)
-    # std_error_vs_dist = np.std(error_vs_dist, axis=1)
-    # axs[i_rcv].errorbar(
-    #     x=np.arange(len(error_vs_dist)),
-    #     y=mean_error_vs_dist,
-    #     yerr=std_error_vs_dist,
-    #     label=f"({rcv_id}, {reference_rcv})",
-    #     color=color(i_rcv),
-    # )
-
-    axs[i_rcv].boxplot(
-        x=error_vs_dist,
-        # label=f"({rcv_id}, {reference_rcv})",
-        color=color(i_rcv),
-    )
-
-    axs[i_rcv].set_title(f"({rcv_id}, {reference_rcv})")
-
-# TODO set ticks label with distance names
-fig.supxlabel("Distance type")
-fig.supylabel("Error [m]")
-fpath = os.path.join(
-    ROOT_IMG_PORTION_RESULTS_SYNTHESIS,
-    f"mfp_loc_error_vs_distance_type.png",
-)
-fig = plt.gcf()
-fig.savefig(fpath)
-plt.close(fig)
-
-
-# ======================================================================================================================
-# Study results versus frequency band
-# ======================================================================================================================
-freq_bandwidth = 400
-# Build frequency bands
-freq_band_min = [fmin]
-freq_band_max = [freq_bandwidth]
-f_band_min = 0
-f_band_max = freq_bandwidth
-
-while f_band_max + freq_bandwidth <= fmax:
-    # Update
-    f_band_min += freq_bandwidth
-    f_band_max += freq_bandwidth
-    # Store
-    freq_band_min.append(f_band_min)
-    freq_band_max.append(f_band_max)
-
-# Selected intersections that are not in the portion (not computed yet)
-stored_intersections = [
-    (s1, s2)
-    for s1, meridional_node in portion.mfp_intersection.children.items()
-    for s2 in meridional_node.children
-]
-missing = [pair for pair in selected_intersections if pair not in stored_intersections]
-if missing:
-    print(
-        f"    WARNING: intersections {missing} are not stored in the portion and "
-        "will not be plotted: set apply_mfp_strategy_intersections = True to compute them."
-    )
-
-from pyproj import Geod
-
-geod = Geod(ellps="WGS84")
-
-init = True
-i_section_intersection = -1
-# Iterate over meridional sections
-for section1_label, meridional_node in portion.mfp_intersection.children.items():
-    # Iterate over zonal sections
-    for section2_label, node in meridional_node.children.items():
-        if (section1_label, section2_label) not in selected_intersections:
-            continue
-        log(f"Intersection '{section1_label}' x '{section2_label}'", level=1)
-
-        i_section_intersection += 1
-
-        # # Build sections names
-        section1_name = section_name_of(portion.feature[section1_label])
-        section2_name = section_name_of(portion.feature[section2_label])
-
-        # Intersections are between a meridional and a zonal section
-        ds_feature_section1 = portion.feature[section1_label].to_dataset()
-        ds_feature_section2 = portion.feature[section2_label].to_dataset()
-
-        for i_freq_band in range(len(freq_band_min)):
-
-            # Slice frequency band of intereset and recompute distance
-            ds_feature_section1_ = ds_feature_section1.sel(
-                freq=slice(freq_band_min[i_freq_band], freq_band_max[i_freq_band])
-            )
-            ds_feature_section2_ = ds_feature_section2.sel(
-                freq=slice(freq_band_min[i_freq_band], freq_band_max[i_freq_band])
-            )
-
-            # Compute distance (in real space and in features space)
-            distance_section12 = distances_single_intersection(
-                ds_feature_section1=ds_feature_section1_,
-                ds_feature_section2=ds_feature_section2_,
-                compare_centered_gamma=compare_centered_gamma,
-            )
-
-            # Build dataset to save
-            ds_mfp_intersection = build_mfp_intersection_dataset(
-                distance_section12=distance_section12,
-                ds_feature_section1=ds_feature_section1_,
-                ds_feature_section2=ds_feature_section2_,
-            )
-
-            # Extract intersection target position (true intersection)
-            target_dt = get_intersection_target_position(
-                ds_mfp_intersection=ds_mfp_intersection
-            )
-            target_pos = {
-                "lat": ds_feature_section1.sel(
-                    src_datetime=target_dt[0]
-                ).tir_src_lat.values,
-                "lon": ds_feature_section1.sel(
-                    src_datetime=target_dt[0]
-                ).tir_src_lon.values,
-            }
-
-            # Extract intersection estimated pos
-            intersection_guess = get_intersection_guess_positions(
-                ds_mfp_intersection=ds_mfp_intersection
-            )
-
-            for i_rcv, rcv_id in enumerate(ds_mfp_intersection.rcv_id_feature.values):
-                log(f"Receiver pair ({rcv_id}, {reference_rcv})", level=2)
-
-                # Result for current rcv couple (rcv_i, rcv_ref)
-                ds_mfp_intersection_rcv = ds_mfp_intersection.sel(rcv_id_feature=rcv_id)
-                guess_dt = {
-                    key: (
-                        val["dt1"].sel(rcv_id_feature=rcv_id).values,
-                        val["dt2"].sel(rcv_id_feature=rcv_id).values,
+            # Intersections are between a meridional and a zonal section
+            ds_feature_section1 = portion.feature[section1_label].to_dataset()
+            ds_feature_section2 = portion.feature[section2_label].to_dataset()
+            for label, ds_feature in (
+                (section1_label, ds_feature_section1),
+                (section2_label, ds_feature_section2),
+            ):
+                if "pi_ij" not in ds_feature:
+                    raise RuntimeError(
+                        f"The features (RTF, DCF) of section '{label}' are not available in the "
+                        "portion: derive them (apply_mfp_strategy_intersections = True, and "
+                        "save_modification_to_portion = True to keep them) before analysing "
+                        "the frequency bands."
                     )
-                    for key, val in intersection_guess.items()
-                }
 
-                guess_pos = {
-                    key: {
-                        "lat": ds_feature_section1.sel(
-                            src_datetime=guess_dt[key][0]
-                        ).tir_src_lat.values,
-                        "lon": ds_feature_section1.sel(
-                            src_datetime=guess_dt[key][0]
-                        ).tir_src_lon.values,
-                    }
-                    for key, val in guess_dt.items()
-                }
+            # Shot positions
+            lon1, lat1 = (
+                ds_feature_section1.tir_src_lon.values,
+                ds_feature_section1.tir_src_lat.values,
+            )
+            lon2, lat2 = (
+                ds_feature_section2.tir_src_lon.values,
+                ds_feature_section2.tir_src_lat.values,
+            )
+            reference_stored = ds_feature_section1.attrs.get(
+                "reference_receiver", reference_rcv
+            )
 
-                # Compute geodesic distance (only the distance is kept)
-                _, _, pos_error = geod.inv(
-                    lons1=target_pos["lon"],
-                    lats1=target_pos["lat"],
-                    lons2=guess_pos["theta"]["lon"],
-                    lats2=guess_pos["theta"]["lat"],
+            for i_band, (f_low, f_high) in enumerate(freq_bands):
+                band_label = frequency_band_label(f_low, f_high)
+                is_last_band = i_band == len(freq_bands) - 1
+
+                # Slice the frequency band of interest and recompute the distances
+                ds_feature_band1 = slice_frequency_band(
+                    ds_feature_section1, f_low, f_high, include_upper=is_last_band
+                )
+                ds_feature_band2 = slice_frequency_band(
+                    ds_feature_section2, f_low, f_high, include_upper=is_last_band
+                )
+                if (
+                    ds_feature_band1.sizes["freq"] == 0
+                    or ds_feature_band2.sizes["freq"] == 0
+                ):
+                    print(
+                        f"    WARNING: no stored frequency bin in the band {band_label} Hz "
+                        f"for the intersection '{section1_label}' x '{section2_label}': "
+                        "band skipped."
+                    )
+                    continue
+                log(f"Band {band_label} Hz", level=3)
+
+                distance_section12 = distances_single_intersection(
+                    ds_feature_section1=ds_feature_band1,
+                    ds_feature_section2=ds_feature_band2,
+                    compare_centered_gamma=compare_centered_gamma,
+                )
+                errors = localization_errors_from_distances(
+                    distance_section12,
+                    lon1=lon1,
+                    lat1=lat1,
+                    lon2=lon2,
+                    lat2=lat2,
+                    error_mode=error_mode,
+                )
+                band_records += errors_to_records(
+                    errors,
+                    ds_feature_band1.rcv_id_feature.values,
+                    reference_stored,
+                    intersection=f"{section1_label} x {section2_label}",
+                    band_index=i_band,
+                    band_label=band_label,
+                    band_center=(f_low + f_high) / 2,
                 )
 
-                if init:
-                    shape = (
-                        len(selected_intersections),
-                        len(freq_band_min),
-                        ds_mfp_intersection.rcv_id_feature.size,
-                    )
-                    pos_err_arr = np.empty(shape)
-                    init = False
+        if not band_records:
+            raise RuntimeError(
+                "No frequency band contains stored frequency bins: check fmin, fmax and "
+                "freq_bandwidth."
+            )
+        df_band_errors, band_distance_types = select_and_order_distance_types(
+            pd.DataFrame(band_records), distance_types_to_analyse
+        )
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_RESULTS_SYNTHESIS,
+            "mfp_loc_error_vs_frequency_band_records.csv",
+        )
+        df_band_errors.to_csv(fpath, index=False)
+        log(f"Saved {fpath}", level=2)
 
-                # Store
-                pos_err_arr[i_section_intersection, i_freq_band, i_rcv] = pos_error
-
-
-# Plot
-
-freq_band_center = [
-    (freq_band_max[i] - freq_band_min[i]) / 2 + freq_band_min[i]
-    for i in range(len(freq_band_min))
-]
-fig, axs = plt.subplots(figsize=(16, 8))
-for i_rcv, rcv_id in enumerate(ds_mfp_intersection.rcv_id_feature.values):
-    log(f"Receiver pair ({rcv_id}, {reference_rcv})", level=2)
-    pos_err_arr_rcv = pos_err_arr[..., i_rcv]
-    pos_err_mean_per_freq_band = np.mean(pos_err_arr_rcv, axis=0)
-    pos_err_std_per_freq_banb = np.std(pos_err_arr_rcv, axis=0)
-
-    plt.errorbar(
-        x=freq_band_center,
-        y=pos_err_mean_per_freq_band,
-        yerr=pos_err_std_per_freq_banb,
-        color=color(i_rcv),
-        label=f"({rcv_id}, {reference_rcv})",
-    )
-plt.xlabel("Frequency band [Hz]")
-plt.ylabel("Position error [m]")
-plt.legend()
-
-# TODO set xticks label with frequency band ranges [fmin, fmax]
-
-fpath = os.path.join(
-    ROOT_IMG_PORTION_RESULTS_SYNTHESIS,
-    f"mfp_loc_error_vs_frequency_band.png",
-)
-fig.savefig(fpath)
-plt.close(fig)
+        fig = plot_error_vs_frequency_band(
+            df_band_errors, band_distance_types, title=figure_title
+        )
+        save_synthesis_figure(fig, "mfp_loc_error_vs_frequency_band.png")
 
 # ======================================================================================================================
 # Save results (last step: the portion is closed by the save)
 # ======================================================================================================================
 if save_modification_to_portion:
-    log(f"Step 7 - Saving results to '{portion_fpath}'")
+    log(f"Step 8 - Saving results to '{portion_fpath}'")
     save_portion_inplace(portion, portion_fpath)
 else:
     portion.close()

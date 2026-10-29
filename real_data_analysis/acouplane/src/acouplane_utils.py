@@ -117,7 +117,6 @@ from real_data_analysis.acouplane.src.acouplane_plot_analysis import (  # noqa: 
     plot_metric_vs_n_rcv,
 )
 
-
 # ======================================================================================================================
 # Portion file handling
 # ======================================================================================================================
@@ -512,6 +511,10 @@ def extract_pressure_section(section_start, section_end, ds_pressure, obs_dateti
     """
     # Build slice for each rcv
     obs_slice_idx = []
+    # obs_linear_time = {
+    #     obs_id: obs_datetimes[obs_id] - obs_datetimes[obs_id][0]
+    #     for obs_id in obs_datetimes.keys()
+    # }
     for obs_id in ds_pressure.obs_id.values:
         idx_start = np.where(obs_datetimes[obs_id] >= section_start)[0]
         idx_end = np.where(obs_datetimes[obs_id] <= section_end)[0]
@@ -693,9 +696,7 @@ def build_and_save_portion_tree(
         "sections_label": len(sections_label),
     }
     if len(set(lengths.values())) != 1:
-        raise ValueError(
-            f"Inconsistent number of sections between inputs: {lengths}."
-        )
+        raise ValueError(f"Inconsistent number of sections between inputs: {lengths}.")
 
     # Copy to avoid muting the same object
     ds_pos_sections = [ds.copy() for ds in ds_pos_sections]
@@ -714,8 +715,7 @@ def build_and_save_portion_tree(
 
     # Build tree dict
     tree_dict_positions = {
-        f"/position/{sections_label[i]}": ds_pos_sections[i]
-        for i in range(n_sections)
+        f"/position/{sections_label[i]}": ds_pos_sections[i] for i in range(n_sections)
     }
     tree_dict_pressure = {
         f"/pressure/{sections_label[i]}": ds_pressure_sections[i]

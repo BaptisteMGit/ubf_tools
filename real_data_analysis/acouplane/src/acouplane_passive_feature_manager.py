@@ -70,9 +70,9 @@ class BandFilter:
         return signal_filter
 
 
-class FiberscopeManager:
+class AcouplaneManager:
     """
-    Mother class to apply RTF-MFP to Fiberscope data
+    Mother class to apply RTF-MFP (or DCF-MFP) to Acouplane data
     """
 
     def __init__(
@@ -133,8 +133,6 @@ class FiberscopeManager:
         self.rtf_estimator = rtf_estimator
 
         # Link to  wav dataset
-        # self.ds_wav_fpath = os.path.join(self.root_processed_data, "channel_H_wav.nc")
-        # self.ds_wav = xr.open_dataset(self.ds_wav_fpath)
         self.ds_wav = ds_wav
         self.datetime_fmt = self.ds_wav.attrs["datetime_format"]
 
@@ -243,7 +241,7 @@ class FiberscopeManager:
 # ======================================================================================================================
 #  Passive source localisation
 # ======================================================================================================================
-class PassiveFiberscopeManager(FiberscopeManager):
+class PassiveAcouplaneManager(AcouplaneManager):
     """
     Class to handle passive source localisation. The source to localise is typically a ship of opportunity.
     """

@@ -42,10 +42,14 @@ class CovManager:
 
     """
 
-    def __init__(self, nperseg=2**12, noverlap=2**11, window="hann"):
+    def __init__(self, nperseg=2**12, noverlap=2**11, window="hann", nfft=None):
         self.nperseg = nperseg
         self.noverlap = noverlap
         self.window = window
+
+        if nfft is None:
+            nfft = nperseg
+        self.nfft = nfft
 
     def get_signal_csdm(
         self,
@@ -84,7 +88,7 @@ class CovManager:
         """
 
         ff, _, stft_arr = self.get_stft_array(
-            y, fs, self.nperseg, self.noverlap, self.window
+            y, fs, self.nperseg, self.noverlap, self.window, self.nfft
         )
 
         csdm_y = self.compute_csdm_fast(
@@ -123,6 +127,7 @@ class CovManager:
         nperseg: int = 2**12,
         noverlap: int = 2**11,
         window: str = "hann",
+        nfft=None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
         Derive the STFT of each component of y.
@@ -156,6 +161,7 @@ class CovManager:
             window=window,
             nperseg=nperseg,
             noverlap=noverlap,
+            nfft=nfft,
             axis=0,
             # nfft=2**14,
         )

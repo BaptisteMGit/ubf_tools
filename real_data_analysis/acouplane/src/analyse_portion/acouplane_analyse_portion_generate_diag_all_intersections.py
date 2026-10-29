@@ -421,7 +421,7 @@ if compute_cpsds:
     derive_portion_cpsd(
         portion_tree=portion,
         offset_ms=offset_ms,
-        signal_duration_s=signal_duration_ms / 1000,
+        signal_duration_s=int(signal_duration_ms / 1000),
         nfft=nfft,
         obs_ids=None,
         fmin=fmin,

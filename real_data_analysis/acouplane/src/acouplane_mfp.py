@@ -14,6 +14,9 @@
 # ======================================================================================================================
 import xarray as xr
 
+from real_data_analysis.acouplane.src.acouplane_conventions import (
+    get_mfp_axis_names,
+)
 from real_data_analysis.acouplane.src.acouplane_features import (
     all_features_single_section,
     distances_single_intersection,
@@ -21,6 +24,94 @@ from real_data_analysis.acouplane.src.acouplane_features import (
 from real_data_analysis.acouplane.src.acouplane_portion_io import (
     select_intersections,
 )
+
+
+# Names and descriptions of the variables of the ambiguity surfaces (used for the labels of the figures)
+DISTANCE_VARIABLE_ATTRS = {
+    "d_real": dict(units="m", long_name="Distance"),
+    "d_theta": dict(
+        long_name=r"$\theta_{\Pi}$",
+        description="Hermitian angle between RTF vectors",
+        minval=0,
+        maxval=1,
+    ),
+    "d_theta_gamma": dict(
+        long_name=r"$\theta_{\gamma}$",
+        description="Euclidean angle between RTF gamma vectors",
+        minval=0,
+        maxval=1,
+    ),
+    "d_L2_gamma": dict(
+        long_name=r"$L_{2_{\gamma}}$",
+        description="Normalized euclidean distance (L2) between RTF gamma vectors",
+        minval=0,
+        maxval=1,
+    ),
+    "d_dcf": dict(
+        long_name=r"$C_{el}$",
+        description="Normalized intercorrelation between intercorrelation vectors (DCF)",
+        minval=0,
+        maxval=1,
+    ),
+    "d_theta_gamma_centered": dict(
+        long_name=r"$\theta_{\gamma}$ (centered)",
+        description="Euclidean angle between RTF gamma vectors centered along frequency",
+        minval=0,
+        maxval=1,
+    ),
+    "d_L2_gamma_centered": dict(
+        long_name=r"$L_{2_{\gamma}}$ (centered)",
+        description="Normalized euclidean distance (L2) between RTF gamma vectors centered along frequency",
+        minval=0,
+        maxval=1,
+    ),
+}
+
+
+def add_centered_gamma_distances(ds_mfp, distance_section12, dims):
+    """Add the distances computed with gamma centered along frequency to an MFP dataset (if available).
+
+    Parameters
+    ----------
+    ds_mfp : xarray.Dataset
+        MFP dataset of one intersection (modified in place).
+    distance_section12 : dict
+        Distances as returned by ``distances_single_intersection`` or
+        ``distances_library_and_event``; the centered distances
+        ``dist_theta_gamma_centered`` and ``dist_L2_gamma_centered`` are added
+        only if they are present.
+    dims : list of str
+        Dimensions of the distances: receiver pair and the two shot dimensions.
+
+    Returns
+    -------
+    None
+    """
+    for var in ("d_theta_gamma_centered", "d_L2_gamma_centered"):
+        key = var.replace("d_", "dist_", 1)
+        if key in distance_section12:
+            ds_mfp[var] = (
+                dims,
+                distance_section12[key],
+            )
+            ds_mfp[var].attrs = dict(DISTANCE_VARIABLE_ATTRS[var])
+
+
+def add_distance_attrs(ds_mfp):
+    """Add the names and descriptions of the distances to the variables of an MFP dataset.
+
+    Parameters
+    ----------
+    ds_mfp : xarray.Dataset
+        MFP dataset of one intersection (modified in place), with the variables
+        ``d_real``, ``d_theta``, ``d_theta_gamma``, ``d_L2_gamma`` and ``d_dcf``.
+
+    Returns
+    -------
+    None
+    """
+    for var in ("d_real", "d_theta", "d_theta_gamma", "d_L2_gamma", "d_dcf"):
+        ds_mfp[var].attrs = dict(DISTANCE_VARIABLE_ATTRS[var])
 
 
 def build_mfp_intersection_dataset(
@@ -110,58 +201,14 @@ def build_mfp_intersection_dataset(
     )
 
     # Optional comparison with gamma centered along frequency
-    for var, key, long_name, description in (
-        (
-            "d_theta_gamma_centered",
-            "dist_theta_gamma_centered",
-            r"$\theta_{\gamma}$ (centered)",
-            "Euclidean angle between RTF gamma vectors centered along frequency",
-        ),
-        (
-            "d_L2_gamma_centered",
-            "dist_L2_gamma_centered",
-            r"$L_{2_{\gamma}}$ (centered)",
-            "Normalized euclidean distance (L2) between RTF gamma vectors centered along frequency",
-        ),
-    ):
-        if key in distance_section12:
-            ds_mfp[var] = (
-                ["rcv_id_feature", "src_datetime_section1", "src_datetime_section2"],
-                distance_section12[key],
-            )
-            ds_mfp[var].attrs = dict(
-                long_name=long_name, description=description, minval=0, maxval=1
-            )
+    add_centered_gamma_distances(
+        ds_mfp,
+        distance_section12,
+        dims=["rcv_id_feature", "src_datetime_section1", "src_datetime_section2"],
+    )
 
     # Add attrs to variables
-    ds_mfp.d_real.attrs = dict(
-        units="m",
-        long_name="Distance",
-    )
-    ds_mfp.d_theta.attrs = dict(
-        long_name=r"$\theta_{\Pi}$",
-        description="Hermitian angle between RTF vectors",
-        minval=0,
-        maxval=1,
-    )
-    ds_mfp.d_theta_gamma.attrs = dict(
-        long_name=r"$\theta_{\gamma}$",
-        description="Euclidean angle between RTF gamma vectors",
-        minval=0,
-        maxval=1,
-    )
-    ds_mfp.d_L2_gamma.attrs = dict(
-        long_name=r"$L_{2_{\gamma}}$",
-        description="Normalized euclidean distance (L2) between RTF gamma vectors",
-        minval=0,
-        maxval=1,
-    )
-    ds_mfp.d_dcf.attrs = dict(
-        long_name=r"$C_{el}$",
-        description="Normalized intercorrelation between intercorrelation vectors (DCF)",
-        minval=0,
-        maxval=1,
-    )
+    add_distance_attrs(ds_mfp)
 
     return ds_mfp
 
@@ -310,16 +357,18 @@ def get_intersection_target_position(ds_mfp_intersection):
     Returns
     -------
     intersection_dt1 : numpy.datetime64
-        Emission datetime, along section 1, of the closest shot pair.
+        Datetime, along side 1 (section 1 or library), of the closest pair.
     intersection_dt2 : numpy.datetime64
-        Emission datetime, along section 2, of the closest shot pair.
+        Datetime, along side 2 (section 2 or event), of the closest pair.
     """
-    idx_target_pos = ds_mfp_intersection.d_real.argmin(
-        dim=["src_datetime_section1", "src_datetime_section2"]
-    )
+    axis_names = get_mfp_axis_names(ds_mfp_intersection)
+    dims = [axis_names["dim1"], axis_names["dim2"]]
+
+    idx_target_pos = ds_mfp_intersection.d_real.argmin(dim=dims)
+    ds_target = ds_mfp_intersection.isel(idx_target_pos)
     intersection_dt1, intersection_dt2 = (
-        ds_mfp_intersection.isel(idx_target_pos).src_datetime_section1.values,
-        ds_mfp_intersection.isel(idx_target_pos).src_datetime_section2.values,
+        ds_target[axis_names["dim1"]].values,
+        ds_target[axis_names["dim2"]].values,
     )
 
     return intersection_dt1, intersection_dt2
@@ -349,7 +398,8 @@ def get_intersection_guess_positions(ds_mfp_intersection):
         emission datetimes of the estimated intersection along section 1 and
         section 2.
     """
-    dims = ["src_datetime_section1", "src_datetime_section2"]
+    axis_names = get_mfp_axis_names(ds_mfp_intersection)
+    dims = [axis_names["dim1"], axis_names["dim2"]]
     metrics = dict(
         theta="d_theta",
         theta_gamma="d_theta_gamma",
@@ -366,8 +416,8 @@ def get_intersection_guess_positions(ds_mfp_intersection):
         idx_guess_pos = ds_mfp_intersection[var].argmin(dim=dims)
         ds_guess = ds_mfp_intersection.isel(idx_guess_pos)
         intersections[key] = dict(
-            dt1=ds_guess.src_datetime_section1,
-            dt2=ds_guess.src_datetime_section2,
+            dt1=ds_guess[axis_names["dim1"]],
+            dt2=ds_guess[axis_names["dim2"]],
         )
 
     return intersections

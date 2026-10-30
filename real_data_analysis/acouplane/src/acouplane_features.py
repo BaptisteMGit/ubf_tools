@@ -19,7 +19,6 @@ from real_data_analysis.acouplane.src.acouplane_conventions import (
     get_sample_axis_names,
 )
 
-
 # Maximum number of elements of the temporary 3D arrays built when comparing two sections
 # (see derive_feature_distance_between_sections). Keeps the RAM usage bounded.
 _MAX_BROADCAST_ELEMENTS = 20_000_000
@@ -534,6 +533,34 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
     gamma_1_arr = []
     sij_scot_1_arr = []
 
+    # NOTE : part to modify -> option for RTF calculation using cs-evd method rather than sij/sii (usefull for passive case)
+    from source.feature_processor import FeatureProcessor
+
+    fp = FeatureProcessor(
+        fs=2000,
+        idx_rcv_ref=0,
+    )  # Feature processor to handle rtf_estimator and gcc_estimator
+    pi_ij_along_dt = []
+    for ievent_dt in range(ds_feature_section.sizes["event_datetime"]):
+        Rx = ds_feature_section.isel(event_datetime=ievent_dt).Sxy.T
+        Rv = np.zeros_like(Rx)
+        pi_ij_dt = fp.rtf_estimator.estimate_rtf_covariance_subtraction(
+            Rx - Rv, use_first_column=False
+        )
+        pi_ij_along_dt.append(pi_ij_dt)
+
+    # Convert to array
+    pi_ij_along_dt = np.asarray(pi_ij_along_dt)  # Shape -> (n_emission, nfreq, nrcv)
+    # Reshape to required shape in the following (nrcv, n_emission, nfreq):
+    axis_src = [0, 1, 2]
+    axis_dst = [1, 2, 0]
+    pi_1_arr = np.moveaxis(pi_ij_along_dt, source=axis_src, destination=axis_dst)
+
+    # Deduce gamma
+    gamma_1_arr = 20 * np.log10(np.abs(pi_1_arr))
+
+    # TODO : adapt folowwing part if this option is used
+
     for rcv_id_i in rcv_i_arr:
         # Compute features (RTF, DCF) of the section
         pi_ij_a, gamma_a, sij_scot_a = derive_section_features(
@@ -618,9 +645,7 @@ def feature_distances_between_datasets(
         )
         # Compute distances between the samples of both datasets
         dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf = (
-            derive_feature_distance_between_sections(
-                features_a, features_b
-            )
+            derive_feature_distance_between_sections(features_a, features_b)
         )
 
         # Store

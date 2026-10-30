@@ -16,11 +16,13 @@ import numpy as np
 import xarray as xr
 
 from real_data_analysis.acouplane.src.acouplane_conventions import (
+    SAMPLE_AXIS_CONVENTIONS,
     get_sample_axis_names,
 )
 from real_data_analysis.acouplane.src.acouplane_features import (
     all_features_single_section,
     distances_library_and_event,
+    get_distance_between_library_and_event,
 )
 from real_data_analysis.acouplane.src.acouplane_mfp import (
     add_centered_gamma_distances,
@@ -372,14 +374,17 @@ def derive_portion_features(portion_tree, rcv_ref="obs1", fmin=5, fmax=50, verbo
 # ======================================================================================================================
 # Library of reference features
 # ======================================================================================================================
-def _to_library_section(ds_feature_section, rcv_ref, fmin, fmax, acquisition_mode):
-    """Convert a feature dataset (active section or passive event) into a library section.
+def _to_sample_section(
+    ds_feature_section, rcv_ref, fmin, fmax, acquisition_mode, kind="library"
+):
+    """Convert a feature dataset (active section or passive event) into a library section or an event.
 
-    Only the information needed to compare the section to an event is kept: the
-    features, the position of the source at each sample and the position of the
-    receivers. The samples are renamed with the library names
-    (``library_datetime``, ``library_lon``, ``library_lat``), which makes the
-    library independent of the acquisition mode.
+    Only the information needed to compare a library section to an event is
+    kept: the features, the position of the source at each sample and the
+    position of the receivers. The samples are renamed with the names of the
+    requested kind (``library_datetime`` / ``library_lon`` / ``library_lat`` or
+    ``event_datetime`` / ``event_lon`` / ``event_lat``), which makes the
+    comparison independent of the acquisition mode.
 
     Parameters
     ----------
@@ -391,14 +396,18 @@ def _to_library_section(ds_feature_section, rcv_ref, fmin, fmax, acquisition_mod
         Frequency band kept, in Hz.
     acquisition_mode : {"active", "passive"}
         Acquisition mode of the section, stored in the attributes.
+    kind : {"library", "event"}, optional
+        Naming of the samples of the result.
 
     Returns
     -------
     xarray.Dataset
-        Library section with the variables ``pi_ij``, ``gamma_ij``,
-        ``sij_scot``, ``library_lon``, ``library_lat`` (and the receiver
-        positions if available).
+        Section with the variables ``pi_ij``, ``gamma_ij``, ``sij_scot``, the
+        positions of the samples (``<kind>_lon``, ``<kind>_lat``) and the
+        receiver positions if available.
     """
+    new_names = SAMPLE_AXIS_CONVENTIONS[kind]
+
     # Names of the samples in the original dataset
     axis_names = get_sample_axis_names(ds_feature_section)
 
@@ -413,12 +422,12 @@ def _to_library_section(ds_feature_section, rcv_ref, fmin, fmax, acquisition_mod
     kept_vars += [var for var in LIBRARY_RECEIVER_VARS if var in ds_features]
     ds_library = ds_features[kept_vars]
 
-    # Rename the samples with the library names
+    # Rename the samples with the names of the requested kind
     ds_library = ds_library.rename(
         {
-            axis_names["datetime_dim"]: LIBRARY_DATETIME_DIM,
-            axis_names["lon_var"]: LIBRARY_LON_VAR,
-            axis_names["lat_var"]: LIBRARY_LAT_VAR,
+            axis_names["datetime_dim"]: new_names["datetime_dim"],
+            axis_names["lon_var"]: new_names["lon_var"],
+            axis_names["lat_var"]: new_names["lat_var"],
         }
     )
 
@@ -448,9 +457,9 @@ def library_section_from_active_section(
     Returns
     -------
     xarray.Dataset
-        Library section, see ``_to_library_section``.
+        Library section, see ``_to_sample_section``.
     """
-    return _to_library_section(
+    return _to_sample_section(
         ds_feature_active_section, rcv_ref, fmin, fmax, acquisition_mode="active"
     )
 
@@ -476,9 +485,9 @@ def library_section_from_passive_event(
     Returns
     -------
     xarray.Dataset
-        Library section, see ``_to_library_section``.
+        Library section, see ``_to_sample_section``.
     """
-    return _to_library_section(
+    return _to_sample_section(
         ds_feature_event, rcv_ref, fmin, fmax, acquisition_mode="passive"
     )
 
@@ -596,6 +605,145 @@ def build_portion_library(
         portion_library[f"/feature/{section_name}"] = ds_library
 
     return portion_library
+
+
+# ======================================================================================================================
+# Event built from an active section (test section removed from the library)
+# ======================================================================================================================
+def build_portion_event_from_active_section(
+    portion, section, rcv_ref="obs1", fmin=5, fmax=50, event_id=None
+):
+    """Build an event tree from the active emissions of a section of a portion.
+
+    The section plays the role of an event whose trajectory is known (the
+    positions of the shots): it can be compared to a library built from the
+    other sections of the portion. The tree has the same structure as an event
+    tree:
+
+    - ``/position/<section>``: dimension ``datetime``, variables ``lon`` and
+      ``lat``, attribute ``event_id``;
+    - ``/feature/<section>``: dimension ``event_datetime``, variables
+      ``event_lon``, ``event_lat``, ``pi_ij``, ``gamma_ij`` and ``sij_scot``,
+      attribute ``reference_receiver``.
+
+    Parameters
+    ----------
+    portion : xarray.DataTree
+        Portion tree with the groups ``position`` and ``feature`` (CPSD).
+        Not modified.
+    section : str
+        Label of the section used as event (e.g. ``"sn2"``).
+    rcv_ref : str, optional
+        Reference receiver of the receiver pairs (the one of the library).
+    fmin, fmax : float, optional
+        Frequency band kept, in Hz.
+    event_id : str or int or None, optional
+        Identifier displayed for the event. If None, the section label.
+
+    Returns
+    -------
+    xarray.DataTree
+        The event tree.
+
+    Raises
+    ------
+    ValueError
+        If the portion has no ``feature`` group or if the section is unknown.
+    """
+    if "feature" not in portion.children:
+        raise ValueError(
+            "No 'feature' group in the portion: the CPSD has never been computed. "
+            "Compute it first (see acouplane_analyse_portion_generate_diag_all_intersections.py)."
+        )
+
+    available_sections = list(portion.feature.children)
+    if section not in available_sections:
+        raise ValueError(
+            f"Unknown section '{section}' (available sections: {available_sections})."
+        )
+
+    # Features of the section, with the naming of the events
+    ds_event = _to_sample_section(
+        portion.feature[section].to_dataset(),
+        rcv_ref=rcv_ref,
+        fmin=fmin,
+        fmax=fmax,
+        acquisition_mode="active",
+        kind="event",
+    )
+    ds_event.attrs["section_label"] = section
+
+    # Position group, with the same layout as the events
+    ds_position = xr.Dataset(
+        data_vars=dict(
+            lon=(["datetime"], ds_event["event_lon"].values),
+            lat=(["datetime"], ds_event["event_lat"].values),
+        ),
+        coords=dict(datetime=ds_event["event_datetime"].values),
+        attrs=dict(ds_event.attrs),
+    )
+    ds_position.attrs["event_id"] = section if event_id is None else event_id
+
+    portion_event = xr.DataTree()
+    portion_event.attrs["description"] = f"Event built from the section '{section}'"
+    portion_event[f"/position/{section}"] = ds_position
+    portion_event[f"/feature/{section}"] = ds_event
+
+    return portion_event
+
+
+def library_event_crossing_distances(
+    portion_library, portion_event, library_sections=None, event_sections=None
+):
+    """Distance between the closest samples of each library section and each event.
+
+    The distance is small when the trajectory of the event crosses the library
+    section. It only needs the positions of the samples, so that the sections
+    that do not cross the event can be discarded before computing the
+    (expensive) ambiguity surfaces.
+
+    Parameters
+    ----------
+    portion_library : xarray.DataTree
+        Library, see ``build_portion_library``.
+    portion_event : xarray.DataTree
+        Event tree with a ``feature`` group (positions ``event_lon`` / ``event_lat``).
+    library_sections : list of str or None, optional
+        Library sections to consider. If None, all of them.
+    event_sections : list of str or None, optional
+        Events to consider. If None, all of them.
+
+    Returns
+    -------
+    list of dict
+        One record per (library section, event) with the keys ``library``,
+        ``event`` and ``crossing_distance_m``.
+
+    Raises
+    ------
+    ValueError
+        If a section is unknown or if a position is missing.
+    """
+    library_names = _select_sections(portion_library, library_sections, "library")
+    event_names = _select_sections(portion_event, event_sections, "event")
+
+    records = []
+    for library_name in library_names:
+        ds_library = portion_library.feature[library_name].to_dataset()
+        for event_name in event_names:
+            ds_event = portion_event.feature[event_name].to_dataset()
+
+            # Distance between every library sample and every event sample
+            distance = get_distance_between_library_and_event(ds_library, ds_event)
+            records.append(
+                dict(
+                    library=library_name,
+                    event=event_name,
+                    crossing_distance_m=float(np.nanmin(distance)),
+                )
+            )
+
+    return records
 
 
 # ======================================================================================================================

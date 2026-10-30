@@ -15,6 +15,10 @@
 import warnings
 import numpy as np
 
+from real_data_analysis.acouplane.src.acouplane_conventions import (
+    get_sample_axis_names,
+)
+
 
 # Maximum number of elements of the temporary 3D arrays built when comparing two sections
 # (see derive_feature_distance_between_sections). Keeps the RAM usage bounded.
@@ -66,6 +70,81 @@ def get_distance_between_sections(ds_feature_section1, ds_feature_section2):
     dist_12 = dist_12.T  # (n_emission1, n_emission2)
 
     return dist_12
+
+
+def get_distance_between_library_and_event(ds_feature_library, ds_feature_event):
+    """Compute the geodesic distance between every library sample and every event sample.
+
+    Distances are computed on the WGS84 ellipsoid between the source positions of
+    the library section (one position per library sample) and of the event (one
+    position per event sample). The datasets can come from any acquisition mode
+    (active emissions or passive windows): the names of the sample dimension and
+    of the position variables are detected with ``get_sample_axis_names``.
+
+    Parameters
+    ----------
+    ds_feature_library : xarray.Dataset
+        Feature dataset of a library section (sample dimension
+        ``library_datetime``, positions ``library_lon`` / ``library_lat``).
+    ds_feature_event : xarray.Dataset
+        Feature dataset of an event (sample dimension ``event_datetime``,
+        positions ``event_lon`` / ``event_lat``).
+
+    Returns
+    -------
+    numpy.ndarray
+        Distances in meters, shape ``(n_library_samples, n_event_samples)``.
+
+    Raises
+    ------
+    ValueError
+        If a dataset follows none of the sample naming conventions, or if a
+        position is missing (NaN) so that the distance cannot be computed.
+    """
+    from pyproj import Geod
+
+    geod = Geod(ellps="WGS84")
+
+    # Positions of the source at each sample of the library section and of the event
+    axis_library = get_sample_axis_names(ds_feature_library)
+    axis_event = get_sample_axis_names(ds_feature_event)
+
+    library_lon = ds_feature_library[axis_library["lon_var"]].values
+    library_lat = ds_feature_library[axis_library["lat_var"]].values
+    event_lon = ds_feature_event[axis_event["lon_var"]].values
+    event_lat = ds_feature_event[axis_event["lat_var"]].values
+
+    for name, values in (
+        ("library", library_lon),
+        ("library", library_lat),
+        ("event", event_lon),
+        ("event", event_lat),
+    ):
+        if np.isnan(values).any():
+            raise ValueError(
+                f"The {name} positions contain NaN values: the distance in real space "
+                "cannot be computed (check the position of the source along the trajectory)."
+            )
+
+    # One column per event sample, computed against all the library samples
+    dist_library_event = []
+    for i_event in range(event_lon.size):
+
+        # Cast the event position to the shape of the library positions
+        lon_event_i = np.full(library_lon.size, event_lon[i_event])
+        lat_event_i = np.full(library_lon.size, event_lat[i_event])
+
+        # Compute geodesic distance
+        _, _, horizontal_distance = geod.inv(
+            lons1=library_lon, lats1=library_lat, lons2=lon_event_i, lats2=lat_event_i
+        )
+
+        dist_library_event.append(horizontal_distance)
+
+    dist_library_event = np.asarray(dist_library_event)  # (n_event, n_library)
+    dist_library_event = dist_library_event.T  # (n_library, n_event)
+
+    return dist_library_event
 
 
 def _gamma_distances_block(gamma_a, gamma_b):
@@ -481,6 +560,101 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
     return features_section
 
 
+def feature_distances_between_datasets(
+    ds_feature_a, ds_feature_b, compare_centered_gamma=False
+):
+    """Compute the feature distances between the samples of two feature datasets.
+
+    For each receiver pair ``(rcv_id_feature, reference receiver)``, the four
+    feature distances of ``derive_feature_distance_between_sections`` are
+    computed between every sample of ``ds_feature_a`` and every sample of
+    ``ds_feature_b``. Only the variables ``pi_ij``, ``gamma_ij`` and
+    ``sij_scot`` are used, so that the function is the same for two active
+    sections, a library section and an event, or two passive events.
+
+    Optionally, the gamma distances are also computed with a ``gamma`` centered
+    along frequency (see ``distances_single_intersection``).
+
+    Parameters
+    ----------
+    ds_feature_a, ds_feature_b : xarray.Dataset
+        Feature datasets with the variables ``pi_ij``, ``gamma_ij`` and
+        ``sij_scot`` of dimensions ``(rcv_id_feature, <sample dimension>, freq)``
+        and the same receivers and frequencies.
+    compare_centered_gamma : bool, optional
+        If True, also compute ``dist_theta_gamma_centered`` and
+        ``dist_L2_gamma_centered``.
+
+    Returns
+    -------
+    dict
+        ``dist_theta``, ``dist_theta_gamma``, ``dist_L2_gamma`` and ``dist_dcf``
+        (shape ``(n_rcv, n_samples_a, n_samples_b)``), plus
+        ``dist_theta_gamma_centered`` and ``dist_L2_gamma_centered`` if
+        ``compare_centered_gamma`` is True.
+    """
+    dist_theta_arr = []
+    dist_theta_gamma_arr = []
+    dist_L2_gamma_arr = []
+    dist_dcf_arr = []
+    dist_theta_gamma_c_arr = []
+    dist_L2_gamma_c_arr = []
+
+    # Loop over the receiver pairs (rcv_id_i, reference receiver)
+    for rcv_id_i in ds_feature_a.rcv_id_feature.values:
+
+        ds_feature_a_rcv_i = ds_feature_a.sel(rcv_id_feature=rcv_id_i)
+        ds_feature_b_rcv_i = ds_feature_b.sel(rcv_id_feature=rcv_id_i)
+        # Extract features
+        features_a = dict(
+            pi_ij=ds_feature_a_rcv_i.pi_ij.values,
+            gamma_ij=ds_feature_a_rcv_i.gamma_ij.values,
+            sij_scot=ds_feature_a_rcv_i.sij_scot.values,
+        )
+        features_b = dict(
+            pi_ij=ds_feature_b_rcv_i.pi_ij.values,
+            gamma_ij=ds_feature_b_rcv_i.gamma_ij.values,
+            sij_scot=ds_feature_b_rcv_i.sij_scot.values,
+        )
+        # Compute distances between the samples of both datasets
+        dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf = (
+            derive_feature_distance_between_sections(
+                features_a, features_b
+            )
+        )
+
+        # Store
+        dist_theta_arr.append(dist_theta)
+        dist_theta_gamma_arr.append(dist_theta_gamma)
+        dist_L2_gamma_arr.append(dist_L2_gamma)
+        dist_dcf_arr.append(dist_dcf)
+
+        # Same gamma distances with gamma centered along frequency (not stored)
+        if compare_centered_gamma:
+            gamma1_c = _center_along_freq(features_a["gamma_ij"])
+            gamma2_c = _center_along_freq(features_b["gamma_ij"])
+            d_theta_gamma_c, d_L2_gamma_c = derive_gamma_distance_between_sections(
+                gamma1_c, gamma2_c
+            )
+            dist_theta_gamma_c_arr.append(d_theta_gamma_c)
+            dist_L2_gamma_c_arr.append(d_L2_gamma_c)
+
+    # Convert to arrays and group (nrcv, n_samples_a, n_samples_b)
+    feature_distances = dict(
+        dist_theta=np.asarray(dist_theta_arr),
+        dist_theta_gamma=np.asarray(dist_theta_gamma_arr),
+        dist_L2_gamma=np.asarray(dist_L2_gamma_arr),
+        dist_dcf=np.asarray(dist_dcf_arr),
+    )
+    if compare_centered_gamma:
+        feature_distances["dist_theta_gamma_centered"] = np.asarray(
+            dist_theta_gamma_c_arr
+        )
+        feature_distances["dist_L2_gamma_centered"] = np.asarray(dist_L2_gamma_c_arr)
+
+    return feature_distances
+
+
 def distances_single_intersection(
     ds_feature_section1, ds_feature_section2, compare_centered_gamma=False
 ):
@@ -522,63 +696,58 @@ def distances_single_intersection(
         ds_feature_section1, ds_feature_section2
     )
 
-    dist_theta_arr = []
-    dist_theta_gamma_arr = []
-    dist_L2_gamma_arr = []
-    dist_dcf_arr = []
-    dist_theta_gamma_c_arr = []
-    dist_L2_gamma_c_arr = []
-
-    for rcv_id_i in ds_feature_section1.rcv_id_feature.values:
-
-        ds_feature_section1_rcv_i = ds_feature_section1.sel(rcv_id_feature=rcv_id_i)
-        ds_feature_section2_rcv_i = ds_feature_section2.sel(rcv_id_feature=rcv_id_i)
-        # Extract features
-        features_section1 = dict(
-            pi_ij=ds_feature_section1_rcv_i.pi_ij.values,
-            gamma_ij=ds_feature_section1_rcv_i.gamma_ij.values,
-            sij_scot=ds_feature_section1_rcv_i.sij_scot.values,
-        )
-        features_section2 = dict(
-            pi_ij=ds_feature_section2_rcv_i.pi_ij.values,
-            gamma_ij=ds_feature_section2_rcv_i.gamma_ij.values,
-            sij_scot=ds_feature_section2_rcv_i.sij_scot.values,
-        )
-        # Compute distances between section 1 and 2
-        dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf = (
-            derive_feature_distance_between_sections(
-                features_section1, features_section2
-            )
-        )
-
-        # Store
-        dist_theta_arr.append(dist_theta)
-        dist_theta_gamma_arr.append(dist_theta_gamma)
-        dist_L2_gamma_arr.append(dist_L2_gamma)
-        dist_dcf_arr.append(dist_dcf)
-
-        # Same gamma distances with gamma centered along frequency (not stored)
-        if compare_centered_gamma:
-            gamma1_c = _center_along_freq(features_section1["gamma_ij"])
-            gamma2_c = _center_along_freq(features_section2["gamma_ij"])
-            d_theta_gamma_c, d_L2_gamma_c = derive_gamma_distance_between_sections(
-                gamma1_c, gamma2_c
-            )
-            dist_theta_gamma_c_arr.append(d_theta_gamma_c)
-            dist_L2_gamma_c_arr.append(d_L2_gamma_c)
-
-    # Convert to arrays and group (nrcv, n_emission1, n_emission2)
-    distance_section12 = dict(
-        dist_in_real_space=dist_in_real_space_12,
-        dist_theta=np.asarray(dist_theta_arr),
-        dist_theta_gamma=np.asarray(dist_theta_gamma_arr),
-        dist_L2_gamma=np.asarray(dist_L2_gamma_arr),
-        dist_dcf=np.asarray(dist_dcf_arr),
+    feature_distances = feature_distances_between_datasets(
+        ds_feature_section1, ds_feature_section2, compare_centered_gamma
     )
-    if compare_centered_gamma:
-        distance_section12["dist_theta_gamma_centered"] = np.asarray(
-            dist_theta_gamma_c_arr
-        )
-        distance_section12["dist_L2_gamma_centered"] = np.asarray(dist_L2_gamma_c_arr)
+
+    # Group (nrcv, n_emission1, n_emission2)
+    distance_section12 = dict(dist_in_real_space=dist_in_real_space_12)
+    distance_section12.update(feature_distances)
 
     return distance_section12
+
+
+def distances_library_and_event(
+    ds_feature_library, ds_feature_event, compare_centered_gamma=False
+):
+    """Compute all distances between the samples of a library section and of an event.
+
+    The geodesic distance between samples ("real space", see
+    ``get_distance_between_library_and_event``) and the feature distances (see
+    ``feature_distances_between_datasets``) are computed. This is the
+    counterpart of ``distances_single_intersection`` for a library / event
+    comparison.
+
+    Parameters
+    ----------
+    ds_feature_library : xarray.Dataset
+        Feature dataset of a library section.
+    ds_feature_event : xarray.Dataset
+        Feature dataset of an event, with the same receivers (``rcv_id_feature``)
+        and the same frequencies as the library.
+    compare_centered_gamma : bool, optional
+        If True, also compute ``dist_theta_gamma_centered`` and
+        ``dist_L2_gamma_centered``.
+
+    Returns
+    -------
+    dict
+        Keys ``dist_in_real_space`` (shape ``(n_library_samples,
+        n_event_samples)``, m) and the feature distances, shape ``(n_rcv,
+        n_library_samples, n_event_samples)``, see
+        ``distances_single_intersection``.
+    """
+    # Distance in meters between the library samples and the event samples
+    dist_in_real_space = get_distance_between_library_and_event(
+        ds_feature_library, ds_feature_event
+    )
+
+    # Distances in the feature space, for each receiver pair
+    feature_distances = feature_distances_between_datasets(
+        ds_feature_library, ds_feature_event, compare_centered_gamma
+    )
+
+    distance_library_event = dict(dist_in_real_space=dist_in_real_space)
+    distance_library_event.update(feature_distances)
+
+    return distance_library_event

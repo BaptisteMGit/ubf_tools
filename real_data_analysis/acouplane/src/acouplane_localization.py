@@ -15,6 +15,11 @@
 import functools
 import numpy as np
 
+from real_data_analysis.acouplane.src.acouplane_conventions import (
+    get_mfp_axis_names,
+    get_mfp_shot_positions,
+)
+
 
 # Distance types compared in the results analysis, in display order
 DISTANCE_TYPES = (
@@ -287,9 +292,10 @@ def _distances_from_mfp_dataset(ds_mfp_intersection):
         distance type present in the dataset.
     """
     rcv_dim = "rcv_id_feature"
-    dim1, dim2 = "src_datetime_section1", "src_datetime_section2"
+    axis_names = get_mfp_axis_names(ds_mfp_intersection)
+    dim1, dim2 = axis_names["dim1"], axis_names["dim2"]
 
-    # Real-space distance between the shots of the two sections
+    # Real-space distance between the shots of the two sides of the intersection
     distance_section12 = {
         "dist_in_real_space": ds_mfp_intersection["d_real"].transpose(dim1, dim2).values
     }
@@ -312,9 +318,9 @@ def localization_errors_from_mfp_dataset(ds_mfp_intersection, error_mode="sectio
     ----------
     ds_mfp_intersection : xarray.Dataset
         MFP dataset of one intersection, with the variables ``d_real`` and
-        ``d_<type>``, and the shot positions ``tir_src_lon_section1``,
-        ``tir_src_lat_section1``, ``tir_src_lon_section2``,
-        ``tir_src_lat_section2``.
+        ``d_<type>``, and the shot positions of the two sides of the intersection
+        (see ``get_mfp_axis_names``: two sections, or a library section and an
+        event).
     error_mode : {"section1", "section2", "both"}, optional
         How the position error is computed, see
         ``localization_errors_from_distances``.
@@ -332,10 +338,7 @@ def localization_errors_from_mfp_dataset(ds_mfp_intersection, error_mode="sectio
     # Position errors from the stored ambiguity surfaces and the shot positions
     errors = localization_errors_from_distances(
         _distances_from_mfp_dataset(ds_mfp_intersection),
-        lon1=ds_mfp_intersection["tir_src_lon_section1"].values,
-        lat1=ds_mfp_intersection["tir_src_lat_section1"].values,
-        lon2=ds_mfp_intersection["tir_src_lon_section2"].values,
-        lat2=ds_mfp_intersection["tir_src_lat_section2"].values,
+        **get_mfp_shot_positions(ds_mfp_intersection),
         error_mode=error_mode,
     )
     rcv_ids = [str(rcv_id) for rcv_id in ds_mfp_intersection[rcv_dim].values]

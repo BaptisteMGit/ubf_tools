@@ -44,6 +44,7 @@ from real_data_analysis.acouplane.src.acouplane_mfp import (
     apply_mfp_strategy_to_portion_intersections,
 )
 from real_data_analysis.acouplane.src.acouplane_plot_mfp import (
+    ambiguity_figure_filename,
     plot_combined_intersection_ambiguity,
     plot_combined_intersection_gamma_comparison,
 )
@@ -91,8 +92,8 @@ fmin = 10
 fmax = 800
 
 # Intersections to analyse. None -> all intersections. Otherwise a list of (meridional, zonal) section labels
-# intersections_to_process = [("sn2", "oe6")]
-intersections_to_process = None
+intersections_to_process = [("sn2", "oe6")]
+# intersections_to_process = None
 
 # Approach used to combine the receivers
 #   "mean_surfaces" -> mean of the ambiguity surfaces of the combined receiver pairs
@@ -110,10 +111,8 @@ max_combinations = 200  # safety limit on the number of combinations (the number
 #   "section1" -> shots of the meridional section (error mostly along North-South)
 #   "section2" -> shots of the zonal section (error mostly along East-West)
 #   "both"     -> sqrt(error_section1**2 + error_section2**2)
-error_mode = "both"
-success_threshold_m = (
-    50  # an intersection is successfully localized if its error <= threshold [m]
-)
+error_mode = "section1"
+success_threshold_m = 100  # an intersection is successfully localized if its error <= threshold [m]
 
 # Distance types to analyse: None -> all those stored, otherwise a list among "theta", "theta_gamma", "L2_gamma",
 # "dcf", "theta_gamma_centered", "L2_gamma_centered" (the centered ones need compare_centered_gamma = True)
@@ -126,13 +125,13 @@ contrast_percentile = 50
 #   combinations_to_plot = None -> all the combinations studied (see rcv_combinations / combination_sizes)
 #   combinations_to_plot = [["obs2", "obs4"], ["obs2", "obs4", "obs5"]] -> only these combinations
 combinations_to_plot = None
+# Metrics displayed next to the real distance (always in the first panel) in the ambiguity figures: 3 among
+# "theta", "theta_gamma", "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered"
+# (the centered ones need compare_centered_gamma = True), e.g. ["theta_gamma_centered", "L2_gamma_centered", "dcf"]
+ambiguity_metrics = ["theta_gamma", "theta", "dcf"]
 ambiguity_cmap = "Grays_r"
-ambiguity_max_quantile = (
-    0.95  # quantile of each feature distance used as upper bound of its color scale
-)
-max_ambiguity_figures = (
-    200  # safety limit on the number of figures (intersections x combinations)
-)
+ambiguity_max_quantile = 0.95  # quantile of each feature distance used as upper bound of its color scale
+max_ambiguity_figures = 200  # safety limit on the number of figures (intersections x combinations)
 
 # ======================================================================================================================
 # Booleans to control behavior
@@ -215,17 +214,13 @@ if apply_mfp_strategy_intersections:
         intersections=selected_intersections,
     )
 else:
-    log(
-        "Step 2 - MFP strategy: skipped (apply_mfp_strategy_intersections = False), using stored results"
-    )
+    log("Step 2 - MFP strategy: skipped (apply_mfp_strategy_intersections = False), using stored results")
 
 # ======================================================================================================================
 # Analysis of the combinations of receivers
 # ======================================================================================================================
 run_analysis = (
-    analyse_error_vs_n_rcv
-    or analyse_contrast_vs_n_rcv
-    or analyse_combination_performance
+    analyse_error_vs_n_rcv or analyse_contrast_vs_n_rcv or analyse_combination_performance
 )
 run_ambiguity_plots = plot_combined_ambiguity or plot_combined_gamma_comparison
 if run_analysis or run_ambiguity_plots:
@@ -268,9 +263,7 @@ if run_analysis or run_ambiguity_plots:
         ds_mfp_intersection = portion[
             f"/mfp_intersection/{section1_label}/{section2_label}"
         ].to_dataset()
-        stored_reference = ds_mfp_intersection.attrs.get(
-            "reference_receiver", reference_rcv
-        )
+        stored_reference = ds_mfp_intersection.attrs.get("reference_receiver", reference_rcv)
 
         # Keep the receivers selected by obs_ids
         try:
@@ -278,9 +271,7 @@ if run_analysis or run_ambiguity_plots:
                 ds_mfp_intersection, obs_ids, reference=stored_reference
             )
         except ValueError as error:
-            raise RuntimeError(
-                f"Intersection '{section1_label}' x '{section2_label}': {error}"
-            )
+            raise RuntimeError(f"Intersection '{section1_label}' x '{section2_label}': {error}")
         if missing_rcv and tuple(missing_rcv) not in warned_missing:
             warned_missing.add(tuple(missing_rcv))
             print(
@@ -295,9 +286,7 @@ if run_analysis or run_ambiguity_plots:
         for ds in datasets_mfp.values()
     ]
     available_rcv_ids = [
-        rcv_id
-        for rcv_id in rcv_lists[0]
-        if all(rcv_id in rcv_list for rcv_list in rcv_lists)
+        rcv_id for rcv_id in rcv_lists[0] if all(rcv_id in rcv_list for rcv_list in rcv_lists)
     ]
     if len(available_rcv_ids) < len(set().union(*rcv_lists)):
         print(
@@ -326,18 +315,13 @@ if run_analysis or run_ambiguity_plots:
         # Position error and contrast of each combination, for each intersection
         # ------------------------------------------------------------------------------------------------------------------
         records = []
-        for (
-            section1_label,
-            section2_label,
-        ), ds_mfp_intersection in datasets_mfp.items():
+        for (section1_label, section2_label), ds_mfp_intersection in datasets_mfp.items():
             log(f"Intersection '{section1_label}' x '{section2_label}'", level=2)
 
             records += rcv_combination_records(
                 ds_mfp_intersection,
                 combinations,
-                reference_rcv=ds_mfp_intersection.attrs.get(
-                    "reference_receiver", reference_rcv
-                ),
+                reference_rcv=ds_mfp_intersection.attrs.get("reference_receiver", reference_rcv),
                 error_mode=error_mode,
                 percentile=contrast_percentile,
                 method=combination_method,
@@ -351,9 +335,7 @@ if run_analysis or run_ambiguity_plots:
         df_records = add_validity_column(df_records, success_threshold_m)
 
         # Save the records
-        fpath = os.path.join(
-            ROOT_IMG_PORTION_RESULTS_COMBINATION, "rcv_combination_records.csv"
-        )
+        fpath = os.path.join(ROOT_IMG_PORTION_RESULTS_COMBINATION, "rcv_combination_records.csv")
         df_records.to_csv(fpath, index=False)
         log(f"Saved {fpath}", level=2)
 
@@ -418,28 +400,19 @@ if run_analysis or run_ambiguity_plots:
             df_by_n_rcv = df_records.assign(
                 rcv_pair=df_records["n_rcv"].map(lambda n: f"{n} receiver(s)")
             )
-            summary_by_n_rcv = summarize_localization_errors(
-                df_by_n_rcv, success_threshold_m
-            )
+            summary_by_n_rcv = summarize_localization_errors(df_by_n_rcv, success_threshold_m)
             fpath = os.path.join(
-                ROOT_IMG_PORTION_RESULTS_COMBINATION,
-                "rcv_combination_performance_by_n_rcv.csv",
+                ROOT_IMG_PORTION_RESULTS_COMBINATION, "rcv_combination_performance_by_n_rcv.csv"
             )
             summary_by_n_rcv.to_csv(fpath, index=False)
             log(f"Saved {fpath}", level=2)
 
             # Console summary: median error by number of receivers and best combination of each distance type
             if verbose:
-                print(
-                    "    Median position error [m] (rows: number of combined receivers, columns: distance types)"
-                )
+                print("    Median position error [m] (rows: number of combined receivers, columns: distance types)")
                 table = pivot_error_summary(summary_by_n_rcv, "median_error_m").round(0)
-                print(
-                    "\n".join("    " + line for line in table.to_string().splitlines())
-                )
-                for distance_type, (rcv_pair, value) in best_rcv_pair_per_distance(
-                    summary
-                ).items():
+                print("\n".join("    " + line for line in table.to_string().splitlines()))
+                for distance_type, (rcv_pair, value) in best_rcv_pair_per_distance(summary).items():
                     if rcv_pair is not None:
                         print(
                             f"    Lowest median error for '{distance_type}': "
@@ -458,6 +431,7 @@ if run_analysis or run_ambiguity_plots:
             )
             save_combination_figure(fig, "rcv_combination_error_cdf_by_n_rcv.png")
 
+
     # ------------------------------------------------------------------------------------------------------------------
     # Ambiguity surfaces of the combinations, for each intersection
     # ------------------------------------------------------------------------------------------------------------------
@@ -474,8 +448,7 @@ if run_analysis or run_ambiguity_plots:
             )
 
         n_figures = (
-            len(datasets_mfp)
-            * len(combinations_plotted)
+            len(datasets_mfp) * len(combinations_plotted)
             * (int(plot_combined_ambiguity) + int(plot_combined_gamma_comparison))
         )
         if n_figures > max_ambiguity_figures:
@@ -487,10 +460,7 @@ if run_analysis or run_ambiguity_plots:
             )
         log(f"Ambiguity surfaces of the combinations: {n_figures} figure(s)", level=1)
 
-        for (
-            section1_label,
-            section2_label,
-        ), ds_mfp_intersection in datasets_mfp.items():
+        for (section1_label, section2_label), ds_mfp_intersection in datasets_mfp.items():
             log(f"Intersection '{section1_label}' x '{section2_label}'", level=2)
 
             section1_name = section_name_of(portion.position[section1_label])
@@ -518,8 +488,9 @@ if run_analysis or run_ambiguity_plots:
                         method=combination_method,
                         cmap=ambiguity_cmap,
                         max_quantile=ambiguity_max_quantile,
+                        metrics=ambiguity_metrics,
                     )
-                    save_ambiguity_figure(fig, f"mfp_ambiguity_4_metrics_{slug}.png")
+                    save_ambiguity_figure(fig, ambiguity_figure_filename(ambiguity_metrics, slug))
 
                 if plot_combined_gamma_comparison:
                     fig = plot_combined_intersection_gamma_comparison(
@@ -531,9 +502,7 @@ if run_analysis or run_ambiguity_plots:
                         cmap=ambiguity_cmap,
                         max_quantile=ambiguity_max_quantile,
                     )
-                    save_ambiguity_figure(
-                        fig, f"mfp_gamma_centered_comparison_{slug}.png"
-                    )
+                    save_ambiguity_figure(fig, f"mfp_gamma_centered_comparison_{slug}.png")
 
 # ======================================================================================================================
 # Save results (last step: the portion is closed by the save)

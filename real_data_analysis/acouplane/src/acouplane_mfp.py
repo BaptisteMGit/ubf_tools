@@ -18,7 +18,9 @@ from real_data_analysis.acouplane.src.acouplane_conventions import (
     get_mfp_axis_names,
 )
 from real_data_analysis.acouplane.src.acouplane_features import (
+    DEFAULT_RTF_METHOD,
     all_features_single_section,
+    check_rtf_method,
     distances_single_intersection,
 )
 from real_data_analysis.acouplane.src.acouplane_portion_io import (
@@ -221,6 +223,7 @@ def apply_mfp_strategy_to_portion_intersections(
     verbose=False,
     compare_centered_gamma=False,
     intersections=None,
+    rtf_method=DEFAULT_RTF_METHOD,
 ):
     """Compute the MFP ambiguity surfaces for meridional / zonal intersections.
 
@@ -252,6 +255,11 @@ def apply_mfp_strategy_to_portion_intersections(
         Intersections to process, as ``(meridional_label, zonal_label)`` pairs,
         e.g. ``[("sn0", "oe1"), ("sn0", "oe3")]``. If None (default), all
         intersections are processed.
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF (see ``all_features_single_section``): the ratio
+        ``S_ij / S_jj`` (active case, default) or the first eigenvector of the
+        spatial covariance matrix (passive case). It is stored in the attribute
+        ``rtf_method`` and must be the same for the library and the event.
 
     Returns
     -------
@@ -262,8 +270,10 @@ def apply_mfp_strategy_to_portion_intersections(
     ValueError
         If the ``feature`` group is missing, if the portion has no meridional
         or no zonal section (no intersection can be built), or if
-        ``intersections`` contains an invalid pair (see ``select_intersections``).
+        ``intersections`` contains an invalid pair (see ``select_intersections``),
+        or if ``rtf_method`` is unknown.
     """
+    check_rtf_method(rtf_method)
     if "feature" not in portion.children:
         raise ValueError(
             "No 'feature' group in the portion: the CPSD has not been computed yet. "
@@ -281,7 +291,7 @@ def apply_mfp_strategy_to_portion_intersections(
         if section_name not in sections_needed:
             continue
         if verbose:
-            print(f"    Features of section '{section_name}'")
+            print(f"    Features of section '{section_name}' (RTF '{rtf_method}')")
         ds_feature_section = feature_node.to_dataset()
 
         # Slice frequency band
@@ -293,6 +303,7 @@ def apply_mfp_strategy_to_portion_intersections(
             rcv_ref=rcv_ref,
             fmin=fmin,
             fmax=fmax,
+            rtf_method=rtf_method,
         )  # (nrcv, n_emission, nfreq)
 
         # Add coords
@@ -307,6 +318,7 @@ def apply_mfp_strategy_to_portion_intersections(
 
         # Add attributes
         ds_feature_section.attrs["reference_receiver"] = rcv_ref
+        ds_feature_section.attrs["rtf_method"] = rtf_method
 
         # Update portion
         feature_node.ds = ds_feature_section

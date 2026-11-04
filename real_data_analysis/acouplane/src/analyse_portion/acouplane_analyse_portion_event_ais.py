@@ -93,8 +93,8 @@ obs_ids = [
     "obs1",
     "obs2",
     "obs4",
-    # "obs5",
-    # "obs6",
+    "obs5",
+    "obs6",
     "obs7",
 ]
 
@@ -102,10 +102,16 @@ obs_ids = [
 fmin = 10
 fmax = 150
 
+# Estimation of the RTF (pi_ij), chosen separately for the library and for the event
+#   "spectral_ratio" -> S_ij / S_jj (active case)
+#   "cs_evd"         -> first eigenvector of the spatial covariance matrix (preferable for passive signals)
+# The two can differ (e.g. library: "spectral_ratio", passive event: "cs_evd")
+library_rtf_method = "spectral_ratio"
+event_rtf_method = "spectral_ratio"
+
 # Library: sections of the portion used as reference (None -> all the sections of the portion)
-# library_sections = ["sn2"]
+library_sections = ["sn2"]
 # library_sections = ["sn0", "sn2", "oe7", "oe8", "oe9"]
-library_sections = ["sn0", "sn2", "oe7", "oe8", "oe9", "oe4", "oe5", "oe6"]
 
 # Events compared to the library (None -> all the events of the event file)
 event_sections = None
@@ -128,7 +134,7 @@ success_threshold_m = (
 
 # The theoretical intersection only exists if the trajectory of the event crosses the library section: the
 # comparisons whose closest samples are further apart than this distance are not analysed
-max_crossing_distance_m = 100
+max_crossing_distance_m = 200
 
 # Approach used to combine the receivers and combinations to study
 #   "mean_surfaces" -> mean of the ambiguity surfaces of the combined receiver pairs
@@ -162,7 +168,7 @@ ambiguity_cmap = "Grays_r"
 ambiguity_max_quantile = (
     0.95  # quantile of each feature distance used as upper bound of its color scale
 )
-ambiguity_d_real_vmax = 200  # upper bound of the color scale of the real distance [m]
+ambiguity_d_real_vmax = 100  # upper bound of the color scale of the real distance [m]
 max_ambiguity_figures = (
     200  # safety limit on the number of figures (comparisons x combinations)
 )
@@ -258,7 +264,12 @@ elif "feature" not in portion_event.children:
 
 log(f"RTF and DCF features (reference receiver '{reference_rcv}')", level=1)
 derive_portion_features(
-    portion_event, rcv_ref=reference_rcv, fmin=fmin, fmax=fmax, verbose=verbose
+    portion_event,
+    rcv_ref=reference_rcv,
+    fmin=fmin,
+    fmax=fmax,
+    verbose=verbose,
+    rtf_method=event_rtf_method,
 )
 
 # ======================================================================================================================
@@ -280,6 +291,7 @@ portion_library = build_portion_library(
     fmax=fmax,
     acquisition_mode="active",
     verbose=verbose,
+    rtf_method=library_rtf_method,
 )
 log(f"Library sections: {list(portion_library.feature.children)}", level=1)
 

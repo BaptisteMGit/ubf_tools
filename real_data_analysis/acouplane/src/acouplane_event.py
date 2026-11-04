@@ -20,7 +20,9 @@ from real_data_analysis.acouplane.src.acouplane_conventions import (
     get_sample_axis_names,
 )
 from real_data_analysis.acouplane.src.acouplane_features import (
+    DEFAULT_RTF_METHOD,
     all_features_single_section,
+    check_rtf_method,
     distances_library_and_event,
     get_distance_between_library_and_event,
 )
@@ -261,7 +263,13 @@ def derive_portion_cpsd_welch(
 # ======================================================================================================================
 # Features (RTF, DCF) of the library sections and of the events: common processing
 # ======================================================================================================================
-def derive_features_dataset(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50):
+def derive_features_dataset(
+    ds_feature_section,
+    rcv_ref="obs1",
+    fmin=5,
+    fmax=50,
+    rtf_method=DEFAULT_RTF_METHOD,
+):
     """Derive the RTF and DCF features of a feature dataset (section of the library, or event).
 
     The processing does not depend on the acquisition mode (active emissions or
@@ -279,6 +287,12 @@ def derive_features_dataset(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50)
     fmin, fmax : float, optional
         Frequency band kept, in Hz.
 
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF (see ``all_features_single_section``): the ratio
+        ``S_ij / S_jj`` (active case, default) or the first eigenvector of the
+        spatial covariance matrix (passive case). It is stored in the attribute
+        ``rtf_method``. The library and the event can use different methods.
+
     Returns
     -------
     xarray.Dataset
@@ -290,9 +304,10 @@ def derive_features_dataset(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50)
     Raises
     ------
     ValueError
-        If the dataset has no ``Sxy`` variable, or if ``rcv_ref`` is not one of
-        its receivers.
+        If the dataset has no ``Sxy`` variable, if ``rcv_ref`` is not one of
+        its receivers, or if ``rtf_method`` is unknown.
     """
+    check_rtf_method(rtf_method)
     if "Sxy" not in ds_feature_section:
         raise ValueError(
             "The feature dataset has no CPSD matrix 'Sxy': the RTF and DCF features "
@@ -314,6 +329,7 @@ def derive_features_dataset(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50)
         rcv_ref=rcv_ref,
         fmin=fmin,
         fmax=fmax,
+        rtf_method=rtf_method,
     )  # (n_rcv, n_samples, n_freq)
 
     # Add coords
@@ -328,11 +344,19 @@ def derive_features_dataset(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50)
 
     # Add attributes
     ds_feature_section.attrs["reference_receiver"] = rcv_ref
+    ds_feature_section.attrs["rtf_method"] = rtf_method
 
     return ds_feature_section
 
 
-def derive_portion_features(portion_tree, rcv_ref="obs1", fmin=5, fmax=50, verbose=False):
+def derive_portion_features(
+    portion_tree,
+    rcv_ref="obs1",
+    fmin=5,
+    fmax=50,
+    verbose=False,
+    rtf_method=DEFAULT_RTF_METHOD,
+):
     """Derive the RTF and DCF features of every section of the ``feature`` group of a tree.
 
     Parameters
@@ -347,6 +371,12 @@ def derive_portion_features(portion_tree, rcv_ref="obs1", fmin=5, fmax=50, verbo
         Frequency band kept, in Hz.
     verbose : bool, optional
         If True, print the progress.
+
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF (see ``all_features_single_section``): the ratio
+        ``S_ij / S_jj`` (active case, default) or the first eigenvector of the
+        spatial covariance matrix (passive case). It is stored in the attribute
+        ``rtf_method``. The library and the event can use different methods.
 
     Returns
     -------
@@ -364,10 +394,16 @@ def derive_portion_features(portion_tree, rcv_ref="obs1", fmin=5, fmax=50, verbo
 
     for section_name, feature_node in portion_tree.feature.children.items():
         if verbose:
-            print(f"    Features of '{section_name}' (reference receiver '{rcv_ref}')")
+            print(
+                f"    Features of '{section_name}' (reference receiver '{rcv_ref}', RTF '{rtf_method}')"
+            )
 
         feature_node.ds = derive_features_dataset(
-            feature_node.to_dataset(), rcv_ref=rcv_ref, fmin=fmin, fmax=fmax
+            feature_node.to_dataset(),
+            rcv_ref=rcv_ref,
+            fmin=fmin,
+            fmax=fmax,
+            rtf_method=rtf_method,
         )
 
 
@@ -375,7 +411,13 @@ def derive_portion_features(portion_tree, rcv_ref="obs1", fmin=5, fmax=50, verbo
 # Library of reference features
 # ======================================================================================================================
 def _to_sample_section(
-    ds_feature_section, rcv_ref, fmin, fmax, acquisition_mode, kind="library"
+    ds_feature_section,
+    rcv_ref,
+    fmin,
+    fmax,
+    acquisition_mode,
+    kind="library",
+    rtf_method=DEFAULT_RTF_METHOD,
 ):
     """Convert a feature dataset (active section or passive event) into a library section or an event.
 
@@ -399,6 +441,12 @@ def _to_sample_section(
     kind : {"library", "event"}, optional
         Naming of the samples of the result.
 
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF (see ``all_features_single_section``): the ratio
+        ``S_ij / S_jj`` (active case, default) or the first eigenvector of the
+        spatial covariance matrix (passive case). It is stored in the attribute
+        ``rtf_method``. The library and the event can use different methods.
+
     Returns
     -------
     xarray.Dataset
@@ -413,7 +461,11 @@ def _to_sample_section(
 
     # Features (RTF, DCF) of the section, with the common processing
     ds_features = derive_features_dataset(
-        ds_feature_section, rcv_ref=rcv_ref, fmin=fmin, fmax=fmax
+        ds_feature_section,
+        rcv_ref=rcv_ref,
+        fmin=fmin,
+        fmax=fmax,
+        rtf_method=rtf_method,
     )
 
     # Keep the useful variables only (the CPSD matrix is not needed anymore)
@@ -435,12 +487,13 @@ def _to_sample_section(
     ds_library.attrs = dict(ds_features.attrs)
     ds_library.attrs["acquisition_mode"] = acquisition_mode
     ds_library.attrs["reference_receiver"] = rcv_ref
+    ds_library.attrs["rtf_method"] = rtf_method
 
     return ds_library
 
 
 def library_section_from_active_section(
-    ds_feature_active_section, rcv_ref="obs1", fmin=5, fmax=50
+    ds_feature_active_section, rcv_ref="obs1", fmin=5, fmax=50, rtf_method=DEFAULT_RTF_METHOD
 ):
     """Build a library section from the active emissions of a section.
 
@@ -454,18 +507,29 @@ def library_section_from_active_section(
     fmin, fmax : float, optional
         Frequency band kept, in Hz.
 
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF (see ``all_features_single_section``): the ratio
+        ``S_ij / S_jj`` (active case, default) or the first eigenvector of the
+        spatial covariance matrix (passive case). It is stored in the attribute
+        ``rtf_method``. The library and the event can use different methods.
+
     Returns
     -------
     xarray.Dataset
         Library section, see ``_to_sample_section``.
     """
     return _to_sample_section(
-        ds_feature_active_section, rcv_ref, fmin, fmax, acquisition_mode="active"
+        ds_feature_active_section,
+        rcv_ref,
+        fmin,
+        fmax,
+        acquisition_mode="active",
+        rtf_method=rtf_method,
     )
 
 
 def library_section_from_passive_event(
-    ds_feature_event, rcv_ref="obs1", fmin=5, fmax=50
+    ds_feature_event, rcv_ref="obs1", fmin=5, fmax=50, rtf_method=DEFAULT_RTF_METHOD
 ):
     """Build a library section from the windows of a passive event.
 
@@ -482,13 +546,24 @@ def library_section_from_passive_event(
     fmin, fmax : float, optional
         Frequency band kept, in Hz.
 
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF (see ``all_features_single_section``): the ratio
+        ``S_ij / S_jj`` (active case, default) or the first eigenvector of the
+        spatial covariance matrix (passive case). It is stored in the attribute
+        ``rtf_method``. The library and the event can use different methods.
+
     Returns
     -------
     xarray.Dataset
         Library section, see ``_to_sample_section``.
     """
     return _to_sample_section(
-        ds_feature_event, rcv_ref, fmin, fmax, acquisition_mode="passive"
+        ds_feature_event,
+        rcv_ref,
+        fmin,
+        fmax,
+        acquisition_mode="passive",
+        rtf_method=rtf_method,
     )
 
 
@@ -500,6 +575,7 @@ def build_portion_library(
     fmax=50,
     acquisition_mode="active",
     verbose=False,
+    rtf_method=DEFAULT_RTF_METHOD,
 ):
     """Build the library ``portion_library`` from the sections of a portion.
 
@@ -534,6 +610,12 @@ def build_portion_library(
         shots of a portion, ``"passive"`` for the windows of events.
     verbose : bool, optional
         If True, print the progress.
+
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF (see ``all_features_single_section``): the ratio
+        ``S_ij / S_jj`` (active case, default) or the first eigenvector of the
+        spatial covariance matrix (passive case). It is stored in the attribute
+        ``rtf_method``. The library and the event can use different methods.
 
     Returns
     -------
@@ -577,10 +659,13 @@ def build_portion_library(
     portion_library.attrs["description"] = "Library of reference features"
     portion_library.attrs["acquisition_mode"] = acquisition_mode
     portion_library.attrs["reference_receiver"] = rcv_ref
+    portion_library.attrs["rtf_method"] = rtf_method
 
     for section_name in sections:
         if verbose:
-            print(f"    Library section '{section_name}' ({acquisition_mode})")
+            print(
+                f"    Library section '{section_name}' ({acquisition_mode}, RTF '{rtf_method}')"
+            )
 
         # Features of the section (only this section is read)
         ds_library = to_library_section(
@@ -588,6 +673,7 @@ def build_portion_library(
             rcv_ref=rcv_ref,
             fmin=fmin,
             fmax=fmax,
+            rtf_method=rtf_method,
         )
         ds_library.attrs["section_label"] = section_name
 
@@ -611,7 +697,13 @@ def build_portion_library(
 # Event built from an active section (test section removed from the library)
 # ======================================================================================================================
 def build_portion_event_from_active_section(
-    portion, section, rcv_ref="obs1", fmin=5, fmax=50, event_id=None
+    portion,
+    section,
+    rcv_ref="obs1",
+    fmin=5,
+    fmax=50,
+    event_id=None,
+    rtf_method=DEFAULT_RTF_METHOD,
 ):
     """Build an event tree from the active emissions of a section of a portion.
 
@@ -639,6 +731,12 @@ def build_portion_event_from_active_section(
         Frequency band kept, in Hz.
     event_id : str or int or None, optional
         Identifier displayed for the event. If None, the section label.
+
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF (see ``all_features_single_section``): the ratio
+        ``S_ij / S_jj`` (active case, default) or the first eigenvector of the
+        spatial covariance matrix (passive case). It is stored in the attribute
+        ``rtf_method``. The library and the event can use different methods.
 
     Returns
     -------
@@ -670,6 +768,7 @@ def build_portion_event_from_active_section(
         fmax=fmax,
         acquisition_mode="active",
         kind="event",
+        rtf_method=rtf_method,
     )
     ds_event.attrs["section_label"] = section
 

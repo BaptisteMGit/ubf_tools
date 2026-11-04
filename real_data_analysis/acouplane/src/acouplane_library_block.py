@@ -149,6 +149,7 @@ def build_library_block(portion_library, sections=None, fmin=None, fmax=None):
             section_label="library_block",
             acquisition_mode=reference_ds.attrs.get("acquisition_mode", "unknown"),
             reference_receiver=reference_ds.attrs.get("reference_receiver", "unknown"),
+            rtf_method=reference_ds.attrs.get("rtf_method", "spectral_ratio"),
             library_sections=",".join(sections),
         ),
     )

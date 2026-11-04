@@ -19,6 +19,19 @@ from real_data_analysis.acouplane.src.acouplane_conventions import (
     get_sample_axis_names,
 )
 
+
+# Methods available to estimate the RTF ``pi_ij`` (relative transfer function between a receiver and the reference)
+#   "spectral_ratio": pi_ij = S_ij / S_jj (cross spectrum over auto spectrum of the reference). Method of the active case.
+#   "cs_evd": pi_ij from the first eigenvector of the spatial covariance matrix (CSDM) of the receivers, with the
+#             covariance subtraction method of ``FeatureProcessor`` (preferable for passive signals).
+RTF_METHODS = ("spectral_ratio", "cs_evd")
+DEFAULT_RTF_METHOD = "spectral_ratio"
+
+# Sampling frequency given to the FeatureProcessor of the "cs_evd" method. It is only needed to build the estimator:
+# the CSDM is already computed, so it does not influence the RTF.
+CS_EVD_SAMPLING_FREQUENCY_HZ = 2000
+
+
 # Maximum number of elements of the temporary 3D arrays built when comparing two sections
 # (see derive_feature_distance_between_sections). Keeps the RAM usage bounded.
 _MAX_BROADCAST_ELEMENTS = 20_000_000
@@ -494,7 +507,138 @@ def derive_section_features(
     )
 
 
-def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50):
+def check_rtf_method(rtf_method):
+    """Check the name of the method used to estimate the RTF.
+
+    Parameters
+    ----------
+    rtf_method : str
+        Method name, one of ``RTF_METHODS``.
+
+    Returns
+    -------
+    str
+        The method name.
+
+    Raises
+    ------
+    ValueError
+        If the method is unknown.
+    """
+    if rtf_method not in RTF_METHODS:
+        raise ValueError(
+            f"Unknown rtf_method '{rtf_method}'. Valid methods: {list(RTF_METHODS)} "
+            "('spectral_ratio': S_ij / S_jj, 'cs_evd': first eigenvector of the spatial covariance matrix)."
+        )
+    return rtf_method
+
+
+def derive_rtf_cs_evd(ds_feature_section, rcv_ref, rcv_ids, fmin=5, fmax=50):
+    """Estimate the RTF of several receivers with the cs-evd method (first eigenvector of the CSDM).
+
+    For every sample (emission or passive window) and frequency, the spatial
+    covariance matrix of the receivers (CSDM, variable ``Sxy``) is given to
+    ``FeatureProcessor.rtf_estimator.estimate_rtf_covariance_subtraction``,
+    which estimates the RTF vector from the first eigenvector of the matrix,
+    relative to the reference receiver. The noise covariance is not subtracted
+    (null matrix), as in the passive tests.
+
+    Parameters
+    ----------
+    ds_feature_section : xarray.Dataset
+        Feature dataset with ``Sxy`` of dimensions ``(<sample dimension>,
+        rcv_i, rcv_j, freq)``; all the receivers must be in the matrix (the
+        eigenvector uses all of them).
+    rcv_ref : str
+        Reference receiver.
+    rcv_ids : sequence of str
+        Receivers whose RTF is returned (the reference receiver excluded).
+    fmin, fmax : float, optional
+        Frequency band kept, in Hz.
+
+    Returns
+    -------
+    numpy.ndarray
+        Complex RTF, shape ``(len(rcv_ids), n_samples, n_freq)``. Non finite
+        values are replaced by NaN. A sample whose matrix contains non finite
+        values (no CPSD) gives NaN.
+
+    Raises
+    ------
+    ValueError
+        If a receiver is missing, if the receivers of the rows and columns of
+        ``Sxy`` differ, or if the estimator does not return one RTF per
+        receiver and frequency.
+    ImportError
+        If ``source.feature_processor`` (``FeatureProcessor``) cannot be imported.
+    """
+    # The FeatureProcessor is only needed by this method
+    from source.feature_processor import FeatureProcessor
+
+    datetime_dim = get_sample_axis_names(ds_feature_section)["datetime_dim"]
+    ds_band = ds_feature_section.sel(freq=slice(fmin, fmax))
+
+    receivers = [str(rcv) for rcv in ds_band.rcv_i.values]
+    if [str(rcv) for rcv in ds_band.rcv_j.values] != receivers:
+        raise ValueError(
+            "The receivers of the rows (rcv_i) and of the columns (rcv_j) of Sxy differ: "
+            "the spatial covariance matrix is not square."
+        )
+    for rcv in (rcv_ref, *rcv_ids):
+        if rcv not in receivers:
+            raise ValueError(
+                f"Receiver '{rcv}' not found in the feature dataset (available receivers: {receivers})."
+            )
+    idx_ref = receivers.index(rcv_ref)
+    idx_rcv_ids = [receivers.index(rcv) for rcv in rcv_ids]
+
+    feature_processor = FeatureProcessor(
+        fs=CS_EVD_SAMPLING_FREQUENCY_HZ,
+        idx_rcv_ref=idx_ref,
+    )  # Only its rtf_estimator is used
+
+    # CSDM of every sample: (n_samples, n_freq, rcv_i, rcv_j). The rows are the receivers i and the columns the
+    # receivers j (Sxy[i, j] = E[x_i x_j*]): the first eigenvector is then the steering vector, whose ratio to the
+    # reference receiver is the RTF. (A transposed matrix would give the complex conjugate, i.e. a sign error
+    # of the phase of the RTF.)
+    csdm_all = ds_band.Sxy.transpose(
+        datetime_dim,
+        "freq",
+        "rcv_i",
+        "rcv_j",
+    ).values
+    n_samples, n_freq, n_rcv = csdm_all.shape[:3]
+
+    pi_along_samples = np.full((n_samples, n_freq, n_rcv), np.nan, dtype=complex)
+    for i_sample in range(n_samples):
+        csdm = csdm_all[i_sample]  # (n_freq, n_rcv, n_rcv)
+        # No CPSD for this sample (e.g. incomplete window): the eigen decomposition is not possible
+        if not np.all(np.isfinite(csdm)):
+            continue
+        noise_covariance = np.zeros_like(csdm)  # no noise subtraction
+        pi_sample = feature_processor.rtf_estimator.estimate_rtf_covariance_subtraction(
+            csdm - noise_covariance, use_first_column=False
+        )
+        pi_sample = np.asarray(pi_sample)
+        if pi_sample.shape != (n_freq, n_rcv):
+            raise ValueError(
+                f"The cs-evd estimator returned an array of shape {pi_sample.shape} instead of "
+                f"(n_freq, n_rcv) = {(n_freq, n_rcv)}."
+            )
+        pi_along_samples[i_sample] = pi_sample
+
+    # (n_samples, n_freq, n_rcv) -> (n_rcv, n_samples, n_freq), non reference receivers only
+    pi_all = np.moveaxis(pi_along_samples, source=[0, 1, 2], destination=[1, 2, 0])
+    return _non_finite_to_nan(pi_all[idx_rcv_ids])
+
+
+def all_features_single_section(
+    ds_feature_section,
+    rcv_ref="obs1",
+    fmin=5,
+    fmax=50,
+    rtf_method=DEFAULT_RTF_METHOD,
+):
     """Derive the RTF and DCF features of a section for all receivers but the reference.
 
     The RTF level ``gamma`` is NOT centered along the frequency axis (see
@@ -508,6 +652,15 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
         Reference receiver.
     fmin, fmax : float, optional
         Frequency band kept, in Hz.
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF ``pi_ij``:
+
+        - ``"spectral_ratio"`` (default, active case): ``S_ij / S_jj``;
+        - ``"cs_evd"`` (passive case): first eigenvector of the spatial
+          covariance matrix, see ``derive_rtf_cs_evd``.
+
+        ``gamma_ij`` is always ``20 log10 |pi_ij|`` and ``sij_scot`` (DCF) does
+        not depend on the method.
 
     Returns
     -------
@@ -519,8 +672,9 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
     Raises
     ------
     ValueError
-        If ``rcv_ref`` is not a receiver of the dataset.
+        If ``rcv_ref`` is not a receiver of the dataset or if ``rtf_method`` is unknown.
     """
+    check_rtf_method(rtf_method)
     rcv_i_arr = list(ds_feature_section.rcv_i.values)
     if rcv_ref not in rcv_i_arr:
         raise ValueError(
@@ -532,34 +686,6 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
     pi_1_arr = []
     gamma_1_arr = []
     sij_scot_1_arr = []
-
-    # NOTE : part to modify -> option for RTF calculation using cs-evd method rather than sij/sii (usefull for passive case)
-    from source.feature_processor import FeatureProcessor
-
-    fp = FeatureProcessor(
-        fs=2000,
-        idx_rcv_ref=0,
-    )  # Feature processor to handle rtf_estimator and gcc_estimator
-    pi_ij_along_dt = []
-    for ievent_dt in range(ds_feature_section.sizes["event_datetime"]):
-        Rx = ds_feature_section.isel(event_datetime=ievent_dt).Sxy.T
-        Rv = np.zeros_like(Rx)
-        pi_ij_dt = fp.rtf_estimator.estimate_rtf_covariance_subtraction(
-            Rx - Rv, use_first_column=False
-        )
-        pi_ij_along_dt.append(pi_ij_dt)
-
-    # Convert to array
-    pi_ij_along_dt = np.asarray(pi_ij_along_dt)  # Shape -> (n_emission, nfreq, nrcv)
-    # Reshape to required shape in the following (nrcv, n_emission, nfreq):
-    axis_src = [0, 1, 2]
-    axis_dst = [1, 2, 0]
-    pi_1_arr = np.moveaxis(pi_ij_along_dt, source=axis_src, destination=axis_dst)
-
-    # Deduce gamma
-    gamma_1_arr = 20 * np.log10(np.abs(pi_1_arr))
-
-    # TODO : adapt folowwing part if this option is used
 
     for rcv_id_i in rcv_i_arr:
         # Compute features (RTF, DCF) of the section
@@ -576,11 +702,23 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
         gamma_1_arr.append(gamma_a)
         sij_scot_1_arr.append(sij_scot_a)
 
+    pi_1_arr = np.asarray(pi_1_arr)
+    gamma_1_arr = np.asarray(gamma_1_arr)
+
+    # RTF from the first eigenvector of the spatial covariance matrix: replaces pi_ij and gamma_ij
+    # (the DCF computed above is unchanged)
+    if rtf_method == "cs_evd":
+        pi_1_arr = derive_rtf_cs_evd(
+            ds_feature_section, rcv_ref, rcv_i_arr, fmin=fmin, fmax=fmax
+        )
+        with np.errstate(divide="ignore"):
+            gamma_1_arr = _non_finite_to_nan(20 * np.log10(np.abs(pi_1_arr)))
+
     # Convert to arrays and group (nrcv, n_emission, nfreq)
     features_section = dict(
         rcv_id=rcv_i_arr,
-        pi_ij=np.asarray(pi_1_arr),
-        gamma_ij=np.asarray(gamma_1_arr),
+        pi_ij=pi_1_arr,
+        gamma_ij=gamma_1_arr,
         sij_scot=np.asarray(sij_scot_1_arr),
     )
 
@@ -645,7 +783,9 @@ def feature_distances_between_datasets(
         )
         # Compute distances between the samples of both datasets
         dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf = (
-            derive_feature_distance_between_sections(features_a, features_b)
+            derive_feature_distance_between_sections(
+                features_a, features_b
+            )
         )
 
         # Store
@@ -678,6 +818,53 @@ def feature_distances_between_datasets(
         feature_distances["dist_L2_gamma_centered"] = np.asarray(dist_L2_gamma_c_arr)
 
     return feature_distances
+
+
+def compare_rtf_methods(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50):
+    """Compare the RTF of the two methods on a section (sanity check of the cs-evd option).
+
+    On data where one source dominates (e.g. active emissions) both methods
+    should give almost the same RTF. For each receiver, the median over the
+    samples and frequencies of the relative difference ``|pi_evd - pi_ratio| / |pi_ratio|``
+    is returned, and the same quantity with the complex conjugate of ``pi_evd``
+    (a systematic gap that vanishes with the conjugate reveals a convention
+    difference of the covariance matrix: ``Sxy[i, j]`` versus its transpose).
+
+    Parameters
+    ----------
+    ds_feature_section : xarray.Dataset
+        Feature dataset with ``Sxy``.
+    rcv_ref : str, optional
+        Reference receiver.
+    fmin, fmax : float, optional
+        Frequency band kept, in Hz.
+
+    Returns
+    -------
+    dict
+        ``{rcv_id: {"relative_difference": float, "relative_difference_conjugate": float}}``.
+    """
+    features_ratio = all_features_single_section(
+        ds_feature_section, rcv_ref, fmin, fmax, rtf_method="spectral_ratio"
+    )
+    features_evd = all_features_single_section(
+        ds_feature_section, rcv_ref, fmin, fmax, rtf_method="cs_evd"
+    )
+
+    comparison = {}
+    for i_rcv, rcv_id in enumerate(features_ratio["rcv_id"]):
+        pi_ratio = features_ratio["pi_ij"][i_rcv]
+        pi_evd = features_evd["pi_ij"][i_rcv]
+        comparison[str(rcv_id)] = dict(
+            relative_difference=float(
+                np.nanmedian(np.abs(pi_evd - pi_ratio) / np.abs(pi_ratio))
+            ),
+            relative_difference_conjugate=float(
+                np.nanmedian(np.abs(np.conj(pi_evd) - pi_ratio) / np.abs(pi_ratio))
+            ),
+        )
+
+    return comparison
 
 
 def distances_single_intersection(

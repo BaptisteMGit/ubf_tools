@@ -98,6 +98,13 @@ obs_ids = [
 fmin = 10
 fmax = 150
 
+# Estimation of the RTF (pi_ij), chosen separately for the library and for the event
+#   "spectral_ratio" -> S_ij / S_jj (active case)
+#   "cs_evd"         -> first eigenvector of the spatial covariance matrix (preferable for passive signals)
+# The two can differ (e.g. library: "spectral_ratio", passive event: "cs_evd")
+library_rtf_method = "spectral_ratio"
+event_rtf_method = "spectral_ratio"
+
 # Test sections: each of them is removed from the library in turn and localized (its own run, with the library
 # made of the other sections)
 test_sections = ["sn2"]
@@ -113,13 +120,11 @@ library_sections = None
 #   "event"   -> error between the samples of the test section (position along the test section)
 #   "both"    -> sqrt(error_library**2 + error_test**2)
 error_mode = "both"
-success_threshold_m = (
-    100  # an intersection is successfully localized if its error <= threshold [m]
-)
+success_threshold_m = 100  # an intersection is successfully localized if its error <= threshold [m]
 
 # The theoretical intersection only exists if the test section crosses the library section: the library sections
 # whose closest samples are further apart than this distance are not compared to the test section
-max_crossing_distance_m = 100
+max_crossing_distance_m = 200
 
 # Approach used to combine the receivers and combinations to study
 #   "mean_surfaces" -> mean of the ambiguity surfaces of the combined receiver pairs
@@ -127,9 +132,7 @@ combination_method = "mean_surfaces"
 #   rcv_combinations = None  -> all the combinations of the sizes `combination_sizes` among the receivers
 #   rcv_combinations = [["obs2"], ["obs2", "obs4"], ...] -> explicit combinations
 rcv_combinations = None
-combination_sizes = (
-    None  # None -> all sizes, from 1 receiver to all of them; e.g. [1, 2, 5]
-)
+combination_sizes = None  # None -> all sizes, from 1 receiver to all of them; e.g. [1, 2, 5]
 max_combinations = 200  # safety limit on the number of combinations (the number grows as 2**n_receivers)
 
 # Distance types to analyse: None -> all those computed, otherwise a list among "theta", "theta_gamma", "L2_gamma",
@@ -146,17 +149,11 @@ combinations_to_plot = None
 # Metrics displayed next to the real distance (always in the first panel): 3 among
 # "theta", "theta_gamma", "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered"
 # (the centered ones need compare_centered_gamma = True), e.g. ["theta_gamma_centered", "L2_gamma_centered", "dcf"]
-# ambiguity_metrics = ["theta_gamma", "theta", "dcf"]
-ambiguity_metrics = ["theta_gamma_centered", "L2_gamma_centered", "dcf"]
-
+ambiguity_metrics = ["theta_gamma", "theta", "dcf"]
 ambiguity_cmap = "Grays_r"
-ambiguity_max_quantile = (
-    0.95  # quantile of each feature distance used as upper bound of its color scale
-)
+ambiguity_max_quantile = 0.95  # quantile of each feature distance used as upper bound of its color scale
 ambiguity_d_real_vmax = 100  # upper bound of the color scale of the real distance [m]
-max_ambiguity_figures = (
-    200  # safety limit on the number of figures (comparisons x combinations)
-)
+max_ambiguity_figures = 200  # safety limit on the number of figures (comparisons x combinations)
 
 # ======================================================================================================================
 # Booleans to control behavior
@@ -220,16 +217,12 @@ if unknown_sections:
         f"Unknown test section(s) {unknown_sections} (sections of the portion: {available_sections})."
     )
 if library_sections is not None:
-    unknown_sections = [
-        name for name in library_sections if name not in available_sections
-    ]
+    unknown_sections = [name for name in library_sections if name not in available_sections]
     if unknown_sections:
         raise ValueError(
             f"Unknown library section(s) {unknown_sections} (sections of the portion: {available_sections})."
         )
-library_pool = (
-    available_sections if library_sections is None else list(library_sections)
-)
+library_pool = available_sections if library_sections is None else list(library_sections)
 
 # ======================================================================================================================
 # Library of reference features (all the candidate sections, built once)
@@ -243,14 +236,13 @@ portion_library = build_portion_library(
     fmax=fmax,
     acquisition_mode="active",
     verbose=verbose,
+    rtf_method=library_rtf_method,
 )
 
 # ======================================================================================================================
 # Ambiguity surfaces between each test section and the library (without the test section)
 # ======================================================================================================================
-log(
-    "Step 3 - Ambiguity surfaces between each test section and the library sections that cross it"
-)
+log("Step 3 - Ambiguity surfaces between each test section and the library sections that cross it")
 datasets_mfp = {}
 crossing_records = []
 
@@ -264,6 +256,7 @@ for test_section in test_sections:
         rcv_ref=reference_rcv,
         fmin=fmin,
         fmax=fmax,
+        rtf_method=event_rtf_method,
     )
 
     # The test section is removed from the library
@@ -291,11 +284,7 @@ for test_section in test_sections:
         )
         log(
             f"Library '{record['library']}': closest samples {record['crossing_distance_m']:.0f} m apart"
-            + (
-                ""
-                if is_crossing
-                else f" (> {max_crossing_distance_m} m: no intersection, not compared)"
-            ),
+            + ("" if is_crossing else f" (> {max_crossing_distance_m} m: no intersection, not compared)"),
             level=2,
         )
         if is_crossing:
@@ -355,9 +344,7 @@ rcv_lists = [
     for ds in datasets_mfp.values()
 ]
 available_rcv_ids = [
-    rcv_id
-    for rcv_id in rcv_lists[0]
-    if all(rcv_id in rcv_list for rcv_list in rcv_lists)
+    rcv_id for rcv_id in rcv_lists[0] if all(rcv_id in rcv_list for rcv_list in rcv_lists)
 ]
 
 # Combinations of receivers to study
@@ -378,14 +365,10 @@ log(
 # Position error and contrast of each combination of receivers
 # ======================================================================================================================
 run_analysis = (
-    analyse_error_vs_n_rcv
-    or analyse_contrast_vs_n_rcv
-    or analyse_combination_performance
+    analyse_error_vs_n_rcv or analyse_contrast_vs_n_rcv or analyse_combination_performance
 )
 if run_analysis:
-    log(
-        "Step 6 - Combining the receivers (position error and contrast of the combined ambiguity surfaces)"
-    )
+    log("Step 6 - Combining the receivers (position error and contrast of the combined ambiguity surfaces)")
 
     if len(datasets_mfp) < 3:
         print(
@@ -416,9 +399,7 @@ if run_analysis:
     )
     df_records = add_validity_column(df_records, success_threshold_m)
 
-    fpath = os.path.join(
-        ROOT_IMG_PORTION_RESULTS_TEST, "test_section_combination_records.csv"
-    )
+    fpath = os.path.join(ROOT_IMG_PORTION_RESULTS_TEST, "test_section_combination_records.csv")
     df_records.to_csv(fpath, index=False)
     log(f"Saved {fpath}", level=2)
 
@@ -483,26 +464,19 @@ if run_analysis:
         df_by_n_rcv = df_records.assign(
             rcv_pair=df_records["n_rcv"].map(lambda n: f"{n} receiver(s)")
         )
-        summary_by_n_rcv = summarize_localization_errors(
-            df_by_n_rcv, success_threshold_m
-        )
+        summary_by_n_rcv = summarize_localization_errors(df_by_n_rcv, success_threshold_m)
         fpath = os.path.join(
-            ROOT_IMG_PORTION_RESULTS_TEST,
-            "test_section_combination_performance_by_n_rcv.csv",
+            ROOT_IMG_PORTION_RESULTS_TEST, "test_section_combination_performance_by_n_rcv.csv"
         )
         summary_by_n_rcv.to_csv(fpath, index=False)
         log(f"Saved {fpath}", level=2)
 
         # Console summary: median error by number of receivers and best combination of each distance type
         if verbose:
-            print(
-                "    Median position error [m] (rows: number of combined receivers, columns: distance types)"
-            )
+            print("    Median position error [m] (rows: number of combined receivers, columns: distance types)")
             table = pivot_error_summary(summary_by_n_rcv, "median_error_m").round(0)
             print("\n".join("    " + line for line in table.to_string().splitlines()))
-            for distance_type, (rcv_pair, value) in best_rcv_pair_per_distance(
-                summary
-            ).items():
+            for distance_type, (rcv_pair, value) in best_rcv_pair_per_distance(summary).items():
                 if rcv_pair is not None:
                     print(
                         f"    Lowest median error for '{distance_type}': "
@@ -525,9 +499,7 @@ if run_analysis:
 # Theoretical and estimated intersections (positions)
 # ======================================================================================================================
 if save_intersection_positions:
-    log(
-        "Step 6b - Theoretical and estimated intersections of each comparison and combination of receivers"
-    )
+    log("Step 6b - Theoretical and estimated intersections of each comparison and combination of receivers")
 
     position_records = []
     for (library_name, event_name), ds_mfp in datasets_mfp.items():
@@ -544,9 +516,7 @@ if save_intersection_positions:
                     )
                 )
 
-    fpath = os.path.join(
-        ROOT_IMG_PORTION_RESULTS_TEST, "test_section_intersection_positions.csv"
-    )
+    fpath = os.path.join(ROOT_IMG_PORTION_RESULTS_TEST, "test_section_intersection_positions.csv")
     pd.DataFrame(position_records).to_csv(fpath, index=False)
     log(f"Saved {fpath}", level=2)
 
@@ -568,8 +538,7 @@ if plot_ambiguity or plot_gamma_comparison:
         )
 
     n_figures = (
-        len(datasets_mfp)
-        * len(combinations_plotted)
+        len(datasets_mfp) * len(combinations_plotted)
         * (int(plot_ambiguity) + int(plot_gamma_comparison))
     )
     if n_figures > max_ambiguity_figures:
@@ -586,9 +555,7 @@ if plot_ambiguity or plot_gamma_comparison:
 
         # Names displayed on the axes
         try:
-            library_display_name = (
-                f"library {section_name_of(portion.position[library_name])}"
-            )
+            library_display_name = f"library {section_name_of(portion.position[library_name])}"
         except KeyError:
             # The orientation / identifier of the section are not stored: use its label
             library_display_name = f"library {library_name}"
@@ -601,9 +568,7 @@ if plot_ambiguity or plot_gamma_comparison:
         # One folder per comparison
         save_ambiguity_figure = make_figure_saver(
             os.path.join(
-                ROOT_IMG_PORTION_RESULTS_TEST,
-                "ambiguity",
-                f"{library_name}_{event_name}",
+                ROOT_IMG_PORTION_RESULTS_TEST, "ambiguity", f"{library_name}_{event_name}"
             ),
             log,
         )
@@ -623,9 +588,7 @@ if plot_ambiguity or plot_gamma_comparison:
                     metrics=ambiguity_metrics,
                     d_real_vmax=ambiguity_d_real_vmax,
                 )
-                save_ambiguity_figure(
-                    fig, ambiguity_figure_filename(ambiguity_metrics, slug)
-                )
+                save_ambiguity_figure(fig, ambiguity_figure_filename(ambiguity_metrics, slug))
 
             if plot_gamma_comparison:
                 fig = plot_combined_intersection_gamma_comparison(

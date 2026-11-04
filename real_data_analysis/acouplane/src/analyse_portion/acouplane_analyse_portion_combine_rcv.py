@@ -91,6 +91,12 @@ obs_ids = [
 fmin = 10
 fmax = 800
 
+# Estimation of the RTF (pi_ij)
+#   "spectral_ratio" -> S_ij / S_jj (active case)
+#   "cs_evd"         -> first eigenvector of the spatial covariance matrix (preferable for passive signals)
+# The same method must be used for the library and the event
+rtf_method = "spectral_ratio"
+
 # Intersections to analyse. None -> all intersections. Otherwise a list of (meridional, zonal) section labels
 intersections_to_process = [("sn2", "oe6")]
 # intersections_to_process = None
@@ -212,6 +218,7 @@ if apply_mfp_strategy_intersections:
         verbose=verbose,
         compare_centered_gamma=compare_centered_gamma,
         intersections=selected_intersections,
+        rtf_method=rtf_method,
     )
 else:
     log("Step 2 - MFP strategy: skipped (apply_mfp_strategy_intersections = False), using stored results")

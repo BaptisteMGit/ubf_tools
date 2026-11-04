@@ -90,8 +90,15 @@ obs_ids = [
 fmin = 10
 fmax = 150
 
+# Estimation of the RTF (pi_ij), chosen separately for the library and for the event
+#   "spectral_ratio" -> S_ij / S_jj (active case)
+#   "cs_evd"         -> first eigenvector of the spatial covariance matrix (preferable for passive signals)
+# The two can differ (e.g. library: "spectral_ratio", passive event: "cs_evd")
+library_rtf_method = "spectral_ratio"
+event_rtf_method = "spectral_ratio"
+
 # Test section (the event). It is removed from the library, which is then ONE block made of all the other sections
-test_section = "sn0"
+test_section = "sn2"
 
 # Sections that can be part of the library block (None -> all the sections of the portion except the test section)
 library_sections = None
@@ -101,7 +108,7 @@ library_sections = None
 #   rcv_combinations = [["obs2", "obs4", "obs5"]] -> explicit combinations
 #   rcv_combinations = None -> all the combinations of the sizes `combination_sizes` (None -> all sizes)
 rcv_combinations = None
-combination_sizes = [1, 2, 5]
+combination_sizes = [5]
 max_combinations = 200
 
 # Metrics analysed (minima) and displayed next to the real distance (1 to 3, among "theta", "theta_gamma",
@@ -207,9 +214,15 @@ portion_library = build_portion_library(
     fmax=fmax,
     acquisition_mode="active",
     verbose=verbose,
+    rtf_method=library_rtf_method,
 )
 portion_event = build_portion_event_from_active_section(
-    portion, test_section, rcv_ref=reference_rcv, fmin=fmin, fmax=fmax
+    portion,
+    test_section,
+    rcv_ref=reference_rcv,
+    fmin=fmin,
+    fmax=fmax,
+    rtf_method=event_rtf_method,
 )
 
 # The whole library is one block of samples (positions + features)

@@ -136,7 +136,7 @@ obs_ids = [
 ]
 # Frequency band
 fmin = 10
-fmax = 800
+fmax = 500
 
 # Estimation of the RTF (pi_ij)
 #   "spectral_ratio" -> S_ij / S_jj (active case)
@@ -146,7 +146,7 @@ rtf_method = "spectral_ratio"
 
 # Intersections to process (MFP computation and ambiguity figures).
 # None -> all intersections. Otherwise a list of (meridional, zonal) section labels, e.g.
-intersections_to_process = [("sn2", "oe6")]
+intersections_to_process = [("oe7", "sn2")]
 # , ("sn2", "oe7"), ("sn2", "oe8")
 # intersections_to_process = None
 
@@ -155,8 +155,10 @@ intersections_to_process = [("sn2", "oe6")]
 #   "section1" -> shots of the meridional section (error mostly along North-South)
 #   "section2" -> shots of the zonal section (error mostly along East-West)
 #   "both"     -> sqrt(error_section1**2 + error_section2**2)
-error_mode = "section1"
-success_threshold_m = 100  # an intersection is successfully localized if its error <= threshold [m]
+error_mode = "both"
+success_threshold_m = (
+    100  # an intersection is successfully localized if its error <= threshold [m]
+)
 freq_bandwidth = 400  # width of the frequency bands of the band study [Hz]
 # Distance types to analyse: None -> all those available, otherwise a list among "theta", "theta_gamma",
 # "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered" (the centered ones need compare_centered_gamma = True)
@@ -190,11 +192,11 @@ plot_signal = False
 plot_spectrogram = False
 plot_signal_single_emission = False
 plot_features = False
-plot_intersections = False
+plot_intersections = True
 # Analysis of the results (position error of the estimated intersections)
 analyse_error_vs_distance_type = True
-analyse_error_vs_frequency_band = True
-analyse_error_vs_bandwidth = True
+analyse_error_vs_frequency_band = False
+analyse_error_vs_bandwidth = False
 analyse_ambiguity_contrast = True
 analyse_rcv_pair_performance = True
 # Also compute (and plot) the gamma distances with gamma centered along frequency
@@ -293,7 +295,9 @@ if analyse_error_vs_bandwidth:
             "there is no stored frequency bin above fmax."
         )
     bandwidth_ranges = build_cumulative_frequency_bands(
-        fmin, fmax if bandwidth_study_fmax is None else bandwidth_study_fmax, bandwidth_step
+        fmin,
+        fmax if bandwidth_study_fmax is None else bandwidth_study_fmax,
+        bandwidth_step,
     )
 if analyse_ambiguity_contrast and not 0 < contrast_percentile < 100:
     raise ValueError(
@@ -392,7 +396,7 @@ if plot_signal_single_emission:
             )
 
             # Normalize
-            press_rcv = press_rcv / press_rcv.max()
+            # press_rcv = press_rcv / press_rcv.max()
             press_rcv.plot(label=rcv_id.upper(), color=color(i), ax=axs[i])
             # Plot arrivals time
             axs[i].vlines(x=tir_dt_rcv, ymin=-1, ymax=1, color="k", linestyle="--")
@@ -703,7 +707,9 @@ run_analysis = (
     or analyse_ambiguity_contrast
 )
 if run_analysis:
-    log("Step 7 - Analysing the results (position error of the estimated intersections)")
+    log(
+        "Step 7 - Analysing the results (position error of the estimated intersections)"
+    )
 
     # Intersections of the selection that are stored in the portion
     stored_intersections = list_stored_intersections(portion)
@@ -737,7 +743,9 @@ if run_analysis:
         f"position error computed on '{error_mode}'",
         level=1,
     )
-    figure_title = f"Position error ({error_mode}), {len(analysed_intersections)} intersection(s)"
+    figure_title = (
+        f"Position error ({error_mode}), {len(analysed_intersections)} intersection(s)"
+    )
 
     # ==================================================================================================================
     # Position errors from the stored ambiguity surfaces (frequency band used for the MFP computation)
@@ -788,7 +796,6 @@ if run_analysis:
                 intersection=f"{section1_label} x {section2_label}",
             )
 
-
         # Keep the requested distance types and flag the valid localizations (error <= threshold)
         df_errors, distance_types = select_and_order_distance_types(
             pd.DataFrame(records), distance_types_to_analyse
@@ -796,7 +803,9 @@ if run_analysis:
         df_errors = add_validity_column(df_errors, success_threshold_m)
 
         # Save the records
-        fpath = os.path.join(ROOT_IMG_PORTION_RESULTS_SYNTHESIS, "mfp_loc_error_records.csv")
+        fpath = os.path.join(
+            ROOT_IMG_PORTION_RESULTS_SYNTHESIS, "mfp_loc_error_records.csv"
+        )
         df_errors.to_csv(fpath, index=False)
         log(f"Saved {fpath}", level=2)
 
@@ -830,14 +839,15 @@ if run_analysis:
             summary.to_csv(fpath, index=False)
             log(f"Saved {fpath}", level=2)
 
-
             # Console summary: median error table and best receiver pair of each distance type
             if verbose:
                 print(
                     "    Median position error [m] (rows: receiver pairs, columns: distance types)"
                 )
                 table = pivot_error_summary(summary, "median_error_m").round(0)
-                print("\n".join("    " + line for line in table.to_string().splitlines()))
+                print(
+                    "\n".join("    " + line for line in table.to_string().splitlines())
+                )
                 for distance_type, (rcv_pair, value) in best_rcv_pair_per_distance(
                     summary
                 ).items():
@@ -847,13 +857,11 @@ if run_analysis:
                             f"{rcv_pair} ({value:.0f} m)"
                         )
 
-
             # Heatmaps of the median error and of the success rate
             fig = plot_rcv_pair_performance_heatmaps(
                 summary, success_threshold_m, title=figure_title
             )
             save_synthesis_figure(fig, "mfp_rcv_pair_performance_heatmaps.png")
-
 
             # Cumulative distribution of the position error
             fig = plot_error_cdf(
@@ -886,7 +894,9 @@ if run_analysis:
                     .round(3)
                 )
                 print("    Median contrast (rows: distance types)")
-                print("\n".join("    " + line for line in table.to_string().splitlines()))
+                print(
+                    "\n".join("    " + line for line in table.to_string().splitlines())
+                )
 
             # Figure (skipped if only the valid localizations are wanted and there is none)
             if contrast_only_valid and n_valid == 0:
@@ -946,7 +956,6 @@ if run_analysis:
         df_band_errors.to_csv(fpath, index=False)
         log(f"Saved {fpath}", level=2)
 
-
         # Mean and standard deviation of the error versus frequency band
         fig = plot_error_vs_frequency_band(
             df_band_errors, band_distance_types, title=figure_title
@@ -991,7 +1000,6 @@ if run_analysis:
         )
         df_bandwidth_errors.to_csv(fpath, index=False)
         log(f"Saved {fpath}", level=2)
-
 
         # Mean and standard deviation of the error versus width of the frequency range
         fig = plot_error_vs_bandwidth(

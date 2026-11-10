@@ -27,7 +27,6 @@ from real_data_analysis.acouplane.src.acouplane_portion_io import (
     select_intersections,
 )
 
-
 # Names and descriptions of the variables of the ambiguity surfaces (used for the labels of the figures)
 DISTANCE_VARIABLE_ATTRS = {
     "d_real": dict(units="m", long_name="Distance"),

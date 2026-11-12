@@ -515,15 +515,57 @@ def extract_pressure_section(section_start, section_end, ds_pressure, obs_dateti
     #     obs_id: obs_datetimes[obs_id] - obs_datetimes[obs_id][0]
     #     for obs_id in obs_datetimes.keys()
     # }
-    for obs_id in ds_pressure.obs_id.values:
-        idx_start = np.where(obs_datetimes[obs_id] >= section_start)[0]
-        idx_end = np.where(obs_datetimes[obs_id] <= section_end)[0]
-        if idx_start.size == 0 or idx_end.size == 0 or idx_start[0] > idx_end[-1]:
-            raise ValueError(
-                f"OBS '{obs_id}' has no data between {section_start} and {section_end} "
-                f"(recording spans {obs_datetimes[obs_id][0]} -> {obs_datetimes[obs_id][-1]})."
+    if obs_datetimes is None:
+
+        for obs_id in ds_pressure.obs_id.values:
+            # Step one : ensure data exists in the required period of time
+            recording_start = ds_pressure.start_datetime.sel(obs_id=obs_id).values
+            recording_stop = recording_start + np.timedelta64(
+                int(1 / ds_pressure.fs * ds_pressure.sizes[f"time_{obs_id}"] * 1e6),
+                "us",
             )
-        obs_slice_idx.append((idx_start[0], idx_end[-1]))
+            section_ends_before_recording_start = recording_start >= section_end
+            section_starts_after_recording_end = recording_stop <= section_start
+            no_data_available = (
+                section_ends_before_recording_start
+                or section_starts_after_recording_end
+            )
+            if no_data_available:
+                raise ValueError(
+                    f"OBS '{obs_id}' has no data between {section_start} and {section_end} "
+                    f"(recording spans {recording_start} -> {recording_stop})."
+                )
+
+            section_start_ = max(section_start, recording_start)
+            section_end_ = min(section_end, recording_stop)
+
+            tau_before_start_ns = section_start_ - recording_start
+            tau_before_start_s = tau_before_start_ns / np.timedelta64(1, "s")
+            idx_start = int(tau_before_start_s * ds_pressure.fs)
+            # idx_start = max(idx_start, 0)
+
+            section_duration_ns = section_end_ - section_start_
+            section_duration_s = section_duration_ns / np.timedelta64(1, "s")
+            idx_end = idx_start + int(section_duration_s * ds_pressure.fs)
+            # idx_end = min(idx_end, ds_pressure.sizes[f"time_{obs_id}"])
+
+            # print(
+            #     f"{obs_id.upper()} : \t recording start {recording_start} / stop {recording_stop}\n\t section start {section_start} / stop {section_end} \n\t duration {section_duration_s}"
+            # )
+
+            obs_slice_idx.append((idx_start, idx_end))
+
+    else:
+
+        for obs_id in ds_pressure.obs_id.values:
+            idx_start = np.where(obs_datetimes[obs_id] >= section_start)[0]
+            idx_end = np.where(obs_datetimes[obs_id] <= section_end)[0]
+            if idx_start.size == 0 or idx_end.size == 0 or idx_start[0] > idx_end[-1]:
+                raise ValueError(
+                    f"OBS '{obs_id}' has no data between {section_start} and {section_end} "
+                    f"(recording spans {obs_datetimes[obs_id][0]} -> {obs_datetimes[obs_id][-1]})."
+                )
+            obs_slice_idx.append((idx_start[0], idx_end[-1]))
 
     # Build slicing dict
     isel_dict = {
@@ -534,10 +576,26 @@ def extract_pressure_section(section_start, section_end, ds_pressure, obs_dateti
     pressure_slice = ds_pressure.isel(isel_dict)
 
     # Convert time to UTC
+    step_ns = int(round(1e9 / ds_pressure.fs))
+
     for i, obs_id in enumerate(ds_pressure.obs_id.values):
-        pressure_slice[f"time_{obs_id}"] = obs_datetimes[obs_id][
-            obs_slice_idx[i][0] : obs_slice_idx[i][1] + 1
-        ]
+
+        if obs_datetimes is None:
+
+            recording_start = ds_pressure.start_datetime.sel(obs_id=obs_id).values
+            section_start_ = max(section_start, recording_start)
+            time_vector = pd.date_range(
+                start=section_start_,
+                freq=f"{step_ns}ns",
+                inclusive="left",
+                periods=pressure_slice.sizes[f"time_{obs_id}"],
+            )
+
+            pressure_slice[f"time_{obs_id}"] = time_vector
+        else:
+            pressure_slice[f"time_{obs_id}"] = obs_datetimes[obs_id][
+                obs_slice_idx[i][0] : obs_slice_idx[i][1] + 1
+            ]
         # Update attributes accordingly
         pressure_slice[f"time_{obs_id}"].attrs = {"unit": "UTC", "long_name": "Time"}
 

@@ -100,24 +100,31 @@ obs_ids = [
 
 # Frequency band of the features
 fmin = 10
-fmax = 150
+fmax = 500
 
 # Estimation of the RTF (pi_ij), chosen separately for the library and for the event
 #   "spectral_ratio" -> S_ij / S_jj (active case)
 #   "cs_evd"         -> first eigenvector of the spatial covariance matrix (preferable for passive signals)
 # The two can differ (e.g. library: "spectral_ratio", passive event: "cs_evd")
 library_rtf_method = "spectral_ratio"
-event_rtf_method = "spectral_ratio"
+event_rtf_method = "cs_evd"
 
 # Library: sections of the portion used as reference (None -> all the sections of the portion)
-library_sections = ["sn2"]
+# library_sections = None
+
+
 # library_sections = ["sn0", "sn2", "oe7", "oe8", "oe9"]
+# Event 7
+# library_sections = ["sn0", "sn1", "sn2", "sn3", "oe4", "oe5", "oe6"]
+library_sections = ["oe4"]
+
 
 # Events compared to the library (None -> all the events of the event file)
-event_sections = None
+# event_sections = None
+event_sections = ["event_3"]
 
 # CPSD of the events (Welch method, see derive_portion_cpsd_welch)
-analysis_segment_duration_s = 6
+analysis_segment_duration_s = 10
 analysis_segment_alpha_overlap = 0.75
 nfft = 2**13
 nperseg = 2**13
@@ -157,7 +164,15 @@ contrast_percentile = 50
 # Ambiguity surfaces
 #   combinations_to_plot = None -> all the combinations studied
 #   combinations_to_plot = [["obs2", "obs4"], ["obs2", "obs4", "obs5"]] -> only these combinations
-combinations_to_plot = None
+# combinations_to_plot = None
+combinations_to_plot = [
+    ["obs2"],
+    ["obs2", "obs4"],
+    ["obs2", "obs4", "obs7"],
+    ["obs2", "obs4", "obs7", "obs5"],
+    ["obs2", "obs4", "obs7", "obs5", "obs6"],
+]
+
 # Metrics displayed next to the real distance (always in the first panel) in the ambiguity figures: 3 among
 # "theta", "theta_gamma", "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered"
 # (the centered ones need compare_centered_gamma = True), e.g. ["theta_gamma_centered", "L2_gamma_centered", "dcf"]
@@ -181,20 +196,20 @@ compute_event_cpsd = True
 # Also compute the gamma distances with gamma centered along frequency
 compare_centered_gamma = True
 # Store the ambiguity surfaces of all the comparisons in a NetCDF file next to the event file
-save_mfp_to_netcdf = False
+save_mfp_to_netcdf = True
 # Save the theoretical and estimated intersections (positions) of every comparison and combination (CSV)
 save_intersection_positions = True
 
 # Figures
 plot_map = True
-plot_features_event = False
+plot_features_event = True
 plot_ambiguity = True
 plot_gamma_comparison = False
 
 # Analysis of the combinations
-analyse_error_vs_n_rcv = True
-analyse_contrast_vs_n_rcv = True
-analyse_combination_performance = True
+analyse_error_vs_n_rcv = False
+analyse_contrast_vs_n_rcv = False
+analyse_combination_performance = False
 verbose = True
 
 # ======================================================================================================================

@@ -57,6 +57,7 @@ def convert_data_raw_to_physical(raw_data, fullScale):
     """
     return raw_data * float(fullScale) / 2**32
 
+
 def convert_data_physical_to_raw(physical_data, fullScale):
     """Convert OBS data in physical units back to raw data in int32.
 
@@ -72,7 +73,7 @@ def convert_data_physical_to_raw(physical_data, fullScale):
     np.ndarray
         Raw OBS data in int32.
     """
-    raw_data = physical_data * 2**32 / float(fullScale) 
+    raw_data = physical_data * 2**32 / float(fullScale)
     return raw_data.astype(np.int32)
 
 
@@ -84,11 +85,11 @@ def read_obs_channel_H_with_obsr(
     utc_date_upper_bound="03/03/2026 00:00:00",
     verbose=False,
 ):
-    """ Read OBS data from folder containing bin files using obsr class provided.
+    """Read OBS data from folder containing bin files using obsr class provided.
 
     WARNING : this code assumes two modification of Elobs_bin_reader.py :
         1) Hard coding of sampling frequency fs = 2000 (line 618)
-        2) Modification of the default behavior of the getMinTimestamp() function: line 310 is commented so that it returns np.max(ts_int) instaed of -1 even if channels are missing
+        2) Modification of the default behavior of the getMinTimestamp() function: line 310 is commented so that it returns np.max(ts_int) instead of -1 even if channels are missing
 
     Parameters
     ----------
@@ -135,7 +136,7 @@ def read_obs_channel_H_with_obsr(
         # Convertion not required, keep physical units (way higher memory consumption)
         obs_data = sig
         # Set fullscale to None
-        fullScale = None 
+        fullScale = None
 
     # NOTE :
     # using timestamps returned by obsr.readOBS() might lead to errors. Indeed, timestamps are given in seconds from GPS epoch (datetime(1980, 1, 6)), yet
@@ -151,11 +152,17 @@ def read_obs_channel_H_with_obsr(
     # Get integer number of seconds
     gps_start_date_int_s = gps_start_date_s.astype(np.int64)
     # Convert to UTC seconds
-    utc_start_date_int_s = ConvertGPSDate2String(gpsDate=gps_start_date_int_s, format=dt_fmt)
+    utc_start_date_int_s = ConvertGPSDate2String(
+        gpsDate=gps_start_date_int_s, format=dt_fmt
+    )
 
     # Add microseconds information
-    start_gps_date_us = (gps_start_date_s%1 * 1e6).round(0)        # File timestamp is given in us, float is rounded 
-    utc_start_dt = datetime.strptime(utc_start_date_int_s, dt_fmt) + timedelta(microseconds=start_gps_date_us)
+    start_gps_date_us = (gps_start_date_s % 1 * 1e6).round(
+        0
+    )  # File timestamp is given in us, float is rounded
+    utc_start_dt = datetime.strptime(utc_start_date_int_s, dt_fmt) + timedelta(
+        microseconds=start_gps_date_us
+    )
 
     # Build associated datetimes
     obs_time = pd.date_range(
@@ -257,24 +264,31 @@ def read_obs_channel_H(folder, read_raw=False, fs=FS, verbose=False):
         dt_fmt = "%d/%m/%Y %H:%M:%S UTC"
         # dt_fmt = "%d/%m/%Y %H:%M:%S:%f UTC"
 
-        # Warning, ConvertGPSDate2String convert to int and thus discard us info 
+        # Warning, ConvertGPSDate2String convert to int and thus discard us info
         start_str = ConvertGPSDate2String(gpsDate=start_gps_date, format=dt_fmt)
         stop_str = ConvertGPSDate2String(gpsDate=stop_gps_date, format=dt_fmt)
         if verbose:
             print(f"Recording from {start_str} to {stop_str}")
 
         # Convert to datetime
-        start_gps_date_us = float(file_info["start"][-6:])      # According to the documentation (harvesting des données.pdf), timestemps represent GPS time in us
-        start_dt = datetime.strptime(start_str, dt_fmt) + timedelta(microseconds=start_gps_date_us)
-        stop_gps_date_us = float(file_info["start"][-6:])      # According to the documentation (harvesting des données.pdf), timestemps represent GPS time in us
-        stop_dt = datetime.strptime(stop_str, dt_fmt) + timedelta(microseconds=stop_gps_date_us)
+        start_gps_date_us = float(
+            file_info["start"][-6:]
+        )  # According to the documentation (harvesting des données.pdf), timestemps represent GPS time in us
+        start_dt = datetime.strptime(start_str, dt_fmt) + timedelta(
+            microseconds=start_gps_date_us
+        )
+        stop_gps_date_us = float(
+            file_info["start"][-6:]
+        )  # According to the documentation (harvesting des données.pdf), timestemps represent GPS time in us
+        stop_dt = datetime.strptime(stop_str, dt_fmt) + timedelta(
+            microseconds=stop_gps_date_us
+        )
 
         # Read bin file
         data = read_obs_bin(fpath)
         if not read_raw:
             # Convert raw data to physical units
             data = convert_data_raw_to_physical(data, fullScale)
-
 
         # Create a time vector for the data
         time = pd.date_range(
@@ -317,8 +331,13 @@ def read_obs_channel_H(folder, read_raw=False, fs=FS, verbose=False):
                 f"Warning : Time arrays are not continuous between files {i} and {i+1}: "
                 f"{obs_time[i][-1]} != {obs_time[i + 1][0]}, holes will be filled with zeros !"
             )
-            # Fill with zeros to avoid holes     
-            fill_times = pd.date_range(start=obs_time[i][-1], end=obs_time[i+1][0], freq=f"{1/fs}s", inclusive="neither")        
+            # Fill with zeros to avoid holes
+            fill_times = pd.date_range(
+                start=obs_time[i][-1],
+                end=obs_time[i + 1][0],
+                freq=f"{1/fs}s",
+                inclusive="neither",
+            )
             obs_data[i] = np.concatenate([obs_data[i], np.zeros(fill_times.size)])
             obs_time[i] = np.concatenate([obs_time[i], fill_times])
             # np.zeros(int((lts[i] - ts) * fs))
@@ -359,16 +378,19 @@ def read_obs_data(data_folder, read_raw=False, verbose=False):
         else:
             prev_progress = progression_bar(i, index0, indexf, prev_progress)
 
-        # # Read data from the folder -> BM implementation 
+        # # Read data from the folder -> BM implementation
         # obsi_data, obsi_time, fullscale = read_obs_channel_H(
         #     folder, read_raw=read_raw, verbose=verbose
         # )
 
-        # Read data from the folder -> adapted from obsr class 
+        # TODO : remove debug lines below once fixed
+        if "OBS2" in folder:
+            print("debug")
+
+        # Read data from the folder -> adapted from obsr class
         obsi_data, obsi_time, fullscale = read_obs_channel_H_with_obsr(
             folder, read_raw=read_raw, verbose=verbose
         )
-
 
         # Store
         obs_name = os.path.basename(folder)
@@ -384,11 +406,11 @@ if __name__ == "__main__":
     # obs1_data, obs1_time = read_obs_channel_H(obs1_folder, verbose=True)
 
     # Read all OBS data from a main folder containing subfolders for each OBS
-    
+
     if os.name == "nt":  # Windows
         data_folder = r"C:\Users\baptiste.menetrier\Desktop\devPy\phd\data\ACOUPLANE\DATA\PRESSURE\BIN"
     else:  # Linux
-        data_folder = '/home/data/ACOUPLANE/DATA/PRESSURE/BIN'
+        data_folder = "/home/data/ACOUPLANE/DATA/PRESSURE/BIN"
 
     obs_data, obs_time = read_obs_data(
         data_folder=data_folder, read_raw=False, verbose=True

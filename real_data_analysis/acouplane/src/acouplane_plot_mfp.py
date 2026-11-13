@@ -15,6 +15,9 @@
 import matplotlib.pyplot as plt
 
 from publication.publication_figure import set_subfigures_abc_labels
+from real_data_analysis.acouplane.src.acouplane_conventions import (
+    get_mfp_axis_names,
+)
 from real_data_analysis.acouplane.src.acouplane_combination import (
     build_combined_mfp_dataset,
     format_rcv_combination,
@@ -25,6 +28,103 @@ from real_data_analysis.acouplane.src.acouplane_localization import (
 )
 
 
+# Metrics displayed by default next to the real distance, in the order of the panels (b), (c), (d)
+DEFAULT_AMBIGUITY_METRICS = ("theta_gamma", "theta", "dcf")
+
+
+def _check_ambiguity_metrics(metrics, ds_mfp_intersection):
+    """Check the metrics displayed next to the real distance in an ambiguity figure.
+
+    Parameters
+    ----------
+    metrics : sequence of str
+        Distance types to display in the panels (b), (c) and (d), among
+        ``DISTANCE_TYPES`` (at most 3, the real distance always occupies the
+        panel (a)).
+    ds_mfp_intersection : xarray.Dataset
+        MFP dataset that must contain the corresponding variables ``d_<type>``.
+
+    Returns
+    -------
+    list of str
+        The metrics, as a list.
+
+    Raises
+    ------
+    ValueError
+        If there are no or more than 3 metrics, if a metric is unknown, or if
+        it is not stored in the dataset (e.g. the centered distances need
+        ``compare_centered_gamma = True``).
+    """
+    metrics = [metrics] if isinstance(metrics, str) else list(metrics)
+
+    if not 1 <= len(metrics) <= 3:
+        raise ValueError(
+            f"Between 1 and 3 metrics can be displayed next to the real distance (got {metrics})."
+        )
+
+    unknown = [key for key in metrics if key not in DISTANCE_TYPES]
+    if unknown:
+        raise ValueError(
+            f"Unknown metric(s) {unknown}. Valid metrics: {list(DISTANCE_TYPES)}."
+        )
+
+    missing = [key for key in metrics if f"d_{key}" not in ds_mfp_intersection]
+    if missing:
+        raise ValueError(
+            f"The metric(s) {missing} are not stored in the intersection dataset "
+            "(the centered distances need compare_centered_gamma = True when the MFP strategy is applied)."
+        )
+
+    return metrics
+
+
+def ambiguity_figure_filename(metrics, suffix):
+    """File name of an ambiguity figure, depending on the metrics displayed.
+
+    Parameters
+    ----------
+    metrics : sequence of str
+        Metrics displayed next to the real distance.
+    suffix : str
+        Part identifying the figure (receiver pair or combination of receivers).
+
+    Returns
+    -------
+    str
+        ``"mfp_ambiguity_4_metrics_<suffix>.png"`` for the default metrics,
+        ``"mfp_ambiguity_<metric 1>_<metric 2>_..._<suffix>.png"`` otherwise.
+    """
+    metrics = [metrics] if isinstance(metrics, str) else list(metrics)
+    if tuple(metrics) == DEFAULT_AMBIGUITY_METRICS:
+        return f"mfp_ambiguity_4_metrics_{suffix}.png"
+
+    return f"mfp_ambiguity_{'_'.join(metrics)}_{suffix}.png"
+
+
+def _set_figure_title(fig, title):
+    """Set the title of a figure above the panels, without covering them.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Figure to title.
+    title : str
+        Title.
+
+    Returns
+    -------
+    None
+    """
+    if fig.get_layout_engine() is not None:
+        # The layout engine reserves the space of the title
+        fig.suptitle(title)
+    else:
+        # Space is left above the panels and their (a), (b)... labels
+        fig.subplots_adjust(top=0.88)
+        fig.suptitle(title, y=0.99)
+
+
 def plot_intersection_ambiguity(
     ds_mfp_intersection_rcv,
     target_dt,
@@ -33,13 +133,16 @@ def plot_intersection_ambiguity(
     section2_name,
     cmap="Grays_r",
     max_quantile=0.95,
+    d_real_vmax=500,
+    metrics=DEFAULT_AMBIGUITY_METRICS,
 ):
-    """Plot the 4 ambiguity surfaces of one intersection for one receiver pair.
+    """Plot the ambiguity surfaces of one intersection for one receiver pair.
 
-    The figure is a 2x2 grid: real distance (a), ``theta_gamma`` (b), ``theta``
-    (c) and DCF (d). The true intersection is marked by a red square on every
-    panel and the estimated one by a magenta circle on the feature panels. The
-    L2 distance on gamma is computed but not displayed.
+    The figure is a 2x2 grid: the real distance (a) is always the first panel,
+    followed by the chosen metrics (b), (c) and (d) (by default
+    ``theta_gamma``, ``theta`` and DCF). The true intersection is marked by a
+    red square on every panel and the estimated one by a magenta circle on the
+    metric panels.
 
     Parameters
     ----------
@@ -48,37 +151,57 @@ def plot_intersection_ambiguity(
     target_dt : tuple of numpy.datetime64
         True intersection ``(dt1, dt2)``, see ``get_intersection_target_position``.
     guess_dt : dict
-        Estimated intersections for this receiver pair, with the keys ``theta``,
-        ``theta_gamma`` and ``dcf``, each a tuple ``(dt1, dt2)``.
+        Estimated intersections for this receiver pair, one key per displayed
+        metric, each a tuple ``(dt1, dt2)``.
     section1_name, section2_name : str
         Display names of the two sections, used in the axis labels.
     cmap : str, optional
         Matplotlib colormap name.
     max_quantile : float, optional
         Quantile of each feature distance used as upper bound of its color scale.
+    d_real_vmax : float, optional
+        Upper bound of the color scale of the real distance, in meters.
+    metrics : sequence of str, optional
+        Distance types displayed in the panels (b), (c) and (d), among
+        ``"theta"``, ``"theta_gamma"``, ``"L2_gamma"``, ``"dcf"``,
+        ``"theta_gamma_centered"`` and ``"L2_gamma_centered"`` (the centered
+        ones need ``compare_centered_gamma = True``). If fewer than 3 are given,
+        the remaining panels are hidden.
 
     Returns
     -------
     matplotlib.figure.Figure
         The figure (not closed).
+
+    Raises
+    ------
+    ValueError
+        If a metric is invalid or not stored in the dataset.
     """
+    metrics = _check_ambiguity_metrics(metrics, ds_mfp_intersection_rcv)
+
     fig, axs = plt.subplots(
         nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
     )
 
+    # Dimension displayed along the x axis (side 1 of the intersection)
+    x_dim = get_mfp_axis_names(ds_mfp_intersection_rcv)["dim1"]
+
     # Plot ambiguity surfaces
     ds_mfp_intersection_rcv.d_real.plot(
-        x="src_datetime_section1", cmap=cmap, ax=axs[0, 0], vmin=0, vmax=500
+        x=x_dim, cmap=cmap, ax=axs[0, 0], vmin=0, vmax=d_real_vmax
     )
-    panels = [
-        ("d_theta_gamma", axs[0, 1], "theta_gamma"),
-        ("d_theta", axs[1, 0], "theta"),
-        ("d_dcf", axs[1, 1], "dcf"),
-    ]
+    metric_axes = [axs[0, 1], axs[1, 0], axs[1, 1]]
+    panels = [(f"d_{key}", ax, key) for key, ax in zip(metrics, metric_axes)]
+
+    # Unused panels are hidden
+    for ax in metric_axes[len(metrics):]:
+        ax.set_visible(False)
+
     for var, ax, guess_key in panels:
         da = ds_mfp_intersection_rcv[var]
         da.plot(
-            x="src_datetime_section1",
+            x=x_dim,
             cmap=cmap,
             ax=ax,
             vmin=da.min(),
@@ -86,7 +209,7 @@ def plot_intersection_ambiguity(
         )
 
     # Add target position
-    for ax in axs.flatten():
+    for ax in [axs[0, 0]] + [panel_ax for _, panel_ax, _ in panels]:
         ax.scatter(
             target_dt[0],
             target_dt[1],
@@ -175,6 +298,9 @@ def plot_intersection_gamma_comparison(
         nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
     )
 
+    # Dimension displayed along the x axis (side 1 of the intersection)
+    x_dim = get_mfp_axis_names(ds_mfp_intersection_rcv)["dim1"]
+
     rows = [
         (
             axs[0],
@@ -193,7 +319,7 @@ def plot_intersection_gamma_comparison(
         vmin = min(float(da.min()) for da in das)
         vmax = max(float(da.quantile(q=max_quantile)) for da in das)
         for ax, da, (_, guess_key) in zip(row_axs, das, panels):
-            da.plot(x="src_datetime_section1", cmap=cmap, ax=ax, vmin=vmin, vmax=vmax)
+            da.plot(x=x_dim, cmap=cmap, ax=ax, vmin=vmin, vmax=vmax)
             ax.scatter(
                 target_dt[0],
                 target_dt[1],
@@ -260,8 +386,9 @@ def _combined_surfaces_and_positions(ds_mfp_intersection, rcv_combination, metho
     ds_combined = build_combined_mfp_dataset(
         ds_mfp_intersection, rcv_combination, method=method
     )
-    dt1 = ds_combined["src_datetime_section1"].values
-    dt2 = ds_combined["src_datetime_section2"].values
+    axis_names = get_mfp_axis_names(ds_combined)
+    dt1 = ds_combined[axis_names["dim1"]].values
+    dt2 = ds_combined[axis_names["dim2"]].values
 
     # True intersection: pair of shots closest in real space
     target = _argmin_2d(ds_combined["d_real"].values)
@@ -291,11 +418,13 @@ def plot_combined_intersection_ambiguity(
     method="mean_surfaces",
     cmap="Grays_r",
     max_quantile=0.95,
+    d_real_vmax=500,
+    metrics=DEFAULT_AMBIGUITY_METRICS,
 ):
     """Plot the 4 ambiguity surfaces of one intersection for a combination of receivers.
 
-    Same figure as ``plot_intersection_ambiguity`` (real distance, ``theta_gamma``,
-    ``theta`` and DCF), computed on the surfaces combined over the receivers of
+    Same figure as ``plot_intersection_ambiguity`` (real distance and the chosen
+    metrics), computed on the surfaces combined over the receivers of
     the combination. The title gives the combination.
 
     Parameters
@@ -312,6 +441,11 @@ def plot_combined_intersection_ambiguity(
         Matplotlib colormap name.
     max_quantile : float, optional
         Quantile of each feature distance used as upper bound of its color scale.
+    d_real_vmax : float, optional
+        Upper bound of the color scale of the real distance, in meters.
+    metrics : sequence of str, optional
+        Distance types displayed next to the real distance, see
+        ``plot_intersection_ambiguity``.
 
     Returns
     -------
@@ -330,8 +464,12 @@ def plot_combined_intersection_ambiguity(
         section2_name=section2_name,
         cmap=cmap,
         max_quantile=max_quantile,
+        d_real_vmax=d_real_vmax,
+        metrics=metrics,
     )
-    fig.suptitle(f"Combination {format_rcv_combination(rcv_combination)} ({method})", y=0.94)
+    _set_figure_title(
+        fig, f"Combination {format_rcv_combination(rcv_combination)} ({method})"
+    )
 
     return fig
 
@@ -395,6 +533,8 @@ def plot_combined_intersection_gamma_comparison(
         cmap=cmap,
         max_quantile=max_quantile,
     )
-    fig.suptitle(f"Combination {format_rcv_combination(rcv_combination)} ({method})", y=0.94)
+    _set_figure_title(
+        fig, f"Combination {format_rcv_combination(rcv_combination)} ({method})"
+    )
 
     return fig

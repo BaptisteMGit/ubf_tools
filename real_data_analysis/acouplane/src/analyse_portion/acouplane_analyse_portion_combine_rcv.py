@@ -44,6 +44,7 @@ from real_data_analysis.acouplane.src.acouplane_mfp import (
     apply_mfp_strategy_to_portion_intersections,
 )
 from real_data_analysis.acouplane.src.acouplane_plot_mfp import (
+    ambiguity_figure_filename,
     plot_combined_intersection_ambiguity,
     plot_combined_intersection_gamma_comparison,
 )
@@ -90,9 +91,14 @@ obs_ids = [
 fmin = 10
 fmax = 800
 
+# Estimation of the RTF (pi_ij)
+#   "spectral_ratio" -> S_ij / S_jj (active case)
+#   "cs_evd"         -> first eigenvector of the spatial covariance matrix (preferable for passive signals)
+rtf_method = "spectral_ratio"
+
 # Intersections to analyse. None -> all intersections. Otherwise a list of (meridional, zonal) section labels
-# intersections_to_process = [("sn2", "oe6")]
-intersections_to_process = None
+intersections_to_process = [("sn2", "oe7")]
+# intersections_to_process = None
 
 # Approach used to combine the receivers
 #   "mean_surfaces" -> mean of the ambiguity surfaces of the combined receiver pairs
@@ -112,7 +118,7 @@ max_combinations = 200  # safety limit on the number of combinations (the number
 #   "both"     -> sqrt(error_section1**2 + error_section2**2)
 error_mode = "both"
 success_threshold_m = (
-    50  # an intersection is successfully localized if its error <= threshold [m]
+    100  # an intersection is successfully localized if its error <= threshold [m]
 )
 
 # Distance types to analyse: None -> all those stored, otherwise a list among "theta", "theta_gamma", "L2_gamma",
@@ -126,6 +132,10 @@ contrast_percentile = 50
 #   combinations_to_plot = None -> all the combinations studied (see rcv_combinations / combination_sizes)
 #   combinations_to_plot = [["obs2", "obs4"], ["obs2", "obs4", "obs5"]] -> only these combinations
 combinations_to_plot = None
+# Metrics displayed next to the real distance (always in the first panel) in the ambiguity figures: 3 among
+# "theta", "theta_gamma", "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered"
+# (the centered ones need compare_centered_gamma = True), e.g. ["theta_gamma_centered", "L2_gamma_centered", "dcf"]
+ambiguity_metrics = ["theta_gamma", "theta", "dcf"]
 ambiguity_cmap = "Grays_r"
 ambiguity_max_quantile = (
     0.95  # quantile of each feature distance used as upper bound of its color scale
@@ -213,6 +223,7 @@ if apply_mfp_strategy_intersections:
         verbose=verbose,
         compare_centered_gamma=compare_centered_gamma,
         intersections=selected_intersections,
+        rtf_method=rtf_method,
     )
 else:
     log(
@@ -518,8 +529,11 @@ if run_analysis or run_ambiguity_plots:
                         method=combination_method,
                         cmap=ambiguity_cmap,
                         max_quantile=ambiguity_max_quantile,
+                        metrics=ambiguity_metrics,
                     )
-                    save_ambiguity_figure(fig, f"mfp_ambiguity_4_metrics_{slug}.png")
+                    save_ambiguity_figure(
+                        fig, ambiguity_figure_filename(ambiguity_metrics, slug)
+                    )
 
                 if plot_combined_gamma_comparison:
                     fig = plot_combined_intersection_gamma_comparison(

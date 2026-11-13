@@ -32,36 +32,76 @@ def cost_fct(xx, yy, x0, y0, sigma_x, sigma_y):
 
 
 # Sparse grid made of ship trajs
-def generate_ship_track(x, y):
-    # x coords
-    L_x = x.max() - x.min()
-    xs = np.random.uniform(x.min() - L_x, x.max() - L_x / 2)
-    xe = np.random.uniform(x.min() + L_x / 2, x.max() + L_x)
-    L_y = y.max() - y.min()
-    ys = np.random.uniform(y.min() - L_y, y.max() - L_y / 2)
-    ye = np.random.uniform(y.min() + L_y / 2, y.max() + L_y)
-
-    a = (ye - ys) / (xe - xs)
-    b = ye - a * xe
-
-    x_track = np.linspace(xs, xe, 50)
-    y_track = a * x_track + b
-
-    y_track_in_area_idx = np.logical_and(y_track >= y.min(), y_track <= y.max())
-    x_track_in_area_idx = np.logical_and(x_track >= x.min(), x_track <= x.max())
-    idx_in_area = np.logical_and(x_track_in_area_idx, y_track_in_area_idx)
-
-    return x_track[idx_in_area], y_track[idx_in_area]
 
 
-def generate_ship_tracks(x, y, ntracks=5):
+def generate_ship_track(x, y, npt=50, random_seed=2026):
+    """
+    Generate a random straight ship track that crosses a 2D grid.
+
+    The track is defined by a random point inside the area and a random
+    heading. The line is then clipped to the grid boundaries, so it always
+    crosses the area and always returns exactly `npt` points.
+
+    Parameters
+    ----------
+    x, y : np.ndarray
+        Grid coordinates (only their min/max are used to define the area).
+    npt : int, optional
+        Number of points along the track (default: 50).
+    random_seed : int, optional
+        Seed of the random number generator, for reproducibility
+        (default: 2026).
+
+    Returns
+    -------
+    x_track, y_track : np.ndarray
+        Coordinates of the track points, all lying inside the grid area.
+    """
+    # Single generator: same seed -> same track
+    rng = np.random.default_rng(random_seed)
+
+    # Bounds of the area
+    x_min, x_max = x.min(), x.max()
+    y_min, y_max = y.min(), y.max()
+
+    # Random reference point inside the area and random heading (radians)
+    x0 = rng.uniform(x_min, x_max)
+    y0 = rng.uniform(y_min, y_max)
+    theta = rng.uniform(0.0, 2.0 * np.pi)
+
+    # Unit direction vector of the track
+    dx, dy = np.cos(theta), np.sin(theta)
+
+    # Parametric line: (x0 + t*dx, y0 + t*dy).
+    # Find the interval [t_lo, t_hi] of t for which the line stays inside
+    # the bounding box (slab method: intersect the intervals along x and y).
+    t_lo, t_hi = -np.inf, np.inf
+    for p0, d, lo, hi in ((x0, dx, x_min, x_max), (y0, dy, y_min, y_max)):
+        # Line parallel to this axis: no constraint from this slab
+        # (the reference point is already inside the area)
+        if abs(d) < 1e-12:
+            continue
+        # Values of t where the line crosses the two slab boundaries
+        t1, t2 = (lo - p0) / d, (hi - p0) / d
+        # Narrow the valid interval
+        t_lo = max(t_lo, min(t1, t2))
+        t_hi = min(t_hi, max(t1, t2))
+
+    # Sample npt points evenly spaced between the two box intersections
+    t = np.linspace(t_lo, t_hi, npt)
+
+    return x0 + t * dx, y0 + t * dy
+
+
+def generate_ship_tracks(x, y, ntracks=5, npt=50, random_seed=2026):
     x_tracks, y_tracks = [], []
     for itrack in range(ntracks):
-        x_track, y_track = generate_ship_track(x, y)
+        x_track, y_track = generate_ship_track(
+            x, y, npt=npt, random_seed=random_seed + itrack
+        )
         x_tracks.append(x_track)
         y_tracks.append(y_track)
     return x_tracks, y_tracks
-    # return np.array(x_tracks), np.array(y_tracks)
 
 
 # ======================================================================================================================

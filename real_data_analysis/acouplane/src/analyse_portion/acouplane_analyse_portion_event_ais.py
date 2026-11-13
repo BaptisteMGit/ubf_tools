@@ -110,13 +110,13 @@ library_rtf_method = "spectral_ratio"
 event_rtf_method = "cs_evd"
 
 # Library: sections of the portion used as reference (None -> all the sections of the portion)
-# library_sections = None
+library_sections = None
 
 
 # library_sections = ["sn0", "sn2", "oe7", "oe8", "oe9"]
 # Event 7
 # library_sections = ["sn0", "sn1", "sn2", "sn3", "oe4", "oe5", "oe6"]
-library_sections = ["oe4"]
+# library_sections = ["oe4"]
 
 
 # Events compared to the library (None -> all the events of the event file)

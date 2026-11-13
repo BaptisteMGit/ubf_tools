@@ -16,9 +16,18 @@ import itertools
 import numpy as np
 import xarray as xr
 
+from real_data_analysis.acouplane.src.acouplane_conventions import (
+    get_mfp_axis_names,
+    get_mfp_shot_positions,
+)
+from real_data_analysis.acouplane.src.acouplane_mfp import (
+    DISTANCE_VARIABLE_ATTRS,
+)
 from real_data_analysis.acouplane.src.acouplane_localization import (
     DISTANCE_TYPES,
+    _argmin_2d,
     _distances_from_mfp_dataset,
+    _geodesic_distance_m,
     ambiguity_contrast_from_distances,
     errors_to_records,
     localization_errors_from_distances,
@@ -235,13 +244,8 @@ def rcv_combination_records(
     distance_section12 = _distances_from_mfp_dataset(ds_mfp_intersection)
     rcv_ids = [str(rcv_id) for rcv_id in ds_mfp_intersection["rcv_id_feature"].values]
 
-    # Shot positions of the two sections
-    positions = dict(
-        lon1=ds_mfp_intersection["tir_src_lon_section1"].values,
-        lat1=ds_mfp_intersection["tir_src_lat_section1"].values,
-        lon2=ds_mfp_intersection["tir_src_lon_section2"].values,
-        lat2=ds_mfp_intersection["tir_src_lat_section2"].values,
-    )
+    # Shot positions of the two sides of the intersection
+    positions = get_mfp_shot_positions(ds_mfp_intersection)
 
     records = []
     for rcv_combination in rcv_combinations:
@@ -304,7 +308,8 @@ def build_combined_mfp_dataset(
         If the method is unknown or if a receiver of the combination is not in
         the dataset.
     """
-    dim1, dim2 = "src_datetime_section1", "src_datetime_section2"
+    axis_names = get_mfp_axis_names(ds_mfp_intersection)
+    dim1, dim2 = axis_names["dim1"], axis_names["dim2"]
     rcv_ids = [str(rcv_id) for rcv_id in ds_mfp_intersection["rcv_id_feature"].values]
 
     # Combined surfaces
@@ -321,7 +326,7 @@ def build_combined_mfp_dataset(
         if f"dist_{key}" in combined:
             data_vars[f"d_{key}"] = ([dim1, dim2], combined[f"dist_{key}"][0])
 
-    return xr.Dataset(
+    ds_combined = xr.Dataset(
         data_vars=data_vars,
         coords={
             dim1: ds_mfp_intersection[dim1].values,
@@ -334,3 +339,124 @@ def build_combined_mfp_dataset(
             reference_receiver=ds_mfp_intersection.attrs.get("reference_receiver", "unknown"),
         ),
     )
+
+    # Names and units of the variables (labels of the colorbars)
+    for var in data_vars:
+        ds_combined[var].attrs = dict(DISTANCE_VARIABLE_ATTRS[var])
+
+    return ds_combined
+
+
+def combination_intersection_positions(
+    ds_mfp_intersection, rcv_combination, method="mean_surfaces"
+):
+    """Theoretical and estimated intersection of one comparison, for a combination of receivers.
+
+    The theoretical intersection is the pair of samples of the two sides
+    (section 1 / section 2, or library / event) which are the closest in real
+    space. For each distance type, the estimated intersection is the pair of
+    samples minimizing the combined ambiguity surface.
+
+    Parameters
+    ----------
+    ds_mfp_intersection : xarray.Dataset
+        MFP dataset of one intersection (two sections, or a library section and
+        an event).
+    rcv_combination : sequence of str
+        Receivers to combine, e.g. ``("obs2", "obs4")``.
+    method : {"mean_surfaces"}, optional
+        Combination approach, see ``combine_distances_over_receivers``.
+
+    Returns
+    -------
+    list of dict
+        One record for the theoretical intersection (``kind = "theoretical"``)
+        followed by one record per distance type. Each record gives the
+        datetimes (``datetime1``, ``datetime2``) and the positions (``lon1``,
+        ``lat1``, ``lon2``, ``lat2``) of the two samples, the real distance
+        between them (``real_distance_m``) and, for the estimates, the position
+        errors along side 1 (``error_side1_m``) and side 2 (``error_side2_m``).
+        The values are NaN if a surface has no valid value.
+
+    Raises
+    ------
+    ValueError
+        If the real-space distance has no valid value (the theoretical
+        intersection cannot be determined).
+    """
+    axis_names = get_mfp_axis_names(ds_mfp_intersection)
+    positions = get_mfp_shot_positions(ds_mfp_intersection)
+    datetimes1 = ds_mfp_intersection[axis_names["dim1"]].values
+    datetimes2 = ds_mfp_intersection[axis_names["dim2"]].values
+    rcv_ids = [str(rcv_id) for rcv_id in ds_mfp_intersection["rcv_id_feature"].values]
+
+    # Surfaces combined over the receivers
+    combined = combine_distances_over_receivers(
+        _distances_from_mfp_dataset(ds_mfp_intersection),
+        rcv_ids,
+        rcv_combination,
+        method=method,
+    )
+
+    # Theoretical intersection: closest samples in real space
+    target = _argmin_2d(combined["dist_in_real_space"])
+    if target is None:
+        raise ValueError(
+            "The real-space distance has no valid value: the theoretical intersection "
+            "cannot be determined."
+        )
+    i_target, j_target = int(target[0]), int(target[1])
+
+    def sample_record(kind, i1, j1):
+        """Record of the pair of samples (i1 on side 1, j1 on side 2)."""
+        return dict(
+            kind=kind,
+            datetime1=datetimes1[i1],
+            datetime2=datetimes2[j1],
+            lon1=positions["lon1"][i1],
+            lat1=positions["lat1"][i1],
+            lon2=positions["lon2"][j1],
+            lat2=positions["lat2"][j1],
+            real_distance_m=float(combined["dist_in_real_space"][i1, j1]),
+        )
+
+    records = [sample_record("theoretical", i_target, j_target)]
+
+    # Estimated intersection of each distance type: minimum of the combined surface
+    for key in DISTANCE_TYPES:
+        if f"dist_{key}" not in combined:
+            continue
+
+        guess = _argmin_2d(combined[f"dist_{key}"][0])
+        if guess is None:
+            records.append(
+                dict(
+                    kind=key,
+                    datetime1=np.datetime64("NaT"),
+                    datetime2=np.datetime64("NaT"),
+                    lon1=np.nan,
+                    lat1=np.nan,
+                    lon2=np.nan,
+                    lat2=np.nan,
+                    real_distance_m=np.nan,
+                    error_side1_m=np.nan,
+                    error_side2_m=np.nan,
+                )
+            )
+            continue
+
+        i_guess, j_guess = int(guess[0]), int(guess[1])
+        record = sample_record(key, i_guess, j_guess)
+
+        # Position error along each side with respect to the theoretical intersection
+        record["error_side1_m"] = _geodesic_distance_m(
+            positions["lon1"][i_target], positions["lat1"][i_target],
+            positions["lon1"][i_guess], positions["lat1"][i_guess],
+        )
+        record["error_side2_m"] = _geodesic_distance_m(
+            positions["lon2"][j_target], positions["lat2"][j_target],
+            positions["lon2"][j_guess], positions["lat2"][j_guess],
+        )
+        records.append(record)
+
+    return records

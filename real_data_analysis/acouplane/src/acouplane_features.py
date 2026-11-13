@@ -15,6 +15,22 @@
 import warnings
 import numpy as np
 
+from real_data_analysis.acouplane.src.acouplane_conventions import (
+    get_sample_axis_names,
+)
+
+
+# Methods available to estimate the RTF ``pi_ij`` (relative transfer function between a receiver and the reference)
+#   "spectral_ratio": pi_ij = S_ij / S_jj (cross spectrum over auto spectrum of the reference). Method of the active case.
+#   "cs_evd": pi_ij from the first eigenvector of the spatial covariance matrix (CSDM) of the receivers, with the
+#             covariance subtraction method of ``FeatureProcessor`` (preferable for passive signals).
+RTF_METHODS = ("spectral_ratio", "cs_evd")
+DEFAULT_RTF_METHOD = "spectral_ratio"
+
+# Sampling frequency given to the FeatureProcessor of the "cs_evd" method. It is only needed to build the estimator:
+# the CSDM is already computed, so it does not influence the RTF.
+CS_EVD_SAMPLING_FREQUENCY_HZ = 2000
+
 
 # Maximum number of elements of the temporary 3D arrays built when comparing two sections
 # (see derive_feature_distance_between_sections). Keeps the RAM usage bounded.
@@ -66,6 +82,81 @@ def get_distance_between_sections(ds_feature_section1, ds_feature_section2):
     dist_12 = dist_12.T  # (n_emission1, n_emission2)
 
     return dist_12
+
+
+def get_distance_between_library_and_event(ds_feature_library, ds_feature_event):
+    """Compute the geodesic distance between every library sample and every event sample.
+
+    Distances are computed on the WGS84 ellipsoid between the source positions of
+    the library section (one position per library sample) and of the event (one
+    position per event sample). The datasets can come from any acquisition mode
+    (active emissions or passive windows): the names of the sample dimension and
+    of the position variables are detected with ``get_sample_axis_names``.
+
+    Parameters
+    ----------
+    ds_feature_library : xarray.Dataset
+        Feature dataset of a library section (sample dimension
+        ``library_datetime``, positions ``library_lon`` / ``library_lat``).
+    ds_feature_event : xarray.Dataset
+        Feature dataset of an event (sample dimension ``event_datetime``,
+        positions ``event_lon`` / ``event_lat``).
+
+    Returns
+    -------
+    numpy.ndarray
+        Distances in meters, shape ``(n_library_samples, n_event_samples)``.
+
+    Raises
+    ------
+    ValueError
+        If a dataset follows none of the sample naming conventions, or if a
+        position is missing (NaN) so that the distance cannot be computed.
+    """
+    from pyproj import Geod
+
+    geod = Geod(ellps="WGS84")
+
+    # Positions of the source at each sample of the library section and of the event
+    axis_library = get_sample_axis_names(ds_feature_library)
+    axis_event = get_sample_axis_names(ds_feature_event)
+
+    library_lon = ds_feature_library[axis_library["lon_var"]].values
+    library_lat = ds_feature_library[axis_library["lat_var"]].values
+    event_lon = ds_feature_event[axis_event["lon_var"]].values
+    event_lat = ds_feature_event[axis_event["lat_var"]].values
+
+    for name, values in (
+        ("library", library_lon),
+        ("library", library_lat),
+        ("event", event_lon),
+        ("event", event_lat),
+    ):
+        if np.isnan(values).any():
+            raise ValueError(
+                f"The {name} positions contain NaN values: the distance in real space "
+                "cannot be computed (check the position of the source along the trajectory)."
+            )
+
+    # One column per event sample, computed against all the library samples
+    dist_library_event = []
+    for i_event in range(event_lon.size):
+
+        # Cast the event position to the shape of the library positions
+        lon_event_i = np.full(library_lon.size, event_lon[i_event])
+        lat_event_i = np.full(library_lon.size, event_lat[i_event])
+
+        # Compute geodesic distance
+        _, _, horizontal_distance = geod.inv(
+            lons1=library_lon, lats1=library_lat, lons2=lon_event_i, lats2=lat_event_i
+        )
+
+        dist_library_event.append(horizontal_distance)
+
+    dist_library_event = np.asarray(dist_library_event)  # (n_event, n_library)
+    dist_library_event = dist_library_event.T  # (n_library, n_event)
+
+    return dist_library_event
 
 
 def _gamma_distances_block(gamma_a, gamma_b):
@@ -416,7 +507,138 @@ def derive_section_features(
     )
 
 
-def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50):
+def check_rtf_method(rtf_method):
+    """Check the name of the method used to estimate the RTF.
+
+    Parameters
+    ----------
+    rtf_method : str
+        Method name, one of ``RTF_METHODS``.
+
+    Returns
+    -------
+    str
+        The method name.
+
+    Raises
+    ------
+    ValueError
+        If the method is unknown.
+    """
+    if rtf_method not in RTF_METHODS:
+        raise ValueError(
+            f"Unknown rtf_method '{rtf_method}'. Valid methods: {list(RTF_METHODS)} "
+            "('spectral_ratio': S_ij / S_jj, 'cs_evd': first eigenvector of the spatial covariance matrix)."
+        )
+    return rtf_method
+
+
+def derive_rtf_cs_evd(ds_feature_section, rcv_ref, rcv_ids, fmin=5, fmax=50):
+    """Estimate the RTF of several receivers with the cs-evd method (first eigenvector of the CSDM).
+
+    For every sample (emission or passive window) and frequency, the spatial
+    covariance matrix of the receivers (CSDM, variable ``Sxy``) is given to
+    ``FeatureProcessor.rtf_estimator.estimate_rtf_covariance_subtraction``,
+    which estimates the RTF vector from the first eigenvector of the matrix,
+    relative to the reference receiver. The noise covariance is not subtracted
+    (null matrix), as in the passive tests.
+
+    Parameters
+    ----------
+    ds_feature_section : xarray.Dataset
+        Feature dataset with ``Sxy`` of dimensions ``(<sample dimension>,
+        rcv_i, rcv_j, freq)``; all the receivers must be in the matrix (the
+        eigenvector uses all of them).
+    rcv_ref : str
+        Reference receiver.
+    rcv_ids : sequence of str
+        Receivers whose RTF is returned (the reference receiver excluded).
+    fmin, fmax : float, optional
+        Frequency band kept, in Hz.
+
+    Returns
+    -------
+    numpy.ndarray
+        Complex RTF, shape ``(len(rcv_ids), n_samples, n_freq)``. Non finite
+        values are replaced by NaN. A sample whose matrix contains non finite
+        values (no CPSD) gives NaN.
+
+    Raises
+    ------
+    ValueError
+        If a receiver is missing, if the receivers of the rows and columns of
+        ``Sxy`` differ, or if the estimator does not return one RTF per
+        receiver and frequency.
+    ImportError
+        If ``source.feature_processor`` (``FeatureProcessor``) cannot be imported.
+    """
+    # The FeatureProcessor is only needed by this method
+    from source.feature_processor import FeatureProcessor
+
+    datetime_dim = get_sample_axis_names(ds_feature_section)["datetime_dim"]
+    ds_band = ds_feature_section.sel(freq=slice(fmin, fmax))
+
+    receivers = [str(rcv) for rcv in ds_band.rcv_i.values]
+    if [str(rcv) for rcv in ds_band.rcv_j.values] != receivers:
+        raise ValueError(
+            "The receivers of the rows (rcv_i) and of the columns (rcv_j) of Sxy differ: "
+            "the spatial covariance matrix is not square."
+        )
+    for rcv in (rcv_ref, *rcv_ids):
+        if rcv not in receivers:
+            raise ValueError(
+                f"Receiver '{rcv}' not found in the feature dataset (available receivers: {receivers})."
+            )
+    idx_ref = receivers.index(rcv_ref)
+    idx_rcv_ids = [receivers.index(rcv) for rcv in rcv_ids]
+
+    feature_processor = FeatureProcessor(
+        fs=CS_EVD_SAMPLING_FREQUENCY_HZ,
+        idx_rcv_ref=idx_ref,
+    )  # Only its rtf_estimator is used
+
+    # CSDM of every sample: (n_samples, n_freq, rcv_i, rcv_j). The rows are the receivers i and the columns the
+    # receivers j (Sxy[i, j] = E[x_i x_j*]): the first eigenvector is then the steering vector, whose ratio to the
+    # reference receiver is the RTF. (A transposed matrix would give the complex conjugate, i.e. a sign error
+    # of the phase of the RTF.)
+    csdm_all = ds_band.Sxy.transpose(
+        datetime_dim,
+        "freq",
+        "rcv_i",
+        "rcv_j",
+    ).values
+    n_samples, n_freq, n_rcv = csdm_all.shape[:3]
+
+    pi_along_samples = np.full((n_samples, n_freq, n_rcv), np.nan, dtype=complex)
+    for i_sample in range(n_samples):
+        csdm = csdm_all[i_sample]  # (n_freq, n_rcv, n_rcv)
+        # No CPSD for this sample (e.g. incomplete window): the eigen decomposition is not possible
+        if not np.all(np.isfinite(csdm)):
+            continue
+        noise_covariance = np.zeros_like(csdm)  # no noise subtraction
+        pi_sample = feature_processor.rtf_estimator.estimate_rtf_covariance_subtraction(
+            csdm - noise_covariance, use_first_column=False
+        )
+        pi_sample = np.asarray(pi_sample)
+        if pi_sample.shape != (n_freq, n_rcv):
+            raise ValueError(
+                f"The cs-evd estimator returned an array of shape {pi_sample.shape} instead of "
+                f"(n_freq, n_rcv) = {(n_freq, n_rcv)}."
+            )
+        pi_along_samples[i_sample] = pi_sample
+
+    # (n_samples, n_freq, n_rcv) -> (n_rcv, n_samples, n_freq), non reference receivers only
+    pi_all = np.moveaxis(pi_along_samples, source=[0, 1, 2], destination=[1, 2, 0])
+    return _non_finite_to_nan(pi_all[idx_rcv_ids])
+
+
+def all_features_single_section(
+    ds_feature_section,
+    rcv_ref="obs1",
+    fmin=5,
+    fmax=50,
+    rtf_method=DEFAULT_RTF_METHOD,
+):
     """Derive the RTF and DCF features of a section for all receivers but the reference.
 
     The RTF level ``gamma`` is NOT centered along the frequency axis (see
@@ -430,6 +652,15 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
         Reference receiver.
     fmin, fmax : float, optional
         Frequency band kept, in Hz.
+    rtf_method : {"spectral_ratio", "cs_evd"}, optional
+        Estimation of the RTF ``pi_ij``:
+
+        - ``"spectral_ratio"`` (default, active case): ``S_ij / S_jj``;
+        - ``"cs_evd"`` (passive case): first eigenvector of the spatial
+          covariance matrix, see ``derive_rtf_cs_evd``.
+
+        ``gamma_ij`` is always ``20 log10 |pi_ij|`` and ``sij_scot`` (DCF) does
+        not depend on the method.
 
     Returns
     -------
@@ -441,8 +672,9 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
     Raises
     ------
     ValueError
-        If ``rcv_ref`` is not a receiver of the dataset.
+        If ``rcv_ref`` is not a receiver of the dataset or if ``rtf_method`` is unknown.
     """
+    check_rtf_method(rtf_method)
     rcv_i_arr = list(ds_feature_section.rcv_i.values)
     if rcv_ref not in rcv_i_arr:
         raise ValueError(
@@ -470,15 +702,169 @@ def all_features_single_section(ds_feature_section, rcv_ref="obs1", fmin=5, fmax
         gamma_1_arr.append(gamma_a)
         sij_scot_1_arr.append(sij_scot_a)
 
+    pi_1_arr = np.asarray(pi_1_arr)
+    gamma_1_arr = np.asarray(gamma_1_arr)
+
+    # RTF from the first eigenvector of the spatial covariance matrix: replaces pi_ij and gamma_ij
+    # (the DCF computed above is unchanged)
+    if rtf_method == "cs_evd":
+        pi_1_arr = derive_rtf_cs_evd(
+            ds_feature_section, rcv_ref, rcv_i_arr, fmin=fmin, fmax=fmax
+        )
+        with np.errstate(divide="ignore"):
+            gamma_1_arr = _non_finite_to_nan(20 * np.log10(np.abs(pi_1_arr)))
+
     # Convert to arrays and group (nrcv, n_emission, nfreq)
     features_section = dict(
         rcv_id=rcv_i_arr,
-        pi_ij=np.asarray(pi_1_arr),
-        gamma_ij=np.asarray(gamma_1_arr),
+        pi_ij=pi_1_arr,
+        gamma_ij=gamma_1_arr,
         sij_scot=np.asarray(sij_scot_1_arr),
     )
 
     return features_section
+
+
+def feature_distances_between_datasets(
+    ds_feature_a, ds_feature_b, compare_centered_gamma=False
+):
+    """Compute the feature distances between the samples of two feature datasets.
+
+    For each receiver pair ``(rcv_id_feature, reference receiver)``, the four
+    feature distances of ``derive_feature_distance_between_sections`` are
+    computed between every sample of ``ds_feature_a`` and every sample of
+    ``ds_feature_b``. Only the variables ``pi_ij``, ``gamma_ij`` and
+    ``sij_scot`` are used, so that the function is the same for two active
+    sections, a library section and an event, or two passive events.
+
+    Optionally, the gamma distances are also computed with a ``gamma`` centered
+    along frequency (see ``distances_single_intersection``).
+
+    Parameters
+    ----------
+    ds_feature_a, ds_feature_b : xarray.Dataset
+        Feature datasets with the variables ``pi_ij``, ``gamma_ij`` and
+        ``sij_scot`` of dimensions ``(rcv_id_feature, <sample dimension>, freq)``
+        and the same receivers and frequencies.
+    compare_centered_gamma : bool, optional
+        If True, also compute ``dist_theta_gamma_centered`` and
+        ``dist_L2_gamma_centered``.
+
+    Returns
+    -------
+    dict
+        ``dist_theta``, ``dist_theta_gamma``, ``dist_L2_gamma`` and ``dist_dcf``
+        (shape ``(n_rcv, n_samples_a, n_samples_b)``), plus
+        ``dist_theta_gamma_centered`` and ``dist_L2_gamma_centered`` if
+        ``compare_centered_gamma`` is True.
+    """
+    dist_theta_arr = []
+    dist_theta_gamma_arr = []
+    dist_L2_gamma_arr = []
+    dist_dcf_arr = []
+    dist_theta_gamma_c_arr = []
+    dist_L2_gamma_c_arr = []
+
+    # Loop over the receiver pairs (rcv_id_i, reference receiver)
+    for rcv_id_i in ds_feature_a.rcv_id_feature.values:
+
+        ds_feature_a_rcv_i = ds_feature_a.sel(rcv_id_feature=rcv_id_i)
+        ds_feature_b_rcv_i = ds_feature_b.sel(rcv_id_feature=rcv_id_i)
+        # Extract features
+        features_a = dict(
+            pi_ij=ds_feature_a_rcv_i.pi_ij.values,
+            gamma_ij=ds_feature_a_rcv_i.gamma_ij.values,
+            sij_scot=ds_feature_a_rcv_i.sij_scot.values,
+        )
+        features_b = dict(
+            pi_ij=ds_feature_b_rcv_i.pi_ij.values,
+            gamma_ij=ds_feature_b_rcv_i.gamma_ij.values,
+            sij_scot=ds_feature_b_rcv_i.sij_scot.values,
+        )
+        # Compute distances between the samples of both datasets
+        dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf = (
+            derive_feature_distance_between_sections(
+                features_a, features_b
+            )
+        )
+
+        # Store
+        dist_theta_arr.append(dist_theta)
+        dist_theta_gamma_arr.append(dist_theta_gamma)
+        dist_L2_gamma_arr.append(dist_L2_gamma)
+        dist_dcf_arr.append(dist_dcf)
+
+        # Same gamma distances with gamma centered along frequency (not stored)
+        if compare_centered_gamma:
+            gamma1_c = _center_along_freq(features_a["gamma_ij"])
+            gamma2_c = _center_along_freq(features_b["gamma_ij"])
+            d_theta_gamma_c, d_L2_gamma_c = derive_gamma_distance_between_sections(
+                gamma1_c, gamma2_c
+            )
+            dist_theta_gamma_c_arr.append(d_theta_gamma_c)
+            dist_L2_gamma_c_arr.append(d_L2_gamma_c)
+
+    # Convert to arrays and group (nrcv, n_samples_a, n_samples_b)
+    feature_distances = dict(
+        dist_theta=np.asarray(dist_theta_arr),
+        dist_theta_gamma=np.asarray(dist_theta_gamma_arr),
+        dist_L2_gamma=np.asarray(dist_L2_gamma_arr),
+        dist_dcf=np.asarray(dist_dcf_arr),
+    )
+    if compare_centered_gamma:
+        feature_distances["dist_theta_gamma_centered"] = np.asarray(
+            dist_theta_gamma_c_arr
+        )
+        feature_distances["dist_L2_gamma_centered"] = np.asarray(dist_L2_gamma_c_arr)
+
+    return feature_distances
+
+
+def compare_rtf_methods(ds_feature_section, rcv_ref="obs1", fmin=5, fmax=50):
+    """Compare the RTF of the two methods on a section (sanity check of the cs-evd option).
+
+    On data where one source dominates (e.g. active emissions) both methods
+    should give almost the same RTF. For each receiver, the median over the
+    samples and frequencies of the relative difference ``|pi_evd - pi_ratio| / |pi_ratio|``
+    is returned, and the same quantity with the complex conjugate of ``pi_evd``
+    (a systematic gap that vanishes with the conjugate reveals a convention
+    difference of the covariance matrix: ``Sxy[i, j]`` versus its transpose).
+
+    Parameters
+    ----------
+    ds_feature_section : xarray.Dataset
+        Feature dataset with ``Sxy``.
+    rcv_ref : str, optional
+        Reference receiver.
+    fmin, fmax : float, optional
+        Frequency band kept, in Hz.
+
+    Returns
+    -------
+    dict
+        ``{rcv_id: {"relative_difference": float, "relative_difference_conjugate": float}}``.
+    """
+    features_ratio = all_features_single_section(
+        ds_feature_section, rcv_ref, fmin, fmax, rtf_method="spectral_ratio"
+    )
+    features_evd = all_features_single_section(
+        ds_feature_section, rcv_ref, fmin, fmax, rtf_method="cs_evd"
+    )
+
+    comparison = {}
+    for i_rcv, rcv_id in enumerate(features_ratio["rcv_id"]):
+        pi_ratio = features_ratio["pi_ij"][i_rcv]
+        pi_evd = features_evd["pi_ij"][i_rcv]
+        comparison[str(rcv_id)] = dict(
+            relative_difference=float(
+                np.nanmedian(np.abs(pi_evd - pi_ratio) / np.abs(pi_ratio))
+            ),
+            relative_difference_conjugate=float(
+                np.nanmedian(np.abs(np.conj(pi_evd) - pi_ratio) / np.abs(pi_ratio))
+            ),
+        )
+
+    return comparison
 
 
 def distances_single_intersection(
@@ -522,63 +908,58 @@ def distances_single_intersection(
         ds_feature_section1, ds_feature_section2
     )
 
-    dist_theta_arr = []
-    dist_theta_gamma_arr = []
-    dist_L2_gamma_arr = []
-    dist_dcf_arr = []
-    dist_theta_gamma_c_arr = []
-    dist_L2_gamma_c_arr = []
-
-    for rcv_id_i in ds_feature_section1.rcv_id_feature.values:
-
-        ds_feature_section1_rcv_i = ds_feature_section1.sel(rcv_id_feature=rcv_id_i)
-        ds_feature_section2_rcv_i = ds_feature_section2.sel(rcv_id_feature=rcv_id_i)
-        # Extract features
-        features_section1 = dict(
-            pi_ij=ds_feature_section1_rcv_i.pi_ij.values,
-            gamma_ij=ds_feature_section1_rcv_i.gamma_ij.values,
-            sij_scot=ds_feature_section1_rcv_i.sij_scot.values,
-        )
-        features_section2 = dict(
-            pi_ij=ds_feature_section2_rcv_i.pi_ij.values,
-            gamma_ij=ds_feature_section2_rcv_i.gamma_ij.values,
-            sij_scot=ds_feature_section2_rcv_i.sij_scot.values,
-        )
-        # Compute distances between section 1 and 2
-        dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf = (
-            derive_feature_distance_between_sections(
-                features_section1, features_section2
-            )
-        )
-
-        # Store
-        dist_theta_arr.append(dist_theta)
-        dist_theta_gamma_arr.append(dist_theta_gamma)
-        dist_L2_gamma_arr.append(dist_L2_gamma)
-        dist_dcf_arr.append(dist_dcf)
-
-        # Same gamma distances with gamma centered along frequency (not stored)
-        if compare_centered_gamma:
-            gamma1_c = _center_along_freq(features_section1["gamma_ij"])
-            gamma2_c = _center_along_freq(features_section2["gamma_ij"])
-            d_theta_gamma_c, d_L2_gamma_c = derive_gamma_distance_between_sections(
-                gamma1_c, gamma2_c
-            )
-            dist_theta_gamma_c_arr.append(d_theta_gamma_c)
-            dist_L2_gamma_c_arr.append(d_L2_gamma_c)
-
-    # Convert to arrays and group (nrcv, n_emission1, n_emission2)
-    distance_section12 = dict(
-        dist_in_real_space=dist_in_real_space_12,
-        dist_theta=np.asarray(dist_theta_arr),
-        dist_theta_gamma=np.asarray(dist_theta_gamma_arr),
-        dist_L2_gamma=np.asarray(dist_L2_gamma_arr),
-        dist_dcf=np.asarray(dist_dcf_arr),
+    feature_distances = feature_distances_between_datasets(
+        ds_feature_section1, ds_feature_section2, compare_centered_gamma
     )
-    if compare_centered_gamma:
-        distance_section12["dist_theta_gamma_centered"] = np.asarray(
-            dist_theta_gamma_c_arr
-        )
-        distance_section12["dist_L2_gamma_centered"] = np.asarray(dist_L2_gamma_c_arr)
+
+    # Group (nrcv, n_emission1, n_emission2)
+    distance_section12 = dict(dist_in_real_space=dist_in_real_space_12)
+    distance_section12.update(feature_distances)
 
     return distance_section12
+
+
+def distances_library_and_event(
+    ds_feature_library, ds_feature_event, compare_centered_gamma=False
+):
+    """Compute all distances between the samples of a library section and of an event.
+
+    The geodesic distance between samples ("real space", see
+    ``get_distance_between_library_and_event``) and the feature distances (see
+    ``feature_distances_between_datasets``) are computed. This is the
+    counterpart of ``distances_single_intersection`` for a library / event
+    comparison.
+
+    Parameters
+    ----------
+    ds_feature_library : xarray.Dataset
+        Feature dataset of a library section.
+    ds_feature_event : xarray.Dataset
+        Feature dataset of an event, with the same receivers (``rcv_id_feature``)
+        and the same frequencies as the library.
+    compare_centered_gamma : bool, optional
+        If True, also compute ``dist_theta_gamma_centered`` and
+        ``dist_L2_gamma_centered``.
+
+    Returns
+    -------
+    dict
+        Keys ``dist_in_real_space`` (shape ``(n_library_samples,
+        n_event_samples)``, m) and the feature distances, shape ``(n_rcv,
+        n_library_samples, n_event_samples)``, see
+        ``distances_single_intersection``.
+    """
+    # Distance in meters between the library samples and the event samples
+    dist_in_real_space = get_distance_between_library_and_event(
+        ds_feature_library, ds_feature_event
+    )
+
+    # Distances in the feature space, for each receiver pair
+    feature_distances = feature_distances_between_datasets(
+        ds_feature_library, ds_feature_event, compare_centered_gamma
+    )
+
+    distance_library_event = dict(dist_in_real_space=dist_in_real_space)
+    distance_library_event.update(feature_distances)
+
+    return distance_library_event

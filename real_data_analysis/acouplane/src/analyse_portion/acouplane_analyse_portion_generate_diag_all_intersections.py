@@ -58,6 +58,7 @@ from real_data_analysis.acouplane.src.acouplane_plot_analysis import (
     plot_rcv_pair_performance_heatmaps,
 )
 from real_data_analysis.acouplane.src.acouplane_plot_mfp import (
+    ambiguity_figure_filename,
     plot_intersection_ambiguity,
     plot_intersection_gamma_comparison,
 )
@@ -135,13 +136,19 @@ obs_ids = [
 ]
 # Frequency band
 fmin = 10
-fmax = 800
+fmax = 500
+
+# Estimation of the RTF (pi_ij)
+#   "spectral_ratio" -> S_ij / S_jj (active case)
+#   "cs_evd"         -> first eigenvector of the spatial covariance matrix (preferable for passive signals)
+# The same method must be used for the library and the event
+rtf_method = "spectral_ratio"
 
 # Intersections to process (MFP computation and ambiguity figures).
 # None -> all intersections. Otherwise a list of (meridional, zonal) section labels, e.g.
-# intersections_to_process = [("sn2", "oe6")]
+intersections_to_process = [("oe7", "sn2")]
 # , ("sn2", "oe7"), ("sn2", "oe8")
-intersections_to_process = None
+# intersections_to_process = None
 
 # Analysis of the results: position error of the estimated intersection with respect to the true one.
 # error_mode : shots used to measure the position error
@@ -150,11 +157,16 @@ intersections_to_process = None
 #   "both"     -> sqrt(error_section1**2 + error_section2**2)
 error_mode = "both"
 success_threshold_m = (
-    50  # an intersection is successfully localized if its error <= threshold [m]
+    100  # an intersection is successfully localized if its error <= threshold [m]
 )
-freq_bandwidth = 50  # width of the frequency bands of the band study [Hz]
+freq_bandwidth = 400  # width of the frequency bands of the band study [Hz]
 # Distance types to analyse: None -> all those available, otherwise a list among "theta", "theta_gamma",
 # "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered" (the centered ones need compare_centered_gamma = True)
+
+# Metrics displayed next to the real distance (always in the first panel) in the ambiguity figures: 3 among
+# "theta", "theta_gamma", "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered"
+# (the centered ones need compare_centered_gamma = True), e.g. ["theta_gamma_centered", "L2_gamma_centered", "dcf"]
+ambiguity_metrics = ["theta_gamma", "theta", "dcf"]
 # It applies to all the analysis figures (position error, receiver pair comparison, frequency study, contrast).
 distance_types_to_analyse = None
 # Error versus width of the frequency range: ranges [fmin, f] with f = bandwidth_step, 2 * bandwidth_step, ... up to
@@ -180,11 +192,11 @@ plot_signal = False
 plot_spectrogram = False
 plot_signal_single_emission = False
 plot_features = False
-plot_intersections = False
+plot_intersections = True
 # Analysis of the results (position error of the estimated intersections)
 analyse_error_vs_distance_type = True
-analyse_error_vs_frequency_band = True
-analyse_error_vs_bandwidth = True
+analyse_error_vs_frequency_band = False
+analyse_error_vs_bandwidth = False
 analyse_ambiguity_contrast = True
 analyse_rcv_pair_performance = True
 # Also compute (and plot) the gamma distances with gamma centered along frequency
@@ -384,7 +396,7 @@ if plot_signal_single_emission:
             )
 
             # Normalize
-            press_rcv = press_rcv / press_rcv.max()
+            # press_rcv = press_rcv / press_rcv.max()
             press_rcv.plot(label=rcv_id.upper(), color=color(i), ax=axs[i])
             # Plot arrivals time
             axs[i].vlines(x=tir_dt_rcv, ymin=-1, ymax=1, color="k", linestyle="--")
@@ -421,7 +433,7 @@ if compute_cpsds:
     derive_portion_cpsd(
         portion_tree=portion,
         offset_ms=offset_ms,
-        signal_duration_s=int(signal_duration_ms / 1000),
+        signal_duration_s=signal_duration_ms / 1000,
         nfft=nfft,
         obs_ids=None,
         fmin=fmin,
@@ -450,6 +462,7 @@ if apply_mfp_strategy_intersections:
         verbose=verbose,
         compare_centered_gamma=compare_centered_gamma,
         intersections=selected_intersections,
+        rtf_method=rtf_method,
     )
 else:
     log("Step 4 - MFP strategy: skipped (apply_mfp_strategy_intersections = False)")
@@ -648,11 +661,12 @@ if plot_intersections:
                     section2_name=section2_name,
                     cmap=cmap,
                     max_quantile=max_quantile,
+                    metrics=ambiguity_metrics,
                 )
 
                 fpath = os.path.join(
                     root_img_intersection,
-                    f"mfp_ambiguity_4_metrics_{rcv_id}.png",
+                    ambiguity_figure_filename(ambiguity_metrics, rcv_id),
                 )
                 fig.savefig(fpath)
                 plt.close(fig)

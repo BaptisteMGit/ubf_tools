@@ -91,10 +91,12 @@ def interpolate_gps(df_gps, time_step="10s"):
             time_interp = high_res_time[
                 (high_res_time["datetime"] >= t1) & (high_res_time["datetime"] <= t2)
             ]
+            include_last_point = True
         else:
             time_interp = high_res_time[
                 (high_res_time["datetime"] >= t1) & (high_res_time["datetime"] < t2)
             ]
+            include_last_point = False
 
         if time_interp.empty:
             continue
@@ -106,8 +108,25 @@ def interpolate_gps(df_gps, time_step="10s"):
         lon2 = df_gps["lon"].iloc[i]
         lat2 = df_gps["lat"].iloc[i]
 
+        # NOTE : Must include first point and last point (if needed) --> Fix 12/11/2026
+        # profile_coords = geod.inv_intermediate(
+        #     lon1, lat1, lon2, lat2, npts=time_interp.size, return_back_azimuth=False
+        # )
+        # Fix 13/11/2026 to avoid duplicated points at begining / end
+        if include_last_point:
+            terminus_idx = 0  # geod.inv_intermediate convention terminus_idx=0 means include_last = True
+        else:
+            terminus_idx = 1
+
         profile_coords = geod.inv_intermediate(
-            lon1, lat1, lon2, lat2, npts=time_interp.size, return_back_azimuth=False
+            lon1,
+            lat1,
+            lon2,
+            lat2,
+            npts=time_interp.size,
+            return_back_azimuth=False,
+            initial_idx=0,
+            terminus_idx=terminus_idx,
         )
 
         # Add profile_coords to high_res_pos

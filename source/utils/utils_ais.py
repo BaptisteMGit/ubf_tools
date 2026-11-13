@@ -40,6 +40,8 @@ def interpolate_ais(ais, time_step="10s", subset_idx=None, mmsi_to_include=None)
         prev_progress = progression_bar(i, index0, indexf, prev_progress)
 
         ais_mmsi = ais.loc[ais["mmsi"] == mmsi_i]
+        # NOTE fix du 12/11/2026 -> some ais_mmsi might have duplicated datetime
+        ais_mmsi = ais_mmsi.drop_duplicates("datetime")
         ais_mmsi_interp = interpolate_gps(df_gps=ais_mmsi, time_step=time_step)
 
         # Add mmsi column

@@ -99,7 +99,9 @@ LeapSeconds = 18
 
 # Ecart maximal entre fichiers en secondes pour rabouter plusieurs fichiers
 # notamment dans le cas d'un arr�t pour une mesure de tilt
-ECART_MAX_FICHIERS_S = 90
+# ECART_MAX_FICHIERS_S = 90
+# Baptiste MENETRIER (13/11/2026) -> tentative de fix pour lire l'ensemble des données OBS 2 
+ECART_MAX_FICHIERS_S = 60000
 
 
 def fileListGet(path, ext="bin"):
@@ -249,21 +251,31 @@ def getListeBinFiles(rep, sn, channel, timestamp, duree, fs):
                 # Le facteur 4 correspond à la taille d'un int32 en octets, et le facteur fs correspond au nombre d'échantillons par seconde. 
                 # Donc, os.path.getsize(f) / 4 / fs calcule la durée du fichier en secondes.
                 tstop = tstart + os.path.getsize(f) / 4 / fs
+                # print(f)
+                # print(tstop, float(fp['stop']) / 1e6)
+                # print(f"timestamp = {timestamp}")
+                # print(f"tstart = {tstart}", f"tstart <= timestamp : {(tstart <= timestamp)}")
+                # print(f"tstop = {tstop}", f"tstop > timestamp : {(tstop > timestamp)}")
+
                 if (tstart > timestamp) and (tstart <= (timestamp + ECART_MAX_FICHIERS_S)) and (
                         duree > (tstart - timestamp)):
                     # Petit trou dans la donn�e, on prend quand m�me le fichier suivant. On corrige timestamp
                     duree -= tstart - timestamp
                     lh.append([timestamp, tstart])
                     timestamp = tstart
+
                 if (tstart <= timestamp) and (tstop > timestamp):
                     lf.append(f)
                     lts.append(tstart)
+                    # print(duree)
                     if duree == -1:
                         # On prend le premier fichier jusqu'� la fin
                         duree = tstop - timestamp
                     dint = min(duree, tstop - timestamp)
                     ld.append(dint)
+                    # print(duree, dint)
                     duree -= dint
+
                     timestamp += dint
                     if duree < 1 / fs:
                         break

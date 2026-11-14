@@ -515,6 +515,11 @@ def extract_pressure_section(section_start, section_end, ds_pressure, obs_dateti
     #     obs_id: obs_datetimes[obs_id] - obs_datetimes[obs_id][0]
     #     for obs_id in obs_datetimes.keys()
     # }
+    # Ensure same date format is used
+    # pd.to_datetime(recording_start).to_pydatetime()
+    section_start = np.datetime64(section_start)
+    section_end = np.datetime64(section_end)
+
     if obs_datetimes is None:
 
         for obs_id in ds_pressure.obs_id.values:
@@ -524,6 +529,7 @@ def extract_pressure_section(section_start, section_end, ds_pressure, obs_dateti
                 int(1 / ds_pressure.fs * ds_pressure.sizes[f"time_{obs_id}"] * 1e6),
                 "us",
             )
+
             section_ends_before_recording_start = recording_start >= section_end
             section_starts_after_recording_end = recording_stop <= section_start
             no_data_available = (

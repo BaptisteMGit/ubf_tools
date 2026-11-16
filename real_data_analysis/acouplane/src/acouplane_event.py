@@ -989,6 +989,8 @@ def build_mfp_library_event_dataset(
             library_acquisition_mode=attrs_library.get("acquisition_mode", "unknown"),
             event_acquisition_mode=attrs_event.get("acquisition_mode", "unknown"),
             reference_receiver=attrs_library.get("reference_receiver", "unknown"),
+            library_rtf_method=attrs_library.get("rtf_method", "unknown"),
+            event_rtf_method=attrs_event.get("rtf_method", "unknown"),
             obs_position=attrs_library.get("obs_position", "unknown"),
             obs_position_filepath=attrs_library.get("obs_position_filepath", "unknown"),
         ),
@@ -1235,3 +1237,94 @@ def get_crossing_distance_m(ds_mfp_intersection):
         return float("nan")
 
     return float(np.nanmin(d_real))
+
+
+def check_unrecorded_mfp_tree(
+    portion_mfp,
+    library_sections,
+    event_sections,
+    reference_rcv,
+    obs_ids=None,
+    compare_centered_gamma=False,
+    library_rtf_method=None,
+    event_rtf_method=None,
+):
+    """Check what can be checked in a saved ambiguity-surface file that has no recorded settings.
+
+    Used to reuse a file computed by an older version of the code. Only the
+    content of the file can be compared to the current settings: the sections,
+    the reference receiver, the receivers, the presence of the centered
+    distances and, for recent files, the RTF methods. The frequency band and the
+    Welch parameters are not stored in the surfaces and cannot be verified.
+
+    Parameters
+    ----------
+    portion_mfp : xarray.DataTree
+        Saved tree (lazy), with the group ``mfp_intersection``.
+    library_sections, event_sections : list of str
+        Sections expected in the file.
+    reference_rcv : str
+        Expected reference receiver.
+    obs_ids : sequence of str or None, optional
+        Receivers requested; the file must contain the pairs ``(rcv, reference)``
+        of these receivers (the reference excluded). None: not checked.
+    compare_centered_gamma : bool, optional
+        If True, the centered distances must be in the file.
+    library_rtf_method, event_rtf_method : str or None, optional
+        Expected RTF methods, checked only if the file records them.
+
+    Returns
+    -------
+    problems : list of str
+        Inconsistencies found (empty if the file can be reused).
+    notes : list of str
+        What could not be verified.
+    """
+    from real_data_analysis.acouplane.src.acouplane_portion_io import (
+        list_stored_intersections,
+    )
+
+    problems = []
+    notes = ["frequency band", "Welch parameters of the CPSD"]
+
+    # Sections
+    stored = set(list_stored_intersections(portion_mfp))
+    expected = {(lib, evt) for lib in library_sections for evt in event_sections}
+    if stored != expected:
+        missing = sorted(expected - stored)
+        unexpected = sorted(stored - expected)
+        problems.append(
+            f"{len(missing)} expected comparison(s) missing (e.g. {missing[:2]}), "
+            f"{len(unexpected)} unexpected (e.g. {unexpected[:2]})"
+        )
+        return problems, notes
+
+    # Content of one comparison (all of them were computed in the same run)
+    library_name, event_name = sorted(expected)[0]
+    ds_mfp = portion_mfp[f"/mfp_intersection/{library_name}/{event_name}"].to_dataset()
+
+    if ds_mfp.attrs.get("reference_receiver") != reference_rcv:
+        problems.append(
+            f"reference receiver '{ds_mfp.attrs.get('reference_receiver')}' instead of '{reference_rcv}'"
+        )
+
+    if obs_ids is not None:
+        expected_rcv = sorted(str(rcv) for rcv in obs_ids if rcv != reference_rcv)
+        stored_rcv = sorted(str(rcv) for rcv in ds_mfp["rcv_id_feature"].values)
+        if stored_rcv != expected_rcv:
+            problems.append(f"receivers {stored_rcv} instead of {expected_rcv}")
+
+    if compare_centered_gamma and "d_theta_gamma_centered" not in ds_mfp:
+        problems.append("the centered gamma distances are not in the file (compare_centered_gamma = True)")
+
+    for name, expected_method in (
+        ("library_rtf_method", library_rtf_method),
+        ("event_rtf_method", event_rtf_method),
+    ):
+        stored_method = ds_mfp.attrs.get(name)
+        if stored_method is None:
+            notes.append(name.replace("_", " "))
+        elif expected_method is not None and stored_method != expected_method:
+            problems.append(f"{name} '{stored_method}' instead of '{expected_method}'")
+
+    return problems, notes

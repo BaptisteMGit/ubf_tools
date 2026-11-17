@@ -33,7 +33,6 @@ from real_data_analysis.acouplane.src.acouplane_localization import (
     localization_errors_from_distances,
 )
 
-
 # Approaches available to combine the receiver pairs
 #   "mean_surfaces": mean of the ambiguity surfaces (feature distances) of the combined receiver pairs
 RCV_COMBINATION_METHODS = ("mean_surfaces",)
@@ -107,7 +106,9 @@ def enumerate_rcv_combinations(
                     f"Invalid combination {combination}: receivers {unknown} are not "
                     f"available (available receivers: {rcv_ids})."
                 )
-            selected.append(tuple(rcv_id for rcv_id in rcv_ids if rcv_id in combination))
+            selected.append(
+                tuple(rcv_id for rcv_id in rcv_ids if rcv_id in combination)
+            )
         selected = list(dict.fromkeys(selected))
     else:
         # All the combinations of the requested sizes
@@ -197,7 +198,7 @@ def combine_distances_over_receivers(
             continue
 
         # Mean of the surfaces of the selected receivers, kept with a receiver axis of size 1
-        combined[f"dist_{key}"] = np.mean(
+        combined[f"dist_{key}"] = np.nanmean(
             np.asarray(dist, dtype=float)[rows], axis=0, keepdims=True
         )
 
@@ -336,7 +337,9 @@ def build_combined_mfp_dataset(
             description="Combined MFP ambiguity surfaces of one intersection",
             combination=format_rcv_combination(rcv_combination),
             method=method,
-            reference_receiver=ds_mfp_intersection.attrs.get("reference_receiver", "unknown"),
+            reference_receiver=ds_mfp_intersection.attrs.get(
+                "reference_receiver", "unknown"
+            ),
         ),
     )
 
@@ -450,12 +453,16 @@ def combination_intersection_positions(
 
         # Position error along each side with respect to the theoretical intersection
         record["error_side1_m"] = _geodesic_distance_m(
-            positions["lon1"][i_target], positions["lat1"][i_target],
-            positions["lon1"][i_guess], positions["lat1"][i_guess],
+            positions["lon1"][i_target],
+            positions["lat1"][i_target],
+            positions["lon1"][i_guess],
+            positions["lat1"][i_guess],
         )
         record["error_side2_m"] = _geodesic_distance_m(
-            positions["lon2"][j_target], positions["lat2"][j_target],
-            positions["lon2"][j_guess], positions["lat2"][j_guess],
+            positions["lon2"][j_target],
+            positions["lat2"][j_target],
+            positions["lon2"][j_guess],
+            positions["lat2"][j_guess],
         )
         records.append(record)
 

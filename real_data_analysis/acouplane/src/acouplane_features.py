@@ -19,7 +19,6 @@ from real_data_analysis.acouplane.src.acouplane_conventions import (
     get_sample_axis_names,
 )
 
-
 # Methods available to estimate the RTF ``pi_ij`` (relative transfer function between a receiver and the reference)
 #   "spectral_ratio": pi_ij = S_ij / S_jj (cross spectrum over auto spectrum of the reference). Method of the active case.
 #   "cs_evd": pi_ij from the first eigenvector of the spatial covariance matrix (CSDM) of the receivers, with the
@@ -598,9 +597,7 @@ def derive_rtf_cs_evd(ds_feature_section, rcv_ref, rcv_ids, fmin=5, fmax=50):
     )  # Only its rtf_estimator is used
 
     # CSDM of every sample: (n_samples, n_freq, rcv_i, rcv_j). The rows are the receivers i and the columns the
-    # receivers j (Sxy[i, j] = E[x_i x_j*]): the first eigenvector is then the steering vector, whose ratio to the
-    # reference receiver is the RTF. (A transposed matrix would give the complex conjugate, i.e. a sign error
-    # of the phase of the RTF.)
+    # receivers j (Sxy[i, j] = E[x_i x_j*]).
     csdm_all = ds_band.Sxy.transpose(
         datetime_dim,
         "freq",
@@ -704,6 +701,7 @@ def all_features_single_section(
 
     pi_1_arr = np.asarray(pi_1_arr)
     gamma_1_arr = np.asarray(gamma_1_arr)
+    sij_scot_1_arr = np.asarray(sij_scot_1_arr)
 
     # RTF from the first eigenvector of the spatial covariance matrix: replaces pi_ij and gamma_ij
     # (the DCF computed above is unchanged)
@@ -719,7 +717,7 @@ def all_features_single_section(
         rcv_id=rcv_i_arr,
         pi_ij=pi_1_arr,
         gamma_ij=gamma_1_arr,
-        sij_scot=np.asarray(sij_scot_1_arr),
+        sij_scot=sij_scot_1_arr,
     )
 
     return features_section
@@ -783,9 +781,7 @@ def feature_distances_between_datasets(
         )
         # Compute distances between the samples of both datasets
         dist_theta, dist_theta_gamma, dist_L2_gamma, dist_dcf = (
-            derive_feature_distance_between_sections(
-                features_a, features_b
-            )
+            derive_feature_distance_between_sections(features_a, features_b)
         )
 
         # Store

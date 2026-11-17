@@ -201,9 +201,9 @@ max_ambiguity_figures = (
 # Booleans to control behavior
 # ======================================================================================================================
 # Compute the CPSD of the events (set to False if the events already contain it)
-compute_event_cpsd = True
+compute_event_cpsd = False
 # Save the CPSD of the events (Welch) in a NetCDF file next to the event file
-save_cpsd_to_netcdf = True
+save_cpsd_to_netcdf = False
 # Also compute the gamma distances with gamma centered along frequency
 compare_centered_gamma = True
 # Store the ambiguity surfaces of all the comparisons in a NetCDF file next to the event file

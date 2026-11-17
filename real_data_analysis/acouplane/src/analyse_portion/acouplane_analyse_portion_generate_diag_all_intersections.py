@@ -146,9 +146,9 @@ rtf_method = "spectral_ratio"
 
 # Intersections to process (MFP computation and ambiguity figures).
 # None -> all intersections. Otherwise a list of (meridional, zonal) section labels, e.g.
-intersections_to_process = [("oe7", "sn2")]
+# intersections_to_process = [("oe7", "sn2")]
 # , ("sn2", "oe7"), ("sn2", "oe8")
-# intersections_to_process = None
+intersections_to_process = None
 
 # Analysis of the results: position error of the estimated intersection with respect to the true one.
 # error_mode : shots used to measure the position error
@@ -182,21 +182,21 @@ contrast_only_valid = False
 # ======================================================================================================================
 # Booleans to control behavior
 # ======================================================================================================================
-save_modification_to_portion = False
-apply_obs_pos_correction = False
-compute_cpsds = False
-apply_mfp_strategy_intersections = False
+save_modification_to_portion = True
+apply_obs_pos_correction = True
+compute_cpsds = True
+apply_mfp_strategy_intersections = True
 
-plot_portion_position = False
-plot_signal = False
-plot_spectrogram = False
-plot_signal_single_emission = False
-plot_features = False
+plot_portion_position = True
+plot_signal = True
+plot_spectrogram = True
+plot_signal_single_emission = True
+plot_features = True
 plot_intersections = True
 # Analysis of the results (position error of the estimated intersections)
 analyse_error_vs_distance_type = True
-analyse_error_vs_frequency_band = False
-analyse_error_vs_bandwidth = False
+analyse_error_vs_frequency_band = True
+analyse_error_vs_bandwidth = True
 analyse_ambiguity_contrast = True
 analyse_rcv_pair_performance = True
 # Also compute (and plot) the gamma distances with gamma centered along frequency

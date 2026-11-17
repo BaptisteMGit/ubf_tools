@@ -121,7 +121,7 @@ library_sections = None
 
 # Events compared to the library (None -> all the events of the event file)
 # event_sections = None
-event_sections = ["event_3"]
+event_sections = ["event_5"]
 
 # CPSD of the events (Welch method, see derive_portion_cpsd_welch)
 analysis_segment_duration_s = 10

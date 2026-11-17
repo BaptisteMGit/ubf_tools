@@ -17,6 +17,7 @@
 # ======================================================================================================================
 import os
 import pandas as pd
+import xarray as xr
 
 from real_data_analysis.acouplane.src.acouplane_cst import (
     ACOUPLANE_PORTION_NC_ROOT_FPATH,
@@ -41,6 +42,7 @@ from real_data_analysis.acouplane.src.acouplane_event import (
     build_portion_library,
     derive_portion_cpsd_welch,
     derive_portion_features,
+    check_unrecorded_mfp_tree,
     get_crossing_distance_m,
 )
 from real_data_analysis.acouplane.src.acouplane_localization import (
@@ -65,8 +67,11 @@ from real_data_analysis.acouplane.src.acouplane_plot_mfp import (
     plot_combined_intersection_gamma_comparison,
 )
 from real_data_analysis.acouplane.src.acouplane_portion_io import (
+    file_fingerprint,
     list_stored_intersections,
+    load_tree_if_settings_match,
     open_portion,
+    save_tree_atomic,
     section_name_of,
 )
 
@@ -83,6 +88,9 @@ os.makedirs(ROOT_IMG_PORTION_RESULTS_EVENT, exist_ok=True)
 # Files: the library is built from the portion, the events are stored in a separate file
 portion_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}.nc"
 portion_event_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais.nc"
+# Intermediate results saved next to the event file (the event file itself is never modified)
+portion_event_cpsd_fpath = portion_event_fpath.replace(".nc", "_cpsd.nc")
+portion_event_mfp_fpath = portion_event_fpath.replace(".nc", "_mfp.nc")
 
 # Reference receiver of the pairs (rcv_i, reference_rcv): the same for the library and for the events
 reference_rcv = "obs1"
@@ -120,8 +128,8 @@ library_sections = None
 
 
 # Events compared to the library (None -> all the events of the event file)
-# event_sections = None
-event_sections = ["event_5"]
+event_sections = None
+# event_sections = ["event_29", "event_24", "event_25", "event_7", "event_17", "event_18"]
 
 # CPSD of the events (Welch method, see derive_portion_cpsd_welch)
 analysis_segment_duration_s = 10
@@ -166,8 +174,8 @@ contrast_percentile = 50
 #   combinations_to_plot = [["obs2", "obs4"], ["obs2", "obs4", "obs5"]] -> only these combinations
 # combinations_to_plot = None
 combinations_to_plot = [
-    ["obs2"],
-    ["obs2", "obs4"],
+    # ["obs2"],
+    # ["obs2", "obs4"],
     ["obs2", "obs4", "obs7"],
     ["obs2", "obs4", "obs7", "obs5"],
     ["obs2", "obs4", "obs7", "obs5", "obs6"],
@@ -185,23 +193,34 @@ ambiguity_max_quantile = (
 )
 ambiguity_d_real_vmax = 100  # upper bound of the color scale of the real distance [m]
 max_ambiguity_figures = (
-    200  # safety limit on the number of figures (comparisons x combinations)
+    500  # safety limit on the number of figures (comparisons x combinations)
 )
 
 # ======================================================================================================================
 # Booleans to control behavior
 # ======================================================================================================================
 # Compute the CPSD of the events (set to False if the events already contain it)
-compute_event_cpsd = True
+compute_event_cpsd = False
+# Save the CPSD of the events (Welch) in a NetCDF file next to the event file
+save_cpsd_to_netcdf = False
 # Also compute the gamma distances with gamma centered along frequency
 compare_centered_gamma = True
 # Store the ambiguity surfaces of all the comparisons in a NetCDF file next to the event file
 save_mfp_to_netcdf = True
+# Reuse the saved CPSD and ambiguity surfaces if they were computed with exactly the same settings (frequency band,
+# Welch parameters, library / event sections, receivers, RTF methods, input files...). If something differs, the
+# reason is displayed and the result is recomputed and saved again. False -> always recompute.
+reuse_stored_results = True
+# The ambiguity-surface file written by the previous version of this script has no recorded settings. True -> reuse it
+# anyway if its content is consistent with the settings above (sections, reference receiver, receivers, centered
+# distances). The frequency band and the Welch parameters cannot be verified from this file: it is up to you to know
+# that it was computed with the current ones. Set to False to refuse such files (they are then recomputed).
+accept_unrecorded_mfp_file = True
 # Save the theoretical and estimated intersections (positions) of every comparison and combination (CSV)
 save_intersection_positions = True
 
 # Figures
-plot_map = True
+plot_map = False
 plot_features_event = True
 plot_ambiguity = True
 plot_gamma_comparison = False
@@ -250,47 +269,6 @@ log(
     level=1,
 )
 
-# ======================================================================================================================
-# Features of the events (passive recordings)
-# ======================================================================================================================
-log("Step 2 - Features of the events")
-if compute_event_cpsd:
-    log(
-        f"CPSD (Welch) of {analysis_segment_duration_s} s windows, overlap {analysis_segment_alpha_overlap}, "
-        f"band [{fmin}, {fmax}] Hz",
-        level=1,
-    )
-    derive_portion_cpsd_welch(
-        portion_tree=portion_event,
-        analysis_segment_duration_s=analysis_segment_duration_s,
-        analysis_segment_alpha_overlap=analysis_segment_alpha_overlap,
-        nfft=nfft,
-        nperseg=nperseg,
-        noverlap=noverlap,
-        obs_ids=None,
-        fmin=fmin,
-        fmax=fmax,
-    )
-elif "feature" not in portion_event.children:
-    raise RuntimeError(
-        f"No 'feature' group in '{portion_event_fpath}': the CPSD of the events has never been "
-        "computed. Set compute_event_cpsd = True."
-    )
-
-log(f"RTF and DCF features (reference receiver '{reference_rcv}')", level=1)
-derive_portion_features(
-    portion_event,
-    rcv_ref=reference_rcv,
-    fmin=fmin,
-    fmax=fmax,
-    verbose=verbose,
-    rtf_method=event_rtf_method,
-)
-
-# ======================================================================================================================
-# Library of reference features (active emissions of the portion)
-# ======================================================================================================================
-log("Step 3 - Library of reference features built from the portion")
 if "feature" not in portion.children:
     raise RuntimeError(
         f"No 'feature' group in '{portion_fpath}': the CPSD has never been computed for this "
@@ -298,17 +276,186 @@ if "feature" not in portion.children:
         "(compute_cpsds = True, save_modification_to_portion = True)."
     )
 
-portion_library = build_portion_library(
-    portion,
-    sections=library_sections,
-    rcv_ref=reference_rcv,
+# ======================================================================================================================
+# Features of the events (passive recordings)
+# ======================================================================================================================
+log("Step 2 - Features of the events")
+# Settings that define the CPSD of the events (a saved CPSD is reused only if they are all identical)
+cpsd_settings = dict(
+    computed_by_this_script=compute_event_cpsd,
+    event_file=file_fingerprint(portion_event_fpath),
+    analysis_segment_duration_s=analysis_segment_duration_s,
+    analysis_segment_alpha_overlap=analysis_segment_alpha_overlap,
+    nfft=nfft,
+    nperseg=nperseg,
+    noverlap=noverlap,
     fmin=fmin,
     fmax=fmax,
-    acquisition_mode="active",
-    verbose=verbose,
-    rtf_method=library_rtf_method,
+    obs_ids=None,
 )
-log(f"Library sections: {list(portion_library.feature.children)}", level=1)
+
+# ----------------------------------------------------------------------------------------------------------------------
+# Saved ambiguity surfaces: reusable if everything they depend on is unchanged
+# ----------------------------------------------------------------------------------------------------------------------
+library_sections_resolved = (
+    list(portion.feature.children)
+    if library_sections is None
+    else list(library_sections)
+)
+# (the events are the same in the pressure and in the feature groups: the CPSD is not needed to list them)
+event_group = (
+    portion_event.feature
+    if "feature" in portion_event.children
+    else portion_event.pressure
+)
+event_sections_resolved = (
+    list(event_group.children) if event_sections is None else list(event_sections)
+)
+mfp_settings = dict(
+    cpsd=cpsd_settings,
+    portion_file=file_fingerprint(portion_fpath),
+    reference_rcv=reference_rcv,
+    fmin=fmin,
+    fmax=fmax,
+    library_rtf_method=library_rtf_method,
+    event_rtf_method=event_rtf_method,
+    library_sections=sorted(library_sections_resolved),
+    event_sections=sorted(event_sections_resolved),
+    obs_ids=None if obs_ids is None else sorted(obs_ids),
+    compare_centered_gamma=compare_centered_gamma,
+)
+
+portion_mfp = None
+if reuse_stored_results:
+    portion_mfp, reason = load_tree_if_settings_match(
+        portion_event_mfp_fpath,
+        mfp_settings,
+        # File saved by an older version of the code (no recorded settings): reused only if allowed and consistent
+        validate_unrecorded=(
+            (
+                lambda tree: check_unrecorded_mfp_tree(
+                    tree,
+                    library_sections=library_sections_resolved,
+                    event_sections=event_sections_resolved,
+                    reference_rcv=reference_rcv,
+                    obs_ids=obs_ids,
+                    compare_centered_gamma=compare_centered_gamma,
+                    library_rtf_method=library_rtf_method,
+                    event_rtf_method=event_rtf_method,
+                )
+            )
+            if accept_unrecorded_mfp_file
+            else None
+        ),
+    )
+    log(f"Saved ambiguity surfaces: {reason}", level=1)
+mfp_reused = portion_mfp is not None
+if mfp_reused:
+    log(
+        f"Ambiguity surfaces loaded from {portion_event_mfp_fpath}: the features of the events and of the library "
+        "and the ambiguity surfaces are not recomputed",
+        level=1,
+    )
+
+# The CPSD is only needed to compute the surfaces, or to plot the features of the events
+need_cpsd = (not mfp_reused) or plot_features_event
+if not need_cpsd:
+    log("CPSD of the events not needed (ambiguity surfaces reused)", level=1)
+if need_cpsd and mfp_reused:
+    log("CPSD of the events needed to plot their features", level=1)
+
+cpsd_tree = None  # lazy tree of the saved CPSD, if reused
+if need_cpsd:
+    if compute_event_cpsd:
+        # 2a) Reuse the CPSD saved by a previous run
+        if reuse_stored_results:
+            cpsd_tree, reason = load_tree_if_settings_match(
+                portion_event_cpsd_fpath, cpsd_settings
+            )
+            log(f"Saved CPSD of the events: {reason}", level=1)
+            if cpsd_tree is not None:
+                missing_events = [
+                    name
+                    for name in portion_event.pressure.children
+                    if name not in cpsd_tree.feature.children
+                ]
+                if missing_events:
+                    log(
+                        f"Saved CPSD incomplete (no CPSD for {missing_events}): recomputed",
+                        level=1,
+                    )
+                    cpsd_tree.close()
+                    cpsd_tree = None
+
+        if cpsd_tree is not None:
+            # The CPSD stays lazily read from its file
+            for event_name, node in cpsd_tree.feature.children.items():
+                portion_event[f"/feature/{event_name}"] = node.to_dataset()
+            log(f"CPSD of the events loaded from {portion_event_cpsd_fpath}", level=1)
+
+        # 2b) Otherwise compute it (long) and save it right away
+        else:
+            log(
+                f"CPSD (Welch) of {analysis_segment_duration_s} s windows, overlap {analysis_segment_alpha_overlap}, "
+                f"band [{fmin}, {fmax}] Hz",
+                level=1,
+            )
+            derive_portion_cpsd_welch(
+                portion_tree=portion_event,
+                analysis_segment_duration_s=analysis_segment_duration_s,
+                analysis_segment_alpha_overlap=analysis_segment_alpha_overlap,
+                nfft=nfft,
+                nperseg=nperseg,
+                noverlap=noverlap,
+                obs_ids=None,
+                fmin=fmin,
+                fmax=fmax,
+            )
+            if save_cpsd_to_netcdf:
+                cpsd_to_save = xr.DataTree()
+                for event_name, node in portion_event.feature.children.items():
+                    cpsd_to_save[f"/feature/{event_name}"] = node.to_dataset()
+                save_tree_atomic(cpsd_to_save, portion_event_cpsd_fpath, cpsd_settings)
+                log(
+                    f"Saved the CPSD of the events: {portion_event_cpsd_fpath}", level=1
+                )
+    elif "feature" not in portion_event.children:
+        raise RuntimeError(
+            f"No 'feature' group in '{portion_event_fpath}': the CPSD of the events has never been "
+            "computed. Set compute_event_cpsd = True."
+        )
+
+# The features are only needed to compute the surfaces (or to plot the features of the events)
+if not mfp_reused or plot_features_event:
+    log(f"RTF and DCF features (reference receiver '{reference_rcv}')", level=1)
+    derive_portion_features(
+        portion_event,
+        rcv_ref=reference_rcv,
+        fmin=fmin,
+        fmax=fmax,
+        verbose=verbose,
+        rtf_method=event_rtf_method,
+    )
+
+# ======================================================================================================================
+# Library of reference features (active emissions of the portion)
+# ======================================================================================================================
+log("Step 3 - Library of reference features built from the portion")
+portion_library = None
+if mfp_reused:
+    log("Library not rebuilt (ambiguity surfaces reused)", level=1)
+else:
+    portion_library = build_portion_library(
+        portion,
+        sections=library_sections,
+        rcv_ref=reference_rcv,
+        fmin=fmin,
+        fmax=fmax,
+        acquisition_mode="active",
+        verbose=verbose,
+        rtf_method=library_rtf_method,
+    )
+    log(f"Library sections: {list(portion_library.feature.children)}", level=1)
 
 # ======================================================================================================================
 # Map of the library and of the events
@@ -336,23 +483,24 @@ if plot_features_event:
 # Ambiguity surfaces between the library and the events
 # ======================================================================================================================
 log("Step 4 - Ambiguity surfaces between the library sections and the events")
-portion_mfp = apply_mfp_strategy_to_portions(
-    portion_library=portion_library,
-    portion_event=portion_event,
-    rcv_ref=reference_rcv,
-    fmin=fmin,
-    fmax=fmax,
-    verbose=verbose,
-    compare_centered_gamma=compare_centered_gamma,
-    library_sections=library_sections,
-    event_sections=event_sections,
-    obs_ids=obs_ids,
-)
+if not mfp_reused:
+    portion_mfp = apply_mfp_strategy_to_portions(
+        portion_library=portion_library,
+        portion_event=portion_event,
+        rcv_ref=reference_rcv,
+        fmin=fmin,
+        fmax=fmax,
+        verbose=verbose,
+        compare_centered_gamma=compare_centered_gamma,
+        library_sections=library_sections,
+        event_sections=event_sections,
+        obs_ids=obs_ids,
+    )
 
-if save_mfp_to_netcdf:
-    mfp_fpath = portion_event_fpath.replace(".nc", "_mfp.nc")
-    portion_mfp.to_netcdf(mfp_fpath)
-    log(f"Saved {mfp_fpath}", level=1)
+    # Saved right away: if the rest of the script fails, the next run reuses the surfaces
+    if save_mfp_to_netcdf:
+        save_tree_atomic(portion_mfp, portion_event_mfp_fpath, mfp_settings)
+        log(f"Saved {portion_event_mfp_fpath}", level=1)
 
 # ======================================================================================================================
 # Theoretical intersections: does the trajectory of the event cross the library sections?
@@ -636,9 +784,10 @@ if plot_ambiguity or plot_gamma_comparison:
         log(f"Library '{library_name}' x event '{event_name}'", level=2)
 
         # Names displayed on the axes
+        # (the section name is read in the portion: the library is not rebuilt when the surfaces are reused)
         try:
             library_display_name = (
-                f"library {section_name_of(portion_library.position[library_name])}"
+                f"library {section_name_of(portion.feature[library_name])}"
             )
         except KeyError:
             # The orientation / identifier of the section are not stored: use its label
@@ -692,4 +841,8 @@ if plot_ambiguity or plot_gamma_comparison:
 # ======================================================================================================================
 portion.close()
 portion_event.close()
+if cpsd_tree is not None:
+    cpsd_tree.close()
+if mfp_reused:
+    portion_mfp.close()
 log("Done (the portion and the event files are not modified)")

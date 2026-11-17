@@ -134,21 +134,38 @@ def plot_event_features(ds_feature_event, rtf_amplitude_max=2, dcf_max=1.2):
 
     # RTF: one panel per receiver pair
     fig_rtf, axs_rtf = plt.subplots(
-        nrows=n_pairs, ncols=1, figsize=(16, 16), sharex=True, sharey=True, squeeze=False
+        nrows=n_pairs,
+        ncols=1,
+        figsize=(16, 16),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
     )
     axs_rtf = axs_rtf.flatten()
 
     # DCF: real and imaginary parts
     fig_dcf, axs_dcf = plt.subplots(
-        nrows=n_pairs, ncols=2, figsize=(16, 16), sharex=True, sharey=True, squeeze=False
+        nrows=n_pairs,
+        ncols=2,
+        figsize=(16, 16),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
     )
 
     for i_pair, rcv_id in enumerate(rcv_ids):
         ds_feature_rcv = ds_feature_event.sel(rcv_id_feature=rcv_id)
 
         # Amplitude of the RTF
-        np.abs(ds_feature_rcv.pi_ij).plot(
-            x="freq", ax=axs_rtf[i_pair], cmap="magma", vmin=0, vmax=rtf_amplitude_max
+        # np.abs(ds_feature_rcv.pi_ij).plot(
+        #     x="freq", ax=axs_rtf[i_pair], cmap="magma", vmin=0, vmax=rtf_amplitude_max
+        # )
+        ds_feature_rcv.gamma_ij.plot(
+            x="freq",
+            ax=axs_rtf[i_pair],
+            cmap="magma",
+            vmin=-rtf_amplitude_max,
+            vmax=rtf_amplitude_max,
         )
         axs_rtf[i_pair].set_xlabel("")
         axs_rtf[i_pair].set_ylabel("")
@@ -269,11 +286,13 @@ def plot_library_block_ambiguity(
         ds_surfaces["library_section"].values
     )
 
-    fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True)
+    fig, axs = plt.subplots(
+        nrows=2, ncols=2, figsize=(16, 16), sharex=True, sharey=True
+    )
     panel_axes = [axs[0, 0], axs[0, 1], axs[1, 0], axs[1, 1]]
     panel_vars = ["d_real"] + [f"d_{key}" for key in metrics]
     panel_kinds = ["real"] + list(metrics)
-    for ax in panel_axes[len(panel_vars):]:
+    for ax in panel_axes[len(panel_vars) :]:
         ax.set_visible(False)
 
     # Sample indices on both axes (the datetimes of different sections can overlap)
@@ -281,14 +300,18 @@ def plot_library_block_ambiguity(
     y_edges = np.arange(n_event + 1) - 0.5
 
     for ax, var, kind in zip(panel_axes, panel_vars, panel_kinds):
-        values = np.ma.masked_invalid(np.asarray(ds_surfaces[var].values, dtype=float).T)
+        values = np.ma.masked_invalid(
+            np.asarray(ds_surfaces[var].values, dtype=float).T
+        )
         if kind == "real":
             vmin, vmax = 0, d_real_vmax
         else:
             finite = values.compressed()
             vmin = float(finite.min()) if finite.size else 0
             vmax = float(np.quantile(finite, max_quantile)) if finite.size else 1
-        mesh = ax.pcolormesh(x_edges, y_edges, values, cmap=cmap, vmin=vmin, vmax=vmax, shading="flat")
+        mesh = ax.pcolormesh(
+            x_edges, y_edges, values, cmap=cmap, vmin=vmin, vmax=vmax, shading="flat"
+        )
 
         # Colorbar label from the attributes of the variable
         attrs = ds_surfaces[var].attrs
@@ -306,17 +329,36 @@ def plot_library_block_ambiguity(
         ax.scatter(
             [r["i_library"] for r in real_minima],
             [r["j_event"] for r in real_minima],
-            marker="s", s=400, facecolors="none", edgecolors="r", linewidth=3, label="Real distance minimum",
+            marker="s",
+            s=400,
+            facecolors="none",
+            edgecolors="r",
+            linewidth=3,
+            label="Real distance minimum",
         )
 
         # Minima of the feature surface
         if kind != "real":
             for r in (r for r in records if r["kind"] == kind):
                 if r["consistent"]:
-                    ax.scatter(r["i_library"], r["j_event"], marker="o", s=200, facecolors="none",
-                               edgecolors="lime", linewidth=3)
+                    ax.scatter(
+                        r["i_library"],
+                        r["j_event"],
+                        marker="o",
+                        s=200,
+                        facecolors="none",
+                        edgecolors="lime",
+                        linewidth=3,
+                    )
                 else:
-                    ax.scatter(r["i_library"], r["j_event"], marker="x", s=200, color="red", linewidth=3)
+                    ax.scatter(
+                        r["i_library"],
+                        r["j_event"],
+                        marker="x",
+                        s=200,
+                        color="red",
+                        linewidth=3,
+                    )
 
     # Section names above the first row
     top_ax = axs[0, 0]
@@ -329,7 +371,9 @@ def plot_library_block_ambiguity(
         ax.set_xlim(-0.5, n_library - 0.5)
         ax.set_ylim(-0.5, n_event - 0.5)
 
-    set_subfigures_abc_labels(axs, x_pos=0.5, y_pos=1.12, fontsize=20, ha="center", va="bottom")
+    set_subfigures_abc_labels(
+        axs, x_pos=0.5, y_pos=1.12, fontsize=20, ha="center", va="bottom"
+    )
     fig.supxlabel("Library sample (sections one after the other)")
     fig.supylabel(f"{event_label} sample")
     if title:

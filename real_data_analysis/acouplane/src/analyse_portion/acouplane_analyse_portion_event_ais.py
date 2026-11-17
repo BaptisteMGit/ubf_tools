@@ -130,6 +130,7 @@ library_sections = None
 # Events compared to the library (None -> all the events of the event file)
 event_sections = None
 # event_sections = ["event_29", "event_24", "event_25", "event_7", "event_17", "event_18"]
+# event_sections = ["event_9"]
 
 # CPSD of the events (Welch method, see derive_portion_cpsd_welch)
 analysis_segment_duration_s = 10
@@ -174,8 +175,8 @@ contrast_percentile = 50
 #   combinations_to_plot = [["obs2", "obs4"], ["obs2", "obs4", "obs5"]] -> only these combinations
 # combinations_to_plot = None
 combinations_to_plot = [
-    # ["obs2"],
-    # ["obs2", "obs4"],
+    ["obs2"],
+    ["obs2", "obs4"],
     ["obs2", "obs4", "obs7"],
     ["obs2", "obs4", "obs7", "obs5"],
     ["obs2", "obs4", "obs7", "obs5", "obs6"],

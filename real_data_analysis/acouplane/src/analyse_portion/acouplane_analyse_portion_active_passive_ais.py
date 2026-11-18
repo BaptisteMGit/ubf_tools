@@ -124,7 +124,7 @@ library_sections = None
 # library_sections = ["sn0", "sn2", "oe7", "oe8", "oe9"]
 # Event 7
 # library_sections = ["sn0", "sn1", "sn2", "sn3", "oe4", "oe5", "oe6"]
-# library_sections = ["oe4"]
+# library_sections = ["sn2"]
 
 
 # Events compared to the library (None -> all the events of the event file)
@@ -192,7 +192,7 @@ ambiguity_cmap = "Grays_r"
 ambiguity_max_quantile = (
     0.95  # quantile of each feature distance used as upper bound of its color scale
 )
-ambiguity_d_real_vmax = 100  # upper bound of the color scale of the real distance [m]
+ambiguity_d_real_vmax = 200  # upper bound of the color scale of the real distance [m]
 max_ambiguity_figures = (
     500  # safety limit on the number of figures (comparisons x combinations)
 )
@@ -201,9 +201,9 @@ max_ambiguity_figures = (
 # Booleans to control behavior
 # ======================================================================================================================
 # Compute the CPSD of the events (set to False if the events already contain it)
-compute_event_cpsd = False
+compute_event_cpsd = True
 # Save the CPSD of the events (Welch) in a NetCDF file next to the event file
-save_cpsd_to_netcdf = False
+save_cpsd_to_netcdf = True
 # Also compute the gamma distances with gamma centered along frequency
 compare_centered_gamma = True
 # Store the ambiguity surfaces of all the comparisons in a NetCDF file next to the event file
@@ -221,7 +221,7 @@ accept_unrecorded_mfp_file = True
 save_intersection_positions = True
 
 # Figures
-plot_map = False
+plot_map = True
 plot_features_event = True
 plot_ambiguity = True
 plot_gamma_comparison = False

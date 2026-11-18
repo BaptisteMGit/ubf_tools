@@ -198,9 +198,13 @@ def combine_distances_over_receivers(
             continue
 
         # Mean of the surfaces of the selected receivers, kept with a receiver axis of size 1
-        combined[f"dist_{key}"] = np.nanmean(
-            np.asarray(dist, dtype=float)[rows], axis=0, keepdims=True
-        )
+        dist_comb = np.asarray(dist, dtype=float)[rows]
+        if np.all(np.isnan(dist_comb)):
+            combined[f"dist_{key}"] = dist_comb
+        else:
+            combined[f"dist_{key}"] = np.nanmean(
+                dist_comb, axis=0, keepdims=True
+            )
 
     return combined
 

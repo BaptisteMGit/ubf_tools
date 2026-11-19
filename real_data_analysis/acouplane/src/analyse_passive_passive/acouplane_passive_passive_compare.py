@@ -14,7 +14,9 @@
 
     For one sub-box (``compare_events_of_subbox``), the library is made of the events of the box and the events
     compared to the library are the same events. Each pair of events is compared (an event is never compared to
-    itself, and by default each pair is computed once):
+    itself, and by default each pair is computed once). Only the pairs whose AIS trajectories can cross each other are
+    kept, a check made from the real distance d_real between the analysis windows BEFORE the RTF / DCF features and the
+    ambiguity surfaces (the long computation):
         1. the features (RTF, DCF) of the two events are compared sample by sample (ambiguity surfaces),
         2. the theoretical intersection (closest samples of the two AIS trajectories) is compared to the
            intersection estimated from the features.
@@ -31,6 +33,7 @@ import re
 from dataclasses import dataclass, field
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import xarray as xr
 
@@ -49,6 +52,9 @@ from real_data_analysis.acouplane.src.acouplane_event import (
     derive_portion_cpsd_welch,
     derive_portion_features,
     get_crossing_distance_m,
+)
+from real_data_analysis.acouplane.src.acouplane_features import (
+    get_distance_between_library_and_event,
 )
 from real_data_analysis.acouplane.src.acouplane_plot_event import plot_event_features
 from real_data_analysis.acouplane.src.acouplane_plot_mfp import (
@@ -278,6 +284,90 @@ def build_event_pairs(event_names, both_directions=False):
     library_events = [name for name in names if any(p[0] == name for p in pairs)]
     tested_events = [name for name in names if any(p[1] == name for p in pairs)]
     return pairs, library_events, tested_events
+
+
+# ======================================================================================================================
+# Pre-selection of the pairs from the real distance between the analysis windows (before the ambiguity surfaces)
+# ======================================================================================================================
+
+
+def select_crossing_event_pairs(portion_event, pairs, max_crossing_distance_m):
+    """Keep the pairs of events whose trajectories cross, before computing any ambiguity surface.
+
+    For each pair, the real-space distance ``d_real`` between every analysis window of the library
+    event and every analysis window of the tested event is computed from the positions of the windows
+    (``event_lon`` / ``event_lat`` of the CPSD, see ``get_distance_between_library_and_event``) and its
+    minimum is the crossing distance. This is exactly the value that ``get_crossing_distance_m`` reads in the
+    ambiguity surfaces, but it needs only the CPSD windows: no RTF, no DCF, no feature distance.
+
+    Parameters
+    ----------
+    portion_event : xarray.DataTree
+        Sub-box tree whose group ``feature`` holds the CPSD of the events (see ``derive_portion_cpsd_welch``).
+    pairs : list of tuple of str
+        ``(library event, tested event)`` pairs to examine.
+    max_crossing_distance_m : float
+        A pair is kept if its crossing distance is at most this value [m].
+
+    Returns
+    -------
+    kept_pairs : list of tuple of str
+        Pairs whose trajectories cross, in the order of ``pairs``.
+    records : list of dict
+        One record per examined pair: ``library_event``, ``tested_event``, ``crossing_distance_m`` (NaN if no
+        valid position) and ``kept``.
+    """
+    # CPSD datasets of the events, read once (only the window positions are used here)
+    ds_events = {}
+    for library_name, event_name in pairs:
+        for name in (library_name, event_name):
+            if name not in ds_events:
+                ds_events[name] = portion_event.feature[name].to_dataset()
+
+    kept_pairs = []
+    records = []
+    for library_name, event_name in pairs:
+        d_real = get_distance_between_library_and_event(
+            ds_events[library_name], ds_events[event_name]
+        )
+        crossing_distance_m = float(np.nanmin(d_real)) if d_real.size else float("nan")
+
+        kept = bool(crossing_distance_m <= max_crossing_distance_m)  # False for NaN
+        records.append(
+            dict(
+                library_event=library_name,
+                tested_event=event_name,
+                crossing_distance_m=crossing_distance_m,
+                kept=kept,
+            )
+        )
+        if kept:
+            kept_pairs.append((library_name, event_name))
+
+    return kept_pairs, records
+
+
+def events_in_pairs(pairs, event_names):
+    """Distinct library events and tested events of a list of pairs.
+
+    Parameters
+    ----------
+    pairs : list of tuple of str
+        ``(library event, tested event)`` pairs.
+    event_names : list of str
+        Events of the sub-box, which gives the order of the result.
+
+    Returns
+    -------
+    library_events : list of str
+        Events appearing as library in at least one pair.
+    tested_events : list of str
+        Events appearing as tested event in at least one pair.
+    """
+    names = sorted(event_names, key=_natural_event_key)
+    library_events = [name for name in names if any(pair[0] == name for pair in pairs)]
+    tested_events = [name for name in names if any(pair[1] == name for pair in pairs)]
+    return library_events, tested_events
 
 
 # ======================================================================================================================
@@ -598,7 +688,8 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
     Returns
     -------
     summary : dict
-        ``box``, ``n_events``, ``n_pairs``, ``n_crossing_pairs``, ``n_figures``,
+        ``box``, ``n_events``, ``n_pairs`` (all the pairs), ``n_pairs_to_compute`` (pairs whose
+        trajectories cross, the only ones computed), ``n_crossing_pairs`` (after the final check), ``n_figures``,
         ``cpsd_reused``, ``mfp_reused`` and ``status`` (``"done"``, ``"skipped: ..."``).
     position_records : list of dict
         Theoretical and estimated intersections, with the column ``box`` (empty if
@@ -618,6 +709,7 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
         box=ibox,
         n_events=0,
         n_pairs=0,
+        n_pairs_to_compute=0,
         n_crossing_pairs=0,
         n_figures=0,
         cpsd_reused=False,
@@ -638,13 +730,11 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
         summary["n_events"] = len(event_names)
         log(f"{len(event_names)} event(s): {event_names}", level=1)
 
-        pairs, library_events, tested_events = build_event_pairs(
-            event_names, settings.both_directions
-        )
-        summary["n_pairs"] = len(pairs)
-        has_pairs = len(pairs) > 0
-        if has_pairs:
-            log(f"{len(pairs)} pair(s) of events to compare", level=1)
+        # Every pair of events of the box
+        candidate_pairs, _, _ = build_event_pairs(event_names, settings.both_directions)
+        summary["n_pairs"] = len(candidate_pairs)
+        if candidate_pairs:
+            log(f"{len(candidate_pairs)} pair(s) of events in the box", level=1)
         else:
             summary["status"] = "skipped: less than 2 events"
             log("Less than 2 events: nothing to compare", level=1)
@@ -670,7 +760,8 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
             fmin=settings.fmin,
             fmax=settings.fmax,
         )
-        # Everything the ambiguity surfaces depend on
+        # Everything the ambiguity surfaces depend on. The surfaces are only computed for the pairs whose trajectories
+        # cross (step 4), so the pairs requested and the crossing distance are part of the settings.
         mfp_settings = dict(
             cpsd=cpsd_settings,
             reference_rcv=settings.reference_rcv,
@@ -678,13 +769,14 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
             fmax=settings.fmax,
             library_rtf_method=settings.library_rtf_method,
             event_rtf_method=settings.event_rtf_method,
-            pairs=[f"{library}|{event}" for library, event in pairs],
+            pairs=[f"{library}|{event}" for library, event in candidate_pairs],
+            max_crossing_distance_m=settings.max_crossing_distance_m,
             obs_ids=None if settings.obs_ids is None else sorted(settings.obs_ids),
             compare_centered_gamma=settings.compare_centered_gamma,
         )
 
         mfp_reused = False
-        if not has_pairs:
+        if not candidate_pairs:
             log("No pair: no ambiguity surface", level=1)
         elif settings.reuse_stored_results:
             portion_mfp, reason = load_tree_if_settings_match(mfp_fpath, mfp_settings)
@@ -692,25 +784,70 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
             mfp_reused = portion_mfp is not None
         summary["mfp_reused"] = mfp_reused
 
-        # The surfaces must be computed unless they are reused. The CPSD and the features of the events are needed
-        # for the surfaces, or to plot the features.
-        need_surfaces = has_pairs and not mfp_reused
-        need_features = need_surfaces or settings.plot_features_event
+        # Pairs with surfaces: read from the saved file if reused, else selected at step 4
+        pairs = list_stored_intersections(portion_mfp) if mfp_reused else []
+
+        # The CPSD is needed to select the pairs (and then compute their surfaces), or to plot the features
+        need_surfaces = len(candidate_pairs) > 0 and not mfp_reused
+        need_cpsd = need_surfaces or settings.plot_features_event
 
         # --------------------------------------------------------------------------------------------------------------
-        # Steps 3 and 4 - CPSD and features (only if needed)
+        # Step 3 - CPSD of the events (only if needed)
         # --------------------------------------------------------------------------------------------------------------
-        portion_library = None
-        if not need_features:
-            log("Steps 3-4 - Not needed: the ambiguity surfaces are reused")
-        else:
+        if need_cpsd:
             log("Step 3 - CPSD of the events")
             cpsd_tree, summary["cpsd_reused"] = _prepare_cpsd(
                 portion_event, cpsd_fpath, cpsd_settings, settings, log
             )
+        else:
+            log("Step 3 - Not needed: the ambiguity surfaces are reused")
 
-            log("Step 4 - Features of the library and of the events")
-            if need_surfaces:
+        # --------------------------------------------------------------------------------------------------------------
+        # Step 4 - Which pairs can have an intersection ? (real distance between the windows, before any surface)
+        # --------------------------------------------------------------------------------------------------------------
+        if need_surfaces:
+            log("Step 4 - Pre-selection of the pairs whose trajectories cross (minimum of d_real)")
+            pairs, crossing_records = select_crossing_event_pairs(
+                portion_event, candidate_pairs, settings.max_crossing_distance_m
+            )
+            pd.DataFrame(crossing_records).to_csv(
+                os.path.join(root_img_box, "preselection_crossing_distances.csv"), index=False
+            )
+            for record in crossing_records:
+                log(
+                    f"Library '{record['library_event']}' x event '{record['tested_event']}': closest windows "
+                    f"{record['crossing_distance_m']:.0f} m apart"
+                    + ("" if record["kept"] else " (no intersection: surface not computed)"),
+                    level=1,
+                )
+            log(
+                f"{len(pairs)}/{len(candidate_pairs)} pair(s) to compute "
+                f"(closest windows at most {settings.max_crossing_distance_m} m apart)",
+                level=1,
+            )
+        elif mfp_reused:
+            log(f"Step 4 - Not needed: {len(pairs)} pair(s) stored with the saved surfaces")
+        summary["n_pairs_to_compute"] = len(pairs)
+
+        has_pairs = len(pairs) > 0
+        library_events, tested_events = events_in_pairs(pairs, event_names)
+        if need_surfaces and not has_pairs:
+            summary["status"] = (
+                f"done: no pair crosses (closest windows > {settings.max_crossing_distance_m} m apart)"
+            )
+            log("No pair of trajectories crosses: no surface to compute", level=1)
+            if not settings.plot_features_event:
+                return summary, []
+
+        compute_surfaces = need_surfaces and has_pairs
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Step 5 - Features (only the pairs kept need the library; the features plot needs those of every event)
+        # --------------------------------------------------------------------------------------------------------------
+        portion_library = None
+        if compute_surfaces or settings.plot_features_event:
+            log("Step 5 - Features of the library and of the events")
+            if compute_surfaces:
                 # The library is built from the CPSD of the library events
                 # (acquisition_mode="passive": its samples are the time windows of the events)
                 portion_library = build_portion_library(
@@ -732,6 +869,8 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
                 verbose=settings.verbose,
                 rtf_method=settings.event_rtf_method,
             )
+        else:
+            log("Step 5 - Not needed")
 
         # Features of the events (RTF amplitude and DCF), one figure each per event
         if settings.plot_features_event:
@@ -739,10 +878,10 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
             _plot_events_features(portion_event, event_names, root_img_box, log)
 
         # --------------------------------------------------------------------------------------------------------------
-        # Step 5 - Ambiguity surfaces
+        # Step 6 - Ambiguity surfaces
         # --------------------------------------------------------------------------------------------------------------
-        if need_surfaces:
-            log("Step 5 - Ambiguity surfaces")
+        if compute_surfaces:
+            log("Step 6 - Ambiguity surfaces")
             portion_mfp = apply_mfp_strategy_to_portions(
                 portion_library=portion_library,
                 portion_event=portion_event,
@@ -762,15 +901,16 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
                 save_tree_atomic(portion_mfp, mfp_fpath, mfp_settings)
                 log(f"Ambiguity surfaces saved: {mfp_fpath}", level=1)
         elif has_pairs:
-            log("Step 5 - Not needed: the ambiguity surfaces are reused")
+            log("Step 6 - Not needed: the ambiguity surfaces are reused")
 
         if not has_pairs:
             return summary, []
 
         # --------------------------------------------------------------------------------------------------------------
-        # Step 6 - Theoretical intersections: do the two trajectories cross each other ?
+        # Step 7 - Crossing distances of the computed surfaces (table). Same criterion as the pre-selection of step 4:
+        # a pair that does not cross can only appear here for a saved file computed with another threshold.
         # --------------------------------------------------------------------------------------------------------------
-        log("Step 6 - Theoretical intersections (library trajectory x tested trajectory)")
+        log("Step 7 - Theoretical intersections (closest windows of the two events)")
         datasets_mfp = _select_crossing_pairs(portion_mfp, settings, root_img_box, log)
         summary["n_crossing_pairs"] = len(datasets_mfp)
 
@@ -802,11 +942,11 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
         )
 
         # --------------------------------------------------------------------------------------------------------------
-        # Step 7 - Theoretical and estimated intersections (positions, as a table)
+        # Step 8 - Theoretical and estimated intersections (positions, as a table)
         # --------------------------------------------------------------------------------------------------------------
         position_records = []
         if settings.save_intersection_positions:
-            log("Step 7 - Theoretical and estimated intersections")
+            log("Step 8 - Theoretical and estimated intersections")
             position_records = _intersection_position_records(
                 datasets_mfp, combinations, settings
             )
@@ -816,10 +956,10 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
             position_records = [dict(box=ibox, **record) for record in position_records]
 
         # --------------------------------------------------------------------------------------------------------------
-        # Step 8 - Ambiguity figures (one folder per pair of events)
+        # Step 9 - Ambiguity figures (one folder per pair of events)
         # --------------------------------------------------------------------------------------------------------------
         if settings.plot_ambiguity:
-            log("Step 8 - Ambiguity figures")
+            log("Step 9 - Ambiguity figures")
             summary["n_figures"] = _plot_ambiguity_figures(
                 datasets_mfp, combinations, settings, root_img_box, log
             )

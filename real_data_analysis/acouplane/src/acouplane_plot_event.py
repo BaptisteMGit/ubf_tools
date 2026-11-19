@@ -164,8 +164,8 @@ def plot_event_features(ds_feature_event, rtf_amplitude_max=2, dcf_max=1.2):
             x="freq",
             ax=axs_rtf[i_pair],
             cmap="magma",
-            vmin=-rtf_amplitude_max,
-            vmax=rtf_amplitude_max,
+            vmin=ds_feature_rcv.gamma_ij.quantile(0.25),
+            vmax=ds_feature_rcv.gamma_ij.quantile(0.75),
         )
         axs_rtf[i_pair].set_xlabel("")
         axs_rtf[i_pair].set_ylabel("")

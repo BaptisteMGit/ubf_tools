@@ -63,7 +63,7 @@ settings = PassivePassiveSettings(
     obs_ids=["obs1", "obs2", "obs4", "obs5", "obs6", "obs7"],
     # --- Frequency band of the features [Hz] ------------------------------------------------------------------------
     fmin=10,
-    fmax=500,
+    fmax=800,
     # --- RTF estimation, chosen separately for the library and for the events ---------------------------------------
     #   "spectral_ratio" -> S_ij / S_jj
     #   "cs_evd"         -> first eigenvector of the spatial covariance matrix (preferable for passive signals)
@@ -94,8 +94,8 @@ settings = PassivePassiveSettings(
     ambiguity_metrics=["theta_gamma_centered", "L2_gamma_centered", "dcf"],
     ambiguity_cmap="Grays_r",
     ambiguity_max_quantile=0.95,  # quantile of each feature distance used as upper bound of its color scale
-    ambiguity_d_real_vmax=100,  # upper bound of the color scale of the real distance [m]
-    max_ambiguity_figures=200,  # safety limit on the number of ambiguity figures of ONE sub-box
+    ambiguity_d_real_vmax=200,  # upper bound of the color scale of the real distance [m]
+    max_ambiguity_figures=400,  # safety limit on the number of ambiguity figures of ONE sub-box
     # Also compute the distances with gamma centered along frequency (needed by the "..._centered" metrics)
     compare_centered_gamma=True,
     # --- Switches ---------------------------------------------------------------------------------------------------
@@ -107,7 +107,7 @@ settings = PassivePassiveSettings(
     plot_map=True,
     # Plot the features (RTF amplitude and DCF) of the events used by the ambiguity surfaces (the events of the pairs
     # whose trajectories cross). Their CPSD and features are then computed or read even if the surfaces are reused.
-    plot_features_event=False,
+    plot_features_event=True,
     save_intersection_positions=True,
     plot_ambiguity=True,
     verbose=True,

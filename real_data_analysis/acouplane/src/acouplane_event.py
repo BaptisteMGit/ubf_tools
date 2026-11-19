@@ -1017,6 +1017,7 @@ def apply_mfp_strategy_to_portions(
     event_sections=None,
     obs_ids=None,
     skip_identical_names=False,
+    pairs=None,
 ):
     """Compute the MFP ambiguity surfaces between the sections of a library and the events.
 
@@ -1053,6 +1054,11 @@ def apply_mfp_strategy_to_portions(
         If True, a library section is not compared with the event of the same
         name. Used when the library is made of events (the comparison of an
         event with itself is meaningless).
+    pairs : list of tuple of str or None, optional
+        Explicit ``(library section, event)`` pairs to compare, instead of every
+        library section against every event. Both names must be among the
+        selected ``library_sections`` / ``event_sections``. Used to compare each
+        pair of events only once. If None (default), all the combinations.
 
     Returns
     -------
@@ -1081,10 +1087,23 @@ def apply_mfp_strategy_to_portions(
     portion_mfp.attrs["reference_receiver"] = rcv_ref
 
     # Pairs to compare
+    if pairs is None:
+        pairs = [
+            (library_name, event_name)
+            for library_name in library_names
+            for event_name in event_names
+        ]
+    else:
+        pairs = [(str(library_name), str(event_name)) for library_name, event_name in pairs]
+        for library_name, event_name in pairs:
+            if library_name not in library_names or event_name not in event_names:
+                raise ValueError(
+                    f"Pair ({library_name}, {event_name}) is not among the selected library sections "
+                    f"{library_names} and events {event_names}."
+                )
     pairs = [
         (library_name, event_name)
-        for library_name in library_names
-        for event_name in event_names
+        for library_name, event_name in pairs
         if not (skip_identical_names and library_name == event_name)
     ]
     if not pairs:

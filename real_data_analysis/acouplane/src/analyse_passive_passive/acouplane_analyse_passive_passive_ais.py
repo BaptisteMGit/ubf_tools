@@ -53,8 +53,8 @@ from real_data_analysis.acouplane.src.analyse_passive_passive.acouplane_passive_
 # ======================================================================================================================
 
 # Sub-boxes to process. None -> all the sub-boxes whose dataset exists. Useful to resume or debug, e.g. [3, 4]
-# boxes_to_process = None
-boxes_to_process = [2]
+boxes_to_process = None
+# boxes_to_process = [2]
 
 settings = PassivePassiveSettings(
     # --- Receivers --------------------------------------------------------------------------------------------------

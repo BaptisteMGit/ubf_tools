@@ -17,6 +17,7 @@
             - filter 1 : keep the events for which every OBS recorded data,
             - filter 2 : keep the events which do not overlap any active emission,
             - filter 3 : remove the events which are suspiciously long (ship not crossing the box),
+            - filter 4 : remove the events which are too short (not enough analysis windows),
             - extraction of the pressure signals of the remaining events.
         4. For each sub-box, the figures illustrating the selection and the dataset are saved.
 
@@ -54,6 +55,7 @@ from real_data_analysis.acouplane.src.analyse_passive_passive.acouplane_passive_
     extract_ais_in_box,
     ais_to_distinct_events,
     assert_events_is_not_suspiciously_long,
+    assert_events_is_not_too_short,
     assert_no_events_during_emissions,
     assert_pressure_data_is_available,
     build_large_box,
@@ -75,15 +77,19 @@ from real_data_analysis.acouplane.src.analyse_passive_passive.acouplane_passive_
 # Receivers defining the area (OBS 6 is removed to reduce the area)
 rcv_id_for_area_def = ["obs1", "obs2", "obs4", "obs7", "obs5"]
 # Relative margin added around the receivers
-large_box_offset_percentage = 0.004
+large_box_offset_percentage = 0.0025
 
 # --- Sub-boxes ---
 # Size of a sub-box, in degrees
-subbox_lon_width = subbox_lat_width = 0.042
+subbox_lon_width = subbox_lat_width = 0.02
 
 # --- Filters ---
 # An event longer than this is not a ship crossing the box
-max_event_duration_min = 60
+max_event_duration_min = 30
+# An event shorter than this has too few analysis windows for a usable ambiguity surface (a single window gives a
+# degenerate surface). At least the analysis window plus the shift between two windows: 12.5 s for 10 s windows
+# with 75 % overlap, which gives two windows.
+min_event_duration_s = 20
 
 # --- Spectrograms ---
 spectrogram_nperseg = 2**10
@@ -92,15 +98,10 @@ spectrogram_noverlap = 2**9
 # --- Switches ---
 # Boxes to process (None = all). Useful to resume or debug, e.g. [3, 4]
 boxes_to_process = None
-# boxes_to_process = [6, 9]
-
 # If False, a box whose dataset file already exists is skipped
 overwrite_existing_boxes = True
 plot_pressure = True
 plot_spectrogram = True
-
-# Maximum event labels allowed
-max_number_of_event_labels = 10
 
 # ======================================================================================================================
 # Folders
@@ -240,12 +241,8 @@ for ibox, box in enumerate(sub_boxes):
             f"{n_events['pressure_available']} events after filter 1 (pressure available)"
         )
 
-        add_event_labels = n_events["pressure_available"] <= max_number_of_event_labels
         fig, ax = plot_events_in_box(
-            ds_pos,
-            portion_event_box,
-            title=f"Box {ibox} : pressure data available",
-            add_event_labels=add_event_labels,
+            ds_pos, portion_event_box, title=f"Box {ibox} : pressure data available"
         )
         save_box_figure(fig, "selection_1_pressure_available.png")
 
@@ -258,12 +255,8 @@ for ibox, box in enumerate(sub_boxes):
         n_events["no_emission"] = count_events(portion_event_box)
         print(f"{n_events['no_emission']} events after filter 2 (no emission)")
 
-        add_event_labels = n_events["no_emission"] <= max_number_of_event_labels
         fig, ax = plot_events_in_box(
-            ds_pos,
-            portion_event_box,
-            title=f"Box {ibox} : no emission during events",
-            add_event_labels=add_event_labels,
+            ds_pos, portion_event_box, title=f"Box {ibox} : no emission during events"
         )
         save_box_figure(fig, "selection_2_no_emission.png")
 
@@ -276,18 +269,32 @@ for ibox, box in enumerate(sub_boxes):
         n_events["not_too_long"] = count_events(portion_event_box)
         print(f"{n_events['not_too_long']} events after filter 3 (duration)")
 
-        add_event_labels = n_events["not_too_long"] <= max_number_of_event_labels
         fig, ax = plot_events_in_box(
             ds_pos,
             portion_event_box,
-            title=rf"Box {ibox} : duration $\leq$ {max_event_duration_min} min",
-            add_event_labels=add_event_labels,
+            title=f"Box {ibox} : duration <= {max_event_duration_min} min",
         )
         save_box_figure(fig, "selection_3_not_too_long.png")
 
+        # --------------------------------------------------------------------------------------------------------------
+        # Fourth filter : events long enough to have several analysis windows
+        # --------------------------------------------------------------------------------------------------------------
+        portion_event_box = assert_events_is_not_too_short(
+            portion_event_box, verbose=False, min_duration_s=min_event_duration_s
+        )
+        n_events["long_enough"] = count_events(portion_event_box)
+        print(f"{n_events['long_enough']} events after filter 4 (minimum duration)")
+
+        fig, ax = plot_events_in_box(
+            ds_pos,
+            portion_event_box,
+            title=f"Box {ibox} : duration >= {min_event_duration_s} s",
+        )
+        save_box_figure(fig, "selection_4_long_enough.png")
+
         summary_records.append(n_events)
 
-        if n_events["not_too_long"] == 0:
+        if n_events["long_enough"] == 0:
             print("No event left after the filters, nothing to save.")
             continue
 
@@ -338,6 +345,7 @@ for ibox, box in enumerate(sub_boxes):
             box=box,
             large_box=large_box,
             max_event_duration_min=max_event_duration_min,
+            min_event_duration_s=min_event_duration_s,
             rcv_id_for_area_def=rcv_id_for_area_def,
         )
         save_portion_event(portion_event_box, box_data_fpath, selection_settings)

@@ -387,7 +387,7 @@ def plot_events_in_box(ds_pos, portion_event, title=None, add_event_labels=True)
             label=f"Event {ds_position_section.event_id}" if add_event_labels else None,
         )
 
-    ax.legend(ncols=2, loc="upper right", fontsize=12)
+    ax.legend(ncols=2, loc="upper right")
 
     if title is not None:
         ax.set_title(title)
@@ -667,6 +667,46 @@ def assert_events_is_not_suspiciously_long(
         event_stop = ds_position_event.stop_datetime.values
 
         if (event_stop - event_start) <= np.timedelta64(max_duration_min, "m"):
+            valid_events.append(name)
+
+    if verbose:
+        print(f"{len(valid_events)} events remaining")
+
+    return filter_valid_events(portion_event, valid_events)
+
+
+def assert_events_is_not_too_short(portion_event, verbose=False, min_duration_s=30):
+    """Remove the events with a too short duration.
+
+    An event must be long enough to contain several analysis windows (CPSD): with a single window the ambiguity
+    surface of a comparison is degenerate (one row or one column). The minimum is at least the duration of an
+    analysis window plus the shift between two windows (12.5 s for 10 s windows with 75 % overlap, to get two
+    windows); a few tens of seconds give a usable surface.
+
+    Parameters
+    ----------
+    portion_event : xarray.DataTree
+        Portion event (see ``build_portion_events``).
+    verbose : bool, optional
+        If True, print the number of remaining events. By default False.
+    min_duration_s : float, optional
+        Minimum duration of an event, in seconds. By default 30.
+
+    Returns
+    -------
+    portion_event : xarray.DataTree
+        Filtered portion event (see ``filter_valid_events``).
+    """
+    min_duration = np.timedelta64(int(round(min_duration_s * 1000)), "ms")
+
+    valid_events = []
+    for name, node in get_position_nodes(portion_event).items():
+        ds_position_event = node.to_dataset()
+
+        event_start = ds_position_event.start_datetime.values
+        event_stop = ds_position_event.stop_datetime.values
+
+        if (event_stop - event_start) >= min_duration:
             valid_events.append(name)
 
     if verbose:

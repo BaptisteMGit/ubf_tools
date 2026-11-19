@@ -49,6 +49,235 @@ ACQUISITION_MODES = ("active", "passive")
 # ======================================================================================================================
 # Features of an event (passive recording)
 # ======================================================================================================================
+def _get_receivers_and_sampling_frequency(portion_tree, obs_ids=None):
+    """Receivers and sampling frequency of the pressure signals of an event tree.
+
+    Parameters
+    ----------
+    portion_tree : xarray.DataTree
+        Event tree with the group ``pressure``.
+    obs_ids : array_like of str or None, optional
+        OBS used. If None, all OBS of the first pressure section are used.
+
+    Returns
+    -------
+    obs_ids : numpy.ndarray of str
+        Receivers used.
+    fs : float
+        Sampling frequency [Hz], taken from the first event.
+    """
+    first_section_name = list(portion_tree.pressure.children)[0]
+    first_section = portion_tree.pressure[first_section_name].to_dataset()
+    if obs_ids is None:
+        obs_ids = first_section.obs_id.values
+    return np.asarray(obs_ids), first_section.attrs["fs"]
+
+
+def _select_event_names(portion_tree, event_sections):
+    """Names of the events to process, in the order of the tree.
+
+    Parameters
+    ----------
+    portion_tree : xarray.DataTree
+        Event tree with the group ``pressure``.
+    event_sections : list of str or None
+        Events requested. None -> all the events.
+
+    Returns
+    -------
+    list of str
+
+    Raises
+    ------
+    ValueError
+        If a requested event is not in the tree.
+    """
+    all_event_names = list(portion_tree.pressure.children)
+    if event_sections is None:
+        return all_event_names
+
+    unknown = [name for name in event_sections if name not in all_event_names]
+    if unknown:
+        raise ValueError(f"Unknown event(s) {unknown} (events of the tree: {all_event_names}).")
+    requested = set(event_sections)
+    return [name for name in all_event_names if name in requested]
+
+
+def get_event_analysis_windows(
+    ds_pressure_section,
+    obs_ids,
+    fs,
+    analysis_segment_duration_s,
+    analysis_segment_alpha_overlap,
+    event_name="event",
+):
+    """List the complete analysis windows of an event.
+
+    The recording is cut into overlapping windows. A window is kept only if it is complete (it contains the
+    expected number of samples) on every receiver. The signals are not read: only the time axes are used, so this is
+    fast. It is the single definition of the windows, shared by the CPSD computation and by the selection of the
+    events (``get_event_window_positions``).
+
+    Parameters
+    ----------
+    ds_pressure_section : xarray.Dataset
+        Pressure section of the event (``time_<obs>`` and ``pressure_<obs>``).
+    obs_ids : array_like of str
+        Receivers that must all have the complete window.
+    fs : float
+        Sampling frequency [Hz].
+    analysis_segment_duration_s : float
+        Duration of an analysis window [s].
+    analysis_segment_alpha_overlap : float
+        Overlap between two successive windows, between 0 and 1.
+    event_name : str, optional
+        Name of the event (error message).
+
+    Returns
+    -------
+    windows : list of tuple
+        ``(window_start, window_stop, window_center)`` of each complete window (numpy.datetime64).
+
+    Raises
+    ------
+    ValueError
+        If no window is complete on all the receivers.
+    """
+    analysis_segment_duration_ms = int(round(analysis_segment_duration_s * 1000))
+    n_samples_expected = int(analysis_segment_duration_s * fs)
+
+    # Shift between the start of two successive analysis windows
+    window_shift_ms = analysis_segment_duration_ms * (1 - analysis_segment_alpha_overlap)
+
+    # NOTE : all the receivers are assumed to have the same time axis
+    signal_datetime = ds_pressure_section[f"time_{obs_ids[0]}"].values
+    elapsed_time_ms = (signal_datetime - signal_datetime[0]) / np.timedelta64(1, "ms")
+
+    # Number of analysis windows that fit in the recording
+    n_window = int(
+        np.floor(
+            (elapsed_time_ms.max() - analysis_segment_duration_ms * analysis_segment_alpha_overlap)
+            / window_shift_ms
+        )
+    )
+
+    # First window: [window_start, window_stop[ (one sample is removed to
+    # get exactly the expected number of samples)
+    window_start = signal_datetime[0]
+    window_stop = (
+        window_start
+        + np.timedelta64(analysis_segment_duration_ms, "ms")
+        - np.timedelta64(int(1 / fs * 1e9), "ns")
+    )
+
+    windows = []
+    for _ in range(n_window):
+
+        # Datetime of the center of the window
+        window_center = window_start + np.timedelta64(int(analysis_segment_duration_ms / 2), "ms")
+
+        # Complete on every receiver ? (incomplete window at the end of the recording otherwise)
+        is_complete = all(
+            ds_pressure_section[f"pressure_{rcv_id}"]
+            .sel({f"time_{rcv_id}": slice(window_start, window_stop)})
+            .size
+            == n_samples_expected
+            for rcv_id in obs_ids
+        )
+        if is_complete:
+            windows.append((window_start, window_stop, window_center))
+
+        # Move to the next window
+        window_start += np.timedelta64(int(window_shift_ms * 1e6), "ns")
+        window_stop += np.timedelta64(int(window_shift_ms * 1e6), "ns")
+
+    if len(windows) == 0:
+        raise ValueError(
+            f"No signal window of event '{event_name}' has a complete "
+            f"{analysis_segment_duration_s} s window on all of the OBS {list(obs_ids)}."
+        )
+    return windows
+
+
+def _window_positions(ds_position_section, window_centers):
+    """Position of the source (AIS) at the center of each analysis window (nearest AIS sample).
+
+    Parameters
+    ----------
+    ds_position_section : xarray.Dataset
+        Position of the event (``lon`` / ``lat`` of dimension ``datetime``).
+    window_centers : list of numpy.datetime64
+        Centers of the windows.
+
+    Returns
+    -------
+    xarray.Dataset
+        ``lon`` and ``lat`` at the window centers.
+    """
+    return ds_position_section.sel(datetime=window_centers, method="nearest")
+
+
+def get_event_window_positions(
+    portion_tree,
+    analysis_segment_duration_s=5,
+    analysis_segment_alpha_overlap=0.75,
+    obs_ids=None,
+    event_sections=None,
+):
+    """Positions of the analysis windows of the events, without computing any CPSD.
+
+    The windows and their positions are exactly the ones of ``derive_portion_cpsd_welch`` (same functions), so the
+    real distance between windows computed here is the one of the ambiguity surfaces. The CPSD (long) is not needed:
+    this allows to decide which events are worth a CPSD.
+
+    Parameters
+    ----------
+    portion_tree : xarray.DataTree
+        Event tree with the groups ``position`` and ``pressure``.
+    analysis_segment_duration_s, analysis_segment_alpha_overlap : float, optional
+        Analysis windows (see ``derive_portion_cpsd_welch``).
+    obs_ids : array_like of str or None, optional
+        OBS used. If None, all OBS of the first pressure section are used.
+    event_sections : list of str or None, optional
+        Events to process. None -> all the events.
+
+    Returns
+    -------
+    dict
+        ``{event name: xarray.Dataset}`` with the variables ``event_lon`` / ``event_lat`` of dimension
+        ``event_datetime`` (window centers), which is what ``get_distance_between_library_and_event`` reads.
+
+    Raises
+    ------
+    ValueError
+        If an event has no complete window, or an unknown event is requested.
+    """
+    obs_ids, fs = _get_receivers_and_sampling_frequency(portion_tree, obs_ids)
+
+    window_positions = {}
+    for event_name in _select_event_names(portion_tree, event_sections):
+        windows = get_event_analysis_windows(
+            portion_tree.pressure[event_name].to_dataset(),
+            obs_ids,
+            fs,
+            analysis_segment_duration_s,
+            analysis_segment_alpha_overlap,
+            event_name=event_name,
+        )
+        window_centers = [window[2] for window in windows]
+        ds_position_windows = _window_positions(
+            portion_tree.position[event_name].to_dataset(), window_centers
+        )
+        window_positions[event_name] = xr.Dataset(
+            data_vars=dict(
+                event_lon=(["event_datetime"], ds_position_windows.lon.data),
+                event_lat=(["event_datetime"], ds_position_windows.lat.data),
+            ),
+            coords=dict(event_datetime=window_centers),
+        )
+    return window_positions
+
+
 def derive_portion_cpsd_welch(
     portion_tree,
     analysis_segment_duration_s=5,
@@ -59,8 +288,9 @@ def derive_portion_cpsd_welch(
     obs_ids=None,
     fmin=None,
     fmax=None,
+    event_sections=None,
 ):
-    """Compute the CPSD matrix of every analysis window of every event and store it as features.
+    """Compute the CPSD matrix of every analysis window of the events and store it as features.
 
     The recording of each event is cut into overlapping analysis windows. For
     each window, the cross-power spectral density (CPSD) matrix between all the
@@ -93,6 +323,9 @@ def derive_portion_cpsd_welch(
         OBS used. If None, all OBS of the first pressure section are used.
     fmin, fmax : float or None, optional
         Frequency band kept, in Hz. If None, the lowest / highest frequency is used.
+    event_sections : list of str or None, optional
+        Events whose CPSD is computed. None (default) -> all the events. The other events get no ``feature``
+        node.
 
     Returns
     -------
@@ -101,24 +334,16 @@ def derive_portion_cpsd_welch(
     Raises
     ------
     ValueError
-        If no frequency bin is in ``[fmin, fmax]``, or if no analysis window of
-        an event is complete on all the OBS.
+        If no frequency bin is in ``[fmin, fmax]``, if no analysis window of
+        an event is complete on all the OBS, or if an unknown event is requested.
     """
     # Imported here: this external tool is only needed to compute the CPSD
     from source.cov_manager import CovManager
 
-    analysis_segment_duration_ms = int(round(analysis_segment_duration_s * 1000))
     covariance_manager = CovManager(nperseg=nperseg, noverlap=noverlap, nfft=nfft)
 
     # Receivers and sampling frequency, taken from the first event
-    first_section_name = list(portion_tree.pressure.children)[0]
-    if obs_ids is None:
-        obs_ids = (
-            portion_tree.pressure[first_section_name].to_dataset().obs_id.values
-        )
-    obs_ids = np.asarray(obs_ids)
-
-    fs = portion_tree.pressure[first_section_name].to_dataset().attrs["fs"]
+    obs_ids, fs = _get_receivers_and_sampling_frequency(portion_tree, obs_ids)
     n_samples_expected = int(analysis_segment_duration_s * fs)
 
     if nfft is None:
@@ -139,77 +364,35 @@ def derive_portion_cpsd_welch(
         )
     freq = freq[freq_band_mask]
 
-    # Shift between the start of two successive analysis windows
-    window_shift_ms = analysis_segment_duration_ms * (
-        1 - analysis_segment_alpha_overlap
-    )
-
-    # 1) Iterate over the events of the tree
-    for event_name, node in portion_tree.pressure.children.items():
-        ds_pressure_section = node.to_dataset()
+    # 1) Iterate over the events requested (all the events by default)
+    for event_name in _select_event_names(portion_tree, event_sections):
+        ds_pressure_section = portion_tree.pressure[event_name].to_dataset()
         ds_position_section = portion_tree.position[event_name].to_dataset()
 
-        # NOTE : all the receivers are assumed to have the same time axis
-        signal_datetime = ds_pressure_section[f"time_{obs_ids[0]}"].values
-        elapsed_time_ms = (signal_datetime - signal_datetime[0]) / np.timedelta64(
-            1, "ms"
-        )
-
-        # Number of analysis windows that fit in the recording
-        n_window = int(
-            np.floor(
-                (
-                    elapsed_time_ms.max()
-                    - analysis_segment_duration_ms * analysis_segment_alpha_overlap
-                )
-                / window_shift_ms
-            )
-        )
-
-        # First window: [window_start, window_stop[ (one sample is removed to
-        # get exactly the expected number of samples)
-        window_start = signal_datetime[0]
-        window_stop = (
-            window_start
-            + np.timedelta64(analysis_segment_duration_ms, "ms")
-            - np.timedelta64(int(1 / fs * 1e9), "ns")
+        # 2) Complete analysis windows (same definition as get_event_window_positions)
+        windows = get_event_analysis_windows(
+            ds_pressure_section,
+            obs_ids,
+            fs,
+            analysis_segment_duration_s,
+            analysis_segment_alpha_overlap,
+            event_name=event_name,
         )
 
         cpsd_per_window = []
         valid_window_datetimes = []
 
-        # 2) Iterate over the analysis windows
-        for _ in range(n_window):
-
-            # Datetime of the center of the window
-            window_center = window_start + np.timedelta64(
-                int(analysis_segment_duration_ms / 2), "ms"
-            )
+        for window_start, window_stop, window_center in windows:
 
             # 3) Extract the signal of every receiver on the window
             signals = []
-            cropped_signal = False
-
             for rcv_id in obs_ids:
                 signal = ds_pressure_section[f"pressure_{rcv_id}"].sel(
                     {f"time_{rcv_id}": slice(window_start, window_stop)}
                 )
-
-                # Incomplete window (end of the recording)
-                if signal.size != n_samples_expected:
-                    cropped_signal = True
-                    break
-
                 # Remove the mean of the signal
                 signal = signal - np.nanmean(signal)
                 signals.append(signal.values)
-
-            # Move to the next window
-            window_start += np.timedelta64(int(window_shift_ms * 1e6), "ns")
-            window_stop += np.timedelta64(int(window_shift_ms * 1e6), "ns")
-
-            if cropped_signal:
-                continue
 
             valid_window_datetimes.append(window_center)
 
@@ -224,17 +407,10 @@ def derive_portion_cpsd_welch(
 
             cpsd_per_window.append(cpsd)
 
-        if len(cpsd_per_window) == 0:
-            raise ValueError(
-                f"No signal window of event '{event_name}' has a complete "
-                f"{analysis_segment_duration_s} s window on all of the OBS {list(obs_ids)}."
-            )
         cpsd_per_window = np.array(cpsd_per_window)  # (n_window, n_rcv, n_rcv, n_freq)
 
         # Position of the source (AIS) at the center of each window
-        ds_position_windows = ds_position_section.sel(
-            datetime=valid_window_datetimes, method="nearest"
-        )
+        ds_position_windows = _window_positions(ds_position_section, valid_window_datetimes)
 
         # Store in the feature dataset of the event
         ds_feature = xr.Dataset(

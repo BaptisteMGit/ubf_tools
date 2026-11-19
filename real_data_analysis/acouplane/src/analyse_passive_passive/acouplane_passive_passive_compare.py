@@ -52,6 +52,7 @@ from real_data_analysis.acouplane.src.acouplane_event import (
     derive_portion_cpsd_welch,
     derive_portion_features,
     get_crossing_distance_m,
+    get_event_window_positions,
 )
 from real_data_analysis.acouplane.src.acouplane_features import (
     get_distance_between_library_and_event,
@@ -122,8 +123,8 @@ class PassivePassiveSettings:
         Reuse the saved CPSD / surfaces when computed with identical settings; save them.
     plot_map, plot_features_event, save_intersection_positions, plot_ambiguity, verbose : bool
         Outputs and console messages. ``plot_features_event`` saves the RTF amplitude and the
-        DCF of every event of the box (the CPSD and the features are then needed even if the
-        ambiguity surfaces are reused, and boxes with a single event are processed too).
+        DCF of the events used by the ambiguity surfaces (the events of the pairs whose trajectories cross) only.
+        Their CPSD and features are then needed even if the surfaces are reused.
     """
 
     reference_rcv: str = "obs1"
@@ -291,19 +292,20 @@ def build_event_pairs(event_names, both_directions=False):
 # ======================================================================================================================
 
 
-def select_crossing_event_pairs(portion_event, pairs, max_crossing_distance_m):
-    """Keep the pairs of events whose trajectories cross, before computing any ambiguity surface.
+def select_crossing_event_pairs(window_positions, pairs, max_crossing_distance_m):
+    """Keep the pairs of events whose trajectories cross, before computing any CPSD or ambiguity surface.
 
-    For each pair, the real-space distance ``d_real`` between every analysis window of the library
-    event and every analysis window of the tested event is computed from the positions of the windows
-    (``event_lon`` / ``event_lat`` of the CPSD, see ``get_distance_between_library_and_event``) and its
-    minimum is the crossing distance. This is exactly the value that ``get_crossing_distance_m`` reads in the
-    ambiguity surfaces, but it needs only the CPSD windows: no RTF, no DCF, no feature distance.
+    For each pair, the real-space distance ``d_real`` between every analysis window of the library event and every
+    analysis window of the tested event is computed from the positions of the windows (see
+    ``get_distance_between_library_and_event``) and its minimum is the crossing distance. This is exactly the value
+    that ``get_crossing_distance_m`` reads in the ambiguity surfaces, but it needs only the positions of the windows
+    (``get_event_window_positions``): no CPSD, no RTF, no DCF, no feature distance.
 
     Parameters
     ----------
-    portion_event : xarray.DataTree
-        Sub-box tree whose group ``feature`` holds the CPSD of the events (see ``derive_portion_cpsd_welch``).
+    window_positions : dict
+        ``{event name: xarray.Dataset}`` with ``event_lon`` / ``event_lat`` of dimension ``event_datetime`` (see
+        ``get_event_window_positions``), for every event of ``pairs``.
     pairs : list of tuple of str
         ``(library event, tested event)`` pairs to examine.
     max_crossing_distance_m : float
@@ -317,18 +319,11 @@ def select_crossing_event_pairs(portion_event, pairs, max_crossing_distance_m):
         One record per examined pair: ``library_event``, ``tested_event``, ``crossing_distance_m`` (NaN if no
         valid position) and ``kept``.
     """
-    # CPSD datasets of the events, read once (only the window positions are used here)
-    ds_events = {}
-    for library_name, event_name in pairs:
-        for name in (library_name, event_name):
-            if name not in ds_events:
-                ds_events[name] = portion_event.feature[name].to_dataset()
-
     kept_pairs = []
     records = []
     for library_name, event_name in pairs:
         d_real = get_distance_between_library_and_event(
-            ds_events[library_name], ds_events[event_name]
+            window_positions[library_name], window_positions[event_name]
         )
         crossing_distance_m = float(np.nanmin(d_real)) if d_real.size else float("nan")
 
@@ -375,19 +370,22 @@ def events_in_pairs(pairs, event_names):
 # ======================================================================================================================
 
 
-def _prepare_cpsd(
-    portion_event, cpsd_fpath, cpsd_settings, settings, log
-):
-    """Plug the CPSD of the events into the sub-box tree (reused from file, or computed and saved).
+def _prepare_cpsd(portion_event, needed_events, cpsd_fpath, cpsd_settings, settings, log):
+    """Plug the CPSD of the needed events into the sub-box tree (read from the file and/or computed, then saved).
+
+    The CPSD file may hold only some events of the box. The events already in the file (saved with the same
+    settings) are read, the missing ones are computed (long) and the file is rewritten with all of them.
 
     Parameters
     ----------
     portion_event : xarray.DataTree
-        Sub-box tree, modified in memory only: the group ``feature`` is added.
+        Sub-box tree, modified in memory only: the group ``feature`` is added, with the needed events only.
+    needed_events : list of str
+        Events whose CPSD is needed.
     cpsd_fpath : str
         File where the CPSD is saved / read.
     cpsd_settings : dict
-        Everything the CPSD depends on (a saved CPSD is reused only if identical).
+        Everything the CPSD depends on (a saved CPSD is reused only if identical). The events are NOT part of it.
     settings : PassivePassiveSettings
         Comparison settings.
     log : callable
@@ -396,23 +394,44 @@ def _prepare_cpsd(
     Returns
     -------
     cpsd_tree : xarray.DataTree or None
-        Lazy tree of the reused CPSD file (to close at the end), or None if it was computed.
+        Lazy tree of the CPSD file when all the needed events were read from it (to close at the end), else None.
     cpsd_reused : bool
-        True if the CPSD was read from the file.
+        True if no CPSD had to be computed.
     """
-    cpsd_tree = None
+    stored_tree = None
+    stored_events = []
     if settings.reuse_stored_results:
-        cpsd_tree, reason = load_tree_if_settings_match(cpsd_fpath, cpsd_settings)
+        stored_tree, reason = load_tree_if_settings_match(cpsd_fpath, cpsd_settings)
         log(f"Saved CPSD: {reason}", level=1)
+        if stored_tree is not None:
+            stored_events = list(stored_tree.feature.children)
 
-    if cpsd_tree is not None:
-        # Plug the saved CPSD into the event tree (it stays lazily read from its file)
-        for event_name, node in cpsd_tree.feature.children.items():
-            portion_event[f"/feature/{event_name}"] = node.to_dataset()
+    events_from_file = [name for name in needed_events if name in stored_events]
+    events_to_compute = [name for name in needed_events if name not in stored_events]
+    log(
+        f"CPSD of {len(needed_events)} event(s): {len(events_from_file)} in the saved file, "
+        f"{len(events_to_compute)} to compute",
+        level=1,
+    )
+
+    # Everything is in the file: plug it (it stays lazily read from its file)
+    if not events_to_compute:
+        for event_name in events_from_file:
+            portion_event[f"/feature/{event_name}"] = stored_tree.feature[event_name].to_dataset()
         log(f"CPSD loaded from {cpsd_fpath}", level=1)
-        return cpsd_tree, True
+        return stored_tree, True
 
-    # Otherwise compute it (long), and save it right away
+    # Some events are missing: the file will be rewritten, so the events it holds are loaded in memory first
+    # (a file cannot be replaced while it is open)
+    stored_datasets = {}
+    if stored_tree is not None:
+        for event_name in stored_events:
+            stored_datasets[event_name] = stored_tree.feature[event_name].to_dataset().load()
+        stored_tree.close()
+    for event_name in events_from_file:
+        portion_event[f"/feature/{event_name}"] = stored_datasets[event_name]
+
+    # Compute the missing events (long)
     log(
         f"Computing the CPSD (Welch) of {settings.analysis_segment_duration_s} s windows, "
         f"overlap {settings.analysis_segment_alpha_overlap}, band [{settings.fmin}, {settings.fmax}] Hz",
@@ -428,11 +447,16 @@ def _prepare_cpsd(
         obs_ids=None,
         fmin=settings.fmin,
         fmax=settings.fmax,
+        event_sections=events_to_compute,
     )
+
+    # Save right away, together with the events already in the file
     if settings.save_cpsd_to_netcdf:
         cpsd_to_save = xr.DataTree()
-        for event_name, node in portion_event.feature.children.items():
-            cpsd_to_save[f"/feature/{event_name}"] = node.to_dataset()
+        for event_name, dataset in stored_datasets.items():
+            cpsd_to_save[f"/feature/{event_name}"] = dataset
+        for event_name in events_to_compute:
+            cpsd_to_save[f"/feature/{event_name}"] = portion_event.feature[event_name].to_dataset()
         save_tree_atomic(cpsd_to_save, cpsd_fpath, cpsd_settings)
         log(f"CPSD saved: {cpsd_fpath}", level=1)
 
@@ -668,7 +692,8 @@ def _plot_ambiguity_figures(
 def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
     """Compare the events of one sub-box between them.
 
-    Steps: CPSD of the events (reused if saved with the same settings), features (plotted if
+    Steps: pre-selection of the pairs from the positions of the analysis windows, CPSD of the events used by the
+    selected pairs only (reused if saved with the same settings), features (plotted if
     ``settings.plot_features_event``),
     ambiguity surfaces of each pair of events (reused if saved with the same settings),
     theoretical intersections (pairs whose trajectories cross), intersection positions
@@ -688,7 +713,7 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
     Returns
     -------
     summary : dict
-        ``box``, ``n_events``, ``n_pairs`` (all the pairs), ``n_pairs_to_compute`` (pairs whose
+        ``box``, ``n_events``, ``n_events_used`` (events of the pairs computed: the only ones with a CPSD), ``n_pairs`` (all the pairs), ``n_pairs_to_compute`` (pairs whose
         trajectories cross, the only ones computed), ``n_crossing_pairs`` (after the final check), ``n_figures``,
         ``cpsd_reused``, ``mfp_reused`` and ``status`` (``"done"``, ``"skipped: ..."``).
     position_records : list of dict
@@ -710,6 +735,7 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
         n_events=0,
         n_pairs=0,
         n_pairs_to_compute=0,
+        n_events_used=0,
         n_crossing_pairs=0,
         n_figures=0,
         cpsd_reused=False,
@@ -738,8 +764,7 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
         else:
             summary["status"] = "skipped: less than 2 events"
             log("Less than 2 events: nothing to compare", level=1)
-            if not settings.plot_features_event:
-                return summary, []
+            return summary, []
 
         if settings.plot_map:
             _plot_box_map(portion_event, event_names, ibox, save_figure)
@@ -784,31 +809,25 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
             mfp_reused = portion_mfp is not None
         summary["mfp_reused"] = mfp_reused
 
-        # Pairs with surfaces: read from the saved file if reused, else selected at step 4
+        # Pairs with surfaces: read from the saved file if reused, else selected at step 3
         pairs = list_stored_intersections(portion_mfp) if mfp_reused else []
-
-        # The CPSD is needed to select the pairs (and then compute their surfaces), or to plot the features
         need_surfaces = len(candidate_pairs) > 0 and not mfp_reused
-        need_cpsd = need_surfaces or settings.plot_features_event
 
         # --------------------------------------------------------------------------------------------------------------
-        # Step 3 - CPSD of the events (only if needed)
-        # --------------------------------------------------------------------------------------------------------------
-        if need_cpsd:
-            log("Step 3 - CPSD of the events")
-            cpsd_tree, summary["cpsd_reused"] = _prepare_cpsd(
-                portion_event, cpsd_fpath, cpsd_settings, settings, log
-            )
-        else:
-            log("Step 3 - Not needed: the ambiguity surfaces are reused")
-
-        # --------------------------------------------------------------------------------------------------------------
-        # Step 4 - Which pairs can have an intersection ? (real distance between the windows, before any surface)
+        # Step 3 - Which pairs can have an intersection ? (real distance between the windows, before any CPSD)
         # --------------------------------------------------------------------------------------------------------------
         if need_surfaces:
-            log("Step 4 - Pre-selection of the pairs whose trajectories cross (minimum of d_real)")
+            log("Step 3 - Pre-selection of the pairs whose trajectories cross (minimum of d_real, no CPSD needed)")
+            library_candidates, tested_candidates = events_in_pairs(candidate_pairs, event_names)
+            window_positions = get_event_window_positions(
+                portion_event,
+                analysis_segment_duration_s=settings.analysis_segment_duration_s,
+                analysis_segment_alpha_overlap=settings.analysis_segment_alpha_overlap,
+                obs_ids=None,
+                event_sections=sorted(set(library_candidates) | set(tested_candidates), key=_natural_event_key),
+            )
             pairs, crossing_records = select_crossing_event_pairs(
-                portion_event, candidate_pairs, settings.max_crossing_distance_m
+                window_positions, candidate_pairs, settings.max_crossing_distance_m
             )
             pd.DataFrame(crossing_records).to_csv(
                 os.path.join(root_img_box, "preselection_crossing_distances.csv"), index=False
@@ -826,26 +845,41 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
                 level=1,
             )
         elif mfp_reused:
-            log(f"Step 4 - Not needed: {len(pairs)} pair(s) stored with the saved surfaces")
+            log(f"Step 3 - Not needed: {len(pairs)} pair(s) stored with the saved surfaces")
         summary["n_pairs_to_compute"] = len(pairs)
 
         has_pairs = len(pairs) > 0
         library_events, tested_events = events_in_pairs(pairs, event_names)
+        # Only the events of the pairs are worth a CPSD, features and plots
+        events_used = sorted(set(library_events) | set(tested_events), key=_natural_event_key)
+        summary["n_events_used"] = len(events_used)
+
         if need_surfaces and not has_pairs:
             summary["status"] = (
                 f"done: no pair crosses (closest windows > {settings.max_crossing_distance_m} m apart)"
             )
-            log("No pair of trajectories crosses: no surface to compute", level=1)
-            if not settings.plot_features_event:
-                return summary, []
+            log("No pair of trajectories crosses: no CPSD, no surface to compute", level=1)
+            return summary, []
 
         compute_surfaces = need_surfaces and has_pairs
 
         # --------------------------------------------------------------------------------------------------------------
-        # Step 5 - Features (only the pairs kept need the library; the features plot needs those of every event)
+        # Step 4 - CPSD of the events used (only if needed)
+        # --------------------------------------------------------------------------------------------------------------
+        need_cpsd = compute_surfaces or (settings.plot_features_event and has_pairs)
+        if need_cpsd:
+            log(f"Step 4 - CPSD of the {len(events_used)} event(s) used: {events_used}")
+            cpsd_tree, summary["cpsd_reused"] = _prepare_cpsd(
+                portion_event, events_used, cpsd_fpath, cpsd_settings, settings, log
+            )
+        else:
+            log("Step 4 - Not needed")
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Step 5 - Features of the events used (the library only if the surfaces are computed)
         # --------------------------------------------------------------------------------------------------------------
         portion_library = None
-        if compute_surfaces or settings.plot_features_event:
+        if need_cpsd:
             log("Step 5 - Features of the library and of the events")
             if compute_surfaces:
                 # The library is built from the CPSD of the library events
@@ -860,7 +894,7 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
                     verbose=settings.verbose,
                     rtf_method=settings.library_rtf_method,
                 )
-            # Features of all the events of the box (the tested events are among them)
+            # Features of the events that have a CPSD (the events used)
             derive_portion_features(
                 portion_event,
                 rcv_ref=settings.reference_rcv,
@@ -873,9 +907,9 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
             log("Step 5 - Not needed")
 
         # Features of the events (RTF amplitude and DCF), one figure each per event
-        if settings.plot_features_event:
-            log("Features (RTF, DCF) of the events")
-            _plot_events_features(portion_event, event_names, root_img_box, log)
+        if settings.plot_features_event and need_cpsd:
+            log(f"Features (RTF, DCF) of the {len(events_used)} event(s) used")
+            _plot_events_features(portion_event, events_used, root_img_box, log)
 
         # --------------------------------------------------------------------------------------------------------------
         # Step 6 - Ambiguity surfaces
@@ -907,7 +941,7 @@ def compare_events_of_subbox(box_fpath, ibox, settings, root_img_box):
             return summary, []
 
         # --------------------------------------------------------------------------------------------------------------
-        # Step 7 - Crossing distances of the computed surfaces (table). Same criterion as the pre-selection of step 4:
+        # Step 7 - Crossing distances of the computed surfaces (table). Same criterion as the pre-selection of step 3:
         # a pair that does not cross can only appear here for a saved file computed with another threshold.
         # --------------------------------------------------------------------------------------------------------------
         log("Step 7 - Theoretical intersections (closest windows of the two events)")

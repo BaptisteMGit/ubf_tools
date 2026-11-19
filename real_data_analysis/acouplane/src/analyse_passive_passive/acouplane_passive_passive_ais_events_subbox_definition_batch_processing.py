@@ -85,7 +85,7 @@ subbox_lon_width = subbox_lat_width = 0.042
 
 # --- Filters ---
 # An event longer than this is not a ship crossing the box
-max_event_duration_min = 30
+max_event_duration_min = 90
 # An event shorter than this has too few analysis windows for a usable ambiguity surface (a single window gives a
 # degenerate surface). At least the analysis window plus the shift between two windows: 12.5 s for 10 s windows
 # with 75 % overlap, which gives two windows.
@@ -272,7 +272,7 @@ for ibox, box in enumerate(sub_boxes):
         fig, ax = plot_events_in_box(
             ds_pos,
             portion_event_box,
-            title=f"Box {ibox} : duration <= {max_event_duration_min} min",
+            title=rf"Box {ibox} : duration $\leq$ {max_event_duration_min} min",
         )
         save_box_figure(fig, "selection_3_not_too_long.png")
 
@@ -288,7 +288,7 @@ for ibox, box in enumerate(sub_boxes):
         fig, ax = plot_events_in_box(
             ds_pos,
             portion_event_box,
-            title=f"Box {ibox} : duration >= {min_event_duration_s} s",
+            title=rf"Box {ibox} : duration $\geq$ {min_event_duration_s} s",
         )
         save_box_figure(fig, "selection_4_long_enough.png")
 

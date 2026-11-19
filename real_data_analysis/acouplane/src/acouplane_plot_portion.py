@@ -247,8 +247,26 @@ def plot_spectrogram_section(
 
     formatter = mdates.DateFormatter("%H:%M:%S")
     axs[-1].xaxis.set_major_formatter(formatter)
-    locator = mdates.AutoDateLocator(minticks=6, maxticks=10)
+    # Explicit tick step chosen from the duration shown: AutoDateLocator cannot find an interval for some durations
+    # (warning "unable to pick an appropriate interval", then ~30 ticks per axis, slow to draw and save)
+    span_s = (tt_datetime[-1] - tt_datetime[0]).total_seconds()
+    target_step_s = max(span_s / 8, 1e-3)
+    nice_steps_s = [
+        0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
+        1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 21600, 43200, 86400,
+    ]  # fmt: skip
+    step_s = next((s for s in nice_steps_s if s >= target_step_s), nice_steps_s[-1])
+    if step_s >= 3600:
+        locator = mdates.HourLocator(interval=int(step_s // 3600))
+    elif step_s >= 60:
+        locator = mdates.MinuteLocator(interval=int(step_s // 60))
+    elif step_s >= 1:
+        locator = mdates.SecondLocator(interval=int(step_s))
+    else:
+        locator = mdates.MicrosecondLocator(interval=int(round(step_s * 1e6)))
     axs[-1].xaxis.set_major_locator(locator)
+    if step_s < 1:
+        axs[-1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S.%f"))
 
     set_subfigures_abc_labels(
         axs, x_pos=0.5, y_pos=1.02, fontsize=20, ha="center", va="bottom"

@@ -16,7 +16,7 @@ import os
 import matplotlib.pyplot as plt
 
 
-def make_logger(portion_id, verbose=True):
+def make_logger(portion_id, verbose=True, label=None):
     """Build the function printing the progress messages of a script.
 
     Parameters
@@ -25,13 +25,18 @@ def make_logger(portion_id, verbose=True):
         Identifier of the portion, shown in the main messages.
     verbose : bool, optional
         If False, the returned function prints nothing.
+    label : str or None, optional
+        Prefix of the main messages instead of ``Portion <id>`` (e.g. ``"box 3"``).
+        ``portion_id`` is then ignored.
 
     Returns
     -------
     callable
         ``log(message, level=0)``: level 0 is a main step (prefixed by
-        ``[Portion <id>]``), level 1 or more a detail of the current step.
+        ``[Portion <id>]`` or by ``[<label>]``), level 1 or more a detail of the current step.
     """
+
+    prefix = f"[Portion {portion_id}]" if label is None else f"[{label}]"
 
     def log(message, level=0):
         # Nothing is printed in silent mode
@@ -39,7 +44,7 @@ def make_logger(portion_id, verbose=True):
             return
 
         if level == 0:
-            print(f"[Portion {portion_id}] {message}")
+            print(f"{prefix} {message}")
         else:
             print("    " * level + f"- {message}")
 
@@ -66,6 +71,8 @@ def make_figure_saver(directory, log=None):
     def save_figure(fig, filename):
         # Save then close the figure to free the memory
         fpath = os.path.join(directory, filename)
+        # The filename can contain a sub-folder (e.g. "pressure/event_0.png")
+        os.makedirs(os.path.dirname(fpath), exist_ok=True)
         fig.savefig(fpath)
         plt.close(fig)
 

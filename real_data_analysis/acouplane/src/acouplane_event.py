@@ -1016,6 +1016,8 @@ def apply_mfp_strategy_to_portions(
     library_sections=None,
     event_sections=None,
     obs_ids=None,
+    skip_identical_names=False,
+    pairs=None,
 ):
     """Compute the MFP ambiguity surfaces between the sections of a library and the events.
 
@@ -1048,6 +1050,15 @@ def apply_mfp_strategy_to_portions(
     obs_ids : sequence of str or None, optional
         Receivers kept for the comparison (the reference receiver is ignored).
         If None, all the receivers common to the library and the event are used.
+    skip_identical_names : bool, optional
+        If True, a library section is not compared with the event of the same
+        name. Used when the library is made of events (the comparison of an
+        event with itself is meaningless).
+    pairs : list of tuple of str or None, optional
+        Explicit ``(library section, event)`` pairs to compare, instead of every
+        library section against every event. Both names must be among the
+        selected ``library_sections`` / ``event_sections``. Used to compare each
+        pair of events only once. If None (default), all the combinations.
 
     Returns
     -------
@@ -1075,13 +1086,39 @@ def apply_mfp_strategy_to_portions(
     portion_mfp.attrs["description"] = "MFP between a library and events"
     portion_mfp.attrs["reference_receiver"] = rcv_ref
 
-    n_comparisons = len(library_names) * len(event_names)
+    # Pairs to compare
+    if pairs is None:
+        pairs = [
+            (library_name, event_name)
+            for library_name in library_names
+            for event_name in event_names
+        ]
+    else:
+        pairs = [(str(library_name), str(event_name)) for library_name, event_name in pairs]
+        for library_name, event_name in pairs:
+            if library_name not in library_names or event_name not in event_names:
+                raise ValueError(
+                    f"Pair ({library_name}, {event_name}) is not among the selected library sections "
+                    f"{library_names} and events {event_names}."
+                )
+    pairs = [
+        (library_name, event_name)
+        for library_name, event_name in pairs
+        if not (skip_identical_names and library_name == event_name)
+    ]
+    if not pairs:
+        raise ValueError(
+            "No comparison to compute (every library section has the same name as the only event selected)."
+        )
+    n_comparisons = len(pairs)
     i_comparison = 0
 
     for library_name in library_names:
         ds_feature_library = _features_in_band(portion_library, library_name, fmin, fmax)
 
         for event_name in event_names:
+            if (library_name, event_name) not in pairs:
+                continue
             i_comparison += 1
             if verbose:
                 print(

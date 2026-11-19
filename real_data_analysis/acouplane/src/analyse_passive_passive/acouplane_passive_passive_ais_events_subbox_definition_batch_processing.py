@@ -91,13 +91,16 @@ spectrogram_noverlap = 2**9
 
 # --- Switches ---
 # Boxes to process (None = all). Useful to resume or debug, e.g. [3, 4]
-# boxes_to_process = None
-boxes_to_process = [6, 9]
+boxes_to_process = None
+# boxes_to_process = [6, 9]
 
 # If False, a box whose dataset file already exists is skipped
 overwrite_existing_boxes = True
 plot_pressure = True
 plot_spectrogram = True
+
+# Maximum event labels allowed
+max_number_of_event_labels = 10
 
 # ======================================================================================================================
 # Folders
@@ -237,8 +240,12 @@ for ibox, box in enumerate(sub_boxes):
             f"{n_events['pressure_available']} events after filter 1 (pressure available)"
         )
 
+        add_event_labels = n_events["pressure_available"] <= max_number_of_event_labels
         fig, ax = plot_events_in_box(
-            ds_pos, portion_event_box, title=f"Box {ibox} : pressure data available"
+            ds_pos,
+            portion_event_box,
+            title=f"Box {ibox} : pressure data available",
+            add_event_labels=add_event_labels,
         )
         save_box_figure(fig, "selection_1_pressure_available.png")
 
@@ -251,8 +258,12 @@ for ibox, box in enumerate(sub_boxes):
         n_events["no_emission"] = count_events(portion_event_box)
         print(f"{n_events['no_emission']} events after filter 2 (no emission)")
 
+        add_event_labels = n_events["no_emission"] <= max_number_of_event_labels
         fig, ax = plot_events_in_box(
-            ds_pos, portion_event_box, title=f"Box {ibox} : no emission during events"
+            ds_pos,
+            portion_event_box,
+            title=f"Box {ibox} : no emission during events",
+            add_event_labels=add_event_labels,
         )
         save_box_figure(fig, "selection_2_no_emission.png")
 
@@ -265,10 +276,12 @@ for ibox, box in enumerate(sub_boxes):
         n_events["not_too_long"] = count_events(portion_event_box)
         print(f"{n_events['not_too_long']} events after filter 3 (duration)")
 
+        add_event_labels = n_events["not_too_long"] <= max_number_of_event_labels
         fig, ax = plot_events_in_box(
             ds_pos,
             portion_event_box,
             title=rf"Box {ibox} : duration $\leq$ {max_event_duration_min} min",
+            add_event_labels=add_event_labels,
         )
         save_box_figure(fig, "selection_3_not_too_long.png")
 

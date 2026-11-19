@@ -54,7 +54,7 @@ from real_data_analysis.acouplane.src.analyse_passive_passive.acouplane_passive_
 
 # Sub-boxes to process. None -> all the sub-boxes whose dataset exists. Useful to resume or debug, e.g. [3, 4]
 # boxes_to_process = None
-boxes_to_process = [2, 3, 4, 5]
+boxes_to_process = [2]
 
 settings = PassivePassiveSettings(
     # --- Receivers --------------------------------------------------------------------------------------------------
@@ -108,7 +108,7 @@ settings = PassivePassiveSettings(
     ambiguity_metrics=["theta_gamma_centered", "L2_gamma_centered", "dcf"],
     ambiguity_cmap="Grays_r",
     ambiguity_max_quantile=0.95,  # quantile of each feature distance used as upper bound of its color scale
-    ambiguity_d_real_vmax=100,  # upper bound of the color scale of the real distance [m]
+    ambiguity_d_real_vmax=200,  # upper bound of the color scale of the real distance [m]
     max_ambiguity_figures=400,  # safety limit on the number of ambiguity figures of ONE sub-box
     # Also compute the distances with gamma centered along frequency (needed by the "..._centered" metrics)
     compare_centered_gamma=True,
@@ -121,7 +121,7 @@ settings = PassivePassiveSettings(
     plot_map=True,
     # Plot the features (RTF amplitude and DCF) of every event of each box. The CPSD and the features are then
     # computed or read even if the ambiguity surfaces are reused, and boxes with a single event are processed too.
-    plot_features_event=False,
+    plot_features_event=True,
     save_intersection_positions=True,
     plot_ambiguity=True,
     verbose=True,

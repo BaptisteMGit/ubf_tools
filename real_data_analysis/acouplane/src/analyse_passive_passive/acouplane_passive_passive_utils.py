@@ -387,7 +387,7 @@ def plot_events_in_box(ds_pos, portion_event, title=None, add_event_labels=True)
             label=f"Event {ds_position_section.event_id}" if add_event_labels else None,
         )
 
-    ax.legend(ncols=2, loc="upper right")
+    ax.legend(ncols=2, loc="upper right", fontsize=12)
 
     if title is not None:
         ax.set_title(title)

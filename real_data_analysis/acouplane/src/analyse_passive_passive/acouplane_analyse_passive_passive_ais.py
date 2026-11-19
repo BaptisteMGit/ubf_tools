@@ -85,7 +85,23 @@ settings = PassivePassiveSettings(
     max_crossing_distance_m=200,
     # Receivers combined to build the ambiguity surface (the surfaces of the receiver pairs are averaged)
     combination_method="mean_surfaces",
+    # rcv_combinations=[
+    #     ["obs2", "obs4", "obs7", "obs5", "obs6"],
+    # ],
     rcv_combinations=[
+        ["obs2"],
+        ["obs4"],
+        ["obs7"],
+        ["obs5"],
+        ["obs2", "obs4"],
+        ["obs2", "obs7"],
+        ["obs2", "obs5"],
+        ["obs4", "obs7"],
+        ["obs4", "obs5"],
+        ["obs5", "obs7"],
+        ["obs2", "obs4", "obs7"],
+        ["obs2", "obs4", "obs5"],
+        ["obs2", "obs4", "obs7", "obs5"],
         ["obs2", "obs4", "obs7", "obs5", "obs6"],
     ],
     # --- Ambiguity figures ------------------------------------------------------------------------------------------

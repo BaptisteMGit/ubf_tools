@@ -53,7 +53,8 @@ from real_data_analysis.acouplane.src.analyse_passive_passive.acouplane_passive_
 # ======================================================================================================================
 
 # Sub-boxes to process. None -> all the sub-boxes whose dataset exists. Useful to resume or debug, e.g. [3, 4]
-boxes_to_process = None
+# boxes_to_process = None
+boxes_to_process = [6, 7, 8, 9]
 
 settings = PassivePassiveSettings(
     # --- Receivers --------------------------------------------------------------------------------------------------
@@ -93,12 +94,12 @@ settings = PassivePassiveSettings(
         ["obs4"],
         ["obs7"],
         ["obs5"],
-        ["obs2", "obs4"],
-        ["obs2", "obs7"],
-        ["obs2", "obs5"],
-        ["obs4", "obs7"],
-        ["obs4", "obs5"],
-        ["obs5", "obs7"],
+        # ["obs2", "obs4"],
+        # ["obs2", "obs7"],
+        # ["obs2", "obs5"],
+        # ["obs4", "obs7"],
+        # ["obs4", "obs5"],
+        # ["obs5", "obs7"],
         ["obs2", "obs4", "obs7"],
         ["obs2", "obs4", "obs5"],
         ["obs2", "obs4", "obs7", "obs5"],
@@ -111,7 +112,7 @@ settings = PassivePassiveSettings(
     ambiguity_cmap="Grays_r",
     ambiguity_max_quantile=0.95,  # quantile of each feature distance used as upper bound of its color scale
     ambiguity_d_real_vmax=200,  # upper bound of the color scale of the real distance [m]
-    max_ambiguity_figures=400,  # safety limit on the number of ambiguity figures of ONE sub-box
+    max_ambiguity_figures=4000,  # safety limit on the number of ambiguity figures of ONE sub-box
     # Also compute the distances with gamma centered along frequency (needed by the "..._centered" metrics)
     compare_centered_gamma=True,
     # --- Switches ---------------------------------------------------------------------------------------------------

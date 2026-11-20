@@ -1758,7 +1758,9 @@ def load_bathy(
 ):
     # input_data_root = os.path.join(project_root, "data")
     # bathy_fpath = os.path.join(root_bathy_data, "GEBCO_2021_sub_ice_topo.nc")
-    bathy_fpath = os.path.join(root_bathy_data, "GEBCO_2026_sub_ice.nc")
+    bathy_fpath = os.path.join(
+        root_bathy_data, "GEBCO_2026_sub_ice", "GEBCO_2026_sub_ice.nc"
+    )
 
     # Load bathy data
     ds_bathy = xr.open_dataset(bathy_fpath)

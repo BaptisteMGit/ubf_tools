@@ -1278,7 +1278,7 @@ def build_AIS_dataset(
 
     # Slice AIS data to campaign period
     ais = ais[(ais["datetime"] >= t_start) & (ais["datetime"] <= t_end)]
-    
+
     # Interpolate GPS data to regular time intervals
     ais_interp, mmsi = interpolate_ais(
         ais, time_step=interpolation_time_step, subset_idx=None
@@ -1459,8 +1459,6 @@ def interpolate_ais(ais, time_step="10s", subset_idx=None, mmsi_to_include=MMSI_
             skipped.append(mmsi_i)
             continue
 
-        if mmsi_i == 227823520:
-            print("begug")
         ais_mmsi_interp = interpolate_gps(df_gps=ais_mmsi, time_step=time_step)
         if ais_mmsi_interp.empty:  # not enough valid data
             skipped.append(mmsi_i)

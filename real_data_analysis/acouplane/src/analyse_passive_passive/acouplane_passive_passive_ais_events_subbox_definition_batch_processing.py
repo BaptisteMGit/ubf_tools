@@ -82,6 +82,7 @@ large_box_offset_percentage = 0.004
 # --- Sub-boxes ---
 # Size of a sub-box, in degrees
 subbox_lon_width = subbox_lat_width = 0.042
+subbox_lon_width = subbox_lat_width = 0.02
 
 # --- Filters ---
 # An event longer than this is not a ship crossing the box

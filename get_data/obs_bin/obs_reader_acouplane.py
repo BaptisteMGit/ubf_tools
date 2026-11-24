@@ -383,9 +383,9 @@ def read_obs_data(data_folder, read_raw=False, verbose=False):
         #     folder, read_raw=read_raw, verbose=verbose
         # )
 
-        # TODO : remove debug lines below once fixed
-        if "OBS2" in folder:
-            print("debug")
+        # # TODO : remove debug lines below once fixed
+        # if "OBS2" in folder:
+        #     print("debug")
 
         # Read data from the folder -> adapted from obsr class
         obsi_data, obsi_time, fullscale = read_obs_channel_H_with_obsr(

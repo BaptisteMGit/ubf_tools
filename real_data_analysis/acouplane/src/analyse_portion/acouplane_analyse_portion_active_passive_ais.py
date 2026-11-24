@@ -78,19 +78,26 @@ from real_data_analysis.acouplane.src.acouplane_portion_io import (
 # ======================================================================================================================
 # Constants
 # ======================================================================================================================
+# import matplotlib.pyplot as plt
+
+# plt.pause()
 portion_id = 5
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
-ROOT_IMG_PORTION_RESULTS_EVENT = os.path.join(ROOT_IMG_PORTION, "results_event_ais")
+# ROOT_IMG_PORTION_RESULTS_EVENT = os.path.join(ROOT_IMG_PORTION, "results_event_ais")
+ROOT_IMG_PORTION_RESULTS_EVENT = os.path.join(
+    ROOT_IMG_PORTION, "results_portion_active_passive_ais"
+)
+
 os.makedirs(ROOT_IMG_PORTION_RESULTS_EVENT, exist_ok=True)
 
 # Files: the library is built from the portion, the events are stored in a separate file
 portion_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}.nc"
-# portion_event_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais.nc"
-portion_event_fpath = (
-    f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais_single28.nc"
-)
+portion_event_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais.nc"
+# portion_event_fpath = (
+#     f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais_single28.nc"
+# )
 
 # Intermediate results saved next to the event file (the event file itself is never modified)
 portion_event_cpsd_fpath = portion_event_fpath.replace(".nc", "_cpsd.nc")
@@ -207,7 +214,7 @@ max_ambiguity_figures = (
 # Compute the CPSD of the events (set to False if the events already contain it)
 compute_event_cpsd = True
 # Save the CPSD of the events (Welch) in a NetCDF file next to the event file
-save_cpsd_to_netcdf = False
+save_cpsd_to_netcdf = True
 # Also compute the gamma distances with gamma centered along frequency
 compare_centered_gamma = True
 # Store the ambiguity surfaces of all the comparisons in a NetCDF file next to the event file

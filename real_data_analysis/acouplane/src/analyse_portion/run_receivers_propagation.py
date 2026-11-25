@@ -49,14 +49,18 @@ ROOT_SIMULATION = Path(
 # PARAMETERS TO ADJUST
 # ----------------------------------------------------------------------
 # Frequency vector used to build the impulse response (rfft grid)
+# FMAX = 800.0  # Hz
 FMAX = 800.0  # Hz
-T_SIGNAL = 1.0  # s
+
+T_SIGNAL = 1.2  # s
 FS = 2 * FMAX  # Hz (Nyquist)
 NT = int(T_SIGNAL * FS)  # number of samples
 # Set a lower bound (Hz) to skip the useless very-low frequencies below the waveguide
 # cutoff (a few Hz in ~100 m of water); None = keep the whole vector. f = 0 is always removed.
 FMIN_COMPUTE = 20.0  # Hz, used to skip the very-low frequencies (None = keep all)
-TEST_FREQS = np.array([100.0, 400.0, 800.0])  # Hz, used when test_mode=True
+# TEST_FREQS = np.array([100.0, 400.0, 800.0])  # Hz, used when test_mode=True
+TEST_FREQS = np.array([25.0, 50.0, 75.0])  # Hz, used when test_mode=True
+
 N_DIAG_FREQS = 4  # number of frequencies shown in the diagnostic figures
 # fmin (Hz) used to size the buffer sediment layer (10 wavelengths at this frequency).
 # Do NOT set it to 0.2 Hz: the buffer would be tens of km thick.
@@ -71,15 +75,24 @@ N_RCV_R = 501  # number of ranges of the output grid
 #     "a_p": 0.8,
 #     "a_s": 0.0,
 # }  # sandy sediment
-from source.global_constants import sables_TG
+from source.global_constants import sables_TG, graviers_TG
+
+# BOTTOM = {
+#     "c_p": sables_TG["c_p"],
+#     "c_s": 0.0,
+#     "rho": sables_TG["rho"],
+#     "a_p": sables_TG["a_p"],
+#     "a_s": 0.0,
+# }  # sandy sediment
 
 BOTTOM = {
-    "c_p": sables_TG["c_p"],
+    "c_p": graviers_TG["c_p"],
     "c_s": 0.0,
-    "rho": sables_TG["rho"],
-    "a_p": sables_TG["a_p"],
+    "rho": graviers_TG["rho"],
+    "a_p": graviers_TG["a_p"],
     "a_s": 0.0,
 }  # sandy sediment
+
 PARALLEL = True  # frequencies distributed over N_CORES processes (global_constants.py)
 STORE_DTYPE = (
     np.complex64

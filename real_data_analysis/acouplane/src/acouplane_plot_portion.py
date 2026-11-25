@@ -22,7 +22,9 @@ from publication.publication_figure import color, set_subfigures_abc_labels
 
 
 ### Positions ###
-def plot_obs_pos(ds_pos, ax=None, add_legend=True, add_title=True):
+def plot_obs_pos(
+    ds_pos, ax=None, add_legend=True, add_title=True, use_apriori_obs_pos=False
+):
     """Plot the OBS positions in geographic coordinates (longitude / latitude).
 
     Parameters
@@ -46,9 +48,18 @@ def plot_obs_pos(ds_pos, ax=None, add_legend=True, add_title=True):
 
     for obs_id in ds_pos.rcv_id.values:
         rcv = ds_pos.sel(rcv_id=obs_id)
-        ax.scatter(
-            rcv.rcv_lon, rcv.rcv_lat, marker="d", label=f"{obs_id.upper()}", s=200
-        )
+        if use_apriori_obs_pos:
+            ax.scatter(
+                rcv.rcv_lon_apriori,
+                rcv.rcv_lat_apriori,
+                marker="d",
+                label=f"{obs_id.upper()}",
+                s=200,
+            )
+        else:
+            ax.scatter(
+                rcv.rcv_lon, rcv.rcv_lat, marker="d", label=f"{obs_id.upper()}", s=200
+            )
 
     ax.set_xlabel("Longitude [°]")
     ax.set_ylabel("Latitude [°]")
@@ -63,7 +74,7 @@ def plot_obs_pos(ds_pos, ax=None, add_legend=True, add_title=True):
     return ax
 
 
-def plot_portion_tir_pos(portion_tree, ax=None):
+def plot_portion_tir_pos(portion_tree, ax=None, use_apriori_obs_pos=False):
     """Plot the shot positions of every section, and the OBS, in lon / lat.
 
     Parameters
@@ -97,7 +108,7 @@ def plot_portion_tir_pos(portion_tree, ax=None):
 
     if ds_pos_section is not None:
         # OBS positions are shared by all sections
-        plot_obs_pos(ds_pos_section, ax=ax)
+        plot_obs_pos(ds_pos_section, ax=ax, use_apriori_obs_pos=use_apriori_obs_pos)
 
     return fig, ax
 

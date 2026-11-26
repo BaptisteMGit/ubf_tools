@@ -88,8 +88,13 @@ portion_id = 5
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
-ROOT_IMG_PORTION_INTERSECTION = os.path.join(ROOT_IMG_PORTION, "intersections")
-ROOT_IMG_PORTION_RESULTS_SYNTHESIS = os.path.join(ROOT_IMG_PORTION, "results_synthesis")
+ROOT_IMG_PORTION_ACTIVE_ACTIVE = os.path.join(
+    ROOT_IMG_PORTION, "results_portion_active_active"
+)
+ROOT_IMG_PORTION_AMBIGUITY = os.path.join(ROOT_IMG_PORTION_ACTIVE_ACTIVE, "ambiguity")
+ROOT_IMG_PORTION_RESULTS_SYNTHESIS = os.path.join(
+    ROOT_IMG_PORTION_ACTIVE_ACTIVE, "results_synthesis"
+)
 
 ROOT_IMG_PORTION_FEATURES = os.path.join(ROOT_IMG_PORTION, "features")
 ROOT_IMG_PORTION_FEATURES_RTF = os.path.join(ROOT_IMG_PORTION_FEATURES, "rtf")
@@ -105,7 +110,7 @@ ROOT_IMG_PORTION_INPUT_SIGNAL_SPECTROGRAM = os.path.join(
 
 roots = [
     ROOT_IMG_PORTION,
-    ROOT_IMG_PORTION_INTERSECTION,
+    ROOT_IMG_PORTION_AMBIGUITY,
     ROOT_IMG_PORTION_RESULTS_SYNTHESIS,
     ROOT_IMG_PORTION_FEATURES,
     ROOT_IMG_PORTION_FEATURES_RTF,
@@ -183,7 +188,7 @@ contrast_only_valid = False
 # Booleans to control behavior
 # ======================================================================================================================
 save_modification_to_portion = True
-apply_obs_pos_correction = True
+apply_obs_pos_correction = False  # Not needed anymore -> corrected position are include in portion dataset since 25112026
 compute_cpsds = True
 apply_mfp_strategy_intersections = True
 
@@ -626,7 +631,7 @@ if plot_intersections:
 
             # Define root to save img for current intersections
             root_img_intersection = os.path.join(
-                ROOT_IMG_PORTION_INTERSECTION, f"{section1_label}_{section2_label}"
+                ROOT_IMG_PORTION_AMBIGUITY, f"{section1_label}_{section2_label}"
             )
             os.makedirs(root_img_intersection, exist_ok=True)
 

@@ -169,9 +169,10 @@ combination_method = "mean_surfaces"
 #   rcv_combinations = None  -> all the combinations of the sizes `combination_sizes` among the receivers
 #   rcv_combinations = [["obs2"], ["obs2", "obs4"], ...] -> explicit combinations
 rcv_combinations = None
-combination_sizes = (
-    None  # None -> all sizes, from 1 receiver to all of them; e.g. [1, 2, 5]
-)
+# combination_sizes = (
+#     None  # None -> all sizes, from 1 receiver to all of them; e.g. [1, 2, 5]
+# )
+combination_sizes = [1, 2, 5]
 max_combinations = 200  # safety limit on the number of combinations (the number grows as 2**n_receivers)
 
 # Distance types to analyse: None -> all those computed, otherwise a list among "theta", "theta_gamma", "L2_gamma",
@@ -182,16 +183,16 @@ distance_types_to_analyse = None
 contrast_percentile = 50
 
 # Ambiguity surfaces
-#   combinations_to_plot = None -> all the combinations studied
+combinations_to_plot = None  # -> all the combinations studied
 #   combinations_to_plot = [["obs2", "obs4"], ["obs2", "obs4", "obs5"]] -> only these combinations
 # combinations_to_plot = None
-combinations_to_plot = [
-    ["obs2"],
-    ["obs2", "obs4"],
-    ["obs2", "obs4", "obs7"],
-    ["obs2", "obs4", "obs7", "obs5"],
-    ["obs2", "obs4", "obs7", "obs5", "obs6"],
-]
+# combinations_to_plot = [
+#     ["obs2"],
+#     ["obs2", "obs4"],
+#     ["obs2", "obs4", "obs7"],
+#     ["obs2", "obs4", "obs7", "obs5"],
+#     ["obs2", "obs4", "obs7", "obs5", "obs6"],
+# ]
 
 # Metrics displayed next to the real distance (always in the first panel) in the ambiguity figures: 3 among
 # "theta", "theta_gamma", "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered"
@@ -235,7 +236,7 @@ save_intersection_positions = True
 plot_map = True
 plot_features_event = True
 plot_ambiguity = True
-plot_gamma_comparison = False
+plot_gamma_comparison = True
 
 # Analysis of the combinations
 analyse_error_vs_n_rcv = False

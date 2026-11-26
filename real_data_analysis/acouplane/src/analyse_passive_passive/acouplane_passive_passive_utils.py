@@ -155,7 +155,7 @@ def extract_ais_in_box(ds_pos, box):
         [
             v
             for v in list(ds_pos.variables)
-            if v not in ["ais_lon", "ais_lat", "ais_datetime"]
+            if v not in ["ais_lon", "ais_lat", "ais_datetime", "mmsi"]
         ]
     )
 
@@ -167,13 +167,18 @@ def extract_ais_in_box(ds_pos, box):
     )
 
     # Mask and drop coordinates that have no positions in the area
+    # dropna("ais_datetime", how="all") -> drop columns of matrix ais_lon (resp ais_lat) of shape (mmsi, ais_datetime) that contain only nan values
+    # after this operation the dataset only contains datetimes where at least one mmsi is in the area
+    # dropna("mmsi", how="all") -> drop lines of matrix ais_lon (resp ais_lat) of shape (mmsi, ais_datetime) that contain only nan values
+    # after this operation the dataset only contains mmsi that have at least on position (corresponding to one datetime) in the required area
     ds_ais_in_area = (
         ds_ais.where(mask).dropna("ais_datetime", how="all").dropna("mmsi", how="all")
     )
-    # Add mmsi to ease selection
-    ds_ais_in_area = ds_ais_in_area.assign_coords(
-        mmsi=np.arange(ds_ais_in_area.sizes["mmsi"])
-    )
+    # # Add mmsi to ease selection
+    # ds_ais_in_area = ds_ais_in_area.assign_coords(
+    #     mmsi=np.arange(ds_ais_in_area.sizes["mmsi"])
+    # )
+
     return ds_ais_in_area
 
 

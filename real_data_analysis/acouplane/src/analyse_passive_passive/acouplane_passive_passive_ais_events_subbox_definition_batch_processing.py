@@ -74,15 +74,16 @@ from real_data_analysis.acouplane.src.analyse_passive_passive.acouplane_passive_
 # ======================================================================================================================
 
 # --- Large box ---
-# Receivers defining the area (OBS 6 is removed to reduce the area)
-rcv_id_for_area_def = ["obs1", "obs2", "obs4", "obs7", "obs5"]
+# Receivers defining the area (OBS 6 can be removed to reduce the area)
+# rcv_id_for_area_def = ["obs1", "obs2", "obs4", "obs5", "obs7"]
+rcv_id_for_area_def = ["obs1", "obs2", "obs4", "obs5", "obs6", "obs7"]
 # Relative margin added around the receivers
 large_box_offset_percentage = 0.004
 
 # --- Sub-boxes ---
 # Size of a sub-box, in degrees
-subbox_lon_width = subbox_lat_width = 0.042
-subbox_lon_width = subbox_lat_width = 0.02
+subbox_lon_width = subbox_lat_width = 0.045
+# subbox_lon_width = subbox_lat_width = 0.02
 
 # --- Filters ---
 # An event longer than this is not a ship crossing the box

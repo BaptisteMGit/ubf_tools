@@ -82,7 +82,7 @@ large_box_offset_percentage = 0.004
 
 # --- Sub-boxes ---
 # Size of a sub-box, in degrees
-subbox_lon_width = subbox_lat_width = 0.045
+subbox_lon_width = subbox_lat_width = 0.06
 # subbox_lon_width = subbox_lat_width = 0.02
 
 # --- Filters ---
@@ -102,8 +102,8 @@ spectrogram_noverlap = 2**9
 boxes_to_process = None
 # If False, a box whose dataset file already exists is skipped
 overwrite_existing_boxes = True
-plot_pressure = True
-plot_spectrogram = True
+plot_pressure = False
+plot_spectrogram = False
 
 # Maximum number of events to add labels
 n_max_event_labels = 10
@@ -196,6 +196,7 @@ save_root_figure(fig, "sub_boxes_map.png")
 summary_records = []  # one row per box : number of events after each step
 failed_boxes = []
 
+idx_event_offset = 0
 for ibox, box in enumerate(sub_boxes):
 
     if boxes_to_process is not None and ibox not in boxes_to_process:
@@ -314,6 +315,33 @@ for ibox, box in enumerate(sub_boxes):
         if n_events["long_enough"] == 0:
             print("No event left after the filters, nothing to save.")
             continue
+
+        # --------------------------------------------------------------------------------------------------------------
+        # Reset event numbering
+        # --------------------------------------------------------------------------------------------------------------
+        portion_event_box_tmp = xr.DataTree()
+
+        for child_name in list(portion_event_box.children):
+            for isec, sec_name in enumerate(
+                list(portion_event_box[child_name].children)
+            ):
+                # print(child_name, sec_name, isec)
+                old_path = f"{child_name}/{sec_name}"
+                new_event_id = isec + idx_event_offset
+                new_path = f"{child_name}/event_{new_event_id}"
+                # Update attrs
+                old_node = portion_event_box[old_path].to_dataset()
+                old_node.attrs["event_id"] = new_event_id
+                # Build new portion
+                portion_event_box_tmp[new_path] = old_node
+
+        # Replace and delete tmp
+        del portion_event_box
+        portion_event_box = portion_event_box_tmp.copy()
+        del portion_event_box_tmp
+
+        # Update idx_offset
+        idx_event_offset += isec + 1
 
         # --------------------------------------------------------------------------------------------------------------
         # Extract the associated pressure signals

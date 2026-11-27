@@ -186,13 +186,13 @@ contrast_percentile = 50
 combinations_to_plot = None  # -> all the combinations studied
 #   combinations_to_plot = [["obs2", "obs4"], ["obs2", "obs4", "obs5"]] -> only these combinations
 # combinations_to_plot = None
-# combinations_to_plot = [
-#     ["obs2"],
-#     ["obs2", "obs4"],
-#     ["obs2", "obs4", "obs7"],
-#     ["obs2", "obs4", "obs7", "obs5"],
-#     ["obs2", "obs4", "obs7", "obs5", "obs6"],
-# ]
+combinations_to_plot = [
+    ["obs2"],
+    # ["obs2", "obs4"],
+    # ["obs2", "obs4", "obs7"],
+    # ["obs2", "obs4", "obs7", "obs5"],
+    # ["obs2", "obs4", "obs7", "obs5", "obs6"],
+]
 
 # Metrics displayed next to the real distance (always in the first panel) in the ambiguity figures: 3 among
 # "theta", "theta_gamma", "L2_gamma", "dcf", "theta_gamma_centered", "L2_gamma_centered"
@@ -206,7 +206,7 @@ ambiguity_max_quantile = (
 )
 ambiguity_d_real_vmax = 200  # upper bound of the color scale of the real distance [m]
 max_ambiguity_figures = (
-    500  # safety limit on the number of figures (comparisons x combinations)
+    5000  # safety limit on the number of figures (comparisons x combinations)
 )
 
 # ======================================================================================================================
@@ -234,7 +234,7 @@ save_intersection_positions = True
 
 # Figures
 plot_map = True
-plot_features_event = True
+plot_features_event = False
 plot_ambiguity = True
 plot_gamma_comparison = True
 

@@ -171,9 +171,27 @@ def extract_ais_in_box(ds_pos, box):
     # after this operation the dataset only contains datetimes where at least one mmsi is in the area
     # dropna("mmsi", how="all") -> drop lines of matrix ais_lon (resp ais_lat) of shape (mmsi, ais_datetime) that contain only nan values
     # after this operation the dataset only contains mmsi that have at least on position (corresponding to one datetime) in the required area
-    ds_ais_in_area = (
-        ds_ais.where(mask).dropna("ais_datetime", how="all").dropna("mmsi", how="all")
-    )
+    # ds_ais_in_area = (
+    #     ds_ais.where(mask).dropna("ais_datetime", how="all").dropna("mmsi", how="all")
+    # )
+    ds_ais_in_area = ds_ais.where(mask).dropna("mmsi", how="all")
+
+    # test = ds_ais_in_area.sel(mmsi=223)
+    # nan_indicator = np.isnan(test.ais_lon * test.ais_lat)
+    # edge_indicator = nan_indicator.astype(int)
+
+    # test2 = ds_ais_in_area.dropna("ais_datetime", how="all").sel(mmsi=223)
+    # nan_indicator2 = np.isnan(test2.ais_lon * test2.ais_lat)
+    # edge_indicator2 = nan_indicator2.astype(int)
+
+    # from datetime import datetime
+    # start = datetime(2026, 2, 24, 12)
+    # stop = datetime(2026, 2, 24, 21)
+    # plt.figure()
+    # edge_indicator.sel(ais_datetime=slice(start, stop)).plot(marker="x", color="r")
+    # edge_indicator2.sel(ais_datetime=slice(start, stop)).plot(marker="x", color="b")
+
+    # plt.savefig("test")
     # # Add mmsi to ease selection
     # ds_ais_in_area = ds_ais_in_area.assign_coords(
     #     mmsi=np.arange(ds_ais_in_area.sizes["mmsi"])

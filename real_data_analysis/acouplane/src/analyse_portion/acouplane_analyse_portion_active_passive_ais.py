@@ -94,10 +94,10 @@ os.makedirs(ROOT_IMG_PORTION_RESULTS_EVENT, exist_ok=True)
 
 # Files: the library is built from the portion, the events are stored in a separate file
 portion_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}.nc"
-portion_event_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais.nc"
-# portion_event_fpath = (
-#     f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais_single28.nc"
-# )
+# portion_event_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais.nc"
+portion_event_fpath = (
+    f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais_single28.nc"
+)
 
 # Intermediate results saved next to the event file (the event file itself is never modified)
 portion_event_cpsd_fpath = portion_event_fpath.replace(".nc", "_cpsd.nc")
@@ -134,8 +134,8 @@ library_sections = None
 
 # library_sections = ["sn0", "sn2", "oe7", "oe8", "oe9"]
 # Event 7
-# library_sections = ["sn0", "sn1", "sn2", "sn3", "oe4", "oe5", "oe6"]
-# library_sections = ["sn2"]
+library_sections = ["sn0", "sn1", "sn2", "sn3", "oe4", "oe5", "oe6"]
+# library_sections = ["oe4"]
 
 
 # Events compared to the library (None -> all the events of the event file)

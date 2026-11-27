@@ -85,19 +85,22 @@ portion_id = 5
 ROOT_IMG_PORTION = os.path.join(
     ROOT_ACOUPLANE_PROCESSED_IMG_DIR, f"portion{portion_id}"
 )
-# ROOT_IMG_PORTION_RESULTS_EVENT = os.path.join(ROOT_IMG_PORTION, "results_event_ais")
 ROOT_IMG_PORTION_RESULTS_EVENT = os.path.join(
     ROOT_IMG_PORTION, "results_portion_active_passive_ais"
 )
-
 os.makedirs(ROOT_IMG_PORTION_RESULTS_EVENT, exist_ok=True)
+
+ROOT_IMG_PORTION_RESULTS_EVENT_FEATURE = os.path.join(
+    ROOT_IMG_PORTION_RESULTS_EVENT, "features"
+)
+os.makedirs(ROOT_IMG_PORTION_RESULTS_EVENT_FEATURE, exist_ok=True)
 
 # Files: the library is built from the portion, the events are stored in a separate file
 portion_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}.nc"
-# portion_event_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais.nc"
-portion_event_fpath = (
-    f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais_single28.nc"
-)
+portion_event_fpath = f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais.nc"
+# portion_event_fpath = (
+#     f"{ACOUPLANE_PORTION_NC_ROOT_FPATH}_{portion_id}_event_ais_single28.nc"
+# )
 
 # Intermediate results saved next to the event file (the event file itself is never modified)
 portion_event_cpsd_fpath = portion_event_fpath.replace(".nc", "_cpsd.nc")
@@ -134,7 +137,7 @@ library_sections = None
 
 # library_sections = ["sn0", "sn2", "oe7", "oe8", "oe9"]
 # Event 7
-library_sections = ["sn0", "sn1", "sn2", "sn3", "oe4", "oe5", "oe6"]
+# library_sections = ["sn0", "sn1", "sn2", "sn3", "oe4", "oe5", "oe6"]
 # library_sections = ["oe4"]
 
 
@@ -169,11 +172,11 @@ combination_method = "mean_surfaces"
 #   rcv_combinations = None  -> all the combinations of the sizes `combination_sizes` among the receivers
 #   rcv_combinations = [["obs2"], ["obs2", "obs4"], ...] -> explicit combinations
 rcv_combinations = None
-# combination_sizes = (
-#     None  # None -> all sizes, from 1 receiver to all of them; e.g. [1, 2, 5]
-# )
-combination_sizes = [1, 2, 5]
-max_combinations = 200  # safety limit on the number of combinations (the number grows as 2**n_receivers)
+combination_sizes = (
+    None  # None -> all sizes, from 1 receiver to all of them; e.g. [1, 2, 5]
+)
+# combination_sizes = [1, 2, 5]
+max_combinations = 2000  # safety limit on the number of combinations (the number grows as 2**n_receivers)
 
 # Distance types to analyse: None -> all those computed, otherwise a list among "theta", "theta_gamma", "L2_gamma",
 # "dcf", "theta_gamma_centered", "L2_gamma_centered" (the centered ones need compare_centered_gamma = True)
@@ -188,8 +191,8 @@ combinations_to_plot = None  # -> all the combinations studied
 # combinations_to_plot = None
 combinations_to_plot = [
     ["obs2"],
-    # ["obs2", "obs4"],
-    # ["obs2", "obs4", "obs7"],
+    ["obs2", "obs4"],
+    ["obs2", "obs4", "obs7"],
     # ["obs2", "obs4", "obs7", "obs5"],
     # ["obs2", "obs4", "obs7", "obs5", "obs6"],
 ]
@@ -234,7 +237,7 @@ save_intersection_positions = True
 
 # Figures
 plot_map = True
-plot_features_event = False
+plot_features_event = True
 plot_ambiguity = True
 plot_gamma_comparison = True
 
@@ -249,6 +252,7 @@ verbose = True
 # ======================================================================================================================
 log = make_logger(portion_id, verbose)
 save_event_figure = make_figure_saver(ROOT_IMG_PORTION_RESULTS_EVENT, log)
+save_feature_figure = make_figure_saver(ROOT_IMG_PORTION_RESULTS_EVENT_FEATURE, log)
 
 # ======================================================================================================================
 # Check the settings right away (before any heavy computation)
@@ -489,8 +493,8 @@ if plot_features_event:
         fig_rtf, fig_dcf = plot_event_features(node.to_dataset())
         fig_rtf.suptitle(f"Event {event_name}: RTF amplitude")
         fig_dcf.suptitle(f"Event {event_name}: DCF")
-        save_event_figure(fig_rtf, f"event_rtf_amplitude_{event_name}.png")
-        save_event_figure(fig_dcf, f"event_dcf_{event_name}.png")
+        save_feature_figure(fig_rtf, f"event_rtf_amplitude_{event_name}.png")
+        save_feature_figure(fig_dcf, f"event_dcf_{event_name}.png")
 
 # ======================================================================================================================
 # Ambiguity surfaces between the library and the events

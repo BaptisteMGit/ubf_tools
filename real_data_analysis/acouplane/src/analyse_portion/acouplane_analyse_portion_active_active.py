@@ -199,11 +199,11 @@ plot_signal_single_emission = True
 plot_features = True
 plot_intersections = True
 # Analysis of the results (position error of the estimated intersections)
-analyse_error_vs_distance_type = True
-analyse_error_vs_frequency_band = True
-analyse_error_vs_bandwidth = True
-analyse_ambiguity_contrast = True
-analyse_rcv_pair_performance = True
+analyse_error_vs_distance_type = False
+analyse_error_vs_frequency_band = False
+analyse_error_vs_bandwidth = False
+analyse_ambiguity_contrast = False
+analyse_rcv_pair_performance = False
 # Also compute (and plot) the gamma distances with gamma centered along frequency
 compare_centered_gamma = True
 verbose = True
